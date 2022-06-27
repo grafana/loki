@@ -540,6 +540,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       event: ['pull_request', 'tag'],
     },
     image_pull_secrets: [pull_secret.name],
+    volumes+: [
+      {
+        name: 'cgroup',
+        host: {
+          path: '/sys/fs/cgroup:ro',
+        },
+      },
+    ],
     steps: [
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
@@ -558,9 +566,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           }) { when: { event: ['pull_request'] } },
       {
         name: 'test deb package',
-        image: 'grafana/containerized-systemd:debian-10',
-        entrypoint: ['/docker-entrypoint.sh'],
-        command: [
+        image: 'jrei/systemd-debian',
+        commands: [
           // Install loki and check it's running
           'dpkg -i dist/loki_0.0.0~rc0_amd64.deb',
           '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
@@ -572,14 +579,19 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           // Check that there are logs (from the dpkg install)
           "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
         ],
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
         privileged: true,
         when: { event: ['pull_request'] },
       },
       {
         name: 'test rpm package',
-        image: 'grafana/containerized-systemd:centos-8.3',
-        entrypoint: ['/docker-entrypoint.sh'],
-        command: [
+        image: 'centos/systemd',
+        commands: [
           // Install loki and check it's running
           'rpm -i dist/loki-0.0.0~rc0.x86_64.rpm',
           '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
@@ -590,6 +602,12 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm',
           // Check that there are logs (from the dpkg install)
           "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
+        ],
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
         ],
         privileged: true,
         when: { event: ['pull_request'] },

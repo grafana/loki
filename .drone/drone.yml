@@ -1097,33 +1097,35 @@ steps:
   when:
     event:
     - pull_request
-- command:
+- commands:
   - dpkg -i dist/loki_0.0.0~rc0_amd64.deb
   - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
   - dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
   - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
   - dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
   - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
-  entrypoint:
-  - /docker-entrypoint.sh
-  image: grafana/containerized-systemd:debian-10
+  image: jrei/systemd-debian
   name: test deb package
   privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
   when:
     event:
     - pull_request
-- command:
+- commands:
   - rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
   - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
   - rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
   - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
   - rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
   - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
-  entrypoint:
-  - /docker-entrypoint.sh
-  image: grafana/containerized-systemd:centos-8.3
+  image: centos/systemd
   name: test rpm package
   privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
   when:
     event:
     - pull_request
@@ -1144,6 +1146,10 @@ trigger:
   event:
   - pull_request
   - tag
+volumes:
+- host:
+    path: /sys/fs/cgroup:ro
+  name: cgroup
 ---
 depends_on:
 - check
@@ -1376,6 +1382,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 45671bd2fcbd713c3b3265630afcb31f055825f16ae89aabed8f5166c5e1c87d
+hmac: 568280baa8303302df05a681a5cfb11c1092bb4352716dd2088288d097c0f736
 
 ...
