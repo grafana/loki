@@ -172,8 +172,10 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					PeriodSeconds:    5,
 					FailureThreshold: 12,
 				},
+				SecurityContext: containerSecurityContext(),
 			},
 		},
+		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
 	}
 
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)

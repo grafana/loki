@@ -19,6 +19,7 @@ type FeatureFlags struct {
 	EnableLokiStackWebhook          bool `json:"enableLokiStackWebhook,omitempty"`
 	EnableAlertingRuleWebhook       bool `json:"enableAlertingRuleWebhook,omitempty"`
 	EnableRecordingRuleWebhook      bool `json:"enableRecordingRuleWebhook,omitempty"`
+	EnableRuntimeSeccompProfile     bool `json:"enableRuntimeSeccompProfile,omitempty"`
 }
 
 //+kubebuilder:object:root=true

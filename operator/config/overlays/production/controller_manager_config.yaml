@@ -11,3 +11,4 @@ leaderElection:
   resourceName: e3716011.grafana.com
 featureFlags:
   enableLokiStackGateway: true
+  enableRuntimeSeccompProfile: false

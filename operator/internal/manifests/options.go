@@ -44,6 +44,7 @@ type FeatureFlags struct {
 	EnableGateway                   bool
 	EnableGatewayRoute              bool
 	EnableGrafanaLabsStats          bool
+	EnableRuntimeSeccompProfile     bool
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
