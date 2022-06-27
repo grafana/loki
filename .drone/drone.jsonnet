@@ -574,7 +574,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test deb package',
         image: 'docker',
         commands: [
-          'docker run -d --name systemd --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/jrei/systemd-debian:12',
+          'docker run -d --name systemd --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/systemd-debian:12',
           "docker exec systemd sh -c '" + |||
             // Install loki and check it's running
             dpkg -i dist/loki_0.0.0~rc0_amd64.deb
