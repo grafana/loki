@@ -544,7 +544,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'cgroup',
         host: {
-          path: '/sys/fs/cgroup:ro',
+          path: '/sys/fs/cgroup',
         },
       },
     ],

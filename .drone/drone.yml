@@ -1148,7 +1148,7 @@ trigger:
   - tag
 volumes:
 - host:
-    path: /sys/fs/cgroup:ro
+    path: /sys/fs/cgroup
   name: cgroup
 ---
 depends_on:
@@ -1382,6 +1382,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 568280baa8303302df05a681a5cfb11c1092bb4352716dd2088288d097c0f736
+hmac: 038368aad75744edcf9b5433282d3860c7b8f4c2481166ed6ee46118b44783d8
 
 ...
