@@ -431,11 +431,11 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 		_, ok := splittableRangeVectorOp[e.Operation]
 		return ok
 	case *syntax.BinOpExpr:
-		_, literalLhs := e.SampleExpr.(*syntax.LiteralExpr)
-		_, literalRhs := e.RHS.(*syntax.LiteralExpr)
+		_, literalLHS := e.SampleExpr.(*syntax.LiteralExpr)
+		_, literalRHS := e.RHS.(*syntax.LiteralExpr)
 		// Note: if both left-hand side and right-hand side are literal expressions,
 		// the syntax.ParseSampleExpr returns a literal expression
-		return isSplittableByRange(e.SampleExpr) || literalLhs && isSplittableByRange(e.RHS) || literalRhs
+		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
 	case *syntax.LabelReplaceExpr:
 		return isSplittableByRange(e.Left)
 	default:
