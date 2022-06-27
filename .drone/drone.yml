@@ -1076,6 +1076,19 @@ image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
 name: release
+services:
+- image: jrei/systemd-debian:12
+  name: systemd-debian
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
+- image: jrei/systemd-centos:8
+  name: systemd-centos
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
 steps:
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
@@ -1086,10 +1099,8 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
-  - docker run -d --name systemd --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro
-    jrei/systemd-debian:12
   - |-
-    docker exec systemd sh -c '// Install loki and check it's running
+    docker exec systemd-debian sh -c '// Install loki and check it's running
     dpkg -i dist/loki_0.0.0~rc0_amd64.deb
     [ "$(systemctl is-active loki)" = "active" ] || exit 1
     // Install promtail and check it's running
@@ -1104,18 +1115,14 @@ steps:
   name: test deb package
   privileged: true
   volumes:
-  - name: cgroup
-    path: /sys/fs/cgroup
   - name: docker
     path: /var/run/docker.sock
   when:
     event:
     - pull_request
 - commands:
-  - docker run -d --name systemd-centos --tmpfs /tmp --tmpfs /run --tmpfs /run/lock
-    -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/systemd-centos:8
   - |-
-    docker exec systemd sh -c '// Install loki and check it's running
+    docker exec systemd-centos sh -c '// Install loki and check it's running
     rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
     [ "$(systemctl is-active loki)" = "active" ] || exit 1
     // Install promtail and check it's running
@@ -1130,8 +1137,6 @@ steps:
   name: test rpm package
   privileged: true
   volumes:
-  - name: cgroup
-    path: /sys/fs/cgroup
   - name: docker
     path: /var/run/docker.sock
   when:
@@ -1393,6 +1398,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: ce6d59a50dfed79cd2863bc218ab3131c8b45a3a13a323d8c5850355f3bb4369
+hmac: c32df12edd211d9bf3594767aae02076a59aa71ba59ce42f8ab906d0ab53a3e5
 
 ...

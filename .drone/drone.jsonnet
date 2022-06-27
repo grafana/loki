@@ -554,6 +554,30 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         },
       },
     ],
+    services: [
+      {
+        name: 'systemd-debian',
+        image: 'jrei/systemd-debian:12',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
+        privileged: true,
+      },
+      {
+        name: 'systemd-centos',
+        image: 'jrei/systemd-centos:8',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
+        privileged: true,
+      },
+    ],
     steps: [
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
@@ -574,8 +598,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test deb package',
         image: 'docker',
         commands: [
-          'docker run -d --name systemd --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/systemd-debian:12',
-          "docker exec systemd sh -c '" + |||
+          "docker exec systemd-debian sh -c '" + |||
             // Install loki and check it's running
             dpkg -i dist/loki_0.0.0~rc0_amd64.deb
             [ "$(systemctl is-active loki)" = "active" ] || exit 1
@@ -590,10 +613,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         ],
         volumes: [
           {
-            name: 'cgroup',
-            path: '/sys/fs/cgroup',
-          },
-          {
             name: 'docker',
             path: '/var/run/docker.sock',
           },
@@ -605,8 +624,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test rpm package',
         image: 'docker',
         commands: [
-          'docker run -d --name systemd-centos --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/systemd-centos:8',
-          "docker exec systemd sh -c '" + |||
+          "docker exec systemd-centos sh -c '" + |||
             // Install loki and check it's running
             rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
             [ "$(systemctl is-active loki)" = "active" ] || exit 1
@@ -620,10 +638,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           ||| + "'",
         ],
         volumes: [
-          {
-            name: 'cgroup',
-            path: '/sys/fs/cgroup',
-          },
           {
             name: 'docker',
             path: '/var/run/docker.sock',
