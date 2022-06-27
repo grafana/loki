@@ -90,7 +90,7 @@ type Distributor struct {
 	logSender              LogSender
 }
 
-var DefaultLogSender LogSender = nil
+var DefaultLogSender LogSender
 
 //send log to ES or kafka
 type LogSender interface {
