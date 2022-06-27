@@ -1120,7 +1120,7 @@ steps:
     event:
     - pull_request
 - commands:
-  - sleep 60
+  - sleep 300
   - |-
     docker exec systemd-centos sh -c '// Install loki and check it's running
     rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
@@ -1410,6 +1410,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: c848bf18508cee4b69515238e7881f8bdc834d3a71f5da984ff94e8d1902eeb8
+hmac: ffeef9ae2b7aa451f1fa80c7e9f5504635800777ce5f02fbc2b4a5b6ed0194e2
 
 ...
