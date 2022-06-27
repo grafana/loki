@@ -139,6 +139,9 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
 			_ = f.Value.Set("true")
+
+		case "server.http-listen-port":
+			_ = f.Value.Set("3100")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
