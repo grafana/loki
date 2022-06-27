@@ -548,7 +548,10 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
           }),
       run('test packaging',
-          commands=['make BUILD_IN_CONTAINER=false packages'],
+          commands=[
+            'go install github.com/google/go-jsonnet/cmd/jsonnet@latest',  // Test, install in build image instead
+            'make BUILD_IN_CONTAINER=false packages',
+          ],
           env={
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',

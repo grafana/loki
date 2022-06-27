@@ -1086,6 +1086,7 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
+  - go install github.com/google/go-jsonnet/cmd/jsonnet@latest
   - make BUILD_IN_CONTAINER=false packages
   environment:
     NFPM_PASSPHRASE:
@@ -1369,6 +1370,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 9acafc6e839dc5cdf09949feee948ac95bf4d090ae78e83293904c1680485e7a
+hmac: 4265f7965bbca646509cd643f65c5a4e79c99086a6d10b86c2439d480dba57eb
 
 ...
