@@ -78,7 +78,7 @@ spec:
                 type: boolean
               enableTlsServiceMonitorConfig:
                 type: boolean
-              enableTLSHttpServices:
+              enableTlsHttpServices:
                 type: boolean
             type: object
           gracefulShutDown:

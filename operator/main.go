@@ -72,7 +72,7 @@ func main() {
 	}
 
 	if ctrlCfg.Flags.EnableTLSServiceMonitorConfig && !ctrlCfg.Flags.EnableTLSHTTPServices {
-		logger.Error(kverrors.New("enableTLSServiceMonitorConfig flag requires enableTLSHttpServices"), "")
+		logger.Error(kverrors.New("enableTlsServiceMonitorConfig flag requires enableTlsHttpServices"), "")
 		os.Exit(1)
 	}
 
