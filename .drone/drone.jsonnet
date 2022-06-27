@@ -599,26 +599,26 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         detach: true,
         privileged: true,
       },
-      // {
-      //   name: 'systemd-centos',
-      //   image: 'centos/systemd',
-      //   volumes: [
-      //     {
-      //       name: 'cgroup',
-      //       path: '/sys/fs/cgroup',
-      //     },
-      //     {
-      //       name: 'run-centos',
-      //       path: '/run',
-      //     },
-      //     {
-      //       name: 'tmp-centos',
-      //       path: '/tmp',
-      //     },
-      //   ],
-      //   detach: true,
-      //   privileged: true,
-      // },
+      {
+        name: 'systemd-centos',
+        image: 'centos/systemd',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+          {
+            name: 'run-centos',
+            path: '/run',
+          },
+          {
+            name: 'tmp-centos',
+            path: '/tmp',
+          },
+        ],
+        detach: true,
+        privileged: true,
+      },
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={
@@ -638,8 +638,11 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test deb package',
         image: 'docker',
         commands: [
-          'sleep 60',
-          "docker exec systemd-debian sh -c '" + |||
+          'sleep 15',
+          'docker ps',
+          'image="$($(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}}))"',
+          'echo "Running image $image"',
+          "docker exec $image sh -c '" + |||
             // Install loki and check it's running
             dpkg -i dist/loki_0.0.0~rc0_amd64.deb
             [ "$(systemctl is-active loki)" = "active" ] || exit 1
@@ -665,7 +668,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test rpm package',
         image: 'docker',
         commands: [
-          'sleep 300',
+          'sleep 60',
           "docker exec systemd-centos sh -c '" + |||
             // Install loki and check it's running
             rpm -i dist/loki-0.0.0~rc0.x86_64.rpm

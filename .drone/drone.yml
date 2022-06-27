@@ -1088,6 +1088,17 @@ steps:
     path: /run
   - name: tmp-debian
     path: /tmp
+- detach: true
+  image: centos/systemd
+  name: systemd-centos
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
+  - name: run-centos
+    path: /run
+  - name: tmp-centos
+    path: /tmp
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
@@ -1097,9 +1108,12 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
-  - sleep 60
+  - sleep 15
+  - docker ps
+  - image="$($(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}}))"
+  - echo "Running image $image"
   - |-
-    docker exec systemd-debian sh -c '// Install loki and check it's running
+    docker exec $image sh -c '// Install loki and check it's running
     dpkg -i dist/loki_0.0.0~rc0_amd64.deb
     [ "$(systemctl is-active loki)" = "active" ] || exit 1
     // Install promtail and check it's running
@@ -1120,7 +1134,7 @@ steps:
     event:
     - pull_request
 - commands:
-  - sleep 300
+  - sleep 60
   - |-
     docker exec systemd-centos sh -c '// Install loki and check it's running
     rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
@@ -1410,6 +1424,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: ffeef9ae2b7aa451f1fa80c7e9f5504635800777ce5f02fbc2b4a5b6ed0194e2
+hmac: 7575a87e42cf9abd540b0d41fb3b547dc38f577b8b1f5a468514724fab443e97
 
 ...
