@@ -166,6 +166,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
@@ -175,6 +176,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -302,6 +304,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	// CacheRing
+	if mergeWithExisting || reflect.DeepEqual(r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring, defaults.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring) {
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstancePort = rc.InstancePort
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceAddr = rc.InstanceAddr
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceID = rc.InstanceID
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceZone = rc.InstanceZone
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -331,6 +346,12 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
+
+	f, err = tokensFile(cfg, "cache.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -409,6 +430,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames, defaults.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames) {
+		cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = append(cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -422,6 +447,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

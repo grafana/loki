@@ -224,46 +224,23 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 func (t *Loki) initGroupcache() (_ services.Service, err error) {
 	//TODO, only do this when groupcache is enabled
 
-	ringCfg := t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.LifecyclerConfig.RingConfig
-	cacheRing, err := ring.New(ringCfg, cache.GroupcacheRingName, cache.GroupcacheRingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.ChunkStoreConfig.ChunkCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-
-		return
+		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
-	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
+	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
 
-	lifecycler, err := ring.NewLifecycler(
-		t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.LifecyclerConfig,
-		nil,
-		cache.GroupcacheRingName,
-		cache.GroupcacheRingKey,
-		false,
-		util_log.Logger,
-		prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer),
-	)
+	t.groupcacheRingManager = rm
+
+	gc, err := cache.NewGroupCache(rm, t.Server, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	gc, err := cache.NewGroupCache(cacheRing, lifecycler, t.Server, util_log.Logger)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: This should be extracted or made it's own
 	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc
 
-	m, err := services.NewManager(cacheRing, lifecycler)
-	return services.NewBasicService(func(serviceContext context.Context) error {
-		return services.StartManagerAndAwaitHealthy(serviceContext, m)
-	}, func(serviceContext context.Context) error {
-		<-serviceContext.Done()
-		return nil
-	}, func(failureCase error) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		return services.StopManagerAndAwaitStopped(ctx, m)
-	}), nil
+	return t.groupcacheRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
@@ -1127,7 +1104,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

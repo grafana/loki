@@ -373,6 +373,7 @@ type Loki struct {
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *indexgateway.RingManager
+	groupcacheRingManager     *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
