@@ -16,24 +16,24 @@ component is different.
 
 These endpoints are exposed by all components:
 
-- [`GET /ready`](#get-ready)
-- [`GET /metrics`](#get-metrics)
-- [`GET /config`](#get-config)
-- [`GET /services`](#get-services)
-- [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
+- [`GET /ready`](#identify-ready-loki-instance)
+- [`GET /metrics`](#return-exposed-prometheus-metrics)
+- [`GET /config`](#list-current-configuration)
+- [`GET /services`](#list-running-services)
+- [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
 
 These endpoints are exposed by the querier and the query frontend:
 
-- [`GET /loki/api/v1/query`](#get-lokiapiv1query)
-- [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-- [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
-- [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
-- [`GET /loki/api/v1/series`](#series)
+- [`GET /loki/api/v1/query`](#query-loki)
+- [`GET /loki/api/v1/query_range`](#query-loki-over-a-range-of-time)
+- [`GET /loki/api/v1/labels`](#list-labels-within-a-range-of-time)
+- [`GET /loki/api/v1/label/<name>/values`](#list-label-values-within-a-range-of-time)
+- [`GET /loki/api/v1/series`](#list-series)
 - [`GET /loki/api/v1/index/stats`](#index-stats)
-- [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
-- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-- [`GET /ready`](#get-ready)
-- [`GET /metrics`](#get-metrics)
+- [`GET /loki/api/v1/tail`](#stream-log-messages)
+- [`POST /loki/api/v1/push`](#push-log-entries-to-loki)
+- [`GET /ready`](#identify-ready-loki-instance)
+- [`GET /metrics`](#return-exposed-prometheus-metrics)
 - **Deprecated** [`GET /api/prom/tail`](#get-apipromtail)
 - **Deprecated** [`GET /api/prom/query`](#get-apipromquery)
 - **Deprecated** [`GET /api/prom/label`](#get-apipromlabel)
@@ -42,14 +42,14 @@ These endpoints are exposed by the querier and the query frontend:
 
 These endpoints are exposed by the distributor:
 
-- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-- [`GET /distributor/ring`](#get-distributorring)
+- [`POST /loki/api/v1/push`](#push-log-entries-to-loki)
+- [`GET /distributor/ring`](#display-distributor-consistent-hash-ring-status)
 
 These endpoints are exposed by the ingester:
 
-- [`POST /flush`](#post-flush)
+- [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
+- [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
 - **Deprecated** [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
-- [`POST /ingester/shutdown`](#post-ingestershutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -105,7 +105,7 @@ The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as sup
 ## Query Loki
 
 ```
-GET /loki/api/v1/query`
+GET /loki/api/v1/query
 ```
 
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
@@ -591,7 +591,7 @@ $ curl -v -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/l
 GET /ready
 ```
 
-`/ready` returns HTTP 200 when the Loki ingester is ready to accept traffic. If
+`/ready` returns HTTP 200 when the Loki instance is ready to accept traffic. If
 running Loki on Kubernetes, `/ready` can be used as a readiness probe.
 
 In microservices mode, the `/ready` endpoint is exposed by all components.
@@ -690,7 +690,7 @@ GET /loki/api/v1/status/buildinfo
 
 `/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
 
-## Series
+## List series
 
 The Series API is available under the following:
 - `GET /loki/api/v1/series`
@@ -1027,13 +1027,14 @@ A 204 response indicates success.
 
 URL encode the `query` parameter. This sample form of a cURL command URL encodes `query={foo="bar"}`:
 
-```
+```bash
 curl -g -X POST \
   'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692' \
   -H 'x-scope-orgid: 1'
 ```
 
-  The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+
 ### List log deletion requests
 
 ```
@@ -1328,7 +1329,8 @@ $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api
 
 ### `POST /ingester/flush_shutdown`
 
-**Deprecated**: Please use `/ingester/shutdown?flush=true` instead.
+> **WARNING**: `/ingester/flush_shutdown` is DEPRECATED; use `/ingester/shutdown?flush=true`
+> instead.
 
 `/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
 This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
