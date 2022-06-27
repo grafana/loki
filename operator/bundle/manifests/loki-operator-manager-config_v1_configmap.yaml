@@ -18,6 +18,7 @@ data:
       enableCertSigningService: true
       enableServiceMonitors: true
       enableTlsServiceMonitorConfig: true
+      enableTlsHttpServices: true
       enableTlsGRPCServices: true
       enableLokiStackAlerts: true
       enableLokiStackGateway: true

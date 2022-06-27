@@ -19,8 +19,8 @@ import (
 // BuildIndexGateway returns a list of k8s objects for Loki IndexGateway
 func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	statefulSet := NewIndexGatewayStatefulSet(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureIndexGatewayServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+	if opts.Flags.EnableTLSHTTPServices {
+		if err := configureIndexGatewayHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -220,9 +220,9 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureIndexGatewayServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIndexGatewayHTTP(stackName)
-	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {

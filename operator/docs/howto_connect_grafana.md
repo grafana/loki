@@ -67,7 +67,7 @@ datasources:
     httpHeaderValue1: ${LOKI_TENANT_ID}
 ```
 
-If the operator was started with the `--with-tls-service-monitors` option, then the protocol used to access the service needs to be set to `https` and, depending on the used certificate another option needs to be added to the `jsonData`: `tlsSkipVerify: true`
+If the operator was started with the `--with-http-tls-services` option, then the protocol used to access the service needs to be set to `https` and, depending on the used certificate another option needs to be added to the `jsonData`: `tlsSkipVerify: true`
 
 The values for the variables used in the configuration file depend on the Lokistack deployment and which Loki tenant needs to be accessed.
 
