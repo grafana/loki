@@ -189,7 +189,8 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 		log.Span.LogFields(otlog.Int("postFilterChunkLen", postLen))
 		log.Span.Finish()
 	}()
-	streamPipeline := pipeline.ForStream(cnk.Metric.WithoutLabels(labels.MetricName))
+
+	streamPipeline := pipeline.ForStream(labels.NewBuilder(cnk.Metric).Del(labels.MetricName).Labels())
 	chunkData := cnk.Data
 	lazyChunk := LazyChunk{Chunk: cnk}
 	newCtr, statCtx := stats.NewContext(ctx)
