@@ -1078,8 +1078,19 @@ kind: pipeline
 name: release
 steps:
 - commands:
+  - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
+  environment:
+    NFPM_SIGNING_KEY:
+      from_secret: gpg_private_key
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+  image: grafana/loki-build-image:0.21.0
+  name: write-key
+- commands:
   - make BUILD_IN_CONTAINER=false packages
-  environment: {}
+  environment:
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
   image: grafana/loki-build-image:0.21.0
   name: test packaging
   when:
@@ -1114,6 +1125,9 @@ steps:
   environment:
     GITHUB_TOKEN:
       from_secret: github_token
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
   image: grafana/loki-build-image:0.21.0
   name: publish
   when:
@@ -1336,7 +1350,25 @@ get:
 kind: secret
 name: deploy_config
 ---
+get:
+  name: passphrase
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_passphrase
+---
+get:
+  name: private-key
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_private_key
+---
+get:
+  name: public-key
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_public_key
+---
 kind: signature
-hmac: 2b78fa8a900f462a691ade05155e3cf7d52424277fcd8eff9e9e7e173e1ee585
+hmac: 9acafc6e839dc5cdf09949feee948ac95bf4d090ae78e83293904c1680485e7a
 
 ...

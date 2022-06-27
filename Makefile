@@ -256,7 +256,7 @@ dist: clean
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
-packages:
+packages: dist
 	@tools/packaging/nfpm.sh
 
 publish: packages
