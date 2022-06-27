@@ -542,30 +542,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     image_pull_secrets: [pull_secret.name],
     volumes+: [
       {
-        name: 'tmp-centos',
-        temp: {
-          medium: 'memory',
-        },
-      },
-      {
-        name: 'run-centos',
-        temp: {
-          medium: 'memory',
-        },
-      },
-      {
-        name: 'tmp-debian',
-        temp: {
-          medium: 'memory',
-        },
-      },
-      {
-        name: 'run-debian',
-        temp: {
-          medium: 'memory',
-        },
-      },
-      {
         name: 'cgroup',
         host: {
           path: '/sys/fs/cgroup',
@@ -587,14 +563,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
           },
-          {
-            name: 'run-debian',
-            path: '/run',
-          },
-          {
-            name: 'tmp-debian',
-            path: '/tmp',
-          },
         ],
         detach: true,
         privileged: true,
@@ -606,14 +574,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
-          },
-          {
-            name: 'run-centos',
-            path: '/run',
-          },
-          {
-            name: 'tmp-centos',
-            path: '/tmp',
           },
         ],
         detach: true,
@@ -637,24 +597,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'test deb package',
         image: 'docker',
-        commands: [
-          'sleep 15',
-          'docker ps',
-          'image="$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"',
-          'echo "Running image $image"',
-          "docker exec $image sh -c '",
-          "  // Install loki and check it's running",
-          '  dpkg -i dist/loki_0.0.0~rc0_amd64.deb',
-          '  [ "$(systemctl is-active loki)" = "active" ] || exit 1',
-          "  // Install promtail and check it's running",
-          '  dpkg -i dist/promtail_0.0.0~rc0_amd64.deb',
-          '  [ "$(systemctl is-active promtail)" = "active" ] || exit 1',
-          '  // Install logcli',
-          '  dpkg -i dist/logcli_0.0.0~rc0_amd64.deb',
-          '  // Check that there are logs (from the dpkg install)',
-          '  [ $(logcli query \'{job="varlogs"}\' | wc -l) -gt 0 ] || exit 1',
-          "'",
-        ],
+        commands: ['./tools/packaging/verify-deb-install.sh'],
         volumes: [
           {
             name: 'docker',

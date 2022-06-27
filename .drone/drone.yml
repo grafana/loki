@@ -1084,10 +1084,6 @@ steps:
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
-  - name: run-debian
-    path: /run
-  - name: tmp-debian
-    path: /tmp
 - detach: true
   image: centos/systemd
   name: systemd-centos
@@ -1095,10 +1091,6 @@ steps:
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
-  - name: run-centos
-    path: /run
-  - name: tmp-centos
-    path: /tmp
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
@@ -1108,22 +1100,7 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
-  - sleep 15
-  - docker ps
-  - image="$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"
-  - echo "Running image $image"
-  - docker exec $image sh -c '
-  - '  // Install loki and check it''s running'
-  - '  dpkg -i dist/loki_0.0.0~rc0_amd64.deb'
-  - '  [ "$(systemctl is-active loki)" = "active" ] || exit 1'
-  - '  // Install promtail and check it''s running'
-  - '  dpkg -i dist/promtail_0.0.0~rc0_amd64.deb'
-  - '  [ "$(systemctl is-active promtail)" = "active" ] || exit 1'
-  - '  // Install logcli'
-  - '  dpkg -i dist/logcli_0.0.0~rc0_amd64.deb'
-  - '  // Check that there are logs (from the dpkg install)'
-  - '  [ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
-  - ''''
+  - ./tools/packaging/verify-deb-install.sh
   image: docker
   name: test deb package
   privileged: true
@@ -1174,18 +1151,6 @@ trigger:
   - pull_request
   - tag
 volumes:
-- name: tmp-centos
-  temp:
-    medium: memory
-- name: run-centos
-  temp:
-    medium: memory
-- name: tmp-debian
-  temp:
-    medium: memory
-- name: run-debian
-  temp:
-    medium: memory
 - host:
     path: /sys/fs/cgroup
   name: cgroup
@@ -1424,6 +1389,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 86fc21ef3d583746bae6b9bd8071f5fb5d2e493c48b47987dca6f9bdfa6c199a
+hmac: d807109808e98f6679b6faaec847acfaccaba46616ee4486f00397069122e347
 
 ...
