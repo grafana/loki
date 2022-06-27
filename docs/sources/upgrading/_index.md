@@ -29,7 +29,7 @@ the `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sn
 
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
-## Main / Unreleased
+## 2.6.0
 
 
 ### Loki
