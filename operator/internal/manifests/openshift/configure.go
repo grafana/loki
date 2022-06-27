@@ -107,7 +107,7 @@ func ConfigureGatewayDeployment(
 	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
 
-	// Create and mount TLS secrets volumes if it's not already done by the service monitor config.
+	// Create and mount TLS secrets volumes if not already created.
 	if !withTLS {
 		gwVolumes = append(gwVolumes, corev1.Volume{
 			Name: secretVolumeName,

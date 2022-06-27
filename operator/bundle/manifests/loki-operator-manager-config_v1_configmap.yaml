@@ -18,11 +18,12 @@ data:
       enableCertSigningService: true
       enableServiceMonitors: true
       enableTlsServiceMonitorConfig: true
+      enableTlsHttpServices: true
       enableTlsGRPCServices: true
       enableLokiStackAlerts: true
       enableLokiStackGateway: true
       enableLokiStackGatewayRoute: true
-      enableGrafanaLabsStats: true
+      enableGrafanaLabsStats: false
       enableLokiStackWebhook: true
       enableAlertingRuleWebhook: true
       enableRecordingRuleWebhook: true
