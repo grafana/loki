@@ -1106,6 +1106,7 @@ steps:
   - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
   image: grafana/containerized-systemd:debian-10
   name: test deb package
+  privileged: true
   when:
     event:
     - pull_request
@@ -1118,6 +1119,7 @@ steps:
   - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
   image: grafana/containerized-systemd:centos-8.3
   name: test rpm package
+  privileged: true
   when:
     event:
     - pull_request
@@ -1370,6 +1372,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 4265f7965bbca646509cd643f65c5a4e79c99086a6d10b86c2439d480dba57eb
+hmac: 0d64a4ff04ed51c33e9834656eb28322a45a4e72fc5196572e6f6e4f70a3bb96
 
 ...

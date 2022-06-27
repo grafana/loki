@@ -571,6 +571,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           // Check that there are logs (from the dpkg install)
           "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
         ],
+        privileged: true,
         when: { event: ['pull_request'] },
       },
       {
@@ -588,6 +589,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           // Check that there are logs (from the dpkg install)
           "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
         ],
+        privileged: true,
         when: { event: ['pull_request'] },
       },
       run('publish',
