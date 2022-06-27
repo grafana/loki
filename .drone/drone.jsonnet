@@ -598,6 +598,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test deb package',
         image: 'docker',
         commands: [
+          'sleep 60',
           "docker exec systemd-debian sh -c '" + |||
             // Install loki and check it's running
             dpkg -i dist/loki_0.0.0~rc0_amd64.deb
@@ -624,6 +625,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test rpm package',
         image: 'docker',
         commands: [
+          'sleep 60',
           "docker exec systemd-centos sh -c '" + |||
             // Install loki and check it's running
             rpm -i dist/loki-0.0.0~rc0.x86_64.rpm

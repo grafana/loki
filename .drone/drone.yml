@@ -1099,6 +1099,7 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
+  - sleep 60
   - |-
     docker exec systemd-debian sh -c '// Install loki and check it's running
     dpkg -i dist/loki_0.0.0~rc0_amd64.deb
@@ -1121,6 +1122,7 @@ steps:
     event:
     - pull_request
 - commands:
+  - sleep 60
   - |-
     docker exec systemd-centos sh -c '// Install loki and check it's running
     rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
@@ -1396,8 +1398,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_public_key
----
-kind: signature
-hmac: c32df12edd211d9bf3594767aae02076a59aa71ba59ce42f8ab906d0ab53a3e5
-
-...
