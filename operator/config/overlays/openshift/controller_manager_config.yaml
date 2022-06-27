@@ -20,7 +20,7 @@ featureFlags:
   enableLokiStackAlerts: true
   enableLokiStackGateway: true
   enableLokiStackGatewayRoute: true
-  enableGrafanaLabsStats: true
+  enableGrafanaLabsStats: false
   enableLokiStackWebhook: true
   enableAlertingRuleWebhook: true
   enableRecordingRuleWebhook: true

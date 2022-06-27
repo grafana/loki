@@ -49,6 +49,10 @@ If you want the extracted values to be treated as [Counter](https://prometheus.i
 
 This value now defaults to `loki`, it was previously set to `cortex`. If you are relying on this container name for your chunks or ruler storage, you will have to manually specify `-azure.container-name=cortex` or `-ruler.storage.azure.container-name=cortex` respectively.
 
+#### Default value for `server.http-listen-port` changed
+
+This value now defaults to 3100, so the Loki process doesn't require special privileges. Previously, it had been set to port 80, which is a privileged port. If you need Loki to listen on port 80, you can set it back to the previous default using `-server.http-listen-port=80`.
+
 ## 2.5.0
 
 ### Loki
