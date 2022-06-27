@@ -1108,6 +1108,7 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
+  - set -x
   - sleep 15
   - docker ps
   - image="$$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"
@@ -1424,6 +1425,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 15cfa1bf50f1a63cb01aa75d5d189ba8d0533e8a74e2392899c781c938106e79
+hmac: 33644c70baed4909982cb26c3079f1799486920292448ef915586ed98b97e53c
 
 ...

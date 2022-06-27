@@ -638,6 +638,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'test deb package',
         image: 'docker',
         commands: [
+          'set -x',
           'sleep 15',
           'docker ps',
           'image="$$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"',
