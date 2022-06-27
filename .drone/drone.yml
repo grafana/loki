@@ -1108,22 +1108,21 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
-  - set -x
   - sleep 15
   - docker ps
-  - image="$$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"
-  - echo "Running image $$image"
-  - docker exec $$image sh -c '
+  - image="$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"
+  - echo "Running image $image"
+  - docker exec $image sh -c '
   - '  // Install loki and check it''s running'
   - '  dpkg -i dist/loki_0.0.0~rc0_amd64.deb'
-  - '  [ "$$(systemctl is-active loki)" = "active" ] || exit 1'
+  - '  [ "$(systemctl is-active loki)" = "active" ] || exit 1'
   - '  // Install promtail and check it''s running'
   - '  dpkg -i dist/promtail_0.0.0~rc0_amd64.deb'
-  - '  [ "$$(systemctl is-active promtail)" = "active" ] || exit 1'
+  - '  [ "$(systemctl is-active promtail)" = "active" ] || exit 1'
   - '  // Install logcli'
   - '  dpkg -i dist/logcli_0.0.0~rc0_amd64.deb'
   - '  // Check that there are logs (from the dpkg install)'
-  - '  [ $$(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
+  - '  [ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
   - ''''
   image: docker
   name: test deb package
@@ -1425,6 +1424,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 33644c70baed4909982cb26c3079f1799486920292448ef915586ed98b97e53c
+hmac: 86fc21ef3d583746bae6b9bd8071f5fb5d2e493c48b47987dca6f9bdfa6c199a
 
 ...
