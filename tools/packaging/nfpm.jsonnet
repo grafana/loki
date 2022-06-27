@@ -17,6 +17,20 @@ local overrides = {
       It is designed to be very cost effective and easy to operate. 
       It does not index the contents of the logs, but rather a set of labels for each log stream.
     |||,
+    contents+: [
+      {
+        src: './tools/packaging/loki.service',
+        dst: '/etc/systemd/system/loki.service',
+      },
+      {
+        src: './cmd/loki/loki-local-config.yaml',
+        dst: '/etc/loki/config.yml',
+        type: 'config|noreplace',
+      },
+    ],
+    scripts: {
+      postinstall: './tools/packaging/loki-postinstall.sh',
+    },
   },
 
   promtail: {
@@ -25,6 +39,20 @@ local overrides = {
       It is usually deployed to every machine that has applications needed to be monitored.
     |||,
     license: 'Apache-2.0',
+    contents+: [
+      {
+        src: './tools/packaging/promtail.service',
+        dst: '/etc/systemd/system/promtail.service',
+      },
+      {
+        src: './clients/cmd/promtail/promtail-local-config.yaml',
+        dst: '/etc/promtail/config.yml',
+        type: 'config|noreplace',
+      },
+    ],
+    scripts: {
+      postinstall: './tools/packaging/promtail-postinstall.sh',
+    },
   },
 };
 
@@ -35,7 +63,7 @@ local arch = std.extVar('arch');
   name: name,
   arch: arch,
   platform: 'linux',
-  version: '${CIRCLE_TAG}',
+  version: '${DRONE_TAG}',
   section: 'default',
   provides: [name],
   maintainer: 'Grafana Labs <support@grafana.com>',

@@ -1086,6 +1086,30 @@ steps:
     event:
     - pull_request
 - commands:
+  - dpkg -i dist/loki_0.0.0~rc0_amd64.deb
+  - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
+  - dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
+  - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
+  - dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
+  - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
+  image: grafana/containerized-systemd:debian-10
+  name: test deb package
+  when:
+    event:
+    - pull_request
+- commands:
+  - rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
+  - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
+  - rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
+  - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
+  - rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
+  - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
+  image: grafana/containerized-systemd:centos-8.3
+  name: test rpm package
+  when:
+    event:
+    - pull_request
+- commands:
   - make BUILD_IN_CONTAINER=false publish
   environment:
     GITHUB_TOKEN:
@@ -1313,6 +1337,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: e56633097c3edb68fc784f2059f5c773f02ac485750610aaff59b43eb1417c5b
+hmac: 2b78fa8a900f462a691ade05155e3cf7d52424277fcd8eff9e9e7e173e1ee585
 
 ...

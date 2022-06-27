@@ -542,6 +542,40 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'test packaging',
         commands=['make BUILD_IN_CONTAINER=false packages']
       ) { when: { event: ['pull_request'] } },
+      {
+        name: 'test deb package',
+        image: 'grafana/containerized-systemd:debian-10',
+        commands: [
+          // Install loki and check it's running
+          'dpkg -i dist/loki_0.0.0~rc0_amd64.deb',
+          '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
+          // Install promtail and check it's running
+          'dpkg -i dist/promtail_0.0.0~rc0_amd64.deb',
+          '[ "$(systemctl is-active promtail)" = "active" ] || exit 1',
+          // Install logcli
+          'dpkg -i dist/logcli_0.0.0~rc0_amd64.deb',
+          // Check that there are logs (from the dpkg install)
+          "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
+        ],
+        when: { event: ['pull_request'] },
+      },
+      {
+        name: 'test rpm package',
+        image: 'grafana/containerized-systemd:centos-8.3',
+        commands: [
+          // Install loki and check it's running
+          'rpm -i dist/loki-0.0.0~rc0.x86_64.rpm',
+          '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
+          // Install promtail and check it's running
+          'rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm',
+          '[ "$(systemctl is-active promtail)" = "active" ] || exit 1',
+          // Install logcli
+          'rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm',
+          // Check that there are logs (from the dpkg install)
+          "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
+        ],
+        when: { event: ['pull_request'] },
+      },
       run(
         'publish',
         commands=['make BUILD_IN_CONTAINER=false publish'],
