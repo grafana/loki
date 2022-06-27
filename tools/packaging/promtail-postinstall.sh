@@ -50,7 +50,7 @@ elif [ "$1" = "configure" ] && [ -n "$2" ]; then
     action="upgrade"
 fi
 
-case "$action" in
+case "${action}" in
   "1" | "install")
     cleanInstall
     ;;

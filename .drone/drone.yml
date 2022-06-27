@@ -1097,26 +1097,30 @@ steps:
   when:
     event:
     - pull_request
-- commands:
+- command:
   - dpkg -i dist/loki_0.0.0~rc0_amd64.deb
   - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
   - dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
   - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
   - dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
   - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
+  entrypoint:
+  - /docker-entrypoint.sh
   image: grafana/containerized-systemd:debian-10
   name: test deb package
   privileged: true
   when:
     event:
     - pull_request
-- commands:
+- command:
   - rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
   - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
   - rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
   - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
   - rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
   - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
+  entrypoint:
+  - /docker-entrypoint.sh
   image: grafana/containerized-systemd:centos-8.3
   name: test rpm package
   privileged: true
@@ -1372,6 +1376,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 0d64a4ff04ed51c33e9834656eb28322a45a4e72fc5196572e6f6e4f70a3bb96
+hmac: 45671bd2fcbd713c3b3265630afcb31f055825f16ae89aabed8f5166c5e1c87d
 
 ...

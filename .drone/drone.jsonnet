@@ -559,7 +559,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'test deb package',
         image: 'grafana/containerized-systemd:debian-10',
-        commands: [
+        entrypoint: ['/docker-entrypoint.sh'],
+        command: [
           // Install loki and check it's running
           'dpkg -i dist/loki_0.0.0~rc0_amd64.deb',
           '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
@@ -577,7 +578,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'test rpm package',
         image: 'grafana/containerized-systemd:centos-8.3',
-        commands: [
+        entrypoint: ['/docker-entrypoint.sh'],
+        command: [
           // Install loki and check it's running
           'rpm -i dist/loki-0.0.0~rc0.x86_64.rpm',
           '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
