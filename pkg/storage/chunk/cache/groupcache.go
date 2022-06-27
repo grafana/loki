@@ -5,6 +5,7 @@ import (
 	"flag"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/dskit/kv"
@@ -34,6 +35,10 @@ const (
 	GroupcacheRingKey = "groupcache"
 )
 
+var (
+	ErrGroupcacheMiss = errors.New("cache miss")
+)
+
 type GroupCache struct {
 	peerRing       *ring.Ring
 	cache          *groupcache.Group
@@ -43,6 +48,7 @@ type GroupCache struct {
 	updateInterval time.Duration
 	logger         log.Logger
 	listenPort     int
+	wg             sync.WaitGroup
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -70,17 +76,17 @@ func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.
 		pool:           pool,
 		logger:         logger,
 		stopChan:       make(chan struct{}),
-		updateInterval: 30 * time.Second,
+		updateInterval: 5 * time.Minute,
+		wg:             sync.WaitGroup{},
 	}
 
+	go cache.updatePeers()
+	go func() {
+		cache.wg.Wait()
+		close(cache.stopChan)
+	}()
+
 	return cache, nil
-}
-
-func (c *GroupCache) InitGroupCache(name string, getter groupcache.GetterFunc, ct stats.CacheType) {
-	c.cache = groupcache.NewGroup(name, 1<<30, getter)
-	c.cacheType = ct
-
-	go c.updatePeers()
 }
 
 func (c *GroupCache) updatePeers() {
@@ -121,41 +127,73 @@ func (c *GroupCache) peerUrls() ([]string, error) {
 	return addrs, nil
 }
 
-// Fetch gets the information from groupcache. Because groupcache is a read-through cache, there will never be missing
-// chunks. If they're not already in groupcache, it'll go to the store and get them
-// TODO: Issue the key requests in parallel, groupcache should be able to handle that
-func (c *GroupCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	// TODO: do the things
-	//values := make([][]byte, len(keys))
-	//
-	//for _, key := range keys {
-	//	if err := c.cache.Get(ctx, key, &val); err != nil {
-	//		return nil, nil, nil, err
-	//	}
-	//
-	//	buf, err := val.MarshalBinary()
-	//	if err != nil {
-	//		return nil, nil, nil, err
-	//	}
-	//
-	//	values = append(values, buf)
-	//}
-	//
-	return nil, nil, keys, nil // count everything as a cache miss for now
+func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
+	// Return a known error on miss to track which keys need to be inserted
+	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
+		return ErrGroupcacheMiss
+	})
+
+	c.wg.Add(1)
+	return &group{
+		cache:     groupcache.NewGroup(name, 1<<30, missGetter),
+		logger:    c.logger,
+		wg:        &c.wg,
+		cacheType: ct,
+	}
+}
+
+type group struct {
+	cache     *groupcache.Group
+	logger    log.Logger
+	wg        *sync.WaitGroup
+	cacheType stats.CacheType
+}
+
+// TODO(tpatterson): Issue the key requests in parallel?
+func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	values := make([][]byte, 0, len(keys))
+	missed := make([]string, 0, len(keys))
+	found := make([]string, 0, len(keys))
+
+	var data []byte
+	for _, key := range keys {
+		// TODO: this allocates a new slice every time, there's some necessary optimization here
+		if err := c.cache.Get(ctx, key, groupcache.AllocatingByteSliceSink(&data)); err != nil {
+			if errors.Is(err, ErrGroupcacheMiss) {
+				missed = append(missed, key)
+				continue
+			}
+
+			return found, values, missed, err
+		}
+
+		found = append(found, key)
+		values = append(values, data)
+	}
+
+	return found, values, missed, nil // count everything as a cache miss for now
 }
 
 // Store implements Cache.
-func (c *GroupCache) Store(ctx context.Context, keys []string, values [][]byte) error {
-	// TODO: This is a NoOp in groupcache
-	return nil
+func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error {
+	var err error
+	for i, key := range keys {
+		// bool is for putting things in the hotcache. Should we?
+		if cacheErr := c.cache.Set(ctx, key, values[i], time.Time{}, false); cacheErr != nil {
+			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", cacheErr)
+			err = cacheErr
+		}
+	}
+
+	return err
 }
 
 // Stop implements Cache.
-func (c *GroupCache) Stop() {
-	close(c.stopChan)
+func (c *group) Stop() {
+	c.wg.Done()
 }
 
-func (c *GroupCache) GetCacheType() stats.CacheType {
+func (c *group) GetCacheType() stats.CacheType {
 	return c.cacheType
 }
 
