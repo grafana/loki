@@ -307,10 +307,10 @@ func Test_lineFormatter_Format(t *testing.T) {
 		},
 		{
 			"timestamp",
-			newMustLineFormatter("{{ __timestamp__ | date \"2006-01-02T15:04:05.00Z00:00\" }} bar {{ .bar }}"),
+			newMustLineFormatter("{{ __timestamp__ | date \"2006-01-02\" }} bar {{ .bar }}"),
 			labels.Labels{{Name: "bar", Value: "2"}},
 			1656353124120000000,
-			[]byte("2022-06-27T14:05:24.12Z00:00 bar 2"),
+			[]byte("2022-06-27 bar 2"),
 			labels.Labels{{Name: "bar", Value: "2"}},
 			[]byte("1"),
 		},
