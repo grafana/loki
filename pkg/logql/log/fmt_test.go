@@ -280,7 +280,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			sort.Sort(tt.wantLbs)
 			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			builder.Reset()
-			outLine, _ := tt.fmter.Process(tt.in, builder)
+			outLine, _ := tt.fmter.Process(0, tt.in, builder)
 			require.Equal(t, tt.want, outLine)
 			require.Equal(t, tt.wantLbs, builder.LabelsResult().Labels())
 		})
@@ -347,7 +347,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
 			builder.Reset()
-			_, _ = tt.fmter.Process(nil, builder)
+			_, _ = tt.fmter.Process(0, nil, builder)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})

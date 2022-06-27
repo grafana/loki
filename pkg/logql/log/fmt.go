@@ -124,7 +124,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
-func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LineFormatter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
 	lf.currentLine = line
 
@@ -271,7 +271,7 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(_ int64, l []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	var data interface{}
 	for _, f := range lf.formats {
 		if f.Rename {
