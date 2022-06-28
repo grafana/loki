@@ -167,6 +167,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
@@ -177,6 +178,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -317,6 +319,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore = rc.KVStore
 	}
+
+	// CacheRing
+	if mergeWithExisting || reflect.DeepEqual(r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring, defaults.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring) {
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstancePort = rc.InstancePort
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceAddr = rc.InstanceAddr
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceID = rc.InstanceID
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceZone = rc.InstanceZone
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -352,6 +367,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.TokensFilePath = f
+	cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -434,6 +450,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames, defaults.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames) {
 		cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = append(cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames, defaults.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames) {
+		cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames = append(cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -448,6 +468,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 	r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore.Store = memberlistStr
+	r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
