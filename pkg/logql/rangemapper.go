@@ -127,7 +127,7 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		// if left-hand side is a noop, we need to return the original expression
 		// so the whole expression is a noop and thus not executed using the
 		// downstream engine.
-		// Note: literal expressions are identical to its mapped expression,
+		// Note: literal expressions are identical to their mapped expression,
 		// map binary expression if left-hand size is a literal
 		if _, ok := e.SampleExpr.(*syntax.LiteralExpr); e.SampleExpr.String() == lhsMapped.String() && !ok {
 			return e, nil
@@ -139,7 +139,7 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		// if right-hand side is a noop, we need to return the original expression
 		// so the whole expression is a noop and thus not executed using the
 		// downstream engine
-		// Note: literal expressions are identical to its mapped expression,
+		// Note: literal expressions are identical to their mapped expression,
 		// map binary expression if right-hand size is a literal
 		if _, ok := e.RHS.(*syntax.LiteralExpr); e.RHS.String() == rhsMapped.String() && !ok {
 			return e, nil
