@@ -5,7 +5,6 @@ After=network.target
 [Service]
 Type=simple
 User=promtail
-Group=promtail
 ExecStart=/usr/local/bin/promtail -config.file /etc/promtail/config.yml
 
 [Install]

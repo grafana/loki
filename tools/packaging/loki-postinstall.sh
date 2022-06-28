@@ -11,12 +11,9 @@ fi
 cleanInstall() {
     printf "\033[32m Post Install of a clean install\033[0m\n"
 
-    # Create the group and user
-    if ! getent group "loki" > /dev/null 2>&1 ; then
-	    addgroup --system "loki" --quiet
-    fi
+    # Create the user
     if ! id loki > /dev/null 2>&1 ; then
-        adduser --system --ingroup "loki" --disabled-password --shell /bin/false "loki"
+        adduser --system --disabled-password --shell /bin/false "loki"
     fi
 
     # rhel/centos7 cannot use ExecStartPre=+ to specify the pre start should be run as root
