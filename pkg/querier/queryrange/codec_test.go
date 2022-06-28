@@ -978,32 +978,6 @@ var (
 				"totalChunksDownloaded": 18
 			}
 		},
-		"cache": {
-			"chunk": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0
-			},
-			"index": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0
-			},
-			"result": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0
-			}
-		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
 			"execTime": 22,
@@ -1203,12 +1177,6 @@ var (
 			TotalChunksMatched: 7,
 			TotalLinesSent:     9,
 			TotalReached:       10,
-		},
-
-		Caches: stats.Caches{
-			Chunk:  stats.Cache{},
-			Index:  stats.Cache{},
-			Result: stats.Cache{},
 		},
 	}
 )

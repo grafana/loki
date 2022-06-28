@@ -38,7 +38,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
+		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
 		ctx := context.Background()
 
 		// Check put / get works
@@ -195,7 +195,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
+			c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
 			ctx := context.Background()
 
 			err := c.Store(ctx, []string{key1, key2, key3, key4}, [][]byte{data1, data2, data3, data4})

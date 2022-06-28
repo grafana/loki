@@ -3,8 +3,6 @@ package cache
 import (
 	"context"
 	"sync"
-
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type mockCache struct {
@@ -37,10 +35,6 @@ func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 func (m *mockCache) Stop() {
-}
-
-func (m *mockCache) GetCacheType() stats.CacheType {
-	return "mock"
 }
 
 // NewMockCache makes a new MockCache.

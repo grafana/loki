@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
@@ -37,10 +36,9 @@ func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, 
 
 // Memcached type caches chunks in memcached
 type Memcached struct {
-	cfg       MemcachedConfig
-	memcache  MemcachedClient
-	name      string
-	cacheType stats.CacheType
+	cfg      MemcachedConfig
+	memcache MemcachedClient
+	name     string
 
 	requestDuration *instr.HistogramCollector
 
@@ -51,13 +49,12 @@ type Memcached struct {
 }
 
 // NewMemcached makes a new Memcached.
-func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *Memcached {
+func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg prometheus.Registerer, logger log.Logger) *Memcached {
 	c := &Memcached{
-		cfg:       cfg,
-		memcache:  client,
-		name:      name,
-		logger:    logger,
-		cacheType: cacheType,
+		cfg:      cfg,
+		memcache: client,
+		name:     name,
+		logger:   logger,
 		requestDuration: instr.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 				Namespace: "loki",
@@ -235,10 +232,6 @@ func (c *Memcached) Stop() {
 
 	close(c.inputCh)
 	c.wg.Wait()
-}
-
-func (c *Memcached) GetCacheType() stats.CacheType {
-	return c.cacheType
 }
 
 // HashKey hashes key into something you can store in memcached.

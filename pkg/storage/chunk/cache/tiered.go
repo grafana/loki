@@ -1,10 +1,6 @@
 package cache
 
-import (
-	"context"
-
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-)
+import "context"
 
 type tiered []Cache
 
@@ -81,8 +77,4 @@ func (t tiered) Stop() {
 	for _, c := range []Cache(t) {
 		c.Stop()
 	}
-}
-
-func (t tiered) GetCacheType() stats.CacheType {
-	return "tiered"
 }
