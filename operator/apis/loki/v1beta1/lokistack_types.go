@@ -840,6 +840,28 @@ func init() {
 func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.LokiStack)
 
+	dst.ObjectMeta = src.ObjectMeta
+	dst.Status.Conditions = src.Status.Conditions
+	dst.Status.Components = v1.LokiStackComponentStatus{
+		Compactor:     v1.PodStatusMap(src.Status.Components.Compactor),
+		Distributor:   v1.PodStatusMap(src.Status.Components.Distributor),
+		Ingester:      v1.PodStatusMap(src.Status.Components.Ingester),
+		Querier:       v1.PodStatusMap(src.Status.Components.Querier),
+		QueryFrontend: v1.PodStatusMap(src.Status.Components.QueryFrontend),
+		IndexGateway:  v1.PodStatusMap(src.Status.Components.IndexGateway),
+		Ruler:         v1.PodStatusMap(src.Status.Components.Ruler),
+		Gateway:       v1.PodStatusMap(src.Status.Components.Gateway),
+	}
+
+	var statusSchemas []v1.ObjectStorageSchema
+	for _, s := range src.Status.Storage.Schemas {
+		statusSchemas = append(statusSchemas, v1.ObjectStorageSchema{
+			Version:       v1.ObjectStorageSchemaVersion(s.Version),
+			EffectiveDate: v1.StorageSchemaEffectiveDate(s.EffectiveDate),
+		})
+	}
+	dst.Status.Storage = v1.LokiStackStorageStatus{Schemas: statusSchemas}
+
 	if src.Spec.ManagementState != "" {
 		dst.Spec.ManagementState = v1.ManagementStateType(src.Spec.ManagementState)
 	}
@@ -1083,6 +1105,28 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 // nolint:golint
 func (dst *LokiStack) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1.LokiStack)
+
+	dst.ObjectMeta = src.ObjectMeta
+	dst.Status.Conditions = src.Status.Conditions
+	dst.Status.Components = LokiStackComponentStatus{
+		Compactor:     PodStatusMap(src.Status.Components.Compactor),
+		Distributor:   PodStatusMap(src.Status.Components.Distributor),
+		Ingester:      PodStatusMap(src.Status.Components.Ingester),
+		Querier:       PodStatusMap(src.Status.Components.Querier),
+		QueryFrontend: PodStatusMap(src.Status.Components.QueryFrontend),
+		IndexGateway:  PodStatusMap(src.Status.Components.IndexGateway),
+		Ruler:         PodStatusMap(src.Status.Components.Ruler),
+		Gateway:       PodStatusMap(src.Status.Components.Gateway),
+	}
+
+	var statusSchemas []ObjectStorageSchema
+	for _, s := range src.Status.Storage.Schemas {
+		statusSchemas = append(statusSchemas, ObjectStorageSchema{
+			Version:       ObjectStorageSchemaVersion(s.Version),
+			EffectiveDate: StorageSchemaEffectiveDate(s.EffectiveDate),
+		})
+	}
+	dst.Status.Storage = LokiStackStorageStatus{Schemas: statusSchemas}
 
 	if src.Spec.ManagementState != "" {
 		dst.Spec.ManagementState = ManagementStateType(src.Spec.ManagementState)

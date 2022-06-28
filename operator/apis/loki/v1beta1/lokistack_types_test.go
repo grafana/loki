@@ -24,6 +24,17 @@ func TestConvertToV1(t *testing.T) {
 		{
 			desc: "full conversion of src(v1beta1) to dst(v1) lokistack",
 			src: v1beta1.LokiStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "lokistack-dev",
+					Namespace: "mercury",
+					Labels: map[string]string{
+						"app":     "loki",
+						"part-of": "lokistack",
+					},
+					Annotations: map[string]string{
+						"discoveredAt": "2022-06-28",
+					},
+				},
 				Spec: v1beta1.LokiStackSpec{
 					ManagementState: v1beta1.ManagementStateManaged,
 					Size:            v1beta1.SizeOneXMedium,
@@ -262,8 +273,65 @@ func TestConvertToV1(t *testing.T) {
 						},
 					},
 				},
+				Status: v1beta1.LokiStackStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(v1beta1.ConditionReady),
+							Status: metav1.ConditionTrue,
+						},
+						{
+							Type:   string(v1beta1.ConditionPending),
+							Status: metav1.ConditionFalse,
+						},
+					},
+					Components: v1beta1.LokiStackComponentStatus{
+						Compactor: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Distributor: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ingester: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Querier: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						QueryFrontend: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						IndexGateway: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ruler: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Gateway: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+					},
+					Storage: v1beta1.LokiStackStorageStatus{
+						Schemas: []v1beta1.ObjectStorageSchema{
+							{
+								Version:       v1beta1.ObjectStorageSchemaV11,
+								EffectiveDate: "2020-06-01",
+							},
+						},
+					},
+				},
 			},
 			want: v1.LokiStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "lokistack-dev",
+					Namespace: "mercury",
+					Labels: map[string]string{
+						"app":     "loki",
+						"part-of": "lokistack",
+					},
+					Annotations: map[string]string{
+						"discoveredAt": "2022-06-28",
+					},
+				},
 				Spec: v1.LokiStackSpec{
 					ManagementState: v1.ManagementStateManaged,
 					Size:            v1.SizeOneXMedium,
@@ -498,6 +566,52 @@ func TestConvertToV1(t *testing.T) {
 										},
 									},
 								},
+							},
+						},
+					},
+				},
+				Status: v1.LokiStackStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(v1.ConditionReady),
+							Status: metav1.ConditionTrue,
+						},
+						{
+							Type:   string(v1.ConditionPending),
+							Status: metav1.ConditionFalse,
+						},
+					},
+					Components: v1.LokiStackComponentStatus{
+						Compactor: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Distributor: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ingester: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Querier: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						QueryFrontend: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						IndexGateway: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ruler: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Gateway: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+					},
+					Storage: v1.LokiStackStorageStatus{
+						Schemas: []v1.ObjectStorageSchema{
+							{
+								Version:       v1.ObjectStorageSchemaV11,
+								EffectiveDate: "2020-06-01",
 							},
 						},
 					},
@@ -532,6 +646,17 @@ func TestConvertFromV1(t *testing.T) {
 		{
 			desc: "full conversion of src(v1) to dst(v1beta1) lokistack",
 			src: v1.LokiStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "lokistack-dev",
+					Namespace: "mercury",
+					Labels: map[string]string{
+						"app":     "loki",
+						"part-of": "lokistack",
+					},
+					Annotations: map[string]string{
+						"discoveredAt": "2022-06-28",
+					},
+				},
 				Spec: v1.LokiStackSpec{
 					ManagementState: v1.ManagementStateManaged,
 					Size:            v1.SizeOneXMedium,
@@ -770,8 +895,65 @@ func TestConvertFromV1(t *testing.T) {
 						},
 					},
 				},
+				Status: v1.LokiStackStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(v1.ConditionReady),
+							Status: metav1.ConditionTrue,
+						},
+						{
+							Type:   string(v1.ConditionPending),
+							Status: metav1.ConditionFalse,
+						},
+					},
+					Components: v1.LokiStackComponentStatus{
+						Compactor: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Distributor: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ingester: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Querier: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						QueryFrontend: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						IndexGateway: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ruler: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Gateway: v1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+					},
+					Storage: v1.LokiStackStorageStatus{
+						Schemas: []v1.ObjectStorageSchema{
+							{
+								Version:       v1.ObjectStorageSchemaV11,
+								EffectiveDate: "2020-06-01",
+							},
+						},
+					},
+				},
 			},
 			want: v1beta1.LokiStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "lokistack-dev",
+					Namespace: "mercury",
+					Labels: map[string]string{
+						"app":     "loki",
+						"part-of": "lokistack",
+					},
+					Annotations: map[string]string{
+						"discoveredAt": "2022-06-28",
+					},
+				},
 				Spec: v1beta1.LokiStackSpec{
 					ManagementState: v1beta1.ManagementStateManaged,
 					Size:            v1beta1.SizeOneXMedium,
@@ -1006,6 +1188,52 @@ func TestConvertFromV1(t *testing.T) {
 										},
 									},
 								},
+							},
+						},
+					},
+				},
+				Status: v1beta1.LokiStackStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(v1beta1.ConditionReady),
+							Status: metav1.ConditionTrue,
+						},
+						{
+							Type:   string(v1beta1.ConditionPending),
+							Status: metav1.ConditionFalse,
+						},
+					},
+					Components: v1beta1.LokiStackComponentStatus{
+						Compactor: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Distributor: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ingester: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Querier: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						QueryFrontend: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						IndexGateway: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Ruler: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+						Gateway: v1beta1.PodStatusMap{
+							"ready": []string{"pod-1"},
+						},
+					},
+					Storage: v1beta1.LokiStackStorageStatus{
+						Schemas: []v1beta1.ObjectStorageSchema{
+							{
+								Version:       v1beta1.ObjectStorageSchemaV11,
+								EffectiveDate: "2020-06-01",
 							},
 						},
 					},
