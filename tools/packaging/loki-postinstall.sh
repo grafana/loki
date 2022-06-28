@@ -13,7 +13,7 @@ cleanInstall() {
 
     # Create the user
     if ! id loki > /dev/null 2>&1 ; then
-        adduser --system --disabled-password --shell /bin/false "loki"
+        adduser --system --shell /bin/false "loki"
     fi
 
     # rhel/centos7 cannot use ExecStartPre=+ to specify the pre start should be run as root
