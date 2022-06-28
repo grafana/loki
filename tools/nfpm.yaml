@@ -2,7 +2,7 @@
 name: "logcli"
 arch: "amd64"
 platform: "linux"
-version: ${CIRCLE_TAG}
+version: ${DRONE_TAG}
 section: "default"
 provides:
   - logcli
