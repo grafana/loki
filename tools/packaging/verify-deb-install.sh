@@ -2,7 +2,7 @@
 
 sleep 15
 docker ps
-image="$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"
+image="$(docker ps --latest --format {{.ID}})"
 echo "Running image $image"
 
 cat <<EOF | docker exec --interactive loki-shell sh
