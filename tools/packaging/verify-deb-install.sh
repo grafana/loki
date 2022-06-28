@@ -13,12 +13,12 @@ echo "Running on directory: $dir"
 cat <<EOF | docker exec --interactive $image sh
     # Install loki and check it's running
     dpkg -i ${dir}/dist/loki_0.0.0~rc0_amd64.deb
-    [ "\$(systemctl is-active loki)" = "active" ] || exit 1
+    [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
     # Install promtail and check it's running
     dpkg -i ${dir}/dist/promtail_0.0.0~rc0_amd64.deb
-    [ "\$(systemctl is-active promtail)" = "active" ] || exit 1
+    [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
     # Install logcli
     dpkg -i ${dir}/dist/logcli_0.0.0~rc0_amd64.deb
     # Check that there are logs (from the dpkg install)
-    [ \$(logcli query \'{job="varlogs"}\' | wc -l) -gt 0 ] || exit 1
+    [ \$(logcli query '{job="varlogs"}' | wc -l) -gt 0 ] || (echo "no logs found with logcli" && exit 1)
 EOF
