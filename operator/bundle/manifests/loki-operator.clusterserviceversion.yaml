@@ -1285,7 +1285,7 @@ spec:
         serviceAccountName: default
     strategy: deployment
   installModes:
-  - supported: true
+  - supported: false
     type: OwnNamespace
   - supported: false
     type: SingleNamespace
@@ -1317,6 +1317,18 @@ spec:
   webhookdefinitions:
   - admissionReviewVersions:
     - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - lokistacks.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: clokistacks.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
@@ -1340,7 +1352,7 @@ spec:
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: vlokistack.kb.io
+    generateName: vlokistack.loki.grafana.com
     rules:
     - apiGroups:
       - loki.grafana.com

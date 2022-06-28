@@ -14,28 +14,12 @@ func TestConvertToV1(t *testing.T) {
 	tt := []struct {
 		desc string
 		src  v1beta1.LokiStack
-		dst  v1.LokiStack
 		want v1.LokiStack
 	}{
 		{
 			desc: "empty src(v1beta1) and dst(v1) lokistack",
 			src:  v1beta1.LokiStack{},
-			dst:  v1.LokiStack{},
 			want: v1.LokiStack{},
-		},
-		{
-			desc: "empty src(v1beta1) lokistack",
-			src:  v1beta1.LokiStack{},
-			dst: v1.LokiStack{
-				Spec: v1.LokiStackSpec{
-					ManagementState: v1.ManagementStateUnmanaged,
-				},
-			},
-			want: v1.LokiStack{
-				Spec: v1.LokiStackSpec{
-					ManagementState: v1.ManagementStateUnmanaged,
-				},
-			},
 		},
 		{
 			desc: "full conversion of src(v1beta1) to dst(v1) lokistack",
@@ -279,7 +263,6 @@ func TestConvertToV1(t *testing.T) {
 					},
 				},
 			},
-			dst: v1.LokiStack{},
 			want: v1.LokiStack{
 				Spec: v1.LokiStackSpec{
 					ManagementState: v1.ManagementStateManaged,
@@ -527,10 +510,10 @@ func TestConvertToV1(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-
-			err := tc.src.ConvertTo(&tc.dst)
+			dst := v1.LokiStack{}
+			err := tc.src.ConvertTo(&dst)
 			require.NoError(t, err)
-			require.Equal(t, tc.dst, tc.want)
+			require.Equal(t, dst, tc.want)
 		})
 	}
 }
@@ -539,28 +522,12 @@ func TestConvertFromV1(t *testing.T) {
 	tt := []struct {
 		desc string
 		src  v1.LokiStack
-		dst  v1beta1.LokiStack
 		want v1beta1.LokiStack
 	}{
 		{
 			desc: "empty src(v1) and dst(v1beta1) lokistack",
 			src:  v1.LokiStack{},
-			dst:  v1beta1.LokiStack{},
 			want: v1beta1.LokiStack{},
-		},
-		{
-			desc: "empty src(v1) lokistack",
-			src:  v1.LokiStack{},
-			dst: v1beta1.LokiStack{
-				Spec: v1beta1.LokiStackSpec{
-					ManagementState: v1beta1.ManagementStateUnmanaged,
-				},
-			},
-			want: v1beta1.LokiStack{
-				Spec: v1beta1.LokiStackSpec{
-					ManagementState: v1beta1.ManagementStateUnmanaged,
-				},
-			},
 		},
 		{
 			desc: "full conversion of src(v1) to dst(v1beta1) lokistack",
@@ -804,7 +771,6 @@ func TestConvertFromV1(t *testing.T) {
 					},
 				},
 			},
-			dst: v1beta1.LokiStack{},
 			want: v1beta1.LokiStack{
 				Spec: v1beta1.LokiStackSpec{
 					ManagementState: v1beta1.ManagementStateManaged,
@@ -1053,9 +1019,10 @@ func TestConvertFromV1(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			err := tc.dst.ConvertFrom(&tc.src)
+			dst := v1beta1.LokiStack{}
+			err := dst.ConvertFrom(&tc.src)
 			require.NoError(t, err)
-			require.Equal(t, tc.dst, tc.want)
+			require.Equal(t, dst, tc.want)
 		})
 	}
 }

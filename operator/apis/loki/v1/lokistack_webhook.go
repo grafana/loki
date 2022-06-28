@@ -14,6 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
+// objectStorageSchemaMap defines the type for mapping a schema version with a date
+type objectStorageSchemaMap map[StorageSchemaEffectiveDate]ObjectStorageSchemaVersion
+
 // SetupWebhookWithManager registers the Lokistack to the controller-runtime manager
 // or returns an error.
 func (r *LokiStack) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -22,7 +25,7 @@ func (r *LokiStack) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1-lokistack,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=lokistacks,verbs=create;update,versions=v1,name=vlokistack.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1-lokistack,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=lokistacks,verbs=create;update,versions=v1,name=vlokistack.loki.grafana.com,admissionReviewVersions=v1
 
 var _ webhook.Validator = &LokiStack{}
 

@@ -24,6 +24,19 @@ resources:
   controller: true
   domain: grafana.com
   group: loki
+  kind: LokiStack
+  path: github.com/grafana/loki/operator/apis/loki/v1
+  version: v1
+  webhooks:
+    conversion: true
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: grafana.com
+  group: loki
   kind: AlertingRule
   path: github.com/grafana/loki/operator/apis/loki/v1beta1
   version: v1beta1
@@ -51,17 +64,4 @@ resources:
   kind: RulerConfig
   path: github.com/grafana/loki/operator/apis/loki/v1beta1
   version: v1beta1
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: grafana.com
-  group: loki
-  kind: LokiStack
-  path: github.com/grafana/loki/operator/apis/loki/v1
-  version: v1
-  webhooks:
-    conversion: true
-    validation: true
-    webhookVersion: v1
 version: "3"

@@ -17,7 +17,7 @@ spec:
     webhook:
       clientConfig:
         service:
-          name: webhook-service
+          name: loki-operator-webhook-service
           namespace: openshift-operators-redhat
           path: /convert
           port: 443

@@ -13,7 +13,7 @@ webhooks:
       namespace: system
       path: /validate-loki-grafana-com-v1-lokistack
   failurePolicy: Fail
-  name: vlokistack.kb.io
+  name: vlokistack.loki.grafana.com
   rules:
   - apiGroups:
     - loki.grafana.com
