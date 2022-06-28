@@ -1,6 +1,7 @@
 package file
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -172,6 +173,7 @@ func (t *tailer) readLines() {
 			if err != nil {
 				level.Error(t.logger).Log("msg", "failed to convert encoding", "error", err)
 				t.metrics.encodingFailures.WithLabelValues(t.path).Inc()
+				text = fmt.Sprintf("failed to convert encoding: %s", err.Error())
 			}
 		} else {
 			text = line.Text
