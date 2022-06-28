@@ -1100,6 +1100,18 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
+  - go install github.com/google/go-jsonnet/cmd/jsonnet@latest
+  - make BUILD_IN_CONTAINER=false packages
+  environment:
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+  image: grafana/loki-build-image:0.21.0
+  name: test packaging
+  when:
+    event:
+    - pull_request
+- commands:
   - ./tools/packaging/verify-deb-install.sh
   image: docker
   name: test deb package
@@ -1389,6 +1401,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: d807109808e98f6679b6faaec847acfaccaba46616ee4486f00397069122e347
+hmac: 2f288ddd95a220bf760e5f78d0a2e3344e39fad36c85c0463a913f34e728b79d
 
 ...
