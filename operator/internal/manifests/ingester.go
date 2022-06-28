@@ -23,8 +23,8 @@ import (
 // BuildIngester builds the k8s objects required to run Loki Ingester
 func BuildIngester(opts Options) ([]client.Object, error) {
 	statefulSet := NewIngesterStatefulSet(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureIngesterServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+	if opts.Flags.EnableTLSHTTPServices {
+		if err := configureIngesterHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -252,9 +252,9 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+func configureIngesterHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIngesterHTTP(stackName)
-	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS string) error {

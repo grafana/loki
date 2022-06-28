@@ -20,8 +20,8 @@ import (
 // BuildRuler returns a list of k8s objects for Loki Stack Ruler
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureRulerServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+	if opts.Flags.EnableTLSHTTPServices {
+		if err := configureRulerHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -266,9 +266,9 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureRulerServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameRulerHTTP(stackName)
-	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
