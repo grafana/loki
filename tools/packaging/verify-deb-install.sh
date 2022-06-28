@@ -14,16 +14,21 @@ cat <<EOF | docker exec --interactive $image sh
     # Install loki and check it's running
     dpkg -i ${dir}/dist/loki_0.0.0~rc0_amd64.deb
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
-    
+
     # Install promtail and check it's running
     dpkg -i ${dir}/dist/promtail_0.0.0~rc0_amd64.deb
     [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
 
+    # Write some logs
+    mkdir -p /var/log/
+    echo "blablabla" > /var/log/test.log
+
     # Install logcli
     dpkg -i ${dir}/dist/logcli_0.0.0~rc0_amd64.deb
 
-    # Check that there are logs (from the dpkg install)
+    # Check that there are labels
+    sleep 5
     labels_found=\$(logcli labels)
     echo "Found labels: \$labels_found"
-    [ "\$labels_found" != "" ] || (echo "no labels found with logcli" && exit 1)
+    [ "\$labels_found" != "" ] || (echo "no logs found with logcli" && exit 1)
 EOF

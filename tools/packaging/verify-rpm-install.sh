@@ -22,10 +22,15 @@ cat <<EOF | docker exec --interactive $image sh
     rpm -i ${dir}/dist/promtail-0.0.0~rc0.x86_64.rpm
     [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
 
+    # Write some logs
+    mkdir -p /var/log/
+    echo "blablabla" > /var/log/test.log
+
     # Install logcli
     rpm -i ${dir}/dist/logcli-0.0.0~rc0.x86_64.rpm
 
-    # Check that there are logs (from the dpkg install)
+    # Check that there are labels
+    sleep 5
     labels_found=\$(logcli labels)
     echo "Found labels: \$labels_found"
     [ "\$labels_found" != "" ] || (echo "no labels found with logcli" && exit 1)
