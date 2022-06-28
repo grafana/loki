@@ -299,12 +299,15 @@ func TestDoubleRegistration(t *testing.T) {
 	cleanup, storeAddress := createTestGrpcServer(t)
 	t.Cleanup(cleanup)
 
-	_, err := NewGatewayClient(IndexGatewayClientConfig{
+	clientCfg := IndexGatewayClientConfig{
 		Address: storeAddress,
-	}, r, util_log.Logger)
+	}
+
+	client, err := NewGatewayClient(clientCfg, r, util_log.Logger)
 	require.NoError(t, err)
-	_, err = NewGatewayClient(IndexGatewayClientConfig{
-		Address: storeAddress,
-	}, r, util_log.Logger)
+	defer client.Stop()
+
+	client, err = NewGatewayClient(clientCfg, r, util_log.Logger)
 	require.NoError(t, err)
+	defer client.Stop()
 }

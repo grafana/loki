@@ -8,13 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetCacheGenNumberForUser(t *testing.T) {
+	deleteClientMetrics := NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer)
+
 	t.Run("it requests results from the api", func(t *testing.T) {
 		httpClient := &mockHTTPClient{ret: `[{"request_id":"test-request"}]`}
-		client, err := NewDeleteRequestsClient("http://test-server", httpClient, nil)
+		client, err := NewDeleteRequestsClient("http://test-server", httpClient, deleteClientMetrics)
 		require.Nil(t, err)
 
 		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID")
@@ -30,7 +33,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 
 	t.Run("it caches the results", func(t *testing.T) {
 		httpClient := &mockHTTPClient{ret: `[{"request_id":"test-request"}]`}
-		client, err := NewDeleteRequestsClient("http://test-server", httpClient, nil, WithRequestClientCacheDuration(100*time.Millisecond))
+		client, err := NewDeleteRequestsClient("http://test-server", httpClient, deleteClientMetrics, WithRequestClientCacheDuration(100*time.Millisecond))
 		require.Nil(t, err)
 
 		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID")

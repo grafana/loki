@@ -19,8 +19,8 @@ import (
 // BuildDistributor returns a list of k8s objects for Loki Distributor
 func BuildDistributor(opts Options) ([]client.Object, error) {
 	deployment := NewDistributorDeployment(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureDistributorServiceMonitorPKI(deployment, opts.Name); err != nil {
+	if opts.Flags.EnableTLSHTTPServices {
+		if err := configureDistributorHTTPServicePKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -196,9 +196,9 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureDistributorServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
+func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameDistributorHTTP(stackName)
-	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
