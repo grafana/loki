@@ -72,7 +72,7 @@ local arch = std.extVar('arch');
   license: 'AGPL-3.0',
   contents: [{
     src: './dist/tmp/packages/%s-linux-%s' % [name, arch],
-    dst: '/usr/local/bin/%s' % name,
+    dst: '/usr/bin/%s' % name,
   }],
 
   deb: {

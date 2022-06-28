@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=loki
-ExecStart=/usr/local/bin/loki -config.file /etc/loki/config.yml
+ExecStart=/usr/bin/loki -config.file /etc/loki/config.yml
 # Give a reasonable amount of time for the server to start up/shut down
 TimeoutSec = 120
 Restart = on-failure

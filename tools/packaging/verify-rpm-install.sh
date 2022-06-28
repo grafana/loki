@@ -15,11 +15,11 @@ cat <<EOF | docker exec --interactive "${image}" sh
     rpm --import https://packages.grafana.com/gpg.key
 
     # Install loki and check it's running
-    rpm -i ${dir}/dist/loki-0.0.0~rc0.x86_64.rpm
+    rpm -i ${dir}/dist/loki-*.x86_64.rpm
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
 
     # Install promtail and check it's running
-    rpm -i ${dir}/dist/promtail-0.0.0~rc0.x86_64.rpm
+    rpm -i ${dir}/dist/promtail-*.x86_64.rpm
     [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
 
     # Write some logs
@@ -27,7 +27,7 @@ cat <<EOF | docker exec --interactive "${image}" sh
     echo "blablabla" > /var/log/test.log
 
     # Install logcli
-    rpm -i ${dir}/dist/logcli-0.0.0~rc0.x86_64.rpm
+    rpm -i ${dir}/dist/logcli-*.x86_64.rpm
 
     # Check that there are labels
     sleep 5
