@@ -1,16 +1,16 @@
 #!/bin/sh
 
 docker ps
-image="$(docker ps --filter ancestor=jrei/systemd-debian:12 --latest --format {{.ID}})"
-echo "Running on container: $image"
+image="$(docker ps --filter ancestor=jrei/systemd-debian:12 --latest --format "{{.ID}}")"
+echo "Running on container: ${image}"
 
 dir="."
-if [ ! -z "$CI" ]; then
+if [ -n "${CI}" ]; then
     dir="/drone/src"
 fi
-echo "Running on directory: $dir"
+echo "Running on directory: ${dir}"
 
-cat <<EOF | docker exec --interactive $image sh
+cat <<EOF | docker exec --interactive "${image}" sh
     # Install loki and check it's running
     dpkg -i ${dir}/dist/loki_0.0.0~rc0_amd64.deb
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)

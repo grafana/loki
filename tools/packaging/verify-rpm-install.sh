@@ -1,16 +1,16 @@
 #!/bin/sh
 
 docker ps
-image="$(docker ps --filter ancestor=jrei/systemd-centos:8 --latest --format {{.ID}})"
-echo "Running on container: $image"
+image="$(docker ps --filter ancestor=jrei/systemd-centos:8 --latest --format "{{.ID}}")"
+echo "Running on container: ${image}"
 
 dir="."
-if [ ! -z "$CI" ]; then
+if [ -n "${CI}" ]; then
     dir="/drone/src"
 fi
-echo "Running on directory: $dir"
+echo "Running on directory: ${dir}"
 
-cat <<EOF | docker exec --interactive $image sh
+cat <<EOF | docker exec --interactive "${image}" sh
     # Import the Grafana GPG key
     rpm --import https://packages.grafana.com/gpg.key
 
