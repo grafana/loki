@@ -16,24 +16,24 @@ component is different.
 
 These endpoints are exposed by all components:
 
-- [`GET /ready`](#get-ready)
-- [`GET /metrics`](#get-metrics)
-- [`GET /config`](#get-config)
-- [`GET /services`](#get-services)
-- [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
+- [`GET /ready`](#identify-ready-loki-instance)
+- [`GET /metrics`](#return-exposed-prometheus-metrics)
+- [`GET /config`](#list-current-configuration)
+- [`GET /services`](#list-running-services)
+- [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
 
 These endpoints are exposed by the querier and the query frontend:
 
-- [`GET /loki/api/v1/query`](#get-lokiapiv1query)
-- [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-- [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
-- [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
-- [`GET /loki/api/v1/series`](#series)
+- [`GET /loki/api/v1/query`](#query-loki)
+- [`GET /loki/api/v1/query_range`](#query-loki-over-a-range-of-time)
+- [`GET /loki/api/v1/labels`](#list-labels-within-a-range-of-time)
+- [`GET /loki/api/v1/label/<name>/values`](#list-label-values-within-a-range-of-time)
+- [`GET /loki/api/v1/series`](#list-series)
 - [`GET /loki/api/v1/index/stats`](#index-stats)
-- [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
-- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-- [`GET /ready`](#get-ready)
-- [`GET /metrics`](#get-metrics)
+- [`GET /loki/api/v1/tail`](#stream-log-messages)
+- [`POST /loki/api/v1/push`](#push-log-entries-to-loki)
+- [`GET /ready`](#identify-ready-loki-instance)
+- [`GET /metrics`](#return-exposed-prometheus-metrics)
 - **Deprecated** [`GET /api/prom/tail`](#get-apipromtail)
 - **Deprecated** [`GET /api/prom/query`](#get-apipromquery)
 - **Deprecated** [`GET /api/prom/label`](#get-apipromlabel)
@@ -42,13 +42,14 @@ These endpoints are exposed by the querier and the query frontend:
 
 These endpoints are exposed by the distributor:
 
-- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-- [`GET /distributor/ring`](#get-distributorring)
+- [`POST /loki/api/v1/push`](#push-log-entries-to-loki)
+- [`GET /distributor/ring`](#display-distributor-consistent-hash-ring-status)
 
 These endpoints are exposed by the ingester:
 
-- [`POST /flush`](#post-flush)
-- [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
+- [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
+- [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
+- **Deprecated** [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -101,7 +102,11 @@ The API accepts several formats for timestamps. An integer with ten or fewer dig
 
 The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
-## `GET /loki/api/v1/query`
+## Query Loki
+
+```
+GET /loki/api/v1/query
+```
 
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
 query parameters support the following values:
@@ -237,7 +242,11 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
 }
 ```
 
-## `GET /loki/api/v1/query_range`
+## Query Loki over a range of time
+
+```
+GET /loki/api/v1/query_range
+```
 
 `/loki/api/v1/query_range` is used to do a query over a range of time and
 accepts the following query parameters in the URL:
@@ -404,7 +413,11 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 }
 ```
 
-## `GET /loki/api/v1/labels`
+## List labels within a range of time
+
+```
+GET /loki/api/v1/labels
+```
 
 `/loki/api/v1/labels` retrieves the list of known labels within a given time span.
 Loki may use a larger time span than the one specified.
@@ -441,7 +454,11 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/labels" | jq
 }
 ```
 
-## `GET /loki/api/v1/label/<name>/values`
+## List label values within a range of time
+
+```
+GET /loki/api/v1/label/<name>/values
+```
 
 `/loki/api/v1/label/<name>/values` retrieves the list of known values for a given
 label within a given time span. Loki may use a larger time span than the one specified.
@@ -478,7 +495,11 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/label/foo/values" | jq
 }
 ```
 
-## `GET /loki/api/v1/tail`
+## Stream log messages
+
+```
+GET /loki/api/v1/tail
+```
 
 `/loki/api/v1/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
@@ -519,7 +540,11 @@ Response (streamed):
 }
 ```
 
-## `POST /loki/api/v1/push`
+## Push log entries to Loki
+
+```
+POST /loki/api/v1/push
+```
 
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
@@ -559,273 +584,80 @@ $ curl -v -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/l
   '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
 
-## `GET /api/prom/tail`
 
-> **DEPRECATED**: `/api/prom/tail` is deprecated. Use `/loki/api/v1/tail`
-> instead.
-
-`/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
-a query. It accepts the following query parameters in the URL:
-
-- `query`: The [LogQL](../logql/) query to perform
-- `delay_for`: The number of seconds to delay retrieving logs to let slow
-    loggers catch up. Defaults to 0 and cannot be larger than 5.
-- `limit`: The max number of entries to return
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-
-In microservices mode, `/api/prom/tail` is exposed by the querier.
-
-Response (streamed):
-
-```json
-{
-  "streams": [
-    {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano timestamp>",
-          "line": "<log line>"
-        }
-      ]
-    }
-  ],
-  "dropped_entries": [
-    {
-      "Timestamp": "<RFC3339Nano timestamp>",
-      "Labels": "<LogQL label key-value pairs>"
-    }
-  ]
-}
-```
-
-`dropped_entries` will be populated when the tailer could not keep up with the
-amount of traffic in Loki. When present, it indicates that the entries received
-in the streams is not the full amount of logs that are present in Loki. Note
-that the keys in `dropped_entries` will be sent as uppercase `Timestamp`
-and `Labels` instead of `labels` and `ts` like in the entries for the stream.
-
-As the response is streamed, the object defined by the response format above
-will be sent over the WebSocket multiple times.
-
-## `GET /api/prom/query`
-
-> **WARNING**: `/api/prom/query` is DEPRECATED; use `/loki/api/v1/query_range`
-> instead.
-
-`/api/prom/query` supports doing general queries. The URL query parameters
-support the following values:
-
-- `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
-- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
-- `regexp`: a regex to filter the returned results
-
-In microservices mode, `/api/prom/query` is exposed by the querier and the frontend.
-
-Note that the larger the time span between `start` and `end` will cause
-additional load on Loki and the index store, resulting in slower queries.
-
-Response:
+## Identify ready Loki instance
 
 ```
-{
-  "streams": [
-    {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano string>",
-          "line": "<log line>"
-        },
-        ...
-      ],
-    },
-    ...
-  ],
-  "stats": [<statistics>]
-}
+GET /ready
 ```
 
-See [statistics](#statistics) for information about the statistics returned by Loki.
-
-### Examples
-
-```bash
-$ curl -G -s "http://localhost:3100/api/prom/query" --data-urlencode 'query={foo="bar"}' | jq
-{
-  "streams": [
-    {
-      "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-      "entries": [
-        {
-          "ts": "2019-06-06T19:25:41.972739Z",
-          "line": "foo"
-        },
-        {
-          "ts": "2019-06-06T19:25:41.972722Z",
-          "line": "bar"
-        }
-      ]
-    }
-  ],
-  "stats": {
-    ...
-  }
-}
-```
-
-## `GET /api/prom/label`
-
-> **WARNING**: `/api/prom/label` is DEPRECATED; use `/loki/api/v1/label`
-
-`/api/prom/label` retrieves the list of known labels within a given time span. It
-accepts the following query parameters in the URL:
-
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
-
-In microservices mode, `/api/prom/label` is exposed by the querier.
-
-Response:
-
-```
-{
-  "values": [
-    <label string>,
-    ...
-  ]
-}
-```
-
-### Examples
-
-```bash
-$ curl -G -s  "http://localhost:3100/api/prom/label" | jq
-{
-  "values": [
-    "foo",
-    "bar",
-    "baz"
-  ]
-}
-```
-
-## `GET /api/prom/label/<name>/values`
-
-> **WARNING**: `/api/prom/label/<name>/values` is DEPRECATED; use `/loki/api/v1/label/<name>/values`
-
-`/api/prom/label/<name>/values` retrieves the list of known values for a given
-label within a given time span. It accepts the following query parameters in
-the URL:
-
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
-
-In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
-
-Response:
-
-```
-{
-  "values": [
-    <label value>,
-    ...
-  ]
-}
-```
-
-### Examples
-
-```bash
-$ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
-{
-  "values": [
-    "cat",
-    "dog",
-    "axolotl"
-  ]
-}
-```
-
-## `POST /api/prom/push`
-
-> **WARNING**: `/api/prom/push` is DEPRECATED; use `/loki/api/v1/push`
-> instead.
-
-`/api/prom/push` is the endpoint used to send log entries to Loki. The default
-behavior is for the POST body to be a snappy-compressed protobuf message:
-
-- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
-- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
-
-Alternatively, if the `Content-Type` header is set to `application/json`, a
-JSON post body can be sent in the following format:
-
-```
-{
-  "streams": [
-    {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano string>",
-          "line": "<log line>"
-        }
-      ]
-    }
-  ]
-}
-```
-
-Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
-
-In microservices mode, `/api/prom/push` is exposed by the distributor.
-
-### Examples
-
-```bash
-$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
-  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
-```
-
-## `GET /ready`
-
-`/ready` returns HTTP 200 when the Loki ingester is ready to accept traffic. If
+`/ready` returns HTTP 200 when the Loki instance is ready to accept traffic. If
 running Loki on Kubernetes, `/ready` can be used as a readiness probe.
 
 In microservices mode, the `/ready` endpoint is exposed by all components.
 
-## `POST /flush`
+## Flush in-memory chunks to backing store
+
+```
+POST /flush
+```
 
 `/flush` triggers a flush of all in-memory chunks held by the ingesters to the
 backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
-## `POST /ingester/flush_shutdown`
+## Flush in-memory chunks and shut down
 
-`/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
+```
+POST /ingester/shutdown
+```
+
+`/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
 This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
 but instead flushed to our chunk backend.
 
-In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
+It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `terminate`.
 
-### `GET /distributor/ring`
+**URL query parameters:**
+
+* `flush=<bool>`:
+  Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
+* `delete_ring_tokens=<bool>`:
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified.
+* `terminate=<bool>`:
+  Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
+
+This handler, in contrast to the deprecated `/ingester/flush_shutdown` handler, terminates the Loki process by default.
+This behaviour can be changed by setting the `terminate` query parameter to `false`.
+
+In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
+
+## Display distributor consistent hash ring status
+
+```
+GET /distributor/ring
+```
 
 Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
 
-## `GET /metrics`
+## Return exposed Prometheus metrics
 
-`/metrics` exposes Prometheus metrics. See
+```
+GET /metrics
+```
+
+`/metrics` returns exposed Prometheus metrics. See
 [Observing Loki](../operations/observability/)
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
 
-## `GET /config`
+## List current configuration
+
+```
+GET /config
+```
 
 `/config` exposes the current configuration. The optional `mode` query parameter can be used to
 modify the output. If it has the value `diff` only the differences between the default configuration
@@ -833,7 +665,11 @@ and the current are returned. A value of `defaults` returns the default configur
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
-## `GET /services`
+## List running services
+
+```
+GET /services
+```
 
 `/services` returns a list of all running services and their current states.
 
@@ -846,11 +682,15 @@ Services can have the following states:
 - **Terminated**: Service has stopped successfully (terminal state)
 - **Failed**: Service has failed in **Starting**, **Running** or **Stopping** state (terminal state)
 
-## `GET /loki/api/v1/status/buildinfo`
+## List build information
+
+```
+GET /loki/api/v1/status/buildinfo
+```
 
 `/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
 
-## Series
+## List series
 
 The Series API is available under the following:
 - `GET /loki/api/v1/series`
@@ -1158,18 +998,343 @@ For more information, please check out the Prometheus [alerts](https://prometheu
 
 ## Compactor
 
-### `GET /compactor/ring`
+### Compactor ring status
+
+```
+GET /compactor/ring
+```
 
 Displays a web page with the compactor hash ring status, including the state, health, and last heartbeat time of each compactor.
 
-### `POST /loki/api/v1/delete`
+### Request log deletion
+
+```
+POST /loki/api/v1/delete
+PUT /loki/api/v1/delete
+```
 
 Create a new delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
 
-### `GET /loki/api/v1/delete`
+Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+
+Query parameters:
+
+* `query=<series_selector>`: query argument that identifies the streams from which to delete with optional line filters.
+* `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
+* `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
+
+A 204 response indicates success.
+
+URL encode the `query` parameter. This sample form of a cURL command URL encodes `query={foo="bar"}`:
+
+```bash
+curl -g -X POST \
+  'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692' \
+  -H 'x-scope-orgid: 1'
+```
+
+The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+
+### List log deletion requests
+
+```
+GET /loki/api/v1/delete
+```
 
 List the existing delete requests for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
 
-### `DELETE /loki/api/v1/delete`
+Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+
+List the existing delete requests using the following API:
+
+```
+GET /loki/api/v1/delete
+```
+
+Sample form of a cURL command:
+
+```
+curl -X GET \
+  <compactor_addr>/loki/api/v1/delete \
+  -H 'x-scope-orgid: <orgid>'
+```
+
+This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
+
+### Request cancellation of a delete request
+
+```
+DELETE /loki/api/v1/delete
+```
 
 Remove a delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).
+
+Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
+
+Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+
+Cancel a delete request using this compactor endpoint:
+
+```
+DELETE /loki/api/v1/delete
+```
+
+Query parameters:
+
+* `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
+
+A 204 response indicates success.
+
+Sample form of a cURL command:
+
+```
+curl -X DELETE \
+  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
+  -H 'x-scope-orgid: <tenant-id>'
+```
+
+## Deprecated endpoints
+
+### `GET /api/prom/tail`
+
+> **DEPRECATED**: `/api/prom/tail` is deprecated. Use `/loki/api/v1/tail`
+> instead.
+
+`/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
+a query. It accepts the following query parameters in the URL:
+
+- `query`: The [LogQL](../logql/) query to perform
+- `delay_for`: The number of seconds to delay retrieving logs to let slow
+    loggers catch up. Defaults to 0 and cannot be larger than 5.
+- `limit`: The max number of entries to return
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
+
+In microservices mode, `/api/prom/tail` is exposed by the querier.
+
+Response (streamed):
+
+```json
+{
+  "streams": [
+    {
+      "labels": "<LogQL label key-value pairs>",
+      "entries": [
+        {
+          "ts": "<RFC3339Nano timestamp>",
+          "line": "<log line>"
+        }
+      ]
+    }
+  ],
+  "dropped_entries": [
+    {
+      "Timestamp": "<RFC3339Nano timestamp>",
+      "Labels": "<LogQL label key-value pairs>"
+    }
+  ]
+}
+```
+
+`dropped_entries` will be populated when the tailer could not keep up with the
+amount of traffic in Loki. When present, it indicates that the entries received
+in the streams is not the full amount of logs that are present in Loki. Note
+that the keys in `dropped_entries` will be sent as uppercase `Timestamp`
+and `Labels` instead of `labels` and `ts` like in the entries for the stream.
+
+As the response is streamed, the object defined by the response format above
+will be sent over the WebSocket multiple times.
+
+### `GET /api/prom/query`
+
+> **WARNING**: `/api/prom/query` is DEPRECATED; use `/loki/api/v1/query_range`
+> instead.
+
+`/api/prom/query` supports doing general queries. The URL query parameters
+support the following values:
+
+- `query`: The [LogQL](../logql/) query to perform
+- `limit`: The max number of entries to return
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+- `regexp`: a regex to filter the returned results
+
+In microservices mode, `/api/prom/query` is exposed by the querier and the frontend.
+
+Note that the larger the time span between `start` and `end` will cause
+additional load on Loki and the index store, resulting in slower queries.
+
+Response:
+
+```
+{
+  "streams": [
+    {
+      "labels": "<LogQL label key-value pairs>",
+      "entries": [
+        {
+          "ts": "<RFC3339Nano string>",
+          "line": "<log line>"
+        },
+        ...
+      ],
+    },
+    ...
+  ],
+  "stats": [<statistics>]
+}
+```
+
+See [statistics](#statistics) for information about the statistics returned by Loki.
+
+#### Examples
+
+```bash
+$ curl -G -s "http://localhost:3100/api/prom/query" --data-urlencode 'query={foo="bar"}' | jq
+{
+  "streams": [
+    {
+      "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
+      "entries": [
+        {
+          "ts": "2019-06-06T19:25:41.972739Z",
+          "line": "foo"
+        },
+        {
+          "ts": "2019-06-06T19:25:41.972722Z",
+          "line": "bar"
+        }
+      ]
+    }
+  ],
+  "stats": {
+    ...
+  }
+}
+```
+
+### `GET /api/prom/label/<name>/values`
+
+> **WARNING**: `/api/prom/label/<name>/values` is DEPRECATED; use `/loki/api/v1/label/<name>/values`
+
+`/api/prom/label/<name>/values` retrieves the list of known values for a given
+label within a given time span. It accepts the following query parameters in
+the URL:
+
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+
+In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
+
+Response:
+
+```
+{
+  "values": [
+    <label value>,
+    ...
+  ]
+}
+```
+
+#### Examples
+
+```bash
+$ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
+{
+  "values": [
+    "cat",
+    "dog",
+    "axolotl"
+  ]
+}
+```
+
+### `GET /api/prom/label`
+
+> **WARNING**: `/api/prom/label` is DEPRECATED; use `/loki/api/v1/label`
+
+`/api/prom/label` retrieves the list of known labels within a given time span. It
+accepts the following query parameters in the URL:
+
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+
+In microservices mode, `/api/prom/label` is exposed by the querier.
+
+Response:
+
+```
+{
+  "values": [
+    <label string>,
+    ...
+  ]
+}
+```
+
+#### Examples
+
+```bash
+$ curl -G -s  "http://localhost:3100/api/prom/label" | jq
+{
+  "values": [
+    "foo",
+    "bar",
+    "baz"
+  ]
+}
+```
+
+### `POST /api/prom/push`
+
+> **WARNING**: `/api/prom/push` is DEPRECATED; use `/loki/api/v1/push`
+> instead.
+
+`/api/prom/push` is the endpoint used to send log entries to Loki. The default
+behavior is for the POST body to be a snappy-compressed protobuf message:
+
+- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
+- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
+
+Alternatively, if the `Content-Type` header is set to `application/json`, a
+JSON post body can be sent in the following format:
+
+```
+{
+  "streams": [
+    {
+      "labels": "<LogQL label key-value pairs>",
+      "entries": [
+        {
+          "ts": "<RFC3339Nano string>",
+          "line": "<log line>"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
+
+In microservices mode, `/api/prom/push` is exposed by the distributor.
+
+#### Examples
+
+```bash
+$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
+  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
+```
+
+### `POST /ingester/flush_shutdown`
+
+> **WARNING**: `/ingester/flush_shutdown` is DEPRECATED; use `/ingester/shutdown?flush=true`
+> instead.
+
+`/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
+This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
+but instead flushed to our chunk backend.
+
+In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
+
