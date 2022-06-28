@@ -3,6 +3,24 @@ kind: pipeline
 name: loki-build-image
 steps:
 - image: plugins/docker
+  name: test-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.22.0
+  when:
+    paths:
+      include:
+      - loki-build-image/**
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+- image: plugins/docker
   name: push-image
   settings:
     context: loki-build-image
@@ -1313,6 +1331,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: ab5f7a0023eb978f61ef2102def724d19a6e6445ed7cb6b27936a2f6d62a42c6
+hmac: a81e5cc63bc5ef62ace94e345c1bba623f515741991cafb3386ebeb9b0a96989
 
 ...
