@@ -2,10 +2,10 @@
 
 sleep 15
 docker ps
-image="$(docker ps --latest --format {{.ID}})"
-echo "Running image $image"
+image="$(docker ps --filter ancestor=jrei/systemd-debian:12 --latest --format {{.ID}})"
+echo "Running on container: $image"
 
-cat <<EOF | docker exec --interactive loki-shell sh
+cat <<EOF | docker exec --interactive $image sh
     # Install loki and check it's running
     dpkg -i dist/loki_0.0.0~rc0_amd64.deb
     [ "\$(systemctl is-active loki)" = "active" ] || exit 1
