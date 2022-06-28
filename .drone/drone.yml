@@ -1076,21 +1076,20 @@ image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
 name: release
-steps:
-- detach: true
-  image: jrei/systemd-debian:12
+services:
+- image: jrei/systemd-debian:12
   name: systemd-debian
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
-- detach: true
-  image: centos/systemd
+- image: jrei/systemd-centos:8
   name: systemd-centos
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
+steps:
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
@@ -1123,19 +1122,7 @@ steps:
     event:
     - pull_request
 - commands:
-  - sleep 60
-  - |-
-    docker exec systemd-centos sh -c '// Install loki and check it's running
-    rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
-    [ "$(systemctl is-active loki)" = "active" ] || exit 1
-    // Install promtail and check it's running
-    rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
-    [ "$(systemctl is-active promtail)" = "active" ] || exit 1
-    // Install logcli
-    rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
-    // Check that there are logs (from the dpkg install)
-    [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
-    '
+  - ./tools/packaging/verify-rpm-install.sh
   image: docker
   name: test rpm package
   privileged: true
@@ -1401,6 +1388,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 2f288ddd95a220bf760e5f78d0a2e3344e39fad36c85c0463a913f34e728b79d
+hmac: 6537e915f4d4b94f6534a12bd3fae1d34a66a3c00fb77f1ab302d1dde79bb2f4
 
 ...

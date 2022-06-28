@@ -1,7 +1,7 @@
 #!/bin/sh
 
 docker ps
-image="$(docker ps --filter ancestor=jrei/systemd-debian:12 --latest --format {{.ID}})"
+image="$(docker ps --filter ancestor=jrei/systemd-centos:8 --latest --format {{.ID}})"
 echo "Running on container: $image"
 
 dir="."
@@ -12,15 +12,15 @@ echo "Running on directory: $dir"
 
 cat <<EOF | docker exec --interactive $image sh
     # Install loki and check it's running
-    dpkg -i ${dir}/dist/loki_0.0.0~rc0_amd64.deb
+    rpm -i ${dir}/dist/loki-0.0.0~rc0.x86_64.rpm
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
     
     # Install promtail and check it's running
-    dpkg -i ${dir}/dist/promtail_0.0.0~rc0_amd64.deb
+    rpm -i ${dir}/dist/promtail-0.0.0~rc0.x86_64.rpm
     [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
 
     # Install logcli
-    dpkg -i ${dir}/dist/logcli_0.0.0~rc0_amd64.deb
+    rpm -i ${dir}/dist/logcli-0.0.0~rc0.x86_64.rpm
 
     # Check that there are logs (from the dpkg install)
     labels_found=\$(logcli labels)

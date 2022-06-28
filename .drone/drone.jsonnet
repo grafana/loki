@@ -554,7 +554,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         },
       },
     ],
-    steps: [
+    services: [
       {
         name: 'systemd-debian',
         image: 'jrei/systemd-debian:12',
@@ -564,21 +564,21 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             path: '/sys/fs/cgroup',
           },
         ],
-        detach: true,
         privileged: true,
       },
       {
         name: 'systemd-centos',
-        image: 'centos/systemd',
+        image: 'jrei/systemd-centos:8',
         volumes: [
           {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
           },
         ],
-        detach: true,
         privileged: true,
       },
+    ],
+    steps: [
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={
@@ -610,21 +610,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'test rpm package',
         image: 'docker',
-        commands: [
-          'sleep 60',
-          "docker exec systemd-centos sh -c '" + |||
-            // Install loki and check it's running
-            rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
-            [ "$(systemctl is-active loki)" = "active" ] || exit 1
-            // Install promtail and check it's running
-            rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
-            [ "$(systemctl is-active promtail)" = "active" ] || exit 1
-            // Install logcli
-            rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
-            // Check that there are logs (from the dpkg install)
-            [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
-          ||| + "'",
-        ],
+        commands: ['./tools/packaging/verify-rpm-install.sh'],
         volumes: [
           {
             name: 'docker',
