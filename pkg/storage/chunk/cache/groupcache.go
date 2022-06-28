@@ -178,6 +178,12 @@ func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error {
 	var err error
 	for i, key := range keys {
+		// naively remove key first before attempting to store (mainly for caches other than chunk cache)
+		// TODO: we can probably optimise this / restrict it to certain cache types
+		if err := c.cache.Remove(ctx, key); err != nil {
+			level.Debug(c.logger).Log("msg", "failed to remove key from groupcache", "key", key, "err", err)
+		}
+
 		// bool is for putting things in the hotcache. Should we?
 		if cacheErr := c.cache.Set(ctx, key, values[i], time.Time{}, false); cacheErr != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", cacheErr)
