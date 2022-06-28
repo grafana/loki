@@ -39,6 +39,8 @@ local ecr_key = secret('ecr_key', 'infra/data/ci/loki/aws-credentials', 'access_
 local ecr_secret_key = secret('ecr_secret_key', 'infra/data/ci/loki/aws-credentials', 'secret_access_key');
 local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.dockerconfigjson');
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
+local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/gpg', 'passphrase');
+local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
@@ -580,18 +582,93 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       event: ['pull_request', 'tag'],
     },
     image_pull_secrets: [pull_secret.name],
+    volumes+: [
+      {
+        name: 'cgroup',
+        host: {
+          path: '/sys/fs/cgroup',
+        },
+      },
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
+    ],
+    // Launch docker images with systemd
+    services: [
+      {
+        name: 'systemd-debian',
+        image: 'jrei/systemd-debian:12',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
+        privileged: true,
+      },
+      {
+        name: 'systemd-centos',
+        image: 'jrei/systemd-centos:8',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    // Package and test the packages
     steps: [
-      run(
-        'test packaging',
-        commands=['make BUILD_IN_CONTAINER=false packages']
-      ) { when: { event: ['pull_request'] } },
-      run(
-        'publish',
-        commands=['make BUILD_IN_CONTAINER=false publish'],
-        env={
-          GITHUB_TOKEN: { from_secret: github_secret.name },
-        }
-      ) { when: { event: ['tag'] } },
+      run('write-key',
+          commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
+          env={
+            NFPM_SIGNING_KEY: { from_secret: gpg_private_key.name },
+            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+          }),
+      run('test packaging',
+          commands=[
+            'go install github.com/google/go-jsonnet/cmd/jsonnet@latest',  // Test, install in build image instead
+            'make BUILD_IN_CONTAINER=false packages',
+          ],
+          env={
+            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
+            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+          }),
+      {
+        name: 'test deb package',
+        image: 'docker',
+        commands: ['./tools/packaging/verify-deb-install.sh'],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+      {
+        name: 'test rpm package',
+        image: 'docker',
+        commands: ['./tools/packaging/verify-rpm-install.sh'],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+      run('publish',
+          commands=['make BUILD_IN_CONTAINER=false publish'],
+          env={
+            GITHUB_TOKEN: { from_secret: github_secret.name },
+            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
+            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+          }) { when: { event: ['tag'] } },
     ],
   },
 ]
@@ -610,4 +687,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ecr_key,
   ecr_secret_key,
   deploy_configuration,
+  gpg_passphrase,
+  gpg_private_key,
 ]

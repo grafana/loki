@@ -1183,20 +1183,61 @@ image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
 name: release
+services:
+- image: jrei/systemd-debian:12
+  name: systemd-debian
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
+- image: jrei/systemd-centos:8
+  name: systemd-centos
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
 steps:
 - commands:
+  - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
+  environment:
+    NFPM_SIGNING_KEY:
+      from_secret: gpg_private_key
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+  image: grafana/loki-build-image:0.22.0
+  name: write-key
+- commands:
+  - go install github.com/google/go-jsonnet/cmd/jsonnet@latest
   - make BUILD_IN_CONTAINER=false packages
-  environment: {}
+  environment:
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
   image: grafana/loki-build-image:0.22.0
   name: test packaging
-  when:
-    event:
-    - pull_request
+- commands:
+  - ./tools/packaging/verify-deb-install.sh
+  image: docker
+  name: test deb package
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+- commands:
+  - ./tools/packaging/verify-rpm-install.sh
+  image: docker
+  name: test rpm package
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
 - commands:
   - make BUILD_IN_CONTAINER=false publish
   environment:
     GITHUB_TOKEN:
       from_secret: github_token
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
   image: grafana/loki-build-image:0.22.0
   name: publish
   when:
@@ -1211,6 +1252,13 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+volumes:
+- host:
+    path: /sys/fs/cgroup
+  name: cgroup
+- host:
+    path: /var/run/docker.sock
+  name: docker
 ---
 depends_on:
 - check
@@ -1416,7 +1464,19 @@ get:
 kind: secret
 name: deploy_config
 ---
+get:
+  name: passphrase
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_passphrase
+---
+get:
+  name: private-key
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_private_key
+---
 kind: signature
-hmac: 4fa63210e8bdd946f1732051b6b841eba0ae1b0313436301c743341d29893c8f
+hmac: 41b8126ddebd23fae297361d4309e66538cefe928c0e46a5a5c975fdcf2cd468
 
 ...
