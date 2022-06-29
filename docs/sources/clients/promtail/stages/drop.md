@@ -60,7 +60,8 @@ Given the pipeline:
     sources: ["level","msg"]
 ```
 
-Would drop any log line if it has extracted data field at least `level` or `msg`.
+Drops any log line that has an extracted data field of at least `level` or `msg`.
+
 #### Regex match a line
 
 Given the pipeline:
