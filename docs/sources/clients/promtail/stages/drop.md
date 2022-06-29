@@ -71,7 +71,6 @@ This example pipeline drops any log line with the substring "debug" in it:
     expression: ".*debug.*"
 ```
 
-Would drop any log line with the word `debug` in it.
 
 #### Regex match a concatenated sources
 
