@@ -13,7 +13,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	m.herokuEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "heroku_target_entries_total",
-		Help:      "Help number of successful entries received by the Heroku target",
+		Help:      "Number of successful entries received by the Heroku target",
 	}, []string{})
 
 	m.herokuErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
