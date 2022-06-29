@@ -49,8 +49,6 @@ ingester:
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
-    interface_names:
-      - eth0
     join_after: 30s
     num_tokens: 512
     ring:
@@ -280,8 +278,6 @@ ingester:
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
-    interface_names:
-      - eth0
     join_after: 30s
     num_tokens: 512
     ring:
@@ -596,8 +592,6 @@ ingester:
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
-    interface_names:
-      - eth0
     join_after: 30s
     num_tokens: 512
     ring:
@@ -928,8 +922,6 @@ ingester:
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
-    interface_names:
-      - eth0
     join_after: 30s
     num_tokens: 512
     ring:
@@ -1261,8 +1253,6 @@ ingester:
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
-    interface_names:
-      - eth0
     join_after: 30s
     num_tokens: 512
     ring:

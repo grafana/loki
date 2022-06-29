@@ -71,6 +71,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if ctrlCfg.Flags.EnableTLSServiceMonitorConfig && !ctrlCfg.Flags.EnableTLSHTTPServices {
+		logger.Error(kverrors.New("enableTlsServiceMonitorConfig flag requires enableTlsHttpServices"), "")
+		os.Exit(1)
+	}
+
 	if ctrlCfg.Flags.EnableServiceMonitors || ctrlCfg.Flags.EnableTLSServiceMonitorConfig {
 		utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	}
@@ -92,6 +97,7 @@ func main() {
 	featureFlags := manifests.FeatureFlags{
 		EnableCertificateSigningService: ctrlCfg.Flags.EnableCertificateSigningService,
 		EnableServiceMonitors:           ctrlCfg.Flags.EnableServiceMonitors,
+		EnableTLSHTTPServices:           ctrlCfg.Flags.EnableTLSHTTPServices,
 		EnableTLSServiceMonitorConfig:   ctrlCfg.Flags.EnableTLSServiceMonitorConfig,
 		EnableTLSGRPCServices:           ctrlCfg.Flags.EnableTLSGRPCServices,
 		EnablePrometheusAlerts:          ctrlCfg.Flags.EnablePrometheusAlerts,
