@@ -64,7 +64,7 @@ Drops any log line that has an extracted data field of at least `level` or `msg`
 
 #### Regex match a line
 
-Given the pipeline:
+This example pipeline drops any log line with the substring "debug" in it:
 
 ```yaml
 - drop:
