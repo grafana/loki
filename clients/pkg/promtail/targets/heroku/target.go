@@ -35,10 +35,11 @@ type Target struct {
 }
 
 func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuTargetConfig, relabel []*relabel.Config) (*Target, error) {
+	wrappedLogger := log.With(logger, "component", "heroku_drain")
 
 	ht := &Target{
 		metrics:        metrics,
-		logger:         logger,
+		logger:         wrappedLogger,
 		handler:        handler,
 		jobName:        jobName,
 		config:         config,
