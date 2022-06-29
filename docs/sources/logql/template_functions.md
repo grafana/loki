@@ -39,6 +39,20 @@ Examples:
 `{{ __line__ }}`
 ```
 
+## __timestamp__
+
+This function returns the current log lines timestamp.
+
+Signature:
+
+`timestamp() time.Time`
+
+```template
+"{{ __timestamp__ }}"
+`{{ __timestamp__ | date "2006-01-02T15:04:05.00Z-07:00" }}`
+`{{ __timestamp__ | unixEpoch }}`
+
+See the blog: [Parsing and formatting date/time in Go](https://www.pauladamsmith.com/blog/2011/05/go_time.html) for more information.
 
 ## ToLower and ToUpper
 
