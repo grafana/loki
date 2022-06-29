@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -123,6 +123,8 @@ type Compactor struct {
 	running               bool
 	wg                    sync.WaitGroup
 	deleteMode            deletion.Mode
+	indexCompactors       map[string]IndexCompactor
+	schemaConfig          config.SchemaConfig
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
@@ -134,7 +136,7 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -147,8 +149,10 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.
 	}
 
 	compactor := &Compactor{
-		cfg:            cfg,
-		ringPollPeriod: 5 * time.Second,
+		cfg:             cfg,
+		ringPollPeriod:  5 * time.Second,
+		indexCompactors: map[string]IndexCompactor{},
+		schemaConfig:    schemaConfig,
 	}
 
 	ringStore, err := kv.NewClient(
@@ -196,7 +200,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.
 	}
 	compactor.deleteMode = mode
 
-	if err := compactor.init(storageConfig, schemaConfig, limits, clientMetrics, r); err != nil {
+	if err := compactor.init(objectClient, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
 
@@ -204,13 +208,8 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.
 	return compactor, nil
 }
 
-func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) error {
-	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig, clientMetrics)
-	if err != nil {
-		return err
-	}
-
-	err = chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
+func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits retention.Limits, r prometheus.Registerer) error {
+	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
 	}
@@ -243,7 +242,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 			)
 		}
 
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, chunkClient, r)
 		if err != nil {
 			return err
 		}
@@ -474,8 +473,18 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient,
-		c.tableMarker, c.expirationChecker)
+	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
+	if !ok {
+		return fmt.Errorf("could not find schema for table: %s", tableName)
+	}
+
+	indexCompactor, ok := c.indexCompactors[schemaCfg.IndexType]
+	if !ok {
+		return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
+	}
+
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, indexCompactor,
+		schemaCfg, c.tableMarker, c.expirationChecker)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
@@ -493,6 +502,10 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return err
 	}
 	return nil
+}
+
+func (c *Compactor) RegisterIndexCompactor(indexType string, indexCompactor IndexCompactor) {
+	c.indexCompactors[indexType] = indexCompactor
 }
 
 func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) error {
@@ -525,6 +538,9 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("last compaction took %s which is longer than the compaction interval of %s, this can lead to duplicate compactors running if not running a standalone compactor instance.", runtime, c.cfg.CompactionInterval))
 		}
 	}()
+
+	// refresh index list cache since previous compaction would have changed the index files in the object store
+	c.indexStorageClient.RefreshIndexListCache(ctx)
 
 	tables, err := c.indexStorageClient.ListTables(ctx)
 	if err != nil {
@@ -661,4 +677,33 @@ func (c *Compactor) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Des
 
 func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.ring.ServeHTTP(w, req)
+}
+
+func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
+	// first round removes configs that does not have the prefix.
+	candidates := []config.PeriodConfig{}
+	for _, schema := range cfg.Configs {
+		if strings.HasPrefix(tableName, schema.IndexTables.Prefix) {
+			candidates = append(candidates, schema)
+		}
+	}
+	// WARN we  assume period is always daily. This is only true for boltdb-shipper.
+	var (
+		matched config.PeriodConfig
+		found   bool
+	)
+	for _, schema := range candidates {
+		periodIndex, err := strconv.ParseInt(strings.TrimPrefix(tableName, schema.IndexTables.Prefix), 10, 64)
+		if err != nil {
+			continue
+		}
+		periodSec := int64(schema.IndexTables.Period / time.Second)
+		tableTs := model.TimeFromUnix(periodIndex * periodSec)
+		if tableTs.After(schema.From.Time) || tableTs == schema.From.Time {
+			matched = schema
+			found = true
+		}
+	}
+
+	return matched, found
 }
