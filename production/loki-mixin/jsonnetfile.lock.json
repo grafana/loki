@@ -30,6 +30,16 @@
       },
       "version": "3f71e00a64810075b5d5f969cc6d0e419cbdebc4",
       "sum": "v6fuqqQp9rHZbsxN9o79QzOpUlwYZEJ84DxTCZMCYeU="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/prometheus-operator/kube-prometheus.git",
+          "subdir": "jsonnet/kube-prometheus/lib"
+        }
+      },
+      "version": "b1c474d8a1d7cd73df9bf4efe1680f1e6d9f5c17",
+      "sum": "2KXEfdW5YJem19w1VjQNvaTIOhdl8KFi4dvmUdWJtro="
     }
   ],
   "legacyImports": false
