@@ -217,13 +217,14 @@ gave this response:
   }
 }
 ```
-Set the `x-scope-orgid` header,
-as defined in [Grafana Loki Multi-Tenancy](../operations/multi-tenancy/),
-to query specific tenants.
-Here is the same example query applied to the single tenant called `Tenant1`:
+
+If your cluster has 
+[Grafana Loki Multi-Tenancy](../operations/multi-tenancy/) enabled,
+set the `X-Scope-OrgID` header to identify the tenant you want to query.
+Here is the same example query for the single tenant called `Tenant1`:
 
 ```bash
-curl -H 'x-scope-orgid:Tenant1' \
+curl -H 'X-Scope-OrgID:Tenant1' \
   -G -s "http://localhost:3100/loki/api/v1/query" \
   --data-urlencode \
   'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
@@ -233,18 +234,20 @@ To query against the three tenants `Tenant1`, `Tenant2`, and `Tenant3`,
 specify the tenant names separated by the pipe (`|`) character:
 
 ```bash
-curl -H 'x-scope-orgid:Tenant1|Tenant2|Tenant3' \
+curl -H 'X-Scope-OrgID:Tenant1|Tenant2|Tenant3' \
   -G -s "http://localhost:3100/loki/api/v1/query" \
   --data-urlencode \
   'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
-The same Grafana Enterprise Logs example query against the three tenants
-includes the tenant names as users, separated by the pipe (`|`) character.
-The password in this example is access policy token that has been
+
+The same example query for Grafana Enterprise Logs
+uses Basic Authentication and specifies the tenant names as a `user`.
+The tenant names are separated by the pipe (`|`) character.
+The password in this example is an access policy token that has been
 defined in the `API_TOKEN` environment variable:
 
 ```bash
-curl -u Tenant1|Tenant2|Tenant3:$API_TOKEN \
+curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   -G -s "http://localhost:3100/loki/api/v1/query" \
   --data-urlencode \
   'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
@@ -1038,7 +1041,7 @@ URL encode the `query` parameter. This sample form of a cURL command URL encodes
 ```bash
 curl -g -X POST \
   'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692' \
-  -H 'x-scope-orgid: 1'
+  -H 'X-Scope-OrgID: 1'
 ```
 
 The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
@@ -1064,7 +1067,7 @@ Sample form of a cURL command:
 ```
 curl -X GET \
   <compactor_addr>/loki/api/v1/delete \
-  -H 'x-scope-orgid: <orgid>'
+  -H 'X-Scope-OrgID: <orgid>'
 ```
 
 This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
@@ -1098,7 +1101,7 @@ Sample form of a cURL command:
 ```
 curl -X DELETE \
   '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
-  -H 'x-scope-orgid: <tenant-id>'
+  -H 'X-Scope-OrgID: <tenant-id>'
 ```
 
 ## Deprecated endpoints
