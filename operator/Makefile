@@ -191,6 +191,10 @@ quickstart: oci-build oci-push $(KIND)
 	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
 endif
 
+.PHONY: quickstart-cleanup
+quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up
+	$(KIND) delete cluster
+
 .PHONY: run
 run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
 	go run ./main.go

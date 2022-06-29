@@ -105,7 +105,10 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
+		SecurityContext: podSecurityContext(
+			opts.Flags.EnableRuntimeSeccompProfile,
+			opts.Flags.EnableNonRootUser,
+		),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Querier != nil {

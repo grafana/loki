@@ -339,9 +339,13 @@ func containerSecurityContext() *corev1.SecurityContext {
 	}
 }
 
-func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
+func podSecurityContext(withSeccompProfile, withNonRootUser bool) *corev1.PodSecurityContext {
 	context := corev1.PodSecurityContext{
 		RunAsNonRoot: pointer.Bool(true),
+	}
+
+	if withNonRootUser {
+		context.RunAsUser = pointer.Int64(65532)
 	}
 
 	if withSeccompProfile {

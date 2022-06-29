@@ -104,7 +104,10 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
+		SecurityContext: podSecurityContext(
+			opts.Flags.EnableRuntimeSeccompProfile,
+			opts.Flags.EnableNonRootUser,
+		),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Compactor != nil {

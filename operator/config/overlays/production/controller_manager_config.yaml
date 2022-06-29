@@ -12,3 +12,4 @@ leaderElection:
 featureFlags:
   enableLokiStackGateway: true
   enableRuntimeSeccompProfile: false
+  enableNonRootUser: false

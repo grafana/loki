@@ -6,5 +6,6 @@ spec:
   template:
     spec:
       securityContext:
+         runAsUser: 65532
          seccompProfile:
            type: RuntimeDefault

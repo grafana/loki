@@ -16,3 +16,4 @@ featureFlags:
   enableAlertingRuleWebhook: false
   enableRecordingRuleWebhook: false
   enableRuntimeSeccompProfile: true
+  enableNonRootUser: true

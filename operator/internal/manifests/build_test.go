@@ -672,6 +672,139 @@ func TestBuildAll_WithFeatureFlags_EnableRuntimeSeccompProfile(t *testing.T) {
 	}
 }
 
+func TestBuildAll_WithFeatureFlags_EnableNonRootUser(t *testing.T) {
+	type test struct {
+		desc         string
+		BuildOptions Options
+	}
+
+	table := []test{
+		{
+			desc: "do not set user",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
+					Template: &lokiv1beta1.LokiTemplateSpec{
+						Compactor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Flags: FeatureFlags{
+					EnableNonRootUser: false,
+				},
+			},
+		},
+		{
+			desc: "set nonroot user",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
+					Template: &lokiv1beta1.LokiTemplateSpec{
+						Compactor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Flags: FeatureFlags{
+					EnableNonRootUser: true,
+				},
+			},
+		},
+	}
+
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.desc, func(t *testing.T) {
+			t.Parallel()
+
+			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+
+			objs, err := BuildAll(tst.BuildOptions)
+			require.NoError(t, err)
+
+			for _, o := range objs {
+				var (
+					name string
+					spec *corev1.PodSpec
+				)
+				switch obj := o.(type) {
+				case *appsv1.Deployment:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				case *appsv1.StatefulSet:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				default:
+					continue
+				}
+
+				t.Run(name, func(t *testing.T) {
+					if tst.BuildOptions.Flags.EnableNonRootUser {
+						require.NotNil(t, spec.SecurityContext.RunAsUser)
+						require.NotZero(t, spec.SecurityContext.RunAsUser)
+					} else {
+						require.Nil(t, spec.SecurityContext.RunAsUser)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 	type test struct {
 		desc         string

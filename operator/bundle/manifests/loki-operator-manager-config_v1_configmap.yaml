@@ -28,6 +28,7 @@ data:
       enableAlertingRuleWebhook: true
       enableRecordingRuleWebhook: true
       enableRuntimeSeccompProfile: false
+      enableNonRootUser: false
 kind: ConfigMap
 metadata:
   labels:
