@@ -236,7 +236,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 
 	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
 
-	gc, err := cache.NewGroupCache(rm, t.Server, util_log.Logger)
+	gc, err := cache.NewGroupCache(rm, t.Server, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_groupcache_", prometheus.DefaultRegisterer))
 	if err != nil {
 		return nil, err
 	}
