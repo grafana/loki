@@ -12,14 +12,14 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 
 	m.herokuEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
-		Name:      "heroku_target_entries_total",
+		Name:      "heroku_drain_target_entries_total",
 		Help:      "Number of successful entries received by the Heroku target",
 	}, []string{})
 
 	m.herokuErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
-		Name:      "heroku_target_parsing_errors_total",
-		Help:      "Number of parsing errors while receiving heroku messages",
+		Name:      "heroku_drain_target_parsing_errors_total",
+		Help:      "Number of parsing errors while receiving Heroku messages",
 	}, []string{})
 
 	reg.MustRegister(m.herokuEntries, m.herokuErrors)

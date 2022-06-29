@@ -27,14 +27,15 @@ import (
 type Target struct {
 	logger         log.Logger
 	handler        api.EntryHandler
-	config         *scrapeconfig.HerokuTargetConfig
+	config         *scrapeconfig.HerokuDrainTargetConfig
 	jobName        string
 	server         *server.Server
 	metrics        *Metrics
 	relabelConfigs []*relabel.Config
 }
 
-func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuTargetConfig, relabel []*relabel.Config) (*Target, error) {
+// NewTarget creates a brand new Heroku Drain target, capable of receiving logs from a Heroku application through an HTTP drain.
+func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuDrainTargetConfig, relabel []*relabel.Config) (*Target, error) {
 	wrappedLogger := log.With(logger, "component", "heroku_drain")
 
 	ht := &Target{
@@ -52,7 +53,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
 	// Then apply any config values loaded as overrides to the defaults.
 	if err := mergo.Merge(&defaults, config.Server, mergo.WithOverride); err != nil {
-		level.Error(logger).Log("msg", "failed to parse configs and override defaults when configuring push server", "err", err)
+		level.Error(logger).Log("msg", "failed to parse configs and override defaults when configuring heroku drain target", "err", err)
 	}
 	// The merge won't overwrite with a zero value but in the case of ports 0 value
 	// indicates the desire for a random port so reset these to zero if the incoming config val is 0
@@ -74,11 +75,13 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 }
 
 func (h *Target) run() error {
-	level.Info(h.logger).Log("msg", "starting heroku target", "job", h.jobName)
+	level.Info(h.logger).Log("msg", "starting heroku drain target", "job", h.jobName)
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
-	h.config.Server.MetricsNamespace = "promtail_heroku_target_" + h.jobName
+	h.config.Server.MetricsNamespace = "promtail_heroku_drain_target_" + h.jobName
 
-	// We don't want the /debug and /metrics endpoints running
+	// We don't want the /debug and /metrics endpoints running, since this is not the main promtail HTTP server.
+	// We want this target to expose the least surface area possible, hence disabling WeaveWorks HTTP server metrics
+	// and debugging functionality.
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
@@ -95,7 +98,7 @@ func (h *Target) run() error {
 	go func() {
 		err := srv.Run()
 		if err != nil {
-			level.Error(h.logger).Log("msg", "Loki push server shutdown with error", "err", err)
+			level.Error(h.logger).Log("msg", "heroku drain target shutdown with error", "err", err)
 		}
 	}()
 
@@ -110,10 +113,10 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 		ts := time.Now()
 		message := herokuScanner.Message()
 		lb := labels.NewBuilder(nil)
-		lb.Set("__logplex_host", message.Hostname)
-		lb.Set("__logplex_app", message.Application)
-		lb.Set("__logplex_proc", message.Process)
-		lb.Set("__logplex_log_id", message.ID)
+		lb.Set("__heroku_drain_host", message.Hostname)
+		lb.Set("__heroku_drain_app", message.Application)
+		lb.Set("__heroku_drain_proc", message.Process)
+		lb.Set("__heroku_drain_log_id", message.ID)
 
 		if h.config.UseIncomingTimestamp {
 			ts = message.Timestamp
@@ -142,7 +145,7 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 	err := herokuScanner.Err()
 	if err != nil {
 		h.metrics.herokuErrors.WithLabelValues().Inc()
-		level.Warn(h.logger).Log("msg", "failed to read incoming push request", "err", err.Error())
+		level.Warn(h.logger).Log("msg", "failed to read incoming heroku request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -170,7 +173,7 @@ func (h *Target) Details() interface{} {
 }
 
 func (h *Target) Stop() error {
-	level.Info(h.logger).Log("msg", "stopping heroku target", "job", h.jobName)
+	level.Info(h.logger).Log("msg", "stopping heroku drain target", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()
 	return nil

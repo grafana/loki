@@ -40,7 +40,7 @@ func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
 
 	drainToken := uuid.New().String()
 	frameID := uuid.New().String()
-	req.Header.Set("Content-Type", "application/logplex-1")
+	req.Header.Set("Content-Type", "application/heroku_drain-1")
 	req.Header.Set("Logplex-Drain-Token", fmt.Sprintf("d.%s", drainToken))
 	req.Header.Set("Logplex-Frame-Id", frameID)
 	req.Header.Set("Logplex-Msg-Count", fmt.Sprintf("%d", len(bodies)))
@@ -115,21 +115,21 @@ func TestHerokuDrainTarget(t *testing.T) {
 				},
 				RelabelConfigs: []*relabel.Config{
 					{
-						SourceLabels: model.LabelNames{"__logplex_host"},
+						SourceLabels: model.LabelNames{"__heroku_drain_host"},
 						TargetLabel:  "host",
 						Replacement:  "$1",
 						Action:       relabel.Replace,
 						Regex:        relabel.MustNewRegexp("(.*)"),
 					},
 					{
-						SourceLabels: model.LabelNames{"__logplex_app"},
+						SourceLabels: model.LabelNames{"__heroku_drain_app"},
 						TargetLabel:  "app",
 						Replacement:  "$1",
 						Action:       relabel.Replace,
 						Regex:        relabel.MustNewRegexp("(.*)"),
 					},
 					{
-						SourceLabels: model.LabelNames{"__logplex_proc"},
+						SourceLabels: model.LabelNames{"__heroku_drain_proc"},
 						TargetLabel:  "procID",
 						Replacement:  "$1",
 						Action:       relabel.Replace,
@@ -158,7 +158,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 
 			serverConfig, port, err := getServerConfigWithAvailablePort()
 			require.NoError(t, err, "error generating server config or finding open port")
-			config := &scrapeconfig.HerokuTargetConfig{
+			config := &scrapeconfig.HerokuDrainTargetConfig{
 				Server:               serverConfig,
 				Labels:               tc.args.Labels,
 				UseIncomingTimestamp: false,
@@ -224,7 +224,7 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.HerokuTargetConfig{
+	config := &scrapeconfig.HerokuDrainTargetConfig{
 		Server:               serverConfig,
 		Labels:               nil,
 		UseIncomingTimestamp: true,

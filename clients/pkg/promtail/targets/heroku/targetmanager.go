@@ -16,7 +16,7 @@ type TargetManager struct {
 	targets map[string]*Target
 }
 
-func NewHerokuTargetManager(
+func NewHerokuDrainTargetManager(
 	metrics *Metrics,
 	reg prometheus.Registerer,
 	logger log.Logger,
@@ -29,12 +29,12 @@ func NewHerokuTargetManager(
 	}
 
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "heroku_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, reg)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "heroku_drain_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}
 
-		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuConfig, cfg.RelabelConfigs)
+		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuDrainConfig, cfg.RelabelConfigs)
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +57,7 @@ func (hm *TargetManager) Ready() bool {
 func (hm *TargetManager) Stop() {
 	for name, t := range hm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("event", "failed to stop heroku target", "name", name, "cause", err)
+			level.Error(t.logger).Log("event", "failed to stop heroku drain target", "name", name, "cause", err)
 		}
 	}
 }
