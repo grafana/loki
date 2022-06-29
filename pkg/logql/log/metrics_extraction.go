@@ -185,6 +185,7 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 		v, err = l.conversionFn(stringValue)
 		if err != nil {
 			l.builder.SetErr(errSampleExtraction)
+			l.builder.SetErrorDetails(err.Error())
 		}
 	}
 	// post filters
