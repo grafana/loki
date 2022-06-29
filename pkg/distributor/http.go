@@ -51,7 +51,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = d.Push(r.Context(), req)
 	if d.logSender != nil {
-		sendErr := d.logSender.Send(r.Context(), tenantID, req)
+		sendErr := d.logSender.Send(r.Context(), tenantID, req, r.Header)
 		if sendErr != nil {
 			level.Warn(logger).Log(
 				"msg", "logSender send log fail",

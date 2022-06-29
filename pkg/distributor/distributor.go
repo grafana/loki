@@ -94,7 +94,7 @@ var DefaultLogSender LogSender
 
 //send log to ES or kafka
 type LogSender interface {
-	Send(ctx context.Context, tenantID string, req *logproto.PushRequest) error
+	Send(ctx context.Context, tenantID string, req *logproto.PushRequest, header http.Header) error
 }
 
 // New a distributor creates.
