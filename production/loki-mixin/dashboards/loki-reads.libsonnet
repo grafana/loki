@@ -3,6 +3,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
+    local showBigTable = false,
 
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
     local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs',
@@ -10,7 +11,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
     'loki-reads.json': {
                          local cfg = self,
 
-                         showBigTable:: false,
                          showMultiCluster:: true,
                          clusterLabel:: $._config.per_cluster_label,
                          clusterMatchers::
@@ -111,7 +111,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                        )
                        .addRowIf(
-                         dashboards['loki-reads.json'].showBigTable,
+                         showBigTable,
                          $.row('BigTable')
                          .addPanel(
                            $.panel('QPS') +

@@ -3,11 +3,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
+    local showBigTable = false,
 
     'loki-writes.json': {
                           local cfg = self,
 
-                          showBigTable:: false,
                           showMultiCluster:: true,
                           clusterLabel:: $._config.per_cluster_label,
                           clusterMatchers::
@@ -84,7 +84,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRowIf(
-                          dashboards['loki-writes.json'].showBigTable,
+                          showBigTable,
                           $.row('BigTable')
                           .addPanel(
                             $.panel('QPS') +
