@@ -10,6 +10,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     'loki-reads.json': {
                          local cfg = self,
 
+                         showBigTable:: false,
                          showMultiCluster:: true,
                          clusterLabel:: $._config.per_cluster_label,
                          clusterMatchers::
@@ -20,10 +21,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                          matchers:: {
                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                           queryFrontend: [utils.selector.re('job', '($namespace)/query-frontend')],
-                           querier: [utils.selector.re('job', '($namespace)/querier')],
-                           ingester: [utils.selector.re('job', '($namespace)/ingester')],
-                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/(querier|index-gateway)')],
+                           queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'query-frontend' else '(enterprise-logs|loki)-read'))],
+                           querier: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'querier' else '(enterprise-logs|loki)-write'))],
+                           ingester: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'ingester' else '(enterprise-logs|loki)-write'))],
+                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then '(querier|index-gateway)' else '(enterprise-logs|loki)-read'))],
                          },
 
                          local selector(matcherId) =
@@ -42,7 +43,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addCluster()
                        .addNamespace()
                        .addTag()
-                       .addRow(
+                       .addRowIf(
+                         $._config.internal_components,
                          $.row('Frontend (cortex_gw)')
                          .addPanel(
                            $.panel('QPS') +
@@ -59,7 +61,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                        )
                        .addRow(
-                         $.row('Frontend (query-frontend)')
+                         $.row(if !$._config.ssd then 'Frontend (query-frontend)' else 'Read Path')
                          .addPanel(
                            $.panel('QPS') +
                            $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
@@ -74,7 +76,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRow(
+                       .addRowIf(
+                         !$._config.ssd,
                          $.row('Querier')
                          .addPanel(
                            $.panel('QPS') +
@@ -90,7 +93,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRow(
+                       .addRowIf(
+                         !$._config.ssd,
                          $.row('Ingester')
                          .addPanel(
                            $.panel('QPS') +
@@ -106,7 +110,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRow(
+                       .addRowIf(
+                         dashboards['loki-reads.json'].showBigTable,
                          $.row('BigTable')
                          .addPanel(
                            $.panel('QPS') +

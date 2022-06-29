@@ -11,5 +11,11 @@
 
     // The label used to differentiate between different clusters.
     per_cluster_label: 'cluster',
+
+    // Support Loki SSD mode on dashboards.
+    ssd: false,
+
+    // Enable dashboard and panels for Grafana Labs internal components.
+    internal_components: false,
   },
 }
