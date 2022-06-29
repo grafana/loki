@@ -72,7 +72,7 @@ This example pipeline drops any log line with the substring "debug" in it:
 ```
 
 
-#### Regex match a concatenated sources
+#### Regex match concatenated sources
 
 Given the pipeline:
 
