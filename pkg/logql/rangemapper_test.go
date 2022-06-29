@@ -1379,6 +1379,28 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 
 		// Binary operations
 		{
+			`2 * bytes_over_time({app="foo"}[3m])`,
+			`(
+				2 *
+				sum without (
+				   downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+					++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+					++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`count_over_time({app="foo"}[3m]) * 2`,
+			`(
+				sum without (
+				   downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+					++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+				)
+				* 2
+			)`,
+		},
+		{
 			`bytes_over_time({app="foo"}[3m]) + count_over_time({app="foo"}[5m])`,
 			`(sum without (
 				   downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
@@ -1494,6 +1516,34 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					/ 180
 				  )
 				)
+			)`,
+		},
+
+		// label_replace
+		{
+			`label_replace(sum by (baz) (count_over_time({app="foo"}[3m])), "x", "$1", "a", "(.*)")`,
+			`label_replace(
+				sum by (baz) (
+					sum without (
+						downstream<sum by (baz) (count_over_time({app="foo"} [1m] offset 2m0s)), shard=<nil>>
+						++ downstream<sum by (baz) (count_over_time({app="foo"} [1m] offset 1m0s)), shard=<nil>>
+						++ downstream<sum by (baz) (count_over_time({app="foo"} [1m])), shard=<nil>>
+					)
+				), 
+				"x", "$1", "a", "(.*)"
+			)`,
+		},
+		{
+			`label_replace(rate({job="api-server", service="a:c"} |= "err" [3m]), "foo", "$1", "service", "(.*):.*")`,
+			`label_replace(
+				(
+					sum without (
+						downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m] offset 2m0s), shard=<nil>>
+						++ downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m] offset 1m0s), shard=<nil>>
+						++ downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m]), shard=<nil>>
+					)
+				/ 180), 
+				"foo", "$1", "service", "(.*):.*"
 			)`,
 		},
 	} {
@@ -1659,6 +1709,16 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 		{
 			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
 			`(sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
+		},
+
+		// should be noop if literal expression
+		{
+			`5`,
+			`5`,
+		},
+		{
+			`5 * 5`,
+			`25`,
 		},
 	} {
 		tc := tc
