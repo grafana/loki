@@ -87,7 +87,7 @@ Given the pipeline:
     expression:  "(error|ERROR)#.*\/loki\/api\/push.*"
 ```
 
-Would drop both of these log lines:
+Drops both of these log lines:
 
 ```
 {"time":"2019-01-01T01:00:00.000000001Z", "level": "error", "msg":"11.11.11.11 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"}
