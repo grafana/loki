@@ -411,13 +411,13 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		},
 		{
 			"template error",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{.foo | replace \"test\"}}")}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{replace \"test\" .foo}}")}),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
 				{Name: "bar", Value: "blop"},
 				{Name: "__error__", Value: "TemplateFormatErr"},
-				{Name: "__error_details__", Value: "template: label:1:9: executing \"label\" at <replace>: wrong number of args for replace: want 3 got 2"},
+				{Name: "__error_details__", Value: "template: label:1:2: executing \"label\" at <replace>: wrong number of args for replace: want 3 got 2"},
 			},
 		},
 	}

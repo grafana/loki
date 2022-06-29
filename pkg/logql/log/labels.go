@@ -68,7 +68,8 @@ type BaseLabelsBuilder struct {
 	add []labels.Label
 	// nolint:structcheck
 	// https://github.com/golangci/golangci-lint/issues/826
-	err        string
+	err string
+	// nolint:structcheck
 	errDetails string
 
 	groups            []string
