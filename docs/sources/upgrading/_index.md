@@ -210,10 +210,10 @@ This value now defaults to `loki`, it was previously set to `cortex`. If you are
 
 ### Promtail
 
-#### Drop stages config changed
+#### Drop stage configuration changed
 
-The configuration option `source` was renamed to `sources` and now accepts a list of strings. 
-Also, the configuration option `value` was removed in favor of the option `expression`, which takes a regular expression. 
+The configuration option `source` is renamed to `sources`.  It now accepts a list of strings. 
+The configuration option `value` has been removed. Use the option `expression` instead, which takes a regular expression. 
 
 ## 2.5.0
 
