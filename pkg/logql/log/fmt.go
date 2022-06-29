@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -25,7 +26,7 @@ var (
 
 	// Available map of functions for the text template engine.
 	functionMap = template.FuncMap{
-		// olds functions deprecated.
+		// olds functions deprecated, these are replaced by sprig functions below
 		"ToLower":    strings.ToLower,
 		"ToUpper":    strings.ToUpper,
 		"Replace":    strings.Replace,
@@ -35,6 +36,7 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
+		// custom functions
 		"regexReplaceAll": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllString(s, repl)
@@ -42,6 +44,24 @@ var (
 		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllLiteralString(s, repl)
+		},
+		"unixEpochMillis": func(t time.Time) string {
+			return strconv.FormatInt(t.UnixMilli(), 10)
+		},
+		"unixEpochNanos": func(t time.Time) string {
+			return strconv.FormatInt(t.UnixNano(), 10)
+		},
+		"timeDiff": func(t1, t2 time.Time) string {
+			return t1.Sub(t2).String()
+		},
+		"after": func(t1, t2 time.Time) bool {
+			return t1.After(t2)
+		},
+		"before": func(t1, t2 time.Time) bool {
+			return t1.Before(t2)
+		},
+		"between": func(t1, t2, t3 time.Time) bool {
+			return t2.After(t1) && t2.Before(t3)
 		},
 	}
 
@@ -82,7 +102,10 @@ var (
 		"floor",
 		"round",
 		"fromJson",
+		"ago",
 		"date",
+		"dateInZone",
+		"duration",
 		"toDate",
 		"now",
 		"unixEpoch",

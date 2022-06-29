@@ -312,7 +312,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			1656353124120000000,
 			[]byte("2022-06-27 bar 2"),
 			labels.Labels{{Name: "bar", Value: "2"}},
-			[]byte("1"),
+			nil,
 		},
 		{
 			"timestamp_unix",
@@ -321,7 +321,16 @@ func Test_lineFormatter_Format(t *testing.T) {
 			1656353124120000000,
 			[]byte("1656353124 bar 2"),
 			labels.Labels{{Name: "bar", Value: "2"}},
-			[]byte("1"),
+			nil,
+		},
+		{
+			"between",
+			newMustLineFormatter(`{{if between (toDate "2006-01-02" "2022-06-27") (toDate "2006-01-02" .date) (toDate "2006-01-02" "2022-06-29") }}true{{else}}false{{end}}`),
+			labels.Labels{{Name: "date", Value: "2022-06-28"}},
+			0,
+			[]byte("true"),
+			labels.Labels{{Name: "date", Value: "2022-06-28"}},
+			nil,
 		},
 	}
 	for _, tt := range tests {
