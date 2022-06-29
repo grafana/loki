@@ -10,9 +10,9 @@ import (
 
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/groupcache_exporter"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/weaveworks/common/server"
 
 	"github.com/mailgun/groupcache/v2"
@@ -20,9 +20,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-
 	"github.com/grafana/dskit/ring"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
@@ -49,6 +49,7 @@ type GroupCache struct {
 	logger         log.Logger
 	listenPort     int
 	wg             sync.WaitGroup
+	reg            prometheus.Registerer
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -67,7 +68,7 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "groupcache", f)
 }
 
-func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.Logger) (*GroupCache, error) {
+func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	pool := groupcache.NewHTTPPoolOpts(rm.Addr, &groupcache.HTTPPoolOptions{})
 	server.HTTP.Path("/_groupcache").Handler(pool)
 
@@ -78,6 +79,7 @@ func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.
 		stopChan:       make(chan struct{}),
 		updateInterval: 5 * time.Minute,
 		wg:             sync.WaitGroup{},
+		reg:            reg,
 	}
 
 	go cache.updatePeers()
@@ -134,12 +136,26 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	})
 
 	c.wg.Add(1)
-	return &group{
+
+	g := &group{
 		cache:     groupcache.NewGroup(name, 1<<30, missGetter),
 		logger:    c.logger,
 		wg:        &c.wg,
 		cacheType: ct,
 	}
+
+	exp := groupcache_exporter.NewExporter(map[string]string{"cache_type": string(ct)}, g)
+	c.reg.MustRegister(exp)
+
+	return g
+}
+
+func (c *GroupCache) Stats() *groupcache.Stats {
+	if c.cache == nil {
+		return nil
+	}
+
+	return &c.cache.Stats
 }
 
 type group struct {
