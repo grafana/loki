@@ -2,6 +2,7 @@ package heroku
 
 import (
 	"flag"
+	"github.com/weaveworks/common/logging"
 	"net/http"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/imdario/mergo"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -80,9 +80,8 @@ func (h *Target) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	h.config.Server.RegisterInstrumentation = false
 
-	// The logger registers a metric which will cause a duplicate registry panic unless we provide an empty registry
-	// The metric created is for counting log lines and isn't likely to be missed.
-	util_log.InitLogger(&h.config.Server, prometheus.NewRegistry())
+	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
+	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {
