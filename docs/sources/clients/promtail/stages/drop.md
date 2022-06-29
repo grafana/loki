@@ -23,8 +23,9 @@ drop:
   # Separator placed between concatenated extracted data names. The default separator is a semicolon.
   [separator: <string> | default = ";"]
   
-  # RE2 regular expression, if sources are provided the regex will attempt to match the concatenated sources.
-  # If no sources is provided, then the regex attempts to match the log line.
+  # RE2 regular expression. If `sources` are provided, the regex will attempt to match
+  # the concatenated sources. If no source is provided, then the regex attempts 
+  # to match the log line.
   # If the provided regex matches the log line or the concatenated sources, the line will be dropped.
   [expression: <string>]
 
