@@ -20,8 +20,8 @@ drop:
   # Names list of extracted data. If empty, uses the log message.
   [sources: [<string>]]
 
-  # Separator placed between concatenated extracted data names. Default separator `;`.
-  [separator: <string>]
+  # Separator placed between concatenated extracted data names. The default separator is a semicolon.
+  [separator: <string> | default = ";"]
   
   # RE2 regular expression, if sources are provided the regex will attempt to match the concatenated sources.
   # If no sources is provided, then the regex attempts to match the log line.
