@@ -226,6 +226,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 
 	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
 	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.ChunkStoreConfig.ChunkCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
@@ -242,6 +243,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 
 	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Cache = gc
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Cache = gc
 
 	return t.groupcacheRingManager, nil
 }
@@ -1109,6 +1111,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
