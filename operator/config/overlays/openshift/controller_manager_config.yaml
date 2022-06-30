@@ -24,3 +24,4 @@ featureFlags:
   enableLokiStackWebhook: true
   enableAlertingRuleWebhook: true
   enableRecordingRuleWebhook: true
+  enableRuntimeSeccompProfile: false

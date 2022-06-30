@@ -60,6 +60,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
+	configureDeploymentForRestrictedPolicy(dpl, opts.Flags)
+
 	return objs, nil
 }
 
@@ -406,4 +408,15 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	}
 
 	return nil
+}
+
+func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, flags FeatureFlags) {
+	podSpec := d.Spec.Template.Spec
+
+	podSpec.SecurityContext = podSecurityContext(flags.EnableRuntimeSeccompProfile)
+	for i := range podSpec.Containers {
+		podSpec.Containers[i].SecurityContext = containerSecurityContext()
+	}
+
+	d.Spec.Template.Spec = podSpec
 }

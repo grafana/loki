@@ -75,7 +75,6 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	ls = applyExtraLabels(ls)
 
 	for scanner.Scan() {
-		i := 0
 		log_line := scanner.Text()
 		match := timestampRegex.FindStringSubmatch(log_line)
 
@@ -84,11 +83,12 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			return err
 		}
 
-		b.add(ctx, entry{ls, logproto.Entry{
+		if err := b.add(ctx, entry{ls, logproto.Entry{
 			Line:      log_line,
 			Timestamp: timestamp,
-		}})
-		i++
+		}}); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -114,8 +114,10 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 }
 
 func processS3Event(ctx context.Context, ev *events.S3Event) error {
-
-	batch, _ := newBatch(ctx)
+	batch, err := newBatch(ctx)
+	if err != nil {
+		return err
+	}
 
 	for _, record := range ev.Records {
 		labels, err := getLabels(record)
@@ -135,7 +137,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event) error {
 
 	}
 
-	err := sendToPromtail(ctx, batch)
+	err = sendToPromtail(ctx, batch)
 	if err != nil {
 		return err
 	}

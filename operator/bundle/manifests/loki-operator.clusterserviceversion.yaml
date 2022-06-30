@@ -154,7 +154,7 @@ metadata:
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
       ### Loki Operator Namespace
-      The Loki Operator must be deployed to the global operator group namespace `openshift-logging`.
+      The Loki Operator must be deployed to the global operator group namespace `openshift-operators-redhat`.
       ### Memory Considerations
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
@@ -1210,6 +1210,9 @@ spec:
                 resources: {}
                 securityContext:
                   allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
                 volumeMounts:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: webhook-cert
@@ -1230,11 +1233,18 @@ spec:
                 - containerPort: 8443
                   name: https
                 resources: {}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
               nodeSelector:
                 kubernetes.io/os: linux
+              securityContext:
+                runAsNonRoot: true
               terminationGracePeriodSeconds: 10
               volumes:
               - name: webhook-cert

@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: logcli
-          image: docker.io/grafana/logcli:2.4.2-amd64
+          image: docker.io/grafana/logcli:2.5.0-amd64
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -43,7 +43,16 @@ spec:
           args:
             - -c
             - while true; do logcli query '{job="systemd-journal"}'; sleep 30; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
       serviceAccountName: lokistack-dev-addons-logcli
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -63,7 +72,7 @@ spec:
     spec:
       containers:
         - name: promtail
-          image: docker.io/grafana/promtail:2.4.2
+          image: docker.io/grafana/promtail:2.5.0
           args:
             - -config.file=/etc/promtail/promtail.yaml
             - -log.level=info
@@ -84,31 +93,33 @@ spec:
               name: journal
               readOnly: true
           securityContext:
-            privileged: true
-            readOnlyRootFilesystem: true
-            runAsGroup: 0
-            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
       serviceAccountName: lokistack-dev-addons-promtail
+      securityContext:
+        runAsNonRoot: true
       volumes:
         - configMap:
             defaultMode: 420
             name: lokistack-dev-addons-promtail
           name: config
-        - hostPath:
-            path: /run/promtail
-            type: ""
+        - emptyDir:
+            medium: ""
+            sizeLimit: 10G
           name: run
-        - hostPath:
-            path: /var/lib/docker/containers
-            type: ""
+        - emptyDir:
+            medium: ""
+            sizeLimit: 10G
           name: docker
-        - hostPath:
-            path: /var/log/pods
-            type: ""
+        - emptyDir:
+            medium: ""
+            sizeLimit: 10G
           name: pods
-        - hostPath:
-            path: /var/log/journal
-            type: ""
+        - emptyDir:
+            medium: ""
+            sizeLimit: 10G
           name: journal
 ---
 apiVersion: v1
@@ -396,46 +407,6 @@ data:
               - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
               - __meta_kubernetes_pod_container_name
             target_label: __path__
----
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: lokistack-dev-addons-policy
-spec:
-  allowPrivilegeEscalation: false
-  fsGroup:
-    rule: RunAsAny
-  hostIPC: false
-  hostNetwork: false
-  hostPID: false
-  privileged: false
-  readOnlyRootFilesystem: true
-  requiredDropCapabilities:
-  - ALL
-  runAsUser:
-    rule: RunAsAny
-  seLinux:
-    rule: RunAsAny
-  supplementalGroups:
-    rule: RunAsAny
-  volumes:
-  - secret
-  - configMap
-  - hostPath
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: lokistack-dev-addons-writer
-rules:
-- apiGroups:
-  - extensions
-  resourceNames:
-  - lokistack-dev-addons-policy
-  resources:
-  - podsecuritypolicies
-  verbs:
-  - use
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

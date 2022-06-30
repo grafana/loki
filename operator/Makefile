@@ -2,6 +2,9 @@
 # referenced here as make variables. For example: $(GOLANGCI_LINT)
 include .bingo/Variables.mk
 
+WEBSITE_DIR ?= website
+WEBSITE_BASE_URL ?= https://loki-operator.dev
+
 # set the default target here, because the include above will automatically set
 # it to the first defined target
 .DEFAULT_GOAL := default
@@ -191,6 +194,10 @@ quickstart: oci-build oci-push $(KIND)
 	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
 endif
 
+.PHONY: quickstart-cleanup
+quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up
+	$(KIND) delete cluster
+
 .PHONY: run
 run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
 	go run ./main.go
@@ -257,3 +264,29 @@ oci-build-calculator: ## Build the calculator image
 .PHONY: oci-push-calculator
 oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
+
+##@ Website
+TYPES_V1BETA1_TARGET := $(shell find apis/loki -type f -iname "*_types.go")
+docs/operator/api.md: $(TYPES_V1BETA1_TARGET)
+	po-docgen api $(TYPES_V1BETA1_TARGET) > $@
+	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
+
+FEATURE_FLAGS_TARGET := $(shell find apis/config -type f -iname "*_types.go")
+docs/operator/feature-flags.md: $(FEATURE_FLAGS_TARGET)
+	po-docgen api $(FEATURE_FLAGS_TARGET) > $@
+	sed -i 's/title: "API"/title: "Feature Flags"/' $@
+	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
+
+.PHONY: web-pre
+web-pre: docs/operator/api.md docs/operator/feature-flags.md
+	@echo ">> preprocessing docs for website"
+	@git submodule update --init --recursive
+	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
+
+.PHONY: web
+web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
+	cd $(WEBSITE_DIR) && $(HUGO) -b $(WEBSITE_BASE_URL)
+
+.PHONY: web-serve
+web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
+	@cd $(WEBSITE_DIR) && $(HUGO) serve
