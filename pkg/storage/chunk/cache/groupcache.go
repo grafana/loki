@@ -41,16 +41,17 @@ var (
 )
 
 type GroupCache struct {
-	peerRing       *ring.Ring
-	cache          *groupcache.Group
-	pool           *groupcache.HTTPPool
-	cacheType      stats.CacheType
-	stopChan       chan struct{}
-	updateInterval time.Duration
-	logger         log.Logger
-	listenPort     int
-	wg             sync.WaitGroup
-	reg            prometheus.Registerer
+	peerRing             *ring.Ring
+	cache                *groupcache.Group
+	pool                 *groupcache.HTTPPool
+	cacheType            stats.CacheType
+	stopChan             chan struct{}
+	updateInterval       time.Duration
+	logger               log.Logger
+	listenPort           int
+	wg                   sync.WaitGroup
+	reg                  prometheus.Registerer
+	startWaitingForClose context.CancelFunc
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -76,18 +77,24 @@ func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.
 	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{})
 	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
+	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
-		peerRing:       rm.Ring,
-		pool:           pool,
-		logger:         logger,
-		stopChan:       make(chan struct{}),
-		updateInterval: 5 * time.Minute,
-		wg:             sync.WaitGroup{},
-		reg:            reg,
+		peerRing:             rm.Ring,
+		pool:                 pool,
+		logger:               logger,
+		stopChan:             make(chan struct{}),
+		updateInterval:       5 * time.Minute,
+		wg:                   sync.WaitGroup{},
+		startWaitingForClose: cancel,
+		reg:                  reg,
 	}
 
-	go cache.updatePeers()
 	go func() {
+		// Avoid starting the cache and peer discovery until
+		// a cache is being used
+		<-startCtx.Done()
+		go cache.updatePeers()
+
 		cache.wg.Wait()
 		close(cache.stopChan)
 	}()
@@ -121,7 +128,7 @@ func (c *GroupCache) update() {
 }
 
 func (c *GroupCache) peerUrls() ([]string, error) {
-	replicationSet, err := c.peerRing.GetReplicationSetForOperation(ring.Write)
+	replicationSet, err := c.peerRing.GetAllHealthy(ring.WriteNoExtend)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +147,7 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	})
 
 	c.wg.Add(1)
+	c.startWaitingForClose()
 
 	g := &group{
 		cache:     groupcache.NewGroup(name, 1<<30, missGetter),
@@ -184,6 +192,7 @@ func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 				continue
 			}
 
+			level.Error(c.logger).Log("msg", "unable to fetch from groupcache", "err", err)
 			return found, values, missed, err
 		}
 
@@ -198,12 +207,6 @@ func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error {
 	var err error
 	for i, key := range keys {
-		// naively remove key first before attempting to store (mainly for caches other than chunk cache)
-		// TODO: we can probably optimise this / restrict it to certain cache types
-		if err := c.cache.Remove(ctx, key); err != nil {
-			level.Debug(c.logger).Log("msg", "failed to remove key from groupcache", "key", key, "err", err)
-		}
-
 		// bool is for putting things in the hotcache. Should we?
 		if cacheErr := c.cache.Set(ctx, key, values[i], time.Time{}, false); cacheErr != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", cacheErr)
