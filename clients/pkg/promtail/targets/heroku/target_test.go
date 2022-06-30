@@ -262,6 +262,32 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overridden by received one")
 }
 
+func TestHerokuDrainTarget_ErrorOnNotPrometheusCompatibleJobName(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	serverConfig, _, err := getServerConfigWithAvailablePort()
+	require.NoError(t, err, "error generating server config or finding open port")
+	config := &scrapeconfig.HerokuDrainTargetConfig{
+		Server:               serverConfig,
+		Labels:               nil,
+		UseIncomingTimestamp: true,
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := NewTarget(metrics, logger, eh, "test-job", config, nil)
+	require.Error(t, err, "expected an error from creating a heroku target with an invalid job name")
+	// Cleanup target in the case test failed and target started correctly
+	if err == nil {
+		_ = pt.Stop()
+	}
+}
+
 func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
 	// Get a randomly available port by open and closing a TCP socket
 	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")

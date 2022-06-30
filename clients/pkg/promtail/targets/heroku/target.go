@@ -2,6 +2,7 @@ package heroku
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -76,8 +77,14 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 
 func (h *Target) run() error {
 	level.Info(h.logger).Log("msg", "starting heroku drain target", "job", h.jobName)
+
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
-	h.config.Server.MetricsNamespace = "promtail_heroku_drain_target_" + h.jobName
+
+	tentativeServerMetricNamespace := "promtail_heroku_drain_target_" + h.jobName
+	if !model.IsValidMetricName(model.LabelValue(tentativeServerMetricNamespace)) {
+		return fmt.Errorf("invalid prometheus-compatible job name: %s", h.jobName)
+	}
+	h.config.Server.MetricsNamespace = tentativeServerMetricNamespace
 
 	// We don't want the /debug and /metrics endpoints running, since this is not the main promtail HTTP server.
 	// We want this target to expose the least surface area possible, hence disabling WeaveWorks HTTP server metrics
