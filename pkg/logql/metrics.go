@@ -117,6 +117,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
 		"start_delta", time.Since(p.Start()).Round(time.Minute),
+		"end_delta", time.Since(p.End()).Round(time.Minute),
 		"step", p.Step(),
 		"duration", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.ExecTime),
 		"status", status,
