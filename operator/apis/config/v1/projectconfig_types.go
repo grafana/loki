@@ -36,7 +36,7 @@ type FeatureGates struct {
 	// - `tls.key`: The TLS key for server-side encryption.
 	// In addition each service requires a configmap named as the LokiStack CR with the
 	// suffix `-ca-bundle`, e.g. `lokistack-dev-ca-bundle` and the following data:
-	// - `service-ca.crt`: The CA signing the service certifate in `tls.crt`.
+	// - `service-ca.crt`: The CA signing the service certificate in `tls.crt`.
 	HTTPEncryption bool `json:"httpEncryption,omitempty"`
 	// GRPCEncryption enables TLS encryption for all GRPC LokiStack services.
 	// Each GRPC service requires a secret named as the service with the following data:
