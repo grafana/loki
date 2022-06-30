@@ -1,0 +1,17 @@
+[build]
+  publish = "website/public"
+  functions = "functions"
+
+[build.environment]
+  # HUGO_VERSION = "..." is set by bingo which allows reproducible local environment.
+  NODE_VERSION = "15.5.1"
+  NPM_VERSION = "7.3.0"
+
+[context.production]
+  command = "(env && make web) || (sleep 30; false)"
+
+[context.deploy-preview]
+  command = "(env && make web WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
+
+[context.branch-deploy]
+  command = "(env && make web WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"

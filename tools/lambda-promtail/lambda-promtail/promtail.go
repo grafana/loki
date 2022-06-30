@@ -45,8 +45,9 @@ func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
 	}
 
 	for _, entry := range entries {
-		err := b.add(ctx, entry)
-		return b, err
+		if err := b.add(ctx, entry); err != nil {
+			return nil, err
+		}
 	}
 
 	return b, nil

@@ -31,19 +31,24 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	for _, event := range data.LogEvents {
 		timestamp := time.UnixMilli(event.Timestamp)
 
-		b.add(ctx, entry{labels, logproto.Entry{
+		if err := b.add(ctx, entry{labels, logproto.Entry{
 			Line:      event.Message,
 			Timestamp: timestamp,
-		}})
+		}}); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent) error {
-	batch, _ := newBatch(ctx)
+	batch, err := newBatch(ctx)
+	if err != nil {
+		return err
+	}
 
-	err := parseCWEvent(ctx, batch, ev)
+	err = parseCWEvent(ctx, batch, ev)
 	if err != nil {
 		return err
 	}
@@ -52,5 +57,6 @@ func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }

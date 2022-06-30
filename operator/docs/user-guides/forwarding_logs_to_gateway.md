@@ -1,4 +1,18 @@
-# Forwarding Logs to LokiStack
+---
+title: "Forwarding Logs to LokiStack"
+description: "Forwarding Logs to Loki-Operator managed LokiStack resources"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+images: []
+menu:
+  docs:
+    parent: "user-guides"
+weight: 100
+toc: true
+---
+
 
 This document will describe how to send application, infrastructure, and audit logs to the LokiStack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
 
@@ -87,17 +101,17 @@ _Note: While this document will only give instructions for two methods of log fo
       outputs:
        - name: loki-app
          type: loki
-         url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
+         url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
          secret:
            name: lokistack-gateway-bearer-token
        - name: loki-infra
          type: loki
-         url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure
+         url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure
          secret:
            name: lokistack-gateway-bearer-token
        - name: loki-audit
          type: loki
-         url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit
+         url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit
          secret:
            name: lokistack-gateway-bearer-token
       pipelines:

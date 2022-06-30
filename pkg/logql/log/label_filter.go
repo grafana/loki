@@ -85,12 +85,12 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 	}
 }
 
-func (b *BinaryLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	line, lok := b.Left.Process(line, lbs)
+func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	line, lok := b.Left.Process(ts, line, lbs)
 	if !b.and && lok {
 		return line, true
 	}
-	line, rok := b.Right.Process(line, lbs)
+	line, rok := b.Right.Process(ts, line, lbs)
 	if !b.and {
 		return line, lok || rok
 	}
@@ -120,9 +120,11 @@ func (b *BinaryLabelFilter) String() string {
 
 type noopLabelFilter struct{}
 
-func (noopLabelFilter) String() string                                         { return "" }
-func (noopLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) { return line, true }
-func (noopLabelFilter) RequiredLabelNames() []string                           { return []string{} }
+func (noopLabelFilter) String() string { return "" }
+func (noopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return line, true
+}
+func (noopLabelFilter) RequiredLabelNames() []string { return []string{} }
 
 // ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
@@ -155,7 +157,7 @@ func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFi
 	}
 }
 
-func (d *BytesLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter it out.
 		return line, true
@@ -219,7 +221,7 @@ func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *Du
 	}
 }
 
-func (d *DurationLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter out.
 		return line, true
@@ -277,7 +279,7 @@ func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLa
 	}
 }
 
-func (n *NumericLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter out.
 		return line, true
@@ -333,7 +335,7 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 	}
 }
 
-func (s *StringLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if s.Name == logqlmodel.ErrorLabel {
 		return line, s.Matches(lbs.GetErr())
 	}
