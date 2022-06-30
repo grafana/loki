@@ -336,6 +336,9 @@ job_name: <string>
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
 
+# Configuration describing how to pull logs from Cloudflare.
+[heroku_drain: <heroku_drain>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -1189,7 +1192,45 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You an leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+
+### heroku_drain
+
+The `heroku_drain` configured Promtail to expose a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
+
+
+Each job configured with a `heroku_drain` will expose a Drain and will require a separate port.
+
+Note the `server` configuration is the same as [server](#server), since Promtail exposes and HTTP server for each new drain.
+
+Promtail exposes an endpoint on `/heroku/api/v1/drain` which expects requests from Heroku's log delivery.
+
+```yaml
+# The heroku drain server configuration options
+[server: <server_config>]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# Whether Promtail should pass on the timestamp from the incoming heroku drain message.
+# When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
+
+```
+
+#### Available Labels
+
+Heroku Log drains send logs in [Syslog-formatted messages](https://datatracker.ietf.org/doc/html/rfc5424#section-6) (with
+some [minor tweaks](https://devcenter.heroku.com/articles/log-drains#https-drain-caveats) which doesn't make then RFC-compatible).
+
+The Heroku Drain target exposes for each log entry the received syslog-fields en the following labels:
+
+- `__heroku_drain_host`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
+- `__heroku_drain_app`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
+- `__heroku_drain_proc`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
+- `__heroku_drain_log_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
 
 ### relabel_configs
 
