@@ -1,10 +1,23 @@
-# Hacking on Loki Operator using `make run`
+---
+title: "Hacking using make run"
+description: "Hacking using make run"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+images: []
+menu:
+  docs:
+    parent: "operator"
+weight: 100
+toc: true
+---
 
 This document demonstrates how to use Loki Operator for development and testing locally on Kind and OpenShift using the `make run` command.
 
 _Note:_ This is helpful when you don't want to deploy the Loki Operator image everytime you make slight changes to the operator code.
 
-## Hacking on Loki Operator using kind
+## Hacking using kind
 
 [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) is a tool for running local Kubernetes clusters using Docker container "nodes". kind was primarily designed for testing Kubernetes itself, but may be used for local development or CI.
 
@@ -99,7 +112,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   kubectl delete -f config/overlays/development/minio
   ```
 
-## Hacking on Loki Operator on OpenShift
+## Hacking on OpenShift
 
 ### Requirements
 

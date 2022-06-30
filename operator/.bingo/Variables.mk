@@ -47,6 +47,12 @@ $(KIND): $(BINGO_DIR)/kind.mod
 	@echo "(re)installing $(GOBIN)/kind-v0.11.0"
 	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=kind.mod -o=$(GOBIN)/kind-v0.11.0 "sigs.k8s.io/kind"
 
+HUGO := $(GOBIN)/hugo-v0.80.0
+$(HUGO): $(BINGO_DIR)/hugo.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/hugo-v0.80.0"
+	@cd $(BINGO_DIR) && CGO_ENABLED=1 $(GO) build -tags=extended -mod=mod -modfile=hugo.mod -o=$(GOBIN)/hugo-v0.80.0 "github.com/gohugoio/hugo"
+
 KUSTOMIZE := $(GOBIN)/kustomize-v4.2.0
 $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.

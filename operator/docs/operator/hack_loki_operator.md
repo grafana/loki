@@ -1,8 +1,21 @@
-# Hacking on Loki Operator
+---
+title: "Hacking using an image registry"
+description: "Hacking using an image registry"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+images: []
+menu:
+  docs:
+    parent: "operator"
+weight: 100
+toc: true
+---
 
 Loki Operator is the Kubernetes Operator for [Loki](https://grafana.com/docs/loki/latest/).
 
-## Hacking on Loki Operator using kind
+## Hacking using kind
 
 [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) is a tool for running local Kubernetes clusters using Docker container "nodes". kind was primarily designed for testing Kubernetes itself, but may be used for local development or CI.
 
@@ -74,7 +87,8 @@ make undeploy
 
 It will undeploy controller from the configured Kubernetes cluster in [~/.kube/config](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/#the-kubeconfig-environment-variable)
 
-## Hacking on Loki Operator on OpenShift
+
+## Hacking on OpenShift
 
 ### Requirements
 
@@ -218,7 +232,7 @@ kubectl apply -f ./hack/addons_dev.yaml
 
 [2] When deploying on a native K8s cluster, ensure that the namespaces of the `ServiceAccount` in the `ClusterRoleBinding` objects are changed accordingly.
 
-## Basic Troubleshooting on Hacking on Loki Operator
+## Basic Troubleshooting
 
 ### New changes are not detected by Loki Operator
 

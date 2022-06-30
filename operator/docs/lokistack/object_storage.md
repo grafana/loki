@@ -1,4 +1,37 @@
-# Storing Objects to Google Cloud Platform
+---
+title: "Object Storage"
+description: "Setup for storing logs to Object Storage"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+images: []
+menu:
+  docs:
+    parent: "lokistack"
+weight: 100
+toc: true
+---
+
+Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation) and  [Swift](https://docs.openstack.org/swift/latest/) for LokiStack object storage.
+
+## AWS S3
+
+Coming soon.
+
+### Requirements
+
+### Installation
+
+## Azure
+
+Coming soon.
+
+### Requirements
+
+### Installation
+
+## Google Cloud Storage
 
 Loki Operator supports [GCS](https://cloud.google.com/) for Loki storage.
 
@@ -33,3 +66,28 @@ Loki Operator supports [GCS](https://cloud.google.com/) for Loki storage.
         name: test
         type: gcs
   ```
+
+## Minio
+
+Coming soon.
+
+### Requirements
+
+### Installation
+
+## OpenShift Data Foundation
+
+Coming soon.
+
+### Requirements
+
+### Installation
+
+## Swift
+
+Coming soon.
+
+### Requirements
+
+### Installation
+
