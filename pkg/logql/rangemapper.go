@@ -183,9 +183,11 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 // sumOverFullRange returns an expression that sums up individual downstream queries (with preserving labels)
 // and dividing it by the full range in seconds to calculate a rate value.
 // The operation defines the range aggregation operation of the downstream queries.
-// Example:
+// Examples:
 // rate({app="foo"}[2m])
 // => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+// rate({app="foo"} | unwrap bar [2m])
+// => (sum without (sum_over_time({app="foo"}[1m]) ++ sum_over_time({app="foo"}[1m]) offset 1m) / 120)
 func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr, operation string, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
 	var downstreamExpr syntax.SampleExpr = &syntax.RangeAggregationExpr{
 		Left:      expr.Left,
@@ -373,7 +375,15 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
 			return expr
 		}
-		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeCount, rangeInterval, recorder)
+		// rate({app="foo"}[2m]) =>
+		// => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+		op := syntax.OpRangeTypeCount
+		if expr.Left.Unwrap != nil {
+			// rate({app="foo"} | unwrap bar [2m])
+			// => (sum without (sum_over_time({app="foo"}[1m]) ++ sum_over_time({app="foo"}[1m]) offset 1m) / 120)
+			op = syntax.OpRangeTypeSum
+		}
+		return m.sumOverFullRange(expr, vectorAggrPushdown, op, rangeInterval, recorder)
 	case syntax.OpRangeTypeBytesRate:
 		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
 			return expr
