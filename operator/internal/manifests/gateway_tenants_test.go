@@ -179,13 +179,13 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 
 func TestConfigureDeploymentForMode(t *testing.T) {
 	type tt struct {
-		desc      string
-		mode      lokiv1beta1.ModeType
-		stackName string
-		stackNs   string
-		featureGates     configv1.FeatureGates
-		dpl       *appsv1.Deployment
-		want      *appsv1.Deployment
+		desc         string
+		mode         lokiv1beta1.ModeType
+		stackName    string
+		stackNs      string
+		featureGates configv1.FeatureGates
+		dpl          *appsv1.Deployment
+		want         *appsv1.Deployment
 	}
 
 	tc := []tt{
@@ -787,11 +787,11 @@ func TestConfigureServiceForMode(t *testing.T) {
 
 func TestConfigureServiceMonitorForMode(t *testing.T) {
 	type tt struct {
-		desc  string
-		mode  lokiv1beta1.ModeType
+		desc         string
+		mode         lokiv1beta1.ModeType
 		featureGates configv1.FeatureGates
-		sm    *monitoringv1.ServiceMonitor
-		want  *monitoringv1.ServiceMonitor
+		sm           *monitoringv1.ServiceMonitor
+		want         *monitoringv1.ServiceMonitor
 	}
 
 	tc := []tt{

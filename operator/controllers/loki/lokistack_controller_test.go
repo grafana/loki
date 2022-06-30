@@ -74,10 +74,10 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 
 	// Require owned resources
 	type test struct {
-		obj   client.Object
-		index int
+		obj          client.Object
+		index        int
 		featureGates configv1.FeatureGates
-		pred  builder.OwnsOption
+		pred         builder.OwnsOption
 	}
 	table := []test{
 		{

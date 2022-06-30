@@ -35,8 +35,8 @@ import (
 var (
 	logger logr.Logger
 
-	scheme = runtime.NewScheme()
-	featureGates  = configv1.FeatureGates{
+	scheme       = runtime.NewScheme()
+	featureGates = configv1.FeatureGates{
 		ServiceMonitors:            false,
 		ServiceMonitorTLSEndpoints: false,
 		OpenShift: configv1.OpenShiftFeatureGates{
