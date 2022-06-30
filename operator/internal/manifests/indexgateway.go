@@ -19,7 +19,7 @@ import (
 // BuildIndexGateway returns a list of k8s objects for Loki IndexGateway
 func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	statefulSet := NewIndexGatewayStatefulSet(opts)
-	if opts.Flags.EnableTLSHTTPServices {
+	if opts.Gates.HTTPEncryption {
 		if err := configureIndexGatewayHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
@@ -29,7 +29,7 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Flags.EnableTLSGRPCServices {
+	if opts.Gates.GRPCEncryption {
 		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
@@ -176,7 +176,7 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -206,7 +206,7 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{

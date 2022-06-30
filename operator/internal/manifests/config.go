@@ -98,7 +98,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
-		EnableRemoteReporting: opt.Flags.EnableGrafanaLabsStats,
+		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
 			RulesStorageDirectory: rulesStorageDirectory,

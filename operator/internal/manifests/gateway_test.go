@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
@@ -116,8 +117,8 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		Stack: lokiv1beta1.LokiStackSpec{
 			Template: &lokiv1beta1.LokiTemplateSpec{
@@ -142,8 +143,8 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -172,8 +173,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -209,8 +210,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -244,8 +245,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{

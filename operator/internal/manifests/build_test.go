@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/stretchr/testify/require"
@@ -102,10 +103,12 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: false,
-					EnableServiceMonitors:           false,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            false,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: false,
+					},
 				},
 			},
 		},
@@ -118,10 +121,12 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: false,
-					EnableServiceMonitors:           true,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            true,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: false,
+					},
 				},
 			},
 		},
@@ -158,10 +163,12 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: false,
-					EnableServiceMonitors:           false,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            false,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: false,
+					},
 				},
 			},
 		},
@@ -173,10 +180,12 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: true,
-					EnableServiceMonitors:           false,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            false,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: true,
+					},
 				},
 			},
 		},
@@ -209,7 +218,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			}
 
 			for _, service := range svcs {
-				if !tst.BuildOptions.Flags.EnableCertificateSigningService {
+				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
 					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
 				} else {
 					require.NotNil(t, service.ObjectMeta.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
@@ -229,8 +238,8 @@ func TestBuildAll_WithFeatureFlags_EnableTLSHTTPServices(t *testing.T) {
 				Enabled: true,
 			},
 		},
-		Flags: FeatureFlags{
-			EnableTLSHTTPServices: true,
+		Gates: configv1.FeatureGates{
+			HTTPEncryption: true,
 		},
 	}
 
@@ -303,10 +312,10 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 				Enabled: true,
 			},
 		},
-		Flags: FeatureFlags{
-			EnableServiceMonitors:         true,
-			EnableTLSHTTPServices:         true,
-			EnableTLSServiceMonitorConfig: true,
+		Gates: configv1.FeatureGates{
+			ServiceMonitors:            true,
+			HTTPEncryption:             true,
+			ServiceMonitorTLSEndpoints: true,
 		},
 	}
 
@@ -414,8 +423,8 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableTLSGRPCServices: false,
+				Gates: configv1.FeatureGates{
+					GRPCEncryption: false,
 				},
 			},
 		},
@@ -456,8 +465,8 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableTLSGRPCServices: true,
+				Gates: configv1.FeatureGates{
+					GRPCEncryption: true,
 				},
 			},
 		},
@@ -524,7 +533,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 						},
 					}
 
-					if tst.BuildOptions.Flags.EnableTLSGRPCServices {
+					if tst.BuildOptions.Gates.GRPCEncryption {
 						require.Subset(t, spec.Containers[0].Args, args)
 						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
 						require.Contains(t, spec.Volumes, v)
@@ -686,10 +695,10 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableGateway:                 false,
-					EnableTLSHTTPServices:         true,
-					EnableTLSServiceMonitorConfig: false,
+				Gates: configv1.FeatureGates{
+					LokiStackGateway:           false,
+					HTTPEncryption:             true,
+					ServiceMonitorTLSEndpoints: false,
 				},
 			},
 		},
@@ -724,10 +733,10 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableGateway:                 true,
-					EnableTLSHTTPServices:         true,
-					EnableTLSServiceMonitorConfig: true,
+				Gates: configv1.FeatureGates{
+					LokiStackGateway:           true,
+					HTTPEncryption:             true,
+					ServiceMonitorTLSEndpoints: true,
 				},
 			},
 		},
@@ -740,7 +749,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 			require.NoError(t, err)
 			objects, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
-			if tst.BuildOptions.Flags.EnableGateway {
+			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
@@ -763,9 +772,9 @@ func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableServiceMonitors:  false,
-					EnablePrometheusAlerts: false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors: false,
+					LokiStackAlerts: false,
 				},
 			},
 		},
@@ -777,9 +786,9 @@ func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableServiceMonitors:  true,
-					EnablePrometheusAlerts: true,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors: true,
+					LokiStackAlerts: true,
 				},
 			},
 		},
@@ -792,7 +801,7 @@ func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
 			require.NoError(t, err)
 			objects, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
-			if tst.BuildOptions.Flags.EnableGateway {
+			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
