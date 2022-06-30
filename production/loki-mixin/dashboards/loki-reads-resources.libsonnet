@@ -2,11 +2,11 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local index_gateway_pod_matcher = if $._config.ssd then 'container="loki", pod=~"(enterprise-logs|loki)-read.*"' else 'container="index-gateway"',
-  local index_gateway_job_matcher = if $._config.ssd then '(enterprise-logs|loki)-read' else 'index-gateway',
+  local index_gateway_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="index-gateway"',
+  local index_gateway_job_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway',
 
-  local ingester_pod_matcher = if $._config.ssd then 'container="loki", pod=~"(enterprise-logs|loki)-write.*"' else 'container="ingester"',
-  local ingester_job_matcher = if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester',
+  local ingester_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
+  local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester',
 
   grafanaDashboards+::
     {
@@ -29,7 +29,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRowIf(
-          !$._config.ssd,
+          !$._config.ssd.enabled,
           $.row('Query Frontend')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'query-frontend'),
@@ -42,7 +42,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRowIf(
-          !$._config.ssd,
+          !$._config.ssd.enabled,
           $.row('Query Scheduler')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'query-scheduler'),
@@ -55,7 +55,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRowIf(
-          !$._config.ssd,
+          !$._config.ssd.enabled,
           grafana.row.new('Querier')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'querier'),
@@ -89,7 +89,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          grafana.row.new(if $._config.ssd then 'Read path' else 'Index Gateway')
+          grafana.row.new(if $._config.ssd.enabled then 'Read path' else 'Index Gateway')
           .addPanel(
             $.CPUUsagePanel('CPU', index_gateway_pod_matcher),
           )
@@ -141,7 +141,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRowIf(
-          !$._config.ssd,
+          !$._config.ssd.enabled,
           grafana.row.new('Ruler')
           .addPanel(
             $.panel('Rules') +

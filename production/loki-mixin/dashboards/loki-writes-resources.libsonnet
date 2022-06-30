@@ -2,8 +2,8 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local ingester_pod_matcher = if $._config.ssd then 'container="loki", pod=~"(enterprise-logs|loki)-write.*"' else 'container="ingester"',
-  local ingester_job_matcher = if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester',
+  local ingester_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
+  local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester',
 
   grafanaDashboards+::
     {
@@ -26,7 +26,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRowIf(
-          !$._config.ssd,
+          !$._config.ssd.enabled,
           $.row('Distributor')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'distributor'),
@@ -39,7 +39,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          grafana.row.new(if $._config.ssd then 'Write path' else 'Ingester')
+          grafana.row.new(if $._config.ssd.enabled then 'Write path' else 'Ingester')
           .addPanel(
             $.panel('In-memory streams') +
             $.queryPanel(

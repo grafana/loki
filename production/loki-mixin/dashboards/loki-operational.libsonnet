@@ -15,22 +15,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                hiddenRows:: [
                                  'Cassandra',
-                               ] + if !$._config.ssd then [] else [
+                               ] + if !$._config.ssd.enabled then [] else [
                                  'Ingester',
                                ],
 
                                jobMatchers:: {
                                  cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                                 distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'distributor'))],
-                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester'))],
-                                 querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-read' else 'querier'))],
+                                 distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                                 querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
                                },
 
                                podMatchers:: {
                                  cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
-                                 distributor: [utils.selector.re('pod', '%s' % (if $._config.ssd then '(enterprise-logs|loki)-write.*' else 'distributor.*'))],
-                                 ingester: [utils.selector.re('pod', '%s' % (if $._config.ssd then '(enterprise-logs|loki)-write.*' else 'ingester.*'))],
-                                 querier: [utils.selector.re('pod', '%s' % (if $._config.ssd then '(enterprise-logs|loki)-read.*' else 'querier.*'))],
+                                 distributor: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'distributor.*'))],
+                                 ingester: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                                 querier: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else 'querier.*'))],
                                },
                              }
                              + lokiOperational + {
@@ -180,7 +180,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      }
                                      for sp in p.panels
                                    ] else [],
-                                   title: if !($._config.ssd && p.type == 'row') then p.title else
+                                   title: if !($._config.ssd.enabled && p.type == 'row') then p.title else
                                      if p.title == 'Distributor' then 'Write Path'
                                      else if p.title == 'Querier' then 'Read Path'
                                      else p.title,

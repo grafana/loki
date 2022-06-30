@@ -18,8 +18,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                           matchers:: {
                             cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                            distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'distributor'))],
-                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester'))],
+                            distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                           },
 
                           local selector(matcherId) =
@@ -53,7 +53,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRow(
-                          $.row(if $._config.ssd then 'Write Path' else 'Distributor')
+                          $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor')
                           .addPanel(
                             $.panel('QPS') +
                             $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
@@ -68,7 +68,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRowIf(
-                          !$._config.ssd,
+                          !$._config.ssd.enabled,
                           $.row('Ingester')
                           .addPanel(
                             $.panel('QPS') +

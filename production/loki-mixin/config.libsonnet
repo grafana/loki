@@ -12,10 +12,16 @@
     // The label used to differentiate between different clusters.
     per_cluster_label: 'cluster',
 
-    // Support Loki SSD mode on dashboards.
-    ssd: false,
-
     // Enable dashboard and panels for Grafana Labs internal components.
     internal_components: false,
+
+    // SSD related configuration for dashboards.
+    ssd: {
+      // Support Loki SSD mode on dashboards.
+      enabled: false,
+
+      // The prefix used to match the write and read pods on SSD mode.
+      pod_prefix_matcher: '(loki|enterprise-logs)',
+    },
   },
 }

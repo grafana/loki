@@ -2,5 +2,10 @@
 (import 'alerts.libsonnet') +
 (import 'recording_rules.libsonnet') + {
   grafanaDashboardFolder: 'Loki SSD',
-  ssd: true,
+
+  _config+:: {
+    ssd+: {
+      enabled: true,
+    },
+  },
 }
