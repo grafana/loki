@@ -67,7 +67,7 @@ type FeatureGates struct {
 	// RecordingRuleWebhook enables the RecordingRule CR validation webhook.
 	RecordingRuleWebhook bool `json:"recordingRuleWebhook,omitempty"`
 
-	// OpenShift enables a set of features gates supported only on OpenShift.
+	// OpenShift contains a set of feature gates supported only on OpenShift.
 	OpenShift OpenShiftFeatureGates `json:"openshift,omitempty"`
 }
 
