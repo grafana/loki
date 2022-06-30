@@ -100,8 +100,10 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
+				SecurityContext:          containerSecurityContext(),
 			},
 		},
+		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {

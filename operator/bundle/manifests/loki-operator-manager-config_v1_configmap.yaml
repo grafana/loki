@@ -27,6 +27,7 @@ data:
       enableLokiStackWebhook: true
       enableAlertingRuleWebhook: true
       enableRecordingRuleWebhook: true
+      enableRuntimeSeccompProfile: false
 kind: ConfigMap
 metadata:
   labels:

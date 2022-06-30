@@ -1,5 +1,6 @@
 ## Main
 
+- [6514](https://github.com/grafana/loki/pull/6514) **Red-GV** Update all pods and containers to be compliant with restricted Pod Security Standard
 - [6531](https://github.com/grafana/loki/pull/6531) **periklis**: Use default interface_names for lokistack clusters (IPv6 Support)
 - [6411](https://github.com/grafana/loki/pull/6478) **aminesnow**: Support TLS enabled lokistack-gateway for vanilla kubernetes deployments
 - [6504](https://github.com/grafana/loki/pull/6504) **periklis**: Disable usage report on OpenShift
