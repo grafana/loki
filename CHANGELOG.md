@@ -1,86 +1,4 @@
 # 2.6.0 (date TBD)
-## Main
-
-* [6372](https://github.com/grafana/loki/pull/6372) **splitice**: Add support for numbers in JSON fields.
-* [6105](https://github.com/grafana/loki/pull/6105) **rutgerke** Export metrics for the Promtail journal target.
-* [6099](https://github.com/grafana/loki/pull/6099) **cstyan**: Drop lines with malformed JSON in Promtail JSON pipeline stage.
-* [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization.
-* [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail.
-* [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Extend the `metrics.go` recording of statistics about metadata queries to include labels and series queries.
-* [6372](https://github.com/grafana/loki/pull/6372) **splitice**: Add support for numbers in JSON fields
-* [6105](https://github.com/grafana/loki/pull/6105) **rutgerke** Export metrics for the promtail journal target
-* [6179](https://github.com/grafana/loki/pull/6179) **chaudum**: Add new HTTP endpoint to delete ingester ring token file and shutdown process gracefully
-* [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization
-* [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail
-* [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Record statistics about metadata queries such as labels and series queries in `metrics.go` as well
-* [5790](https://github.com/grafana/loki/pull/5790) **chaudum**: Add UDP support for Promtail's syslog target.
-* [5984](https://github.com/grafana/loki/pull/5984) **dannykopping** and **salvacorts**: Improve query performance by preventing unnecessary querying of ingesters when the query data is old enough to be in object storage.
-* [5943](https://github.com/grafana/loki/pull/5943) **tpaschalis**: Add configuration support for excluding configuration files when instantiating Promtail.
-* [5997](https://github.com/grafana/loki/pull/5997) **simonswine**: Querier: parallize label queries to both stores.
-* [5984](https://github.com/grafana/loki/pull/5984) **dannykopping** and **salvacorts**: Querier: prevent unnecessary calls to ingesters.
-* [5943](https://github.com/grafana/loki/pull/5943) **tpaschalis**: Add support for exclusion patterns in Promtail's static_config
-* [5879](https://github.com/grafana/loki/pull/5879) **MichelHollands**: Remove lines matching delete request expression when using "filter-and-delete" deletion mode.
-* [5899](https://github.com/grafana/loki/pull/5899) **simonswine**: Update go image to 1.17.9.
-* [5888](https://github.com/grafana/loki/pull/5888) **Papawy** Fix common configuration block net interface name when overwritten by ring common configuration.
-* [5848](https://github.com/grafana/loki/pull/5848) **arcosx**: Add Baidu AI Cloud as a storage backend choice.
-* [5799](https://github.com/grafana/loki/pull/5799) **cyriltovena** Fix deduping issues when multiple entries with the same timestamp exist.
-* [5780](https://github.com/grafana/loki/pull/5780) **simonswine**: Update alpine image to 3.15.4.
-* [5715](https://github.com/grafana/loki/pull/5715) **chaudum** Add option to push RFC5424 syslog messages from Promtail in syslog scrape target.
-* [5696](https://github.com/grafana/loki/pull/5696) **paullryan** Don't block scraping of new logs from Cloudflare within Promtail if an error is received from Cloudflare about logs from too early of a time period.
-* [5662](https://github.com/grafana/loki/pull/5662) **ssncferreira** **chaudum** Improve performance of instant queries by splitting range into multiple subqueries that are executed in parallel.
-* [5685](https://github.com/grafana/loki/pull/5625) **chaudum** Fix bug in push request parser that allowed users to send arbitrary non-string data as "log line".
-* [5707](https://github.com/grafana/loki/pull/5707) **franzwong** Rename Promtail configuration parameter from `limit_config` to `limits_config`.
-* [5626](https://github.com/grafana/loki/pull/5626) **jeschkies** Apply query limits to multi-tenant queries by choosing the most restrictive limit from the set of tenant limits.
-* [5622](https://github.com/grafana/loki/pull/5622) **chaudum**: Fixed a bug in the query splitter that caused the `interval` query parameter to be ignored and therefore returning more logs than expected.
-* [5521](https://github.com/grafana/loki/pull/5521) **cstyan**: Moved stream lag configuration to the top-level clients configuration structure, and refactored stream lag metric. This resolves a bug with duplicate metric collection when a single Promtail binary is running multiple Promtail clients.
-* [5568](https://github.com/grafana/loki/pull/5568) **afayngelerindbx**: Fix Loki Canary panics that were due to concurrent execution of `confirmMissing`.
-* [5552](https://github.com/grafana/loki/pull/5552) **jiachengxu**: Add `DiskSpaceUtilizationPanel` to the Loki mixin.
-* [5541](https://github.com/grafana/loki/pull/5541) **bboreham**: Return an error for queries that define a nested regular expression that causes a recursion depth of 1000 or greater when evaluated, which would hit a Go implementation limit.
-* [5536](https://github.com/grafana/loki/pull/5536) **jiachengxu**: Make `labelsSelector` in the Loki chunks dashboards configurable in the Loki mixin.
-* [5535](https://github.com/grafana/loki/pull/5535) **jiachengxu**: Use a labels selector for the Loki chunks dashboard in the Loki mixin.
-* [5507](https://github.com/grafana/loki/pull/5507) **MichelHollands**: Eliminate a panic caused by an extra parameter in the call for the `inflightRequests` metric.
-* [5481](https://github.com/grafana/loki/pull/5481) **MichelHollands**: Add a DeletionMode configuration parameter to specify the delete mode and validate match parameters.
-* [5356](https://github.com/grafana/loki/pull/5356) **jbschami**: Enhance lambda-promtail to support adding extra labels from an environment variable value.
-* [5409](https://github.com/grafana/loki/pull/5409) **ldb**: Enable best effort parsing for syslog messages.
-* [5392](https://github.com/grafana/loki/pull/5392) **MichelHollands**: Etcd credentials are parsed as secrets instead of plain text.
-* [5361](https://github.com/grafana/loki/pull/5361) **ctovena**: Send a usage report to grafana.com.
-* [5406](https://github.com/grafana/loki/pull/5406) **ctovena**: Revise the configuration parameters that configure the usage report to grafana.com.
-* [5289](https://github.com/grafana/loki/pull/5289) **ctovena**: Fix deduplication bug in queries when mutating labels.
-* [5302](https://github.com/grafana/loki/pull/5302) **MasslessParticle** Update the Azure blobstore client to use a new SDK.
-* [5243](https://github.com/grafana/loki/pull/5290) **ssncferreira**: Update Promtail to support duration string formats.
-* [5266](https://github.com/grafana/loki/pull/5266) **jeschkies**: Write Promtail position file atomically on Unix.
-* [5280](https://github.com/grafana/loki/pull/5280) **jeschkies**: Fix Docker target connection loss.
-* [5243](https://github.com/grafana/loki/pull/5243) **owen-d**: Move `querier.split-queries-by-interval` to limits code only.
-* [5139](https://github.com/grafana/loki/pull/5139) **DylanGuedes**: Drop support for legacy configuration rules format.
-* [5262](https://github.com/grafana/loki/pull/5262) **MichelHollands**: Remove the labelFilter field.
-* [4911](https://github.com/grafana/loki/pull/4911) **jeschkies**: Support Docker service discovery in Promtail.
-* [5107](https://github.com/grafana/loki/pull/5107) **chaudum** Fix bug in the fluentd plugin that caused log lines containing non UTF-8 characters to be dropped.
-* [5148](https://github.com/grafana/loki/pull/5148) **chaudum** Added a periodic task to prune old expired items from the FIFO cache, in order to free up memory.
-* [5187](https://github.com/grafana/loki/pull/5187) **aknuds1** Rename metrics `cortex_experimental_features_in_use_total` to `loki_experimental_features_in_use_total` and metric `log_messages_total` to `loki_log_messages_total`.
-* [5170](https://github.com/grafana/loki/pull/5170) **chaudum** Eliminate a deadlock in Promtail caused when targets got removed from a target group by the discovery manager.
-* [5163](https://github.com/grafana/loki/pull/5163) **chaudum** Fixed a regression in the fluentd plugin introduced with PR 5107 that caused `NoMethodError` when parsing non-string values of log lines.
-* [5144](https://github.com/grafana/loki/pull/5144) **dannykopping** Ruler: Fix remote write basic authorization credentials.
-* [5091](https://github.com/grafana/loki/pull/5091) **owen-d**: Changes the `ingester.concurrent-flushes` default to 32.
-* [5031](https://github.com/grafana/loki/pull/5031) **liguozhong**: Added global read rate limiting to Promtail.
-* [4879](https://github.com/grafana/loki/pull/4879) **cyriltovena**: LogQL: Add the `__line__` function to the `| line_format` template.
-* [5081](https://github.com/grafana/loki/pull/5081) **SasSwart**: Add the option to configure memory ballast for Loki.
-* [5085](https://github.com/grafana/loki/pull/5085) **aknuds1**: Upgrade Cortex to [e0807c4eb487](https://github.com/cortexproject/cortex/compare/4e9fc3a2b5ab..e0807c4eb487) and Prometheus to [692a54649ed7](https://github.com/prometheus/prometheus/compare/2a3d62ac8456..692a54649ed7)
-* [5067](https://github.com/grafana/loki/pull/5057) **cstyan**: Add a metric to the Azure Blob Storage client to track total egress bytes.
-* [5065](https://github.com/grafana/loki/pull/5065) **AndreZiviani**: lambda-promtail: Add ability to ingest logs from S3.
-* [4950](https://github.com/grafana/loki/pull/4950) **DylanGuedes**: Implement a common instance addr/net interface.
-* [4949](https://github.com/grafana/loki/pull/4949) **ssncferreira**: Add the query `queueTime` metric to statistics and metrics.go.
-* [4938](https://github.com/grafana/loki/pull/4938) **DylanGuedes**: Implement a ring status page for the distributor.
-* [5023](https://github.com/grafana/loki/pull/5023) **ssncferreira**: Move `querier.split-queries-by-interval` to a per-tenant configuration.
-* [4993](https://github.com/grafana/loki/pull/4926) **thejosephstevens**: Fix the parent of the WAL and wal_cleaner in the Loki ruler configuration docs.
-* [4933](https://github.com/grafana/loki/pull/4933) **jeschkies**: Support matchers in the series label values query.
-* [4926](https://github.com/grafana/loki/pull/4926) **thejosephstevens**: Fix a comment in Loki module loading for accuracy.
-* [4920](https://github.com/grafana/loki/pull/4920) **chaudum**: Add the `-list-targets` command line flag to list all available run targets.
-* [4860](https://github.com/grafana/loki/pull/4860) **cyriltovena**: Add rate limiting and metrics to hedging.
-* [4865](https://github.com/grafana/loki/pull/4865) **taisho6339**: Remove a duplicate `registry.MustRegister` call in Promtail Kafka.
-* [4845](https://github.com/grafana/loki/pull/4845) **chaudum** Return error responses as JSON throughout the code base.
-* [6163](https://github.com/grafana/loki/pull/6163) **jburnham**: LogQL: Add a `default` sprig template function in LogQL label/line formatter.
-
-## Unreleased
 
 ### All Changes
 Here is the list with the changes that were produced since the previous release.
@@ -95,8 +13,6 @@ Here is the list with the changes that were produced since the previous release.
 * [5984](https://github.com/grafana/loki/pull/5984) **dannykopping** and **salvacorts**: Querier: prevent unnecessary calls to ingesters.
 * [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Record statistics about metadata queries such as labels and series queries in `metrics.go` as well
 * [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization
-* [6361](https://github.com/grafana/loki/pull/6361) **chaudum**: Add new unwrapped range aggregation `rate_counter()` to LogQL
-* [6317](https://github.com/grafana/loki/pull/6317/files) **dannykoping**: General: add cache usage statistics
 
 ##### Fixes
 * [6152](https://github.com/grafana/loki/pull/6152) **slim-bean**: Fixes unbounded ingester memory growth when live tailing under specific circumstances.
@@ -106,6 +22,7 @@ Here is the list with the changes that were produced since the previous release.
 
 ##### Changes
 * [6361](https://github.com/grafana/loki/pull/6361) **chaudum**: Sum values in unwrapped rate aggregation instead of treating them as counter.
+* [6412](https://github.com/grafana/loki/pull/6412) **chaudum**: Add new unwrapped range aggregation `rate_counter()` to LogQL
 * [6042](https://github.com/grafana/loki/pull/6042) **slim-bean**: Add a new configuration to allow fudging of ingested timestamps to guarantee sort order of duplicate timestamps at query time.
 * [6120](https://github.com/grafana/loki/pull/6120) **KMiller-Grafana**: Rename configuration parameter fudge_duplicate_timestamp to be increment_duplicate_timestamp.
 * [5777](https://github.com/grafana/loki/pull/5777) **tatchiuleung**: storage: make Azure blobID chunk delimiter configurable
