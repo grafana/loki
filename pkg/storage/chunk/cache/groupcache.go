@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -69,8 +70,11 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 }
 
 func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
-	pool := groupcache.NewHTTPPoolOpts(rm.Addr, &groupcache.HTTPPoolOptions{})
-	server.HTTP.Path("/_groupcache").Handler(pool)
+	addr := fmt.Sprintf("http://%s", rm.Addr)
+	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
+
+	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{})
+	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	cache := &GroupCache{
 		peerRing:       rm.Ring,
@@ -124,7 +128,7 @@ func (c *GroupCache) peerUrls() ([]string, error) {
 
 	var addrs []string
 	for _, i := range replicationSet.Instances {
-		addrs = append(addrs, i.Addr)
+		addrs = append(addrs, fmt.Sprintf("http://%s", i.Addr))
 	}
 	return addrs, nil
 }
