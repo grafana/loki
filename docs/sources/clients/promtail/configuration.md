@@ -1192,7 +1192,7 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You an leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### heroku_drain
 
