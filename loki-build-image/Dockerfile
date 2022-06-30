@@ -66,7 +66,8 @@ RUN GO111MODULE=on go get github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 FROM golang:1.17.9 as jsonnet
 RUN GO111MODULE=on go get \
     github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0 \
-    github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
+    github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066 \
+    github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
 
 FROM golang:1.17.9-buster
 RUN apt-get update && \
@@ -89,6 +90,7 @@ COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 COPY --from=nfpm /go/bin/nfpm /usr/bin/nfpm
 COPY --from=jsonnet /go/bin/jb /usr/bin/jb
 COPY --from=jsonnet /go/bin/mixtool /usr/bin/mixtool
+COPY --from=jsonnet /go/bin/jsonnet /usr/bin/jsonnet
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.
