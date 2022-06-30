@@ -24,8 +24,7 @@ type FeatureGates struct {
 	// ServiceMonitors enables creating a Prometheus-Operator managed ServiceMonitor
 	// resource per LokiStack component.
 	ServiceMonitors bool `json:"serviceMonitors,omitempty"`
-	// ServiceMonitorTLSEndpoints enables the SafeTLSConfig block per ServiceMonitor
-	// endpoint.
+	// ServiceMonitorTLSEndpoints enables TLS for the ServiceMonitor endpoints.
 	ServiceMonitorTLSEndpoints bool `json:"serviceMonitorTlsEndpoints,omitempty"`
 	// LokiStackAlerts enables creating Prometheus-Operator managed PrometheusRules
 	// for common Loki alerts.
