@@ -631,7 +631,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           }),
       run('test packaging',
           commands=[
-            'go install github.com/google/go-jsonnet/cmd/jsonnet@latest',  // Test, install in build image instead
             'make BUILD_IN_CONTAINER=false packages',
           ],
           env={
