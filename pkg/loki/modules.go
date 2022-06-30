@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -241,9 +243,10 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Cache = gc
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Cache = gc
+	// TODO, there _has_ to be a better way to do this
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache)
+	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Cache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache)
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Cache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache)
 
 	return t.groupcacheRingManager, nil
 }

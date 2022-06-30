@@ -61,7 +61,7 @@ type RingCfg struct {
 type GroupCacheConfig struct {
 	Ring RingCfg `yaml:"ring,omitempty"`
 
-	Cache *GroupCache `yaml:"-"`
+	Cache Cache `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
