@@ -2,11 +2,11 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local index_gateway_pod_matcher = if !$._config.ssd then 'container="index-gateway"' else 'container="loki", pod=~"(enterprise-logs|loki)-read.*"',
-  local index_gateway_job_matcher = if !$._config.ssd then 'index-gateway' else '(enterprise-logs|loki)-read',
+  local index_gateway_pod_matcher = if $._config.ssd then 'container="loki", pod=~"(enterprise-logs|loki)-read.*"' else 'container="index-gateway"',
+  local index_gateway_job_matcher = if $._config.ssd then '(enterprise-logs|loki)-read' else 'index-gateway',
 
-  local ingester_pod_matcher = if !$._config.ssd then 'container="ingester"' else 'container="loki", pod=~"(enterprise-logs|loki)-write.*"',
-  local ingester_job_matcher = if !$._config.ssd then 'ingester' else '(enterprise-logs|loki)-write',
+  local ingester_pod_matcher = if $._config.ssd then 'container="loki", pod=~"(enterprise-logs|loki)-write.*"' else 'container="ingester"',
+  local ingester_job_matcher = if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester',
 
   grafanaDashboards+::
     {
@@ -89,7 +89,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          grafana.row.new(if !$._config.ssd then 'Index Gateway' else 'Read path')
+          grafana.row.new(if $._config.ssd then 'Read path' else 'Index Gateway')
           .addPanel(
             $.CPUUsagePanel('CPU', index_gateway_pod_matcher),
           )

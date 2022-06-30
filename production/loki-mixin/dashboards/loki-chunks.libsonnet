@@ -6,7 +6,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
     'loki-chunks.json': {
                           local cfg = self,
-                          labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (if !$._config.ssd then 'ingester' else '(enterprise-logs|loki)-write'),
+                          labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester'),
                         } +
                         $.dashboard('Loki / Chunks', uid='chunks')
                         .addCluster()

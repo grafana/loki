@@ -21,16 +21,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                jobMatchers:: {
                                  cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                                 distributor: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'distributor' else '(enterprise-logs|loki)-write'))],
-                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'ingester' else '(enterprise-logs|loki)-write'))],
-                                 querier: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'querier' else '(enterprise-logs|loki)-read'))],
+                                 distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'distributor'))],
+                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester'))],
+                                 querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-read' else 'querier'))],
                                },
 
                                podMatchers:: {
                                  cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
-                                 distributor: [utils.selector.re('pod', '%s' % (if !$._config.ssd then 'distributor.*' else '(enterprise-logs|loki)-write.*'))],
-                                 ingester: [utils.selector.re('pod', '%s' % (if !$._config.ssd then 'ingester.*' else '(enterprise-logs|loki)-write.*'))],
-                                 querier: [utils.selector.re('pod', '%s' % (if !$._config.ssd then 'querier.*' else '(enterprise-logs|loki)-read.*'))],
+                                 distributor: [utils.selector.re('pod', '%s' % (if $._config.ssd then '(enterprise-logs|loki)-write.*' else 'distributor.*'))],
+                                 ingester: [utils.selector.re('pod', '%s' % (if $._config.ssd then '(enterprise-logs|loki)-write.*' else 'ingester.*'))],
+                                 querier: [utils.selector.re('pod', '%s' % (if $._config.ssd then '(enterprise-logs|loki)-read.*' else 'querier.*'))],
                                },
                              }
                              + lokiOperational + {

@@ -21,10 +21,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                          matchers:: {
                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                           queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'query-frontend' else '(enterprise-logs|loki)-read'))],
-                           querier: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'querier' else '(enterprise-logs|loki)-write'))],
-                           ingester: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then 'ingester' else '(enterprise-logs|loki)-write'))],
-                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if !$._config.ssd then '(querier|index-gateway)' else '(enterprise-logs|loki)-read'))],
+                           queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-read' else 'query-frontend'))],
+                           querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'querier'))],
+                           ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-write' else 'ingester'))],
+                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd then '(enterprise-logs|loki)-read' else '(querier|index-gateway)'))],
                          },
 
                          local selector(matcherId) =
@@ -61,7 +61,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                        )
                        .addRow(
-                         $.row(if !$._config.ssd then 'Frontend (query-frontend)' else 'Read Path')
+                         $.row(if $._config.ssd then 'Read Path' else 'Frontend (query-frontend)')
                          .addPanel(
                            $.panel('QPS') +
                            $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])

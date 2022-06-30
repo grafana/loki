@@ -2,7 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = if !$._config.ssd then 'compactor' else '(enterprise-logs|loki)-read',
+  local compactor_matcher = if $._config.ssd then '(enterprise-logs|loki)-read' else 'compactor',
   grafanaDashboards+::
     {
       'loki-deletion.json':

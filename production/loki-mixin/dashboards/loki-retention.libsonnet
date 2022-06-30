@@ -1,8 +1,8 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_pod_matcher = if !$._config.ssd then 'container="compactor"' else 'container="loki", pod=~"(enterprise-logs|loki)-read.*"',
-  local compactor_job_matcher = if !$._config.ssd then 'compactor' else '(enterprise-logs|loki)-read',
+  local compactor_pod_matcher = if $._config.ssd then 'container="loki", pod=~"(enterprise-logs|loki)-read.*"' else 'container="compactor"',
+  local compactor_job_matcher = if $._config.ssd then '(enterprise-logs|loki)-read' else 'compactor',
   grafanaDashboards+::
     {
       'loki-retention.json':
