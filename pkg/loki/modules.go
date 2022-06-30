@@ -742,15 +742,9 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+	if (t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read)) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.")
 		return
-	}
-
-	// Loki doesn't support the configdb backend, but without excessive mangling/refactoring
-	// it's hard to enforce this at validation time. Therefore detect this and fail early.
-	if t.Cfg.Ruler.StoreConfig.Type == "configdb" {
-		return nil, errors.New("configdb is not supported as a Loki rules backend type")
 	}
 
 	// Make sure storage directory exists if using filesystem store
