@@ -271,10 +271,10 @@ docs/operator/api.md: $(TYPES_V1BETA1_TARGET)
 	po-docgen api $(TYPES_V1BETA1_TARGET) > $@
 	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
 
-FEATURE_FLAGS_TARGET := $(shell find apis/config -type f -iname "*_types.go")
-docs/operator/feature-flags.md: $(FEATURE_FLAGS_TARGET)
-	po-docgen api $(FEATURE_FLAGS_TARGET) > $@
-	sed -i 's/title: "API"/title: "Feature Flags"/' $@
+FEATURE_GATES_TARGET := $(shell find apis/config -type f -iname "*_types.go")
+docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET)
+	po-docgen api $(FEATURE_GATES_TARGET) > $@
+	sed -i 's/title: "API"/title: "Feature Gates"/' $@
 	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
 
 .PHONY: web-pre
