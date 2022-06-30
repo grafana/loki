@@ -215,7 +215,6 @@ func TestTable_Compaction(t *testing.T) {
 							require.Equal(t, tc.commonIndexSetState.removeSourceObjects, is.removeSourceObjects)
 							numCommonIndexSets++
 						}
-						require.False(t, is.compactedDBRecreated)
 					}
 
 					// verify the state in the storage after compaction.
@@ -233,6 +232,8 @@ func TestTable_Compaction(t *testing.T) {
 						require.True(t, strings.HasSuffix(filename, ".gz"), fmt.Sprint(filename))
 					})
 
+					verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, tablePathInStorage)
+
 					// running compaction again should not do anything.
 					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
 						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
@@ -243,7 +244,6 @@ func TestTable_Compaction(t *testing.T) {
 					for _, is := range table.indexSets {
 						require.False(t, is.uploadCompactedDB)
 						require.False(t, is.removeSourceObjects)
-						require.False(t, is.compactedDBRecreated)
 					}
 				})
 			}

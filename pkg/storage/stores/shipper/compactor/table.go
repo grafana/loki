@@ -30,6 +30,12 @@ type tableExpirationChecker interface {
 }
 
 type IndexCompactor interface {
+	// NewTableCompactor returns a new TableCompactor for compacting a table.
+	// commonIndexSet refers to common index files or in other words multi-tenant index.
+	// existingUserIndexSet refers to existing user specific index files in the storage.
+	// makeEmptyUserIndexSetFunc can be used for creating an empty indexSet for a user
+	// who does not have an index for it in existingUserIndexSet.
+	// periodConfig holds the PeriodConfig for the table.
 	NewTableCompactor(
 		ctx context.Context,
 		commonIndexSet IndexSet,
@@ -38,6 +44,7 @@ type IndexCompactor interface {
 		periodConfig config.PeriodConfig,
 	) TableCompactor
 
+	// OpenCompactedIndexFile opens a compressed index file at given path.
 	OpenCompactedIndexFile(
 		ctx context.Context,
 		path,
@@ -53,6 +60,8 @@ type IndexCompactor interface {
 }
 
 type TableCompactor interface {
+	// CompactTable compacts the table.
+	// After compaction is done successfully, it should set the new/updated CompactedIndex for relevant IndexSets.
 	CompactTable() (err error)
 }
 

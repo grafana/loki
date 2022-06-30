@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -75,24 +77,56 @@ func (c PerUserIndexesConfig) String() string {
 
 func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUserDBsConfig PerUserIndexesConfig) {
 	require.NoError(t, util.EnsureDirectory(path))
+	commonIndexes, perUserIndexes := buildFilesContent(commonDBsConfig, perUserDBsConfig)
+
+	idx := 0
+	for filename, content := range commonIndexes {
+		filePath := filepath.Join(path, strings.TrimSuffix(filename, ".gz"))
+		require.NoError(t, ioutil.WriteFile(filePath, []byte(content), 0777))
+		if strings.HasSuffix(filename, ".gz") {
+			compressFile(t, filePath)
+		}
+		idx++
+	}
+
+	for userID, files := range perUserIndexes {
+		require.NoError(t, util.EnsureDirectory(filepath.Join(path, userID)))
+		for filename, content := range files {
+			filePath := filepath.Join(path, userID, strings.TrimSuffix(filename, ".gz"))
+			require.NoError(t, ioutil.WriteFile(filePath, []byte(content), 0777))
+			if strings.HasSuffix(filename, ".gz") {
+				compressFile(t, filePath)
+			}
+		}
+	}
+}
+
+func buildFilesContent(commonDBsConfig IndexesConfig, perUserDBsConfig PerUserIndexesConfig) (map[string]string, map[string]map[string]string) {
 	// filename -> content
 	commonIndexes := map[string]string{}
 	// userID -> filename -> content
 	perUserIndexes := map[string]map[string]string{}
 
 	for i := 0; i < commonDBsConfig.NumUnCompactedFiles; i++ {
-		commonIndexes[fmt.Sprintf("%s-%d", sharedIndexPrefix, i)] = fmt.Sprint(i)
+		fileName := fmt.Sprintf("%s-%d", sharedIndexPrefix, i)
+		if i%2 == 0 {
+			fileName += ".gz"
+		}
+		commonIndexes[fileName] = fmt.Sprint(i)
 	}
 
 	for i := 0; i < commonDBsConfig.NumCompactedFiles; i++ {
-		commonIndexes[fmt.Sprintf("%s-compactor-%d", sharedIndexPrefix, i)] = fmt.Sprint(i)
+		commonIndexes[fmt.Sprintf("compactor-%d.gz", i)] = fmt.Sprint(i)
 	}
 
 	for i := 0; i < perUserDBsConfig.NumUnCompactedFiles; i++ {
-		dbName := fmt.Sprintf("%s-%d", multiTenantIndexPrefix, i)
-		commonIndexes[dbName] = ""
+		fileName := fmt.Sprintf("%s-%d", multiTenantIndexPrefix, i)
+		if i%2 == 0 {
+			fileName += ".gz"
+		}
+		commonIndexes[fileName] = ""
 		for j := 0; j < perUserDBsConfig.NumUsers; j = j + 1 {
-			commonIndexes[dbName] = commonIndexes[dbName] + BuildUserID(j) + "\n"
+			commonIndexes[fileName] = commonIndexes[fileName] + BuildUserID(j) + "\n"
 		}
 	}
 
@@ -102,28 +136,11 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 			if i == 0 {
 				perUserIndexes[userID] = map[string]string{}
 			}
-			perUserIndexes[userID][fmt.Sprintf("compactor-%d", i)] = fmt.Sprint(i)
+			perUserIndexes[userID][fmt.Sprintf("compactor-%d.gz", i)] = fmt.Sprint(i)
 		}
 	}
 
-	idx := 0
-	for filename, content := range commonIndexes {
-		filePath := filepath.Join(path, filename)
-		require.NoError(t, ioutil.WriteFile(filePath, []byte(content), 0777))
-		if idx%2 == 0 {
-			compressFile(t, filePath)
-		}
-		idx++
-	}
-
-	for userID, files := range perUserIndexes {
-		require.NoError(t, util.EnsureDirectory(filepath.Join(path, userID)))
-		for filename, content := range files {
-			filePath := filepath.Join(path, userID, filename)
-			require.NoError(t, ioutil.WriteFile(filePath, []byte(content), 0777))
-			compressFile(t, filePath)
-		}
-	}
+	return commonIndexes, perUserIndexes
 }
 
 func BuildUserID(id int) string {
@@ -328,4 +345,81 @@ func (t tableCompactor) CompactTable() error {
 
 func (i testIndexCompactor) OpenCompactedIndexFile(_ context.Context, path, _, _, _ string, _ config.PeriodConfig, _ log.Logger) (CompactedIndex, error) {
 	return openCompactedIndex(path)
+}
+
+func verifyCompactedIndexTable(t *testing.T, commonDBsConfig IndexesConfig, perUserDBsConfig PerUserIndexesConfig, tablePathInStorage string) {
+	commonIndexes, perUserIndexes := buildFilesContent(commonDBsConfig, perUserDBsConfig)
+	filesInfo, err := ioutil.ReadDir(tablePathInStorage)
+	require.NoError(t, err)
+
+	files, folders := []string{}, []string{}
+	for _, fileInfo := range filesInfo {
+		if fileInfo.IsDir() {
+			folders = append(folders, fileInfo.Name())
+		} else {
+			files = append(files, fileInfo.Name())
+		}
+	}
+
+	expectedCommonIndexContent := []string{}
+	expectedUserIndexContent := map[string][]string{}
+
+	for userID := range perUserIndexes {
+		for fileName := range perUserIndexes[userID] {
+			if perUserDBsConfig.NumCompactedFiles == 1 && perUserDBsConfig.NumUnCompactedFiles == 0 {
+				expectedUserIndexContent[userID] = append(expectedUserIndexContent[userID], "0")
+			} else {
+				expectedUserIndexContent[userID] = append(expectedUserIndexContent[userID], fmt.Sprintf("%s", fileName))
+			}
+		}
+	}
+
+	if len(commonIndexes) == 0 {
+		require.Equal(t, 0, len(files))
+	} else if len(commonIndexes) == 1 && commonDBsConfig.NumCompactedFiles == 1 {
+		expectedCommonIndexContent = append(expectedCommonIndexContent, "0")
+	} else {
+		for fileName, content := range commonIndexes {
+			if strings.HasPrefix(fileName, multiTenantIndexPrefix) {
+				scanner := bufio.NewScanner(strings.NewReader(content))
+				for scanner.Scan() {
+					expectedUserIndexContent[scanner.Text()] = append(expectedUserIndexContent[scanner.Text()], fileName)
+				}
+			} else {
+				expectedCommonIndexContent = append(expectedCommonIndexContent, fileName)
+			}
+		}
+	}
+
+	if len(expectedCommonIndexContent) == 0 {
+		require.Len(t, files, 0, fmt.Sprintf("%v", commonIndexes))
+	} else {
+		require.Len(t, files, 1, fmt.Sprintf("%v", commonIndexes))
+		sort.Strings(expectedCommonIndexContent)
+		require.Equal(t, strings.Join(expectedCommonIndexContent, ""), string(readFile(t, filepath.Join(tablePathInStorage, files[0]))))
+	}
+
+	require.Len(t, folders, len(expectedUserIndexContent), fmt.Sprintf("%v", commonIndexes))
+	for _, userID := range folders {
+		filesInfo, err := ioutil.ReadDir(filepath.Join(tablePathInStorage, userID))
+		require.NoError(t, err)
+		require.Len(t, filesInfo, 1)
+		require.False(t, filesInfo[0].IsDir())
+		sort.Strings(expectedUserIndexContent[userID])
+		require.Equal(t, strings.Join(expectedUserIndexContent[userID], ""), string(readFile(t, filepath.Join(tablePathInStorage, userID, filesInfo[0].Name()))))
+	}
+}
+
+func readFile(t *testing.T, path string) []byte {
+	if strings.HasSuffix(path, ".gz") {
+		tempDir := t.TempDir()
+		decompressedFilePath := filepath.Join(tempDir, "decompressed")
+		testutil.DecompressFile(t, path, decompressedFilePath)
+		path = decompressedFilePath
+	}
+
+	fileContent, err := ioutil.ReadFile(path)
+	require.NoError(t, err)
+
+	return fileContent
 }

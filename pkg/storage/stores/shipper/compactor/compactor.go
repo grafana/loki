@@ -32,6 +32,15 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+// Here is how the generic compactor works:
+// 1. Find the index type from table name using schemaPeriodForTable.
+// 2. Find the registered IndexCompactor for the index type.
+// 3. Build an instance of TableCompactor using IndexCompactor.NewIndexCompactor, with all the required information to do a compaction.
+// 4. Run the compaction using TableCompactor.Compact, which would set the new/updated CompactedIndex for each IndexSet.
+// 5. If retention is enabled, run retention on the CompactedIndex using its retention.IndexProcessor implementation.
+// 6. Convert the CompactedIndex to a file using the IndexCompactor.ToIndexFile for uploading.
+// 7. If we uploaded successfully, delete the old index files.
+
 const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.

@@ -35,6 +35,11 @@ type IndexSet interface {
 	SetCompactedIndex(compactedIndex CompactedIndex, removeSourceFiles bool) error
 }
 
+// CompactedIndex is built by TableCompactor for IndexSet after compaction.
+// It would be used for:
+// 1. applying custom retention, processing delete requests using IndexProcessor
+// 2. uploading the compacted index to storage by converting it to index.Index using ToIndexFile
+// After all the operations are successfully done or in case of failure, Cleanup would be called to cleanup the state.
 type CompactedIndex interface {
 	// IndexProcessor is used for applying custom retention and processing delete requests.
 	retention.IndexProcessor
@@ -53,9 +58,8 @@ type indexSet struct {
 	workingDir        string
 	baseIndexSet      storage.IndexSet
 
-	compactedDBRecreated bool
-	uploadCompactedDB    bool
-	removeSourceObjects  bool
+	uploadCompactedDB   bool
+	removeSourceObjects bool
 
 	compactedIndex CompactedIndex
 	sourceObjects  []storage.IndexFile

@@ -66,12 +66,13 @@ const (
 	recreatedCompactedDBSuffix   = ".r"
 )
 
+// compactedIndexSet holds both the IndexSet and the CompactedIndex for ease.
 type compactedIndexSet struct {
 	compactor.IndexSet
 	compactedIndex *CompactedIndex
 }
 
-func newUserCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex) *compactedIndexSet {
+func newCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex) *compactedIndexSet {
 	return &compactedIndexSet{
 		IndexSet:       indexSet,
 		compactedIndex: compactedIndex,
@@ -109,6 +110,8 @@ func newTableCompactor(
 func (t *tableCompactor) CompactTable() error {
 	commonIndexes := t.commonIndexSet.ListSourceFiles()
 
+	// we need to perform compaction if we have more than 1 files in the storage or the only file we have is not a compaction file.
+	// if the files are already compacted we need to see if we need to recreate the compacted DB to reduce its space.
 	if len(commonIndexes) > 1 || (len(commonIndexes) == 1 && !strings.HasPrefix(commonIndexes[0].Name, uploaderName)) || mustRecreateCompactedDB(commonIndexes) {
 		var err error
 		commonIndex, err := compactIndexes(t.ctx, t.periodConfig, t.commonIndexSet, func(userID string) (*CompactedIndex, error) {
@@ -130,6 +133,7 @@ func (t *tableCompactor) CompactTable() error {
 
 		var commonCompactedIndex compactor.CompactedIndex
 		if commonIndexEmpty {
+			// compaction has resulted into empty commonIndex due to all the files being compacted away to per user index.
 			commonIndex.Cleanup()
 			commonIndex = nil
 		} else {
@@ -154,6 +158,8 @@ func (t *tableCompactor) CompactTable() error {
 			continue
 		}
 
+		// We did not have any updates for this indexSet during compaction.
+		// Now see if it has more than one files to compact it down to a single file or if it requires recreation to save space.
 		sourceFiles := indexSet.ListSourceFiles()
 		if len(sourceFiles) > 1 || mustRecreateCompactedDB(sourceFiles) {
 			userCompactedIndexSet, err := t.getOrCreateUserCompactedIndexSet(userID)
@@ -204,7 +210,7 @@ func (t *tableCompactor) getOrCreateUserCompactedIndexSet(userID string) (*compa
 			return nil, err
 		}
 		compactedIndex := newCompactedIndex(compactedFile, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger())
-		t.userCompactedIndexSet[userID] = newUserCompactedIndexSet(userIndexSet, compactedIndex)
+		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex)
 	} else {
 		compactedIndex, err := compactIndexes(t.ctx, t.periodConfig, userIndexSet, func(userID string) (*CompactedIndex, error) {
 			return nil, errors.New("compacted user index set should not be requested while compacting user index")
@@ -212,7 +218,7 @@ func (t *tableCompactor) getOrCreateUserCompactedIndexSet(userID string) (*compa
 		if err != nil {
 			return nil, err
 		}
-		t.userCompactedIndexSet[userID] = newUserCompactedIndexSet(userIndexSet, compactedIndex)
+		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex)
 	}
 
 	return t.userCompactedIndexSet[userID], nil

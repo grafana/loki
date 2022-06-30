@@ -121,6 +121,8 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	tempDir := t.TempDir()
 
 	tablesPath := filepath.Join(tempDir, "index")
+	commonDBsConfig := IndexesConfig{NumUnCompactedFiles: 5}
+	perUserDBsConfig := PerUserIndexesConfig{}
 
 	daySeconds := int64(24 * time.Hour / time.Second)
 	tableNumEnd := time.Now().Unix() / daySeconds
@@ -141,6 +143,8 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, files, 1)
 		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+
+		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)))
 	}
 }
 
