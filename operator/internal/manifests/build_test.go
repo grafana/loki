@@ -83,7 +83,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
+func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 	type test struct {
 		desc         string
 		MonitorCount int
@@ -148,7 +148,7 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T) {
+func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -228,7 +228,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableTLSHTTPServices(t *testing.T) {
+func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 	opts := Options{
 		Name:      "test",
 		Namespace: "test",
@@ -302,7 +302,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSHTTPServices(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
+func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 	opts := Options{
 		Name:      "test",
 		Namespace: "test",
@@ -379,7 +379,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
+func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -548,7 +548,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableRuntimeSeccompProfile(t *testing.T) {
+func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -592,8 +592,8 @@ func TestBuildAll_WithFeatureFlags_EnableRuntimeSeccompProfile(t *testing.T) {
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableRuntimeSeccompProfile: false,
+				Gates: configv1.FeatureGates{
+					RuntimeSeccompProfile: false,
 				},
 			},
 		},
@@ -634,8 +634,8 @@ func TestBuildAll_WithFeatureFlags_EnableRuntimeSeccompProfile(t *testing.T) {
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableRuntimeSeccompProfile: true,
+				Gates: configv1.FeatureGates{
+					RuntimeSeccompProfile: true,
 				},
 			},
 		},
@@ -669,7 +669,7 @@ func TestBuildAll_WithFeatureFlags_EnableRuntimeSeccompProfile(t *testing.T) {
 				}
 
 				t.Run(name, func(t *testing.T) {
-					if tst.BuildOptions.Flags.EnableRuntimeSeccompProfile {
+					if tst.BuildOptions.Gates.RuntimeSeccompProfile {
 						require.NotNil(t, spec.SecurityContext.SeccompProfile)
 						require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
 					} else {
@@ -681,7 +681,7 @@ func TestBuildAll_WithFeatureFlags_EnableRuntimeSeccompProfile(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
+func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -758,7 +758,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
+func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
