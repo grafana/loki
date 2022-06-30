@@ -99,10 +99,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(
-			opts.Flags.EnableRuntimeSeccompProfile,
-			opts.Flags.EnableNonRootUser,
-		),
+		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Distributor != nil {

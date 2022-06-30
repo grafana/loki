@@ -413,10 +413,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, flags FeatureFlags) {
 	podSpec := d.Spec.Template.Spec
 
-	podSpec.SecurityContext = podSecurityContext(
-		flags.EnableRuntimeSeccompProfile,
-		flags.EnableNonRootUser,
-	)
+	podSpec.SecurityContext = podSecurityContext(flags.EnableRuntimeSeccompProfile)
 	for i := range podSpec.Containers {
 		podSpec.Containers[i].SecurityContext = containerSecurityContext()
 	}

@@ -105,7 +105,6 @@ func main() {
 		EnableGatewayRoute:              ctrlCfg.Flags.EnableGatewayRoute,
 		EnableGrafanaLabsStats:          ctrlCfg.Flags.EnableGrafanaLabsStats,
 		EnableRuntimeSeccompProfile:     ctrlCfg.Flags.EnableRuntimeSeccompProfile,
-		EnableNonRootUser:               ctrlCfg.Flags.EnableNonRootUser,
 	}
 
 	if err = (&lokictrl.LokiStackReconciler{

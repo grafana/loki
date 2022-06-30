@@ -127,10 +127,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(
-			opts.Flags.EnableRuntimeSeccompProfile,
-			opts.Flags.EnableNonRootUser,
-		),
+		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {

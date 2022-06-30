@@ -20,7 +20,6 @@ type FeatureFlags struct {
 	EnableAlertingRuleWebhook       bool `json:"enableAlertingRuleWebhook,omitempty"`
 	EnableRecordingRuleWebhook      bool `json:"enableRecordingRuleWebhook,omitempty"`
 	EnableRuntimeSeccompProfile     bool `json:"enableRuntimeSeccompProfile,omitempty"`
-	EnableNonRootUser               bool `json:"enableNonRootUser,omitempty"`
 }
 
 //+kubebuilder:object:root=true
