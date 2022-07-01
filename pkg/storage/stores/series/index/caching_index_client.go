@@ -133,9 +133,11 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []Query, ca
 		keys = append(keys, key)
 		queriesByKey[key] = append(queriesByKey[key], query)
 	}
+	logger := util_log.WithContext(ctx, s.logger)
 
 	batches, misses := s.cacheFetch(ctx, keys)
 	for _, batch := range batches {
+		level.Warn(logger).Log("msg", "debug cachingIndexClient queryPages batch info", "Key", batch.Key, "Cardinality", batch.Cardinality, "cardinalityLimit", cardinalityLimit)
 		if cardinalityLimit > 0 && batch.Cardinality > cardinalityLimit {
 			return CardinalityExceededError{
 				Size:  batch.Cardinality,
