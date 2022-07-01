@@ -612,18 +612,18 @@ func TestLoadFromURL(t *testing.T) {
 	require.NotNil(t, client)
 
 	// Missing schema.config file should error
-	schemaConfig, err := LoadFromURL(client)
+	schemaConfig, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
 	require.Error(t, err)
 	require.Nil(t, schemaConfig)
 
 	err = os.WriteFile(
-		filepath.Join(tmpDir, "schema.config"),
+		filepath.Join(tmpDir, SchemaConfigFilename),
 		[]byte(schemaConfigContents),
 		0666,
 	)
 	require.NoError(t, err)
 
-	schemaConfig, err = LoadFromURL(client)
+	schemaConfig, err = LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)

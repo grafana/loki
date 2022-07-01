@@ -36,6 +36,8 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+const SchemaConfigFilename = "schemaconfig.yaml"
+
 type streamEntryPair struct {
 	entry  loghttp.Entry
 	labels loghttp.LabelSet
@@ -43,22 +45,22 @@ type streamEntryPair struct {
 
 // Query contains all necessary fields to execute instant and range queries and print the results.
 type Query struct {
-	QueryString     string
-	Start           time.Time
-	End             time.Time
-	Limit           int
-	BatchSize       int
-	Forward         bool
-	Step            time.Duration
-	Interval        time.Duration
-	Quiet           bool
-	NoLabels        bool
-	IgnoreLabelsKey []string
-	ShowLabelsKey   []string
-	FixedLabelsLen  int
-	ColoredOutput   bool
-	LocalConfig     string
-	RemoteSchema    bool
+	QueryString            string
+	Start                  time.Time
+	End                    time.Time
+	Limit                  int
+	BatchSize              int
+	Forward                bool
+	Step                   time.Duration
+	Interval               time.Duration
+	Quiet                  bool
+	NoLabels               bool
+	IgnoreLabelsKey        []string
+	ShowLabelsKey          []string
+	FixedLabelsLen         int
+	ColoredOutput          bool
+	LocalConfig            string
+	FetchSchemaFromStorage bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -68,7 +70,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		if orgID == "" {
 			orgID = "fake"
 		}
-		if err := q.DoLocalQuery(out, statistics, orgID, q.RemoteSchema); err != nil {
+		if err := q.DoLocalQuery(out, statistics, orgID, q.FetchSchemaFromStorage); err != nil {
 			log.Fatalf("Query failed: %+v", err)
 		}
 		return
@@ -208,12 +210,12 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			return err
 		}
 
-		config, err := LoadFromURL(client)
+		loadedSchema, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
 		if err != nil {
 			return err
 		}
 
-		schema = *config
+		schema = *loadedSchema
 	}
 
 	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, schema, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
@@ -284,10 +286,10 @@ type schemaConfigSection struct {
 	config.SchemaConfig `yaml:"schema_config"`
 }
 
-func LoadFromURL(oc chunk.ObjectClient) (*config.SchemaConfig, error) {
+func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.SchemaConfig, error) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
 	defer cancel()
-	rdr, _, err := oc.GetObject(ctx, "schema.config")
+	rdr, _, err := oc.GetObject(ctx, name)
 	if err != nil {
 		return nil, err
 	}
