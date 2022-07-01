@@ -136,6 +136,7 @@ func (b *LabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
+	b.errDetails = ""
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
