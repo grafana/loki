@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -17,8 +18,7 @@ type Options struct {
 	GatewayBaseDomain string
 	ConfigSHA1        string
 
-	Flags FeatureFlags
-
+	Gates                configv1.FeatureGates
 	Stack                lokiv1beta1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 
@@ -31,19 +31,6 @@ type Options struct {
 	OpenShiftOptions openshift.Options
 
 	Tenants Tenants
-}
-
-// FeatureFlags contains flags that activate various features
-type FeatureFlags struct {
-	EnableCertificateSigningService bool
-	EnableServiceMonitors           bool
-	EnableTLSHTTPServices           bool
-	EnableTLSServiceMonitorConfig   bool
-	EnableTLSGRPCServices           bool
-	EnablePrometheusAlerts          bool
-	EnableGateway                   bool
-	EnableGatewayRoute              bool
-	EnableGrafanaLabsStats          bool
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.

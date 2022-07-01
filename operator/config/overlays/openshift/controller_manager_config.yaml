@@ -11,16 +11,33 @@ webhook:
 leaderElection:
   leaderElect: false
   resourceName: e3716011.grafana.com
-featureFlags:
-  enableCertSigningService: true
-  enableServiceMonitors: true
-  enableTlsServiceMonitorConfig: true
-  enableTlsHttpServices: true
-  enableTlsGRPCServices: true
-  enableLokiStackAlerts: true
-  enableLokiStackGateway: true
-  enableLokiStackGatewayRoute: true
-  enableGrafanaLabsStats: false
-  enableLokiStackWebhook: true
-  enableAlertingRuleWebhook: true
-  enableRecordingRuleWebhook: true
+featureGates:
+  #
+  # Monitoring feature gates
+  #
+  serviceMonitors: true
+  serviceMonitorTlsEndpoints: true
+  lokiStackAlerts: true
+  #
+  # Encryption feature gates
+  #
+  httpEncryption: true
+  grpcEncryption: true
+  #
+  # Component feature gates
+  #
+  lokiStackGateway: true
+  grafanaLabsUsageReport: false
+  runtimeSeccompProfile: false
+  #
+  # Webhook feature gates
+  #
+  lokiStackWebhook: true
+  alertingRuleWebhook: true
+  recordingRuleWebhook: true
+  #
+  # OpenShift feature gates
+  #
+  openshift:
+    servingCertsService: true
+    gatewayRoute: true

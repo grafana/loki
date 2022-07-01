@@ -1,4 +1,17 @@
-# Forwarding Logs to LokiStack without LokiStack Gateway
+---
+title: "Forwarding Logs without the Gateway"
+description: "Forwarding Logs to LokiStack without LokiStack Gateway"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+images: []
+menu:
+  docs:
+    parent: "user-guides"
+weight: 100
+toc: true
+---
 
 This document describes how to send application, infrastructure, and audit logs to the Loki Distributor as different tenants using Fluentd or Vector.
 
