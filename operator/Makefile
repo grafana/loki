@@ -278,7 +278,7 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET)
 	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
 
 .PHONY: web-pre
-web-pre: docs/operator/api.md docs/operator/feature-flags.md
+web-pre: docs/operator/api.md docs/operator/feature-gates.md
 	@echo ">> preprocessing docs for website"
 	@git submodule update --init --recursive
 	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
