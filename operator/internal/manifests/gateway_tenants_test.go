@@ -7,6 +7,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
@@ -178,13 +179,13 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 
 func TestConfigureDeploymentForMode(t *testing.T) {
 	type tt struct {
-		desc      string
-		mode      lokiv1beta1.ModeType
-		stackName string
-		stackNs   string
-		flags     FeatureFlags
-		dpl       *appsv1.Deployment
-		want      *appsv1.Deployment
+		desc         string
+		mode         lokiv1beta1.ModeType
+		stackName    string
+		stackNs      string
+		featureGates configv1.FeatureGates
+		dpl          *appsv1.Deployment
+		want         *appsv1.Deployment
 	}
 
 	tc := []tt{
@@ -356,9 +357,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			mode:      lokiv1beta1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
-			flags: FeatureFlags{
-				EnableTLSHTTPServices:         true,
-				EnableTLSServiceMonitorConfig: true,
+			featureGates: configv1.FeatureGates{
+				HTTPEncryption:             true,
+				ServiceMonitorTLSEndpoints: true,
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
@@ -536,10 +537,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			mode:      lokiv1beta1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
-			flags: FeatureFlags{
-				EnableTLSHTTPServices:           true,
-				EnableTLSServiceMonitorConfig:   true,
-				EnableCertificateSigningService: true,
+			featureGates: configv1.FeatureGates{
+				HTTPEncryption:             true,
+				ServiceMonitorTLSEndpoints: true,
+				OpenShift: configv1.OpenShiftFeatureGates{
+					ServingCertsService: true,
+				},
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
@@ -729,7 +732,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, tc.stackName, tc.stackNs)
+			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, tc.stackName, tc.stackNs)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -784,11 +787,11 @@ func TestConfigureServiceForMode(t *testing.T) {
 
 func TestConfigureServiceMonitorForMode(t *testing.T) {
 	type tt struct {
-		desc  string
-		mode  lokiv1beta1.ModeType
-		flags FeatureFlags
-		sm    *monitoringv1.ServiceMonitor
-		want  *monitoringv1.ServiceMonitor
+		desc         string
+		mode         lokiv1beta1.ModeType
+		featureGates configv1.FeatureGates
+		sm           *monitoringv1.ServiceMonitor
+		want         *monitoringv1.ServiceMonitor
 	}
 
 	tc := []tt{
@@ -823,9 +826,9 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		{
 			desc: "openshift-logging mode with-tls-service-monitor-config",
 			mode: lokiv1beta1.OpenshiftLogging,
-			flags: FeatureFlags{
-				EnableTLSHTTPServices:         true,
-				EnableTLSServiceMonitorConfig: true,
+			featureGates: configv1.FeatureGates{
+				HTTPEncryption:             true,
+				ServiceMonitorTLSEndpoints: true,
 			},
 			sm: &monitoringv1.ServiceMonitor{
 				Spec: monitoringv1.ServiceMonitorSpec{
@@ -870,7 +873,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureServiceMonitorForMode(tc.sm, tc.mode, tc.flags)
+			err := configureServiceMonitorForMode(tc.sm, tc.mode, tc.featureGates)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sm)
 		})

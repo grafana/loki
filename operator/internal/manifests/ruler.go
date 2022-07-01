@@ -20,13 +20,13 @@ import (
 // BuildRuler returns a list of k8s objects for Loki Stack Ruler
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
-	if opts.Flags.EnableTLSHTTPServices {
+	if opts.Gates.HTTPEncryption {
 		if err := configureRulerHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
 
-	if opts.Flags.EnableTLSGRPCServices {
+	if opts.Gates.GRPCEncryption {
 		if err := configureRulerGRPCServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
@@ -127,7 +127,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
+		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
@@ -222,7 +222,7 @@ func NewRulerGRPCService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -252,7 +252,7 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{

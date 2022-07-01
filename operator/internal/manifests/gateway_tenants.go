@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/imdario/mergo"
@@ -53,7 +54,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType, flags FeatureFlags, stackName, stackNs string) error {
+func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType, fg configv1.FeatureGates, stackName, stackNs string) error {
 	switch mode {
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
@@ -72,8 +73,8 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 			caBundleName,
 			caBundleDir,
 			caFile,
-			flags.EnableTLSHTTPServices,
-			flags.EnableCertificateSigningService,
+			fg.HTTPEncryption,
+			fg.OpenShift.ServingCertsService,
 			secretName,
 			serverName,
 			gatewayHTTPPort,
@@ -132,12 +133,12 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 	return objs
 }
 
-func configureServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1beta1.ModeType, flags FeatureFlags) error {
+func configureServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1beta1.ModeType, fg configv1.FeatureGates) error {
 	switch mode {
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
-		return openshift.ConfigureGatewayServiceMonitor(sm, flags.EnableTLSServiceMonitorConfig)
+		return openshift.ConfigureGatewayServiceMonitor(sm, fg.ServiceMonitorTLSEndpoints)
 	}
 
 	return nil

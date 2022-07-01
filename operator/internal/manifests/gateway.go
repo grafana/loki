@@ -8,6 +8,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -40,7 +41,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{cm, dpl, svc, ing}
 
-	if opts.Flags.EnableTLSHTTPServices {
+	if opts.Gates.HTTPEncryption {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
 		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName); err != nil {
 			return nil, err
@@ -49,7 +50,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureDeploymentForMode(dpl, mode, opts.Flags, opts.Name, opts.Namespace); err != nil {
+		if err := configureDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 
@@ -60,7 +61,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	configureDeploymentForRestrictedPolicy(dpl, opts.Flags)
+	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
 
 	return objs, nil
 }
@@ -223,7 +224,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -410,10 +411,10 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	return nil
 }
 
-func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, flags FeatureFlags) {
+func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
 	podSpec := d.Spec.Template.Spec
 
-	podSpec.SecurityContext = podSecurityContext(flags.EnableRuntimeSeccompProfile)
+	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
 	for i := range podSpec.Containers {
 		podSpec.Containers[i].SecurityContext = containerSecurityContext()
 	}

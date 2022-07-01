@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
@@ -74,10 +74,10 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 
 	// Require owned resources
 	type test struct {
-		obj   client.Object
-		index int
-		flags manifests.FeatureFlags
-		pred  builder.OwnsOption
+		obj          client.Object
+		index        int
+		featureGates configv1.FeatureGates
+		pred         builder.OwnsOption
 	}
 	table := []test{
 		{
@@ -131,16 +131,20 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:   &networkingv1.Ingress{},
 			index: 9,
-			flags: manifests.FeatureFlags{
-				EnableGatewayRoute: false,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					GatewayRoute: false,
+				},
 			},
 			pred: updateOrDeleteOnlyPred,
 		},
 		{
 			obj:   &routev1.Route{},
 			index: 9,
-			flags: manifests.FeatureFlags{
-				EnableGatewayRoute: true,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					GatewayRoute: true,
+				},
 			},
 			pred: updateOrDeleteOnlyPred,
 		},
@@ -150,7 +154,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		b.ForReturns(b)
 		b.OwnsReturns(b)
 
-		c := &LokiStackReconciler{Client: k, Scheme: scheme, Flags: tst.flags}
+		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
 		err := c.buildController(b)
 		require.NoError(t, err)
 

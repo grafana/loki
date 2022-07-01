@@ -17,13 +17,13 @@ import (
 // BuildQueryFrontend returns a list of k8s objects for Loki QueryFrontend
 func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 	deployment := NewQueryFrontendDeployment(opts)
-	if opts.Flags.EnableTLSHTTPServices {
+	if opts.Gates.HTTPEncryption {
 		if err := configureQueryFrontendHTTPServicePKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
 	}
 
-	if opts.Flags.EnableTLSGRPCServices {
+	if opts.Gates.GRPCEncryption {
 		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
@@ -109,7 +109,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
+		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
@@ -162,7 +162,7 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -192,7 +192,7 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
