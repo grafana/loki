@@ -3040,6 +3040,29 @@ func TestParse(t *testing.T) {
 				NewVectorExpr("1"),
 			),
 		},
+		{
+			in: `{app="foo"} | logfmt message="msg"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LogfmtExpression{
+						log.NewLogfmtExpr("message", `msg`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt response_code="response.code", api_key="api.key"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LogfmtExpression{
+						log.NewLogfmtExpr("response_code", `response.code`),
+						log.NewLogfmtExpr("api_key", `api.key`),
+					}),
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

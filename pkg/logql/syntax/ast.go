@@ -570,6 +570,41 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
+type LogfmtExpressionParser struct {
+	Expressions []log.LogfmtExpression
+
+	implicit
+}
+
+func newLogfmtExpressionParser(expressions []log.LogfmtExpression) *LogfmtExpressionParser {
+	return &LogfmtExpressionParser{
+		Expressions: expressions,
+	}
+}
+
+func (j *LogfmtExpressionParser) Shardable() bool { return true }
+
+func (j *LogfmtExpressionParser) Walk(f WalkFn) { f(j) }
+
+func (j *LogfmtExpressionParser) Stage() (log.Stage, error) {
+	return log.NewLogfmtExpressionParser(j.Expressions)
+}
+
+func (j *LogfmtExpressionParser) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	for i, exp := range j.Expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(j.Expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
