@@ -151,10 +151,7 @@ func (t *tableCompactor) CompactTable() error {
 	}
 
 	for userID, indexSet := range t.existingUserIndexSet {
-		if userCompactedIndexSet, ok := t.userCompactedIndexSet[userID]; ok {
-			if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, true); err != nil {
-				return err
-			}
+		if _, ok := t.userCompactedIndexSet[userID]; ok {
 			continue
 		}
 
@@ -175,6 +172,12 @@ func (t *tableCompactor) CompactTable() error {
 			if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, true); err != nil {
 				return err
 			}
+		}
+	}
+
+	for _, userCompactedIndexSet := range t.userCompactedIndexSet {
+		if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, true); err != nil {
+			return err
 		}
 	}
 

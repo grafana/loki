@@ -494,7 +494,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 	}
 
 	for userID, compactedIndex := range tableCompactor.userCompactedIndexSet {
-		for _, userRecords := range readDB(t, compactedIndex.compactedIndex.compactedFile) {
+		for _, userRecords := range readDB(t, compactedIndex.IndexSet.(*mockIndexSet).compactedIndex.(*CompactedIndex).compactedFile) {
 			if _, ok := compactedRecords[userID]; !ok {
 				compactedRecords[userID] = make(map[string]string)
 			}

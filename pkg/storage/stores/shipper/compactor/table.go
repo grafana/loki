@@ -3,13 +3,13 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
+	"os"
+	"path/filepath"
+	"sync"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -154,7 +154,11 @@ func (t *table) compact(applyRetention bool) error {
 		userIndexSets[userID] = t.indexSets[userID]
 	}
 
+	indexSetsMtx := sync.Mutex{}
 	tableCompactor := t.indexCompactor.NewTableCompactor(t.ctx, t.indexSets[""], userIndexSets, func(userID string) (IndexSet, error) {
+		indexSetsMtx.Lock()
+		defer indexSetsMtx.Unlock()
+
 		var err error
 		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
 		return t.indexSets[userID], err
