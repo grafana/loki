@@ -1,5 +1,5 @@
 ---
-title: Grafana Loki
+title: Grafana Loki documentation
 aliases:
   - /docs/loki/
 ---
