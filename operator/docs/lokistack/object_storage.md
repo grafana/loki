@@ -173,7 +173,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
     where `lokistack-dev-odf` is the secret name. You can copy the values for `BUCKET_NAME`, `ACCESS_KEY_ID` and `ACCESS_KEY_SECRET` from your ObjectBucketClaim's accompanied secret.
 
-* Create an instance of [lokistack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
+* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
 
   ```yaml
   spec:
