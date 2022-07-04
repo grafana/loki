@@ -409,15 +409,18 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 	// this allows the ring to settle if there are a lot of ring changes and gives
 	// time for existing compactors to shutdown before this starts to avoid
 	// multiple compactors running at the same time.
-	t := time.NewTimer(c.cfg.CompactionInterval)
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v for ring to stay stable and previous compactions to finish before starting compactor", c.cfg.CompactionInterval))
-	select {
-	case <-ctx.Done():
-		return
-	case <-t.C:
-		level.Info(util_log.Logger).Log("msg", "compactor startup delay completed")
-		break
-	}
+	func() {
+		t := time.NewTimer(c.cfg.CompactionInterval)
+		defer t.Stop()
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v for ring to stay stable and previous compactions to finish before starting compactor", c.cfg.CompactionInterval))
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			level.Info(util_log.Logger).Log("msg", "compactor startup delay completed")
+			break
+		}
+	}()
 
 	lastRetentionRunAt := time.Unix(0, 0)
 	runCompaction := func() {
