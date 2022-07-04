@@ -38,7 +38,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
     where `lokistack-dev-s3` is the secret name.
 
-* Create an instance of [lokistack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
+* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
 
   ```yaml
   spec:
