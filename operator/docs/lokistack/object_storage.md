@@ -230,7 +230,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
       --from-literal=region="<SWIFT_REGION>" \
     ```
 
-* Create an instance of [lokistack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
+* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `swift`:
 
   ```yaml
   spec:
