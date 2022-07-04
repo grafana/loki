@@ -3,7 +3,6 @@ package heroku
 import (
 	"flag"
 	"fmt"
-	"github.com/pkg/errors"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/imdario/mergo"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
