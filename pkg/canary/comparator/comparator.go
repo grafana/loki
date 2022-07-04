@@ -3,6 +3,7 @@ package comparator
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -246,7 +247,10 @@ func (c *Comparator) Size() int {
 
 func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
-	mt := time.NewTicker(c.metricTestInterval)
+	// Use a random tick up to the interval for the first tick
+	firstMt := true
+	rand.Seed(time.Now().UnixNano())
+	mt := time.NewTicker(time.Duration(rand.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
 		t.Stop()
@@ -285,6 +289,11 @@ func (c *Comparator) run() {
 				go c.metricTest(time.Now())
 			}
 			c.metTestMtx.Unlock()
+			if firstMt {
+				// After the first tick which is at a random time, resume at the normal periodic interval
+				firstMt = false
+				mt.Reset(c.metricTestInterval)
+			}
 		case <-c.quit:
 			return
 		}
