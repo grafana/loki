@@ -22,13 +22,13 @@ within a Kubernetes cluster.
     helm repo add grafana https://grafana.github.io/helm-charts
     ```
 
-1. Update the chart repository:
+2. Update the chart repository:
 
     ```bash
     helm repo update
     ```
 
-1. Deploy the Loki cluster using one of these commands.
+3. Deploy the Loki cluster using one of these commands.
 
     - Deploy with the default configuration:
 
@@ -42,11 +42,19 @@ within a Kubernetes cluster.
         helm upgrade --install loki --namespace=loki grafana/loki-simple-scalable
         ```
 
-    - Deploy with added custom configuration:
+    - Deploy with added custom configuration with an overrides yaml file, useful for overriding many values:
+
+        ```bash
+        helm upgrade --install loki grafana/loki-simple-scalable --values {PATH_TO_OVERRIDES_VALUES_FILE}
+        ```
+
+    - Deploy with added custom configuration, useful for overriding a small amount of values:
 
         ```bash
         helm upgrade --install loki grafana/loki-simple-scalable --set "key1=val1,key2=val2,..."
         ```
+
+You can find examples of deploying Loki and Grafana Enterprise Logs within the [docs folder of the Simple Scalable Chart](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable/docs/examples).
 
 ## Deploy Grafana to your Kubernetes cluster
 
@@ -111,6 +119,10 @@ spec:
     hosts:
     - {{ .Values.ingress.host }}
 ```
+
+## Run Promtail within Kubernetes as a Daemonset
+
+In order to run Promtail within Kubernetes to gather logs from each nodes it's recommended you start with the example within the [Promtail installation docs](../../clients/promtail/installation/#daemonset-recommended)
 
 ## Run Promtail with syslog support
 
