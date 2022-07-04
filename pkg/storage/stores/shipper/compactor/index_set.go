@@ -95,7 +95,7 @@ func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet sto
 		userID:       userID,
 		workingDir:   workingDir,
 		baseIndexSet: baseIndexSet,
-		logger:       log.With(logger, "user-id", userID),
+		logger:       logger,
 	}
 
 	var err error
