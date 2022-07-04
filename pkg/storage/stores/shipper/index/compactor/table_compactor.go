@@ -373,6 +373,9 @@ func mustRecreateCompactedDB(sourceFiles []storage.IndexFile) bool {
 	if len(sourceFiles) != 1 {
 		// do not recreate if there are multiple source files
 		return false
+	} else if !strings.HasPrefix(sourceFiles[0].Name, uploaderName) {
+		// do not recreate if the only file we have is not the compacted one
+		return false
 	} else if time.Since(sourceFiles[0].ModifiedAt) < recreateCompactedDBOlderThan {
 		// do not recreate if the source file is younger than the threshold
 		return false

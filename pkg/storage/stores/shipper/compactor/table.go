@@ -154,6 +154,7 @@ func (t *table) compact(applyRetention bool) error {
 		userIndexSets[userID] = t.indexSets[userID]
 	}
 
+	// protect indexSets with mutex so that we are concurrency safe if the TableCompactor calls MakeEmptyUserIndexSetFunc concurrently
 	indexSetsMtx := sync.Mutex{}
 	tableCompactor := t.indexCompactor.NewTableCompactor(t.ctx, t.indexSets[""], userIndexSets, func(userID string) (IndexSet, error) {
 		indexSetsMtx.Lock()
@@ -214,6 +215,11 @@ func (t *table) applyRetention() error {
 	tableInterval := retention.ExtractIntervalFromTableName(t.name)
 	// call runRetention on the index sets which may have expired chunks
 	for userID, is := range t.indexSets {
+		// make sure we do not apply retention on common index set which got compacted away to per-user index
+		if userID == "" && is.compactedIndex == nil && is.removeSourceObjects && !is.uploadCompactedDB {
+			continue
+		}
+
 		if !t.expirationChecker.IntervalMayHaveExpiredChunks(tableInterval, userID) {
 			continue
 		}

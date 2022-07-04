@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"io"
 	"io/ioutil"
 	"os"
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 const (
@@ -369,7 +369,7 @@ func verifyCompactedIndexTable(t *testing.T, commonDBsConfig IndexesConfig, perU
 			if perUserDBsConfig.NumCompactedFiles == 1 && perUserDBsConfig.NumUnCompactedFiles == 0 {
 				expectedUserIndexContent[userID] = append(expectedUserIndexContent[userID], "0")
 			} else {
-				expectedUserIndexContent[userID] = append(expectedUserIndexContent[userID], fmt.Sprintf("%s", fileName))
+				expectedUserIndexContent[userID] = append(expectedUserIndexContent[userID], fileName)
 			}
 		}
 	}

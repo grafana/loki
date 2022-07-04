@@ -229,7 +229,7 @@ func TestTable_Compaction(t *testing.T) {
 						numExpectedUsers = numUsers
 					}
 					validateTable(t, tablePathInStorage, expectedNumCommonDBs, numExpectedUsers, func(filename string) {
-						require.True(t, strings.HasSuffix(filename, ".gz"), fmt.Sprint(filename))
+						require.True(t, strings.HasSuffix(filename, ".gz"), filename)
 					})
 
 					verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, tablePathInStorage)
@@ -264,19 +264,33 @@ func (f IntervalMayHaveExpiredChunksFunc) IntervalMayHaveExpiredChunks(interval 
 }
 
 func TestTable_CompactionRetention(t *testing.T) {
+	numUsers := 10
 	type dbsSetup struct {
-		withCompactedDBs, withUnCompactedDBs bool
+		numUnCompactedCommonDBs  int
+		numUnCompactedPerUserDBs int
+		numCompactedDBs          int
 	}
 	for _, setup := range []dbsSetup{
 		{
-			withUnCompactedDBs: true,
+			numUnCompactedCommonDBs:  10,
+			numUnCompactedPerUserDBs: 10,
 		},
 		{
-			withCompactedDBs: true,
+			numCompactedDBs: 1,
 		},
 		{
-			withCompactedDBs:   true,
-			withUnCompactedDBs: true,
+			numCompactedDBs: 10,
+		},
+		{
+			numUnCompactedCommonDBs:  10,
+			numUnCompactedPerUserDBs: 10,
+			numCompactedDBs:          1,
+		},
+		{
+			numUnCompactedCommonDBs: 1,
+		},
+		{
+			numUnCompactedPerUserDBs: 1,
 		},
 	} {
 		for name, tt := range map[string]struct {
@@ -298,7 +312,16 @@ func TestTable_CompactionRetention(t *testing.T) {
 			"marked table": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
+					expectedNumCommonDBs := 0
+					if setup.numUnCompactedCommonDBs+setup.numCompactedDBs > 0 {
+						expectedNumCommonDBs = 1
+					}
+
+					expectedNumUsers := 0
+					if setup.numUnCompactedPerUserDBs+setup.numCompactedDBs > 0 {
+						expectedNumUsers = numUsers
+					}
+					validateTable(t, filepath.Join(storagePath, tableName), expectedNumCommonDBs, expectedNumUsers, func(filename string) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 				},
@@ -309,7 +332,16 @@ func TestTable_CompactionRetention(t *testing.T) {
 			"not modified": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
+					expectedNumCommonDBs := 0
+					if setup.numUnCompactedCommonDBs+setup.numCompactedDBs > 0 {
+						expectedNumCommonDBs = 1
+					}
+
+					expectedNumUsers := 0
+					if setup.numUnCompactedPerUserDBs+setup.numCompactedDBs > 0 {
+						expectedNumUsers = numUsers
+					}
+					validateTable(t, filepath.Join(storagePath, tableName), expectedNumCommonDBs, expectedNumUsers, func(filename string) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 				},
@@ -319,24 +351,23 @@ func TestTable_CompactionRetention(t *testing.T) {
 			},
 		} {
 			tt := tt
-			t.Run(name, func(t *testing.T) {
+			commonDBsConfig := IndexesConfig{
+				NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
+				NumUnCompactedFiles: tt.dbsSetup.numUnCompactedCommonDBs,
+			}
+			perUserDBsConfig := PerUserIndexesConfig{
+				IndexesConfig: IndexesConfig{
+					NumUnCompactedFiles: tt.dbsSetup.numUnCompactedPerUserDBs,
+					NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
+				},
+				NumUsers: numUsers,
+			}
+			t.Run(fmt.Sprintf("%s - %s ; %s", name, commonDBsConfig.String(), perUserDBsConfig.String()), func(t *testing.T) {
 				tempDir := t.TempDir()
 				tableName := fmt.Sprintf("%s12345", tableName)
 
 				objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 				tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
-
-				commonDBsConfig := IndexesConfig{}
-				perUserDBsConfig := PerUserIndexesConfig{}
-				if tt.dbsSetup.withUnCompactedDBs {
-					commonDBsConfig.NumCompactedFiles = 10
-					perUserDBsConfig.NumCompactedFiles = 10
-				}
-				if tt.dbsSetup.withCompactedDBs {
-					commonDBsConfig.NumCompactedFiles = 1
-					perUserDBsConfig.NumCompactedFiles = 1
-				}
-				perUserDBsConfig.NumUsers = 10
 
 				SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
 
