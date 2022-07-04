@@ -23,7 +23,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki operator to your cluster.
+* Deploy the loki-operator to your cluster.
 
 * Create an Object Storage secret with keys as follows:
 
