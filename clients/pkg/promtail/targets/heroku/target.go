@@ -3,6 +3,7 @@ package heroku
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	"net/http"
 	"strings"
 	"time"
@@ -54,7 +55,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
 	// Then apply any config values loaded as overrides to the defaults.
 	if err := mergo.Merge(&defaults, config.Server, mergo.WithOverride); err != nil {
-		level.Error(logger).Log("msg", "failed to parse configs and override defaults when configuring heroku drain target", "err", err)
+		return nil, errors.Wrap(err, "failed to parse configs and override defaults when configuring heroku drain target")
 	}
 	// The merge won't overwrite with a zero value but in the case of ports 0 value
 	// indicates the desire for a random port so reset these to zero if the incoming config val is 0
