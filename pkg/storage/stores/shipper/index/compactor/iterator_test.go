@@ -1,9 +1,13 @@
-package retention
+package compactor
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
 func Test_ChunkIterator(t *testing.T) {
@@ -35,22 +40,15 @@ func Test_ChunkIterator(t *testing.T) {
 
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
-			var actual []ChunkEntry
+			var actual []retention.ChunkEntry
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), tt.config)
-				require.NoError(t, err)
-				for it.Next() {
-					require.NoError(t, it.Err())
-					actual = append(actual, it.Entry())
-					// delete the last entry
-					if len(actual) == 2 {
-						require.NoError(t, it.Delete())
-					}
-				}
-				return nil
+				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+					actual = append(actual, entry)
+					return len(actual) == 2, nil
+				})
 			})
 			require.NoError(t, err)
-			require.Equal(t, []ChunkEntry{
+			require.Equal(t, []retention.ChunkEntry{
 				entryFromChunk(store.schemaCfg, c1),
 				entryFromChunk(store.schemaCfg, c2),
 			}, actual)
@@ -58,15 +56,13 @@ func Test_ChunkIterator(t *testing.T) {
 			// second pass we delete c2
 			actual = actual[:0]
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), tt.config)
-				require.NoError(t, err)
-				for it.Next() {
-					actual = append(actual, it.Entry())
-				}
-				return it.Err()
+				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+					actual = append(actual, entry)
+					return false, nil
+				})
 			})
 			require.NoError(t, err)
-			require.Equal(t, []ChunkEntry{
+			require.Equal(t, []retention.ChunkEntry{
 				entryFromChunk(store.schemaCfg, c1),
 			}, actual)
 		})
@@ -95,26 +91,20 @@ func Test_SeriesCleaner(t *testing.T) {
 			require.Len(t, tables, 1)
 			// remove c1, c2 chunk
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), tt.config)
-				require.NoError(t, err)
-				for it.Next() {
-					require.NoError(t, it.Err())
-					if it.Entry().Labels.Get("bar") == "foo" {
-						require.NoError(t, it.Delete())
-					}
-				}
-				return nil
+				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+					return entry.Labels.Get("bar") == "foo", nil
+				})
 			})
 			require.NoError(t, err)
 
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
 				cleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
-				if err := cleaner.Cleanup(entryFromChunk(testSchema, c2).UserID, c2.Metric); err != nil {
+				if err := cleaner.CleanupSeries(entryFromChunk(testSchema, c2).UserID, c2.Metric); err != nil {
 					return err
 				}
 
 				// remove series for c1 without __name__ label, which should work just fine
-				return cleaner.Cleanup(entryFromChunk(testSchema, c1).UserID, labels.NewBuilder(c1.Metric).Del(labels.MetricName).Labels())
+				return cleaner.CleanupSeries(entryFromChunk(testSchema, c1).UserID, labels.NewBuilder(c1.Metric).Del(labels.MetricName).Labels())
 			})
 			require.NoError(t, err)
 
@@ -144,9 +134,52 @@ func Test_SeriesCleaner(t *testing.T) {
 	}
 }
 
-func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) ChunkEntry {
-	return ChunkEntry{
-		ChunkRef: ChunkRef{
+func labelsSeriesID(ls labels.Labels) []byte {
+	h := sha256.Sum256([]byte(labelsString(ls)))
+	return encodeBase64Bytes(h[:])
+}
+
+func encodeBase64Bytes(bytes []byte) []byte {
+	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
+	encoded := make([]byte, encodedLen)
+	base64.RawStdEncoding.Encode(encoded, bytes)
+	return encoded
+}
+
+// Backwards-compatible with model.Metric.String()
+func labelsString(ls labels.Labels) string {
+	metricName := ls.Get(labels.MetricName)
+	if metricName != "" && len(ls) == 1 {
+		return metricName
+	}
+	var b strings.Builder
+	b.Grow(1000)
+
+	b.WriteString(metricName)
+	b.WriteByte('{')
+	i := 0
+	for _, l := range ls {
+		if l.Name == labels.MetricName {
+			continue
+		}
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(l.Name)
+		b.WriteByte('=')
+		var buf [1000]byte
+		b.Write(strconv.AppendQuote(buf[:0], l.Value))
+		i++
+	}
+	b.WriteByte('}')
+
+	return b.String()
+}
+
+func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) retention.ChunkEntry {
+	return retention.ChunkEntry{
+		ChunkRef: retention.ChunkRef{
 			UserID:   []byte(c.UserID),
 			SeriesID: labelsSeriesID(c.Metric),
 			ChunkID:  []byte(s.ExternalKey(c.ChunkRef)),
@@ -157,7 +190,7 @@ func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) ChunkEntry {
 	}
 }
 
-var chunkEntry ChunkEntry
+var chunkEntry retention.ChunkEntry
 
 func Benchmark_ChunkIterator(b *testing.B) {
 	cm := storage.NewClientMetrics()
@@ -180,13 +213,12 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	_ = store.indexTables()[0].Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(local.IndexBucketName)
 		for n := 0; n < b.N; n++ {
-			it, err := NewChunkIndexIterator(bucket, allSchemas[0].config)
-			require.NoError(b, err)
-			for it.Next() {
-				chunkEntry = it.Entry()
-				require.NoError(b, it.Delete())
+			err := ForEachChunk(bucket, allSchemas[0].config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+				chunkEntry = entry
 				total++
-			}
+				return true, nil
+			})
+			require.NoError(b, err)
 		}
 		return errors.New("don't commit")
 	})

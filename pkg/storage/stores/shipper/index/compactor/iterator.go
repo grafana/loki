@@ -1,4 +1,4 @@
-package retention
+package compactor
 
 import (
 	"fmt"
@@ -8,89 +8,52 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+)
+
+const (
+	logMetricName = "logs"
+	separator     = "\000"
 )
 
 var (
-	_ ChunkEntryIterator = &chunkIndexIterator{}
-	_ SeriesCleaner      = &seriesCleaner{}
+	_ retention.SeriesCleaner = &seriesCleaner{}
 )
 
-type ChunkEntry struct {
-	ChunkRef
-	Labels labels.Labels
-}
-
-type ChunkEntryIterator interface {
-	Next() bool
-	Entry() ChunkEntry
-	// Delete deletes the current entry.
-	Delete() error
-	Err() error
-}
-
-type chunkIndexIterator struct {
-	cursor  *bbolt.Cursor
-	current ChunkEntry
-	first   bool
-	err     error
-
-	labelsMapper *seriesLabelsMapper
-}
-
-func NewChunkIndexIterator(bucket *bbolt.Bucket, config config.PeriodConfig) (ChunkEntryIterator, error) {
+func ForEachChunk(bucket *bbolt.Bucket, config config.PeriodConfig, callback retention.ChunkEntryCallback) error {
 	labelsMapper, err := newSeriesLabelsMapper(bucket, config)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &chunkIndexIterator{
-		cursor:       bucket.Cursor(),
-		first:        true,
-		labelsMapper: labelsMapper,
-		current:      ChunkEntry{},
-	}, nil
-}
 
-func (b *chunkIndexIterator) Err() error {
-	return b.err
-}
+	cursor := bucket.Cursor()
+	var current retention.ChunkEntry
 
-func (b *chunkIndexIterator) Entry() ChunkEntry {
-	return b.current
-}
-
-func (b *chunkIndexIterator) Delete() error {
-	return b.cursor.Delete()
-}
-
-func (b *chunkIndexIterator) Next() bool {
-	var key []byte
-	if b.first {
-		key, _ = b.cursor.First()
-		b.first = false
-	} else {
-		key, _ = b.cursor.Next()
-	}
-	for key != nil {
+	for key, _ := cursor.First(); key != nil; key, _ = cursor.Next() {
 		ref, ok, err := parseChunkRef(decodeKey(key))
 		if err != nil {
-			b.err = err
-			return false
+			return err
 		}
 		// skips anything else than chunk index entries.
 		if !ok {
-			key, _ = b.cursor.Next()
 			continue
 		}
-		b.current.ChunkRef = ref
-		b.current.Labels = b.labelsMapper.Get(ref.SeriesID, ref.UserID)
-		return true
-	}
-	return false
-}
+		current.ChunkRef = ref
+		current.Labels = labelsMapper.Get(ref.SeriesID, ref.UserID)
+		deleteChunk, err := callback(current)
+		if err != nil {
+			return err
+		}
 
-type SeriesCleaner interface {
-	Cleanup(userID []byte, lbls labels.Labels) error
+		if deleteChunk {
+			if err := cursor.Delete(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 type seriesCleaner struct {
@@ -98,13 +61,13 @@ type seriesCleaner struct {
 	shards        map[uint32]string
 	bucket        *bbolt.Bucket
 	config        config.PeriodConfig
-	schema        index.SeriesStoreSchema
+	schema        series_index.SeriesStoreSchema
 
 	buf []byte
 }
 
 func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableName string) *seriesCleaner {
-	schema, _ := index.CreateSchema(config)
+	schema, _ := series_index.CreateSchema(config)
 	var shards map[uint32]string
 
 	if config.RowShards != 0 {
@@ -115,7 +78,7 @@ func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableNam
 	}
 
 	return &seriesCleaner{
-		tableInterval: ExtractIntervalFromTableName(tableName),
+		tableInterval: retention.ExtractIntervalFromTableName(tableName),
 		schema:        schema,
 		bucket:        bucket,
 		buf:           make([]byte, 0, 1024),
@@ -124,7 +87,7 @@ func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableNam
 	}
 }
 
-func (s *seriesCleaner) Cleanup(userID []byte, lbls labels.Labels) error {
+func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	if lbls.Get(labels.MetricName) == "" {
 		lbls = append(lbls, labels.Label{
