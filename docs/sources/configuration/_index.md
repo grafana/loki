@@ -92,7 +92,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the distributor and compactor, but all in the same process.
 # Supported values: all, compactor, distributor, ingester, querier, query-scheduler,
 #  ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
-# A full list of available targets can be printed when running Loki with the `-list-targets` command line flag.
+# A full list of available targets can be printed when running Loki with the
+# `-list-targets` command line flag.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -100,9 +101,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [auth_enabled: <boolean> | default = true]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to optimize
-# garbage collection. Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at
-# the cost of heap size. The ballast will not consume physical memory, because it is never read from.
-# It will, however, distort metrics, because it is counted as live memory.
+# garbage collection. Larger ballasts result in fewer garbage collection passes, reducing
+# CPU overhead at the cost of heap size. The ballast will not consume physical memory,
+# because it is never read from. It will, however, distort metrics, because it is
+# counted as live memory.
 [ballast_bytes: <int> | default = 0]
 
 # Configures the server of the launched module(s).
@@ -134,8 +136,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # or the querier.
 [ingester_client: <ingester_client>]
 
-# The ingester block configures the ingester and how the ingester will register itself to a
-# key value store.
+# The ingester block configures the ingester and how the ingester will register itself
+# to a key value store.
 [ingester: <ingester>]
 
 # Configures the index gateway server.
@@ -150,7 +152,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
-# The compactor block configures the compactor component which compacts index shards for performance.
+# The compactor block configures the compactor component, which compacts index shards
+# for performance.
 [compactor: <compactor>]
 
 # Configures limits per-tenant or globally.
@@ -163,7 +166,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The table_manager block configures the table manager for retention.
 [table_manager: <table_manager>]
 
-# Configuration for "runtime config" module, responsible for reloading runtime configuration file.
+# Configuration for "runtime config" module, responsible for reloading runtime
+# configuration file.
 [runtime_config: <runtime_config>]
 
 # Configuration for tracing.
@@ -300,13 +304,14 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.max-concurrent
 [max_concurrent: <int> | default = 10]
 
-# Only query the store, do not attempt to query any ingesters,
-# useful for running a standalone querier pool opearting only against stored data.
+# Only query the store, and not attempt any ingesters.
+# This is useful for running a standalone querier pool operating only against
+# stored data.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
-# Queriers should only query the ingesters and not try to query any store,
-# useful for when object store is unavailable.
+# When true, queriers only query the ingesters, and not stored data.
+# This is useful when the object store is unavailable.
 # CLI flag: -querier.query-ingester-only
 [query_ingester_only: <boolean> | default = false]
 
@@ -1802,8 +1807,8 @@ boltdb_shipper:
 # CLI flag: -store.index-cache-validity
 [index_cache_validity: <duration> | default = 5m]
 
-# Disable broad index queries which results in reduced cache usage and faster query performance at the expense of
-# somewhat higher QPS on the index store.
+# Disable broad index queries, which results in reduced cache usage and faster query
+# performance at the expense of a somewhat higher QPS on the index store.
 # CLI flag: -store.disable-broad-index-queries
 [disable_broad_index_queries: <bool> | default = false]
 
@@ -2110,6 +2115,11 @@ compacts index shards to more performant forms.
 # Ideally this should be set to at least 24h.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
+
+# Which deletion mode to use. Supported values are: disabled,
+# whole-stream-deletion, filter-only, and filter-and-delete.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
 
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
@@ -2633,14 +2643,14 @@ This way, one doesn't have to replicate configuration in multiple places.
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
 
-# Address, including port, where the compactor api is served
+# Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
 ```
 
 ## analytics
 
-The `analytics` block configures the reporting of Loki analytics to grafana.com
+The `analytics` block configures the reporting of Loki analytics to grafana.com.
 
 ```yaml
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
