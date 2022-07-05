@@ -65,11 +65,11 @@ $(LOGCLI): $(BINGO_DIR)/logcli.mod
 	@echo "(re)installing $(GOBIN)/logcli-v1.6.2-0.20220407212443-2d9d0ee236ea"
 	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=logcli.mod -o=$(GOBIN)/logcli-v1.6.2-0.20220407212443-2d9d0ee236ea "github.com/grafana/loki/cmd/logcli"
 
-OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.21.0
+OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.22.0
 $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/operator-sdk-v1.21.0"
-	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.21.0 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
+	@echo "(re)installing $(GOBIN)/operator-sdk-v1.22.0"
+	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.22.0 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
 
 PROMTOOL := $(GOBIN)/promtool-v1.8.2-0.20220211202545-56e14463bccf
 $(PROMTOOL): $(BINGO_DIR)/promtool.mod
