@@ -23,7 +23,7 @@ import (
 // BuildIngester builds the k8s objects required to run Loki Ingester
 func BuildIngester(opts Options) ([]client.Object, error) {
 	statefulSet := NewIngesterStatefulSet(opts)
-	if opts.Flags.EnableTLSHTTPServices {
+	if opts.Gates.HTTPEncryption {
 		if err := configureIngesterHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
@@ -33,7 +33,7 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Flags.EnableTLSGRPCServices {
+	if opts.Gates.GRPCEncryption {
 		if err := configureIngesterGRPCServicePKI(statefulSet, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
@@ -117,7 +117,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Flags.EnableRuntimeSeccompProfile),
+		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
@@ -208,7 +208,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceNameIngesterGRPC(opts.Name),
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -238,7 +238,7 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{

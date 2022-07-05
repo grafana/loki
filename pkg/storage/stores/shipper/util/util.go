@@ -33,20 +33,20 @@ var (
 )
 
 // getGzipReader gets or creates a new CompressionReader and reset it to read from src
-func getGzipReader(src io.Reader) io.Reader {
+func getGzipReader(src io.Reader) (io.Reader, error) {
 	if r := gzipReader.Get(); r != nil {
 		reader := r.(*gzip.Reader)
 		err := reader.Reset(src)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
-		return reader
+		return reader, nil
 	}
 	reader, err := gzip.NewReader(src)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return reader
+	return reader, nil
 }
 
 // putGzipReader places back in the pool a CompressionReader
@@ -102,7 +102,10 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}()
 	var objectReader io.Reader = readCloser
 	if decompressFile {
-		decompressedReader := getGzipReader(readCloser)
+		decompressedReader, err := getGzipReader(readCloser)
+		if err != nil {
+			return err
+		}
 		defer putGzipReader(decompressedReader)
 
 		objectReader = decompressedReader

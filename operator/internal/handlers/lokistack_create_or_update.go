@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
@@ -33,7 +34,7 @@ func CreateOrUpdateLokiStack(
 	req ctrl.Request,
 	k k8s.Client,
 	s *runtime.Scheme,
-	flags manifests.FeatureFlags,
+	fg configv1.FeatureGates,
 ) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
@@ -124,13 +125,13 @@ func CreateOrUpdateLokiStack(
 		tenantSecrets []*manifests.TenantSecrets
 		tenantConfigs map[string]manifests.TenantConfig
 	)
-	if flags.EnableGateway && stack.Spec.Tenants == nil {
+	if fg.LokiStackGateway && stack.Spec.Tenants == nil {
 		return &status.DegradedError{
 			Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
 			Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
 			Requeue: false,
 		}
-	} else if flags.EnableGateway && stack.Spec.Tenants != nil {
+	} else if fg.LokiStackGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
 			return &status.DegradedError{
 				Message: fmt.Sprintf("Invalid tenants configuration: %s", err),
@@ -210,7 +211,7 @@ func CreateOrUpdateLokiStack(
 		GatewayImage:      gwImg,
 		GatewayBaseDomain: baseDomain,
 		Stack:             stack.Spec,
-		Flags:             flags,
+		Gates:             fg,
 		ObjectStorage:     *objStore,
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
@@ -231,7 +232,7 @@ func CreateOrUpdateLokiStack(
 		return optErr
 	}
 
-	if flags.EnableGateway {
+	if fg.LokiStackGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
 			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
 			return optErr

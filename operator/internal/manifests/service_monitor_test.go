@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
@@ -20,17 +21,19 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 		ServiceMonitor *monitoringv1.ServiceMonitor
 	}
 
-	flags := FeatureFlags{
-		EnableCertificateSigningService: true,
-		EnableServiceMonitors:           true,
-		EnableTLSServiceMonitorConfig:   true,
+	featureGates := configv1.FeatureGates{
+		ServiceMonitors:            true,
+		ServiceMonitorTLSEndpoints: true,
+		OpenShift: configv1.OpenShiftFeatureGates{
+			ServingCertsService: true,
+		},
 	}
 
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
-		Flags:     flags,
+		Gates:     featureGates,
 		Stack: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Template: &lokiv1beta1.LokiTemplateSpec{
@@ -112,18 +115,20 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 }
 
 func TestServiceMonitorEndpoints_ForOpenShiftLoggingMode(t *testing.T) {
-	flags := FeatureFlags{
-		EnableGateway:                   true,
-		EnableCertificateSigningService: true,
-		EnableServiceMonitors:           true,
-		EnableTLSServiceMonitorConfig:   true,
+	featureGates := configv1.FeatureGates{
+		LokiStackGateway:           true,
+		ServiceMonitors:            true,
+		ServiceMonitorTLSEndpoints: true,
+		OpenShift: configv1.OpenShiftFeatureGates{
+			ServingCertsService: true,
+		},
 	}
 
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
-		Flags:     flags,
+		Gates:     featureGates,
 		Stack: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Tenants: &lokiv1beta1.TenantsSpec{

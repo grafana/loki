@@ -1,18 +1,14 @@
-package retention
+package compactor
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
-	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
 const (
@@ -43,48 +39,36 @@ func (e InvalidIndexKeyError) Is(target error) bool {
 	return target == ErrInvalidIndexKey
 }
 
-type ChunkRef struct {
-	UserID   []byte
-	SeriesID []byte
-	ChunkID  []byte
-	From     model.Time
-	Through  model.Time
-}
-
-func (c ChunkRef) String() string {
-	return fmt.Sprintf("UserID: %s , SeriesID: %s , Time: [%s,%s]", c.UserID, c.SeriesID, c.From, c.Through)
-}
-
-func parseChunkRef(hashKey, rangeKey []byte) (ChunkRef, bool, error) {
+func parseChunkRef(hashKey, rangeKey []byte) (retention.ChunkRef, bool, error) {
 	componentsRef := getComponents()
 	defer putComponents(componentsRef)
 	components := componentsRef.components
 
 	components = decodeRangeKey(rangeKey, components)
 	if len(components) == 0 {
-		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return retention.ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 
 	keyType := components[len(components)-1]
 	if len(keyType) == 0 || keyType[0] != chunkTimeRangeKeyV3 {
-		return ChunkRef{}, false, nil
+		return retention.ChunkRef{}, false, nil
 	}
 	chunkID := components[len(components)-2]
 
 	userID, hexFrom, hexThrough, ok := parseChunkID(chunkID)
 	if !ok {
-		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return retention.ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 	from, err := strconv.ParseInt(unsafeGetString(hexFrom), 16, 64)
 	if err != nil {
-		return ChunkRef{}, false, err
+		return retention.ChunkRef{}, false, err
 	}
 	through, err := strconv.ParseInt(unsafeGetString(hexThrough), 16, 64)
 	if err != nil {
-		return ChunkRef{}, false, err
+		return retention.ChunkRef{}, false, err
 	}
 
-	return ChunkRef{
+	return retention.ChunkRef{
 		UserID:   userID,
 		SeriesID: seriesFromHash(hashKey),
 		From:     model.Time(from),
@@ -211,48 +195,6 @@ func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bo
 		Name:     hashComponents[len(hashComponents)-1],
 		UserID:   hashComponents[len(hashComponents)-4],
 	}, true, nil
-}
-
-func validatePeriods(cfg config.SchemaConfig) error {
-	for _, schema := range cfg.Configs {
-		if schema.IndexType != config.BoltDBShipperType {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("custom retention is not supported for store %s, no retention will be applied for schema entry with start date %s", schema.IndexType, schema.From))
-			continue
-		}
-		if schema.IndexTables.Period != 24*time.Hour {
-			return fmt.Errorf("schema period must be daily, was: %s", schema.IndexTables.Period)
-		}
-	}
-	return nil
-}
-
-func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
-	// first round removes configs that does not have the prefix.
-	candidates := []config.PeriodConfig{}
-	for _, schema := range cfg.Configs {
-		if strings.HasPrefix(tableName, schema.IndexTables.Prefix) {
-			candidates = append(candidates, schema)
-		}
-	}
-	// WARN we  assume period is always daily. This is only true for boltdb-shipper.
-	var (
-		matched config.PeriodConfig
-		found   bool
-	)
-	for _, schema := range candidates {
-		periodIndex, err := strconv.ParseInt(strings.TrimPrefix(tableName, schema.IndexTables.Prefix), 10, 64)
-		if err != nil {
-			continue
-		}
-		periodSec := int64(schema.IndexTables.Period / time.Second)
-		tableTs := model.TimeFromUnix(periodIndex * periodSec)
-		if tableTs.After(schema.From.Time) || tableTs == schema.From.Time {
-			matched = schema
-			found = true
-		}
-	}
-
-	return matched, found
 }
 
 func seriesFromHash(h []byte) (seriesID []byte) {
