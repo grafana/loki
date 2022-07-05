@@ -91,7 +91,7 @@ func NewReader(writer io.Writer,
 	streamName string,
 	streamValue string,
 	interval time.Duration,
-) *Reader {
+) (*Reader, error) {
 	h := http.Header{}
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
@@ -102,7 +102,7 @@ func NewReader(writer io.Writer,
 			return &http.Transport{TLSClientConfig: tls}, nil
 		})
 		if err != nil {
-			panic(fmt.Sprintf("Failed to create HTTPS transport with TLS config: %v", err))
+			return nil, errors.Wrapf(err, "Failed to create HTTPS transport with TLS config")
 		}
 		httpClient = &http.Client{Transport: rt}
 	}
@@ -157,7 +157,7 @@ func NewReader(writer io.Writer,
 		}
 	}()
 
-	return &rd
+	return &rd, nil
 }
 
 func (r *Reader) Stop() {
