@@ -23,7 +23,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki-operator to your cluster.
+* Deploy the Loki Operator to your cluster.
 
 * Create an Object Storage secret with keys as follows:
 
@@ -56,7 +56,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki-operator to your cluster.
+* Deploy the Loki Operator to your cluster.
 
 * Create an Object Storage secret with keys as follows:
 
@@ -90,7 +90,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki operator to your cluster.
+* Deploy the Loki Operator to your cluster.
 
 * Copy the service account credentials received from GCP into a file name `key.json`.
 
@@ -104,7 +104,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
   
     where `lokistack-dev-gcs` is the secret name, `<BUCKET_NAME>` is the name of bucket created in requirements step and `<PATH/TO/KEY.JSON>` is the file path where the `key.json` was copied to.
 
-* Create an instance of [lokistack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `gcs`:
+* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `gcs`:
 
   ```yaml
   spec:
@@ -124,7 +124,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki-operator to your cluster.
+* Deploy the Loki Operator to your cluster.
 
 * Create an Object Storage secret with keys as follows:
 
@@ -159,7 +159,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki-operator to your cluster.
+* Deploy the Loki Operator to your cluster.
 
 * Create an Object Storage secret with keys as follows:
 
@@ -191,7 +191,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Installation
 
-* Deploy the loki-operator to your cluster.
+* Deploy the Loki Operator to your cluster.
 
 * Create an Object Storage secret with keys as follows:
 
