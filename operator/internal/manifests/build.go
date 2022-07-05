@@ -74,7 +74,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, rulerObjs...)
 	}
 
-	if opts.Flags.EnableGateway {
+	if opts.Gates.LokiStackGateway {
 		gatewayObjects, err := BuildGateway(opts)
 		if err != nil {
 			return nil, err
@@ -87,11 +87,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = configureLokiStackObjsForMode(res, opts)
 	}
 
-	if opts.Flags.EnableServiceMonitors {
+	if opts.Gates.ServiceMonitors {
 		res = append(res, BuildServiceMonitors(opts)...)
 	}
 
-	if opts.Flags.EnablePrometheusAlerts {
+	if opts.Gates.LokiStackAlerts {
 		prometheusRuleObjs, err := BuildPrometheusRule(opts)
 		if err != nil {
 			return nil, err

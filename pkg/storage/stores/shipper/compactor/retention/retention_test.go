@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -18,16 +17,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	ingesterclient "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -134,11 +128,9 @@ func Test_Retention(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
 			var (
-				clientMetrics = storage.NewClientMetrics()
-				store         = newTestStore(t, clientMetrics)
+				store         = newTestStore(t)
 				expectDeleted = []string{}
 			)
-			defer clientMetrics.Unregister()
 			for _, c := range tt.chunks {
 				require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
 			}
@@ -153,22 +145,17 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, store.schemaCfg, expiration, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, expiration, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
-				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table.DB, util_log.Logger)
+				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
 				require.Nil(t, err)
-				table.Close()
-
 			}
-
-			// assert using the store again.
-			store.open()
 
 			for i, e := range tt.alive {
 				require.Equal(t, e, store.HasChunk(tt.chunks[i]), "chunk %d should be %t", i, e)
 				if !e {
-					expectDeleted = append(expectDeleted, store.schemaCfg.ExternalKey(tt.chunks[i].ChunkRef))
+					expectDeleted = append(expectDeleted, getChunkID(tt.chunks[i].ChunkRef))
 				}
 			}
 			sort.Strings(expectDeleted)
@@ -177,7 +164,6 @@ func Test_Retention(t *testing.T) {
 				require.Eventually(t, func() bool {
 					actual := chunkClient.getDeletedChunkIds()
 					sort.Strings(actual)
-					fmt.Println(expectDeleted, actual)
 					return assert.ObjectsAreEqual(expectDeleted, actual)
 				}, 10*time.Second, 1*time.Second)
 			}
@@ -191,15 +177,9 @@ func (noopWriter) Put(chunkID []byte) error { return nil }
 func (noopWriter) Count() int64             { return 0 }
 func (noopWriter) Close() error             { return nil }
 
-type noopCleaner struct{}
-
-func (noopCleaner) Cleanup(userID []byte, lbls labels.Labels) error { return nil }
-
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
-	cm := storage.NewClientMetrics()
-	defer cm.Unregister()
-	store := newTestStore(t, cm)
+	store := newTestStore(t)
 	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, schema.from, schema.from.Add(1*time.Hour))
 	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, schema.from, schema.from.Add(1*time.Hour))
 	c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, schema.from, schema.from.Add(1*time.Hour))
@@ -212,33 +192,12 @@ func Test_EmptyTable(t *testing.T) {
 
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
-	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-		it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
-		require.NoError(t, err)
-		empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
-			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
-		require.NoError(t, err)
-		require.True(t, empty)
-		return nil
-	})
+	empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 	require.NoError(t, err)
+	require.True(t, empty)
 
-	// table with no chunks should error
-	tempDir := t.TempDir()
-	emptyDB, err := util.SafeOpenBoltdbFile(filepath.Join(tempDir, "empty.db"))
-	require.NoError(t, err)
-	err = emptyDB.Update(func(tx *bbolt.Tx) error {
-		bucket, err := tx.CreateBucket(local.IndexBucketName)
-		require.NoError(t, err)
-
-		it, err := NewChunkIndexIterator(bucket, schema.config)
-		require.NoError(t, err)
-		_, _, err = markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
-			NewExpirationChecker(&fakeLimits{}), nil)
-		require.Equal(t, err, errNoChunksFound)
-		return nil
-	})
-	require.NoError(t, err)
+	_, _, err = markforDelete(context.Background(), tables[0].name, noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil)
+	require.Equal(t, err, errNoChunksFound)
 }
 
 func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time, through model.Time) chunk.Chunk {
@@ -415,35 +374,20 @@ func TestChunkRewriter(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			cm := storage.NewClientMetrics()
-			defer cm.Unregister()
-			store := newTestStore(t, cm)
+			store := newTestStore(t)
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			chunkClient := client.NewClient(newTestObjectClient(store.chunkDir, cm), client.FSEncoder, schemaCfg)
 			for _, indexTable := range store.indexTables() {
-				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
-					bucket := tx.Bucket(local.IndexBucketName)
-					if bucket == nil {
-						return nil
-					}
+				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
-					cr, err := newChunkRewriter(chunkClient, store.schemaCfg.Configs[0], indexTable.name, bucket)
-					require.NoError(t, err)
-
-					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(store.schemaCfg, tt.chunk), tt.rewriteIntervalFilters)
-					require.NoError(t, err)
-					if len(tt.rewriteIntervalFilters) == 0 {
-						require.False(t, wroteChunks)
-					}
-					return nil
-				})
+				wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), ExtractIntervalFromTableName(indexTable.name), tt.rewriteIntervalFilters)
 				require.NoError(t, err)
-				require.NoError(t, indexTable.DB.Close())
+				if len(tt.rewriteIntervalFilters) == 0 {
+					require.False(t, wroteChunks)
+				}
 			}
 
-			store.open()
 			chunks := store.GetChunks(tt.chunk.UserID, tt.chunk.From, tt.chunk.Through, tt.chunk.Metric)
 
 			// number of chunks should be the new re-written chunks + the source chunk
@@ -451,7 +395,7 @@ func TestChunkRewriter(t *testing.T) {
 			for _, ivf := range tt.rewriteIntervalFilters {
 				expectedChk := createChunk(t, tt.chunk.UserID, labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, ivf.Interval.Start, ivf.Interval.End)
 				for i, chk := range chunks {
-					if store.schemaCfg.ExternalKey(chk.ChunkRef) == store.schemaCfg.ExternalKey(expectedChk.ChunkRef) {
+					if getChunkID(chk.ChunkRef) == getChunkID(expectedChk.ChunkRef) {
 						chunks = append(chunks[:i], chunks[i+1:]...)
 						break
 					}
@@ -460,24 +404,28 @@ func TestChunkRewriter(t *testing.T) {
 
 			// the source chunk should still be there in the store
 			require.Len(t, chunks, 1)
-			require.Equal(t, store.schemaCfg.ExternalKey(tt.chunk.ChunkRef), store.schemaCfg.ExternalKey(chunks[0].ChunkRef))
+			require.Equal(t, getChunkID(tt.chunk.ChunkRef), getChunkID(chunks[0].ChunkRef))
 			store.Stop()
 		})
 	}
 }
 
 type seriesCleanedRecorder struct {
+	IndexProcessor
 	// map of userID -> map of labels hash -> struct{}
 	deletedSeries map[string]map[uint64]struct{}
 }
 
-func newSeriesCleanRecorder() *seriesCleanedRecorder {
-	return &seriesCleanedRecorder{map[string]map[uint64]struct{}{}}
+func newSeriesCleanRecorder(indexProcessor IndexProcessor) *seriesCleanedRecorder {
+	return &seriesCleanedRecorder{
+		IndexProcessor: indexProcessor,
+		deletedSeries:  map[string]map[uint64]struct{}{},
+	}
 }
 
-func (s *seriesCleanedRecorder) Cleanup(userID []byte, lbls labels.Labels) error {
+func (s *seriesCleanedRecorder) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	s.deletedSeries[string(userID)] = map[uint64]struct{}{lbls.Hash(): {}}
-	return nil
+	return s.IndexProcessor.CleanupSeries(userID, lbls)
 }
 
 type chunkExpiry struct {
@@ -691,14 +639,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cm := storage.NewClientMetrics()
-			defer cm.Unregister()
-			store := newTestStore(t, cm)
+			store := newTestStore(t)
 
 			require.NoError(t, store.Put(context.TODO(), tc.chunks))
 			chunksExpiry := map[string]chunkExpiry{}
 			for i, chunk := range tc.chunks {
-				chunksExpiry[store.schemaCfg.ExternalKey(chunk.ChunkRef)] = tc.expiry[i]
+				chunksExpiry[getChunkID(chunk.ChunkRef)] = tc.expiry[i]
 			}
 
 			expirationChecker := newMockExpirationChecker(chunksExpiry)
@@ -708,24 +654,15 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
-			chunkClient := client.NewClient(newTestObjectClient(store.chunkDir, cm), client.FSEncoder, schemaCfg)
-
 			for i, table := range tables {
-				seriesCleanRecorder := newSeriesCleanRecorder()
-				err := table.DB.Update(func(tx *bbolt.Tx) error {
-					it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
-					require.NoError(t, err)
+				seriesCleanRecorder := newSeriesCleanRecorder(table)
 
-					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(local.IndexBucketName))
-					require.NoError(t, err)
-					empty, isModified, err := markforDelete(context.Background(), table.name, noopWriter{}, it, seriesCleanRecorder,
-						expirationChecker, cr)
-					require.NoError(t, err)
-					require.Equal(t, tc.expectedEmpty[i], empty)
-					require.Equal(t, tc.expectedModified[i], isModified)
-					return nil
-				})
+				cr := newChunkRewriter(store.chunkClient, table.name, table)
+				empty, isModified, err := markforDelete(context.Background(), table.name, noopWriter{}, seriesCleanRecorder,
+					expirationChecker, cr)
 				require.NoError(t, err)
+				require.Equal(t, tc.expectedEmpty[i], empty)
+				require.Equal(t, tc.expectedModified[i], isModified)
 
 				require.EqualValues(t, tc.expectedDeletedSeries[i], seriesCleanRecorder.deletedSeries[userID])
 			}
@@ -735,9 +672,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	schema := allSchemas[2]
-	cm := storage.NewClientMetrics()
-	defer cm.Unregister()
-	store := newTestStore(t, cm)
+	store := newTestStore(t)
 	now := model.Now()
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 	retentionPeriod := now.Sub(todaysTableInterval.Start) / 2
@@ -761,24 +696,15 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	require.Len(t, tables, 8)
 
 	for i, table := range tables {
-		err := table.DB.Update(func(tx *bbolt.Tx) error {
-			it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
-			require.NoError(t, err)
-			empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
-				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
-			require.NoError(t, err)
-			if i == 7 {
-				require.False(t, empty)
-			} else {
-				require.True(t, empty, "table %s must be empty", table.name)
-			}
-			return nil
-		})
+		empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, table,
+			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
 		require.NoError(t, err)
-		require.NoError(t, table.Close())
+		if i == 7 {
+			require.False(t, empty)
+		} else {
+			require.True(t, empty, "table %s must be empty", table.name)
+		}
 	}
-
-	store.open()
 
 	// verify the chunks which were not supposed to be deleted are still there
 	require.True(t, store.HasChunk(c1))

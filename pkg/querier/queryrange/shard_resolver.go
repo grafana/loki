@@ -120,6 +120,10 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 	combined := stats.MergeStats(results...)
 	factor := guessShardFactor(combined, r.maxParallelism)
+	var bytesPerShard = combined.Bytes
+	if factor > 0 {
+		bytesPerShard = combined.Bytes / uint64(factor)
+	}
 	level.Debug(sp).Log(
 		"msg", "queried index",
 		"type", "combined",
@@ -131,6 +135,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		"max_parallelism", r.maxParallelism,
 		"duration", time.Since(start),
 		"factor", factor,
+		"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
 	)
 	return factor, nil
 }
