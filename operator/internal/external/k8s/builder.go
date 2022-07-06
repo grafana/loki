@@ -18,7 +18,7 @@ type Builder interface {
 	Owns(object client.Object, opts ...builder.OwnsOption) Builder
 	WithEventFilter(p predicate.Predicate) Builder
 	WithOptions(options controller.Options) Builder
-	WithLogger(log logr.Logger) Builder
+	WithLogConstructor(logConstructor func(*reconcile.Request) logr.Logger) Builder
 	Named(name string) Builder
 	Complete(r reconcile.Reconciler) error
 	Build(r reconcile.Reconciler) (controller.Controller, error)
@@ -50,8 +50,8 @@ func (b *ctrlBuilder) WithOptions(opts controller.Options) Builder {
 	return &ctrlBuilder{bld: b.bld.WithOptions(opts)}
 }
 
-func (b *ctrlBuilder) WithLogger(log logr.Logger) Builder {
-	return &ctrlBuilder{bld: b.bld.WithLogger(log)}
+func (b *ctrlBuilder) WithLogConstructor(logConstructor func(*reconcile.Request) logr.Logger) Builder {
+	return &ctrlBuilder{bld: b.bld.WithLogConstructor(logConstructor)}
 }
 
 func (b *ctrlBuilder) Named(name string) Builder {
