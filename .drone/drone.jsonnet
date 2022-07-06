@@ -3,29 +3,26 @@ local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
 
-local condition(verb) = {
-  tagMain: {
-    ref: {
-      [verb]:
-        [
-          'refs/heads/main',
-          'refs/heads/k???',
-          'refs/tags/v*',
-        ],
-    },
-  },
-  path(path): {
-    paths: {
-      [verb]: [path],
-    },
-  },
+local onPRs = {
+  event: ['pull_request'],
+};
+
+local onTagOrMain = {
+  event: ['push', 'tag'],
+};
+
+local onPath(path) = {
+  paths+: [path],
 };
 
 local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request', 'tag'] },
+  trigger: {
+    // Only trigger pipelines for PRs, tags (v*), or pushes to "main". Excluding runs on grafana/loki (non fork) branches
+    ref: ['refs/heads/main', 'refs/heads/k???', 'refs/tags/v*', 'refs/pull/*/head'],
+  },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -79,6 +76,18 @@ local clients_docker(arch, app) = {
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
+    username: { from_secret: docker_username_secret.name },
+    password: { from_secret: docker_password_secret.name },
+    dry_run: false,
+  },
+};
+
+local docker_operator(arch, operator) = {
+  name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
+  image: 'plugins/docker',
+  settings: {
+    repo: 'grafana/%s' % operator,
+    dockerfile: 'operator/Dockerfile',
     username: { from_secret: docker_username_secret.name },
     password: { from_secret: docker_password_secret.name },
     dry_run: false,
@@ -145,7 +154,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/loki-query-tee',
@@ -155,7 +164,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/loki-query-tee',
       },
@@ -169,7 +178,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/fluent-bit-plugin-loki',
@@ -179,7 +188,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     clients_docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/fluent-bit-plugin-loki',
       },
@@ -193,7 +202,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/fluent-plugin-loki',
@@ -203,7 +212,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/fluent-plugin-loki',
       },
@@ -217,7 +226,7 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/logstash-output-loki',
@@ -227,7 +236,7 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/logstash-output-loki',
       },
@@ -241,7 +250,7 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
     // dry run for everything that is not tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -250,7 +259,7 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
     // publish for tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {},
     },
   ],
@@ -262,7 +271,7 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
     // dry run for everything that is not tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -270,6 +279,27 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
   ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
+      depends_on: ['image-tag'],
+      when: onTagOrMain,
+      settings+: {},
+    },
+  ],
+  depends_on: ['check'],
+};
+
+local lokiopertor(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker_operator(arch, 'loki-operator') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
       settings+: {},
@@ -283,7 +313,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     // dry run for everything that is not tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -293,7 +323,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {},
     }
     for app in apps
@@ -397,7 +427,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'test-image',
         image: 'plugins/docker',
-        when: condition('exclude').tagMain + condition('include').path('loki-build-image/**'),
+        when: onPRs + onPath('loki-build-image/**'),
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
@@ -409,7 +439,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'push-image',
         image: 'plugins/docker',
-        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        when: onTagOrMain + onPath('loki-build-image/**'),
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
@@ -505,19 +535,18 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
+  lokiopertor(arch)
+  for arch in archs
+] + [
   fluentbit(),
   fluentd(),
   logstash(),
   querytee(),
   manifest(['promtail', 'loki', 'loki-canary']) {
-    trigger: condition('include').tagMain {
-      event: ['push', 'tag'],
-    },
+    trigger+: onTagOrMain,
   },
   pipeline('deploy') {
-    trigger: condition('include').tagMain {
-      event: ['push', 'tag'],
-    },
+    trigger+: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
@@ -546,7 +575,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   },
   promtail_win(),
   pipeline('release') {
-    trigger: {
+    trigger+: {
       event: ['pull_request', 'tag'],
     },
     image_pull_secrets: [pull_secret.name],
@@ -570,9 +599,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   for arch in ['amd64', 'arm64']
 ] + [
   manifest_ecr(['lambda-promtail'], ['amd64', 'arm64']) {
-    trigger: condition('include').tagMain {
-      event: ['push'],
-    },
+    trigger+: { event: ['push'] },
   },
 ] + [
   github_secret,

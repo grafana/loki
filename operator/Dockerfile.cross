@@ -1,6 +1,11 @@
-# Build the manager binary
-FROM golang:1.17.9 as builder
+ARG BUILD_IMAGE=grafana/loki-build-image:0.18.0
 
+FROM golang:1.17.9-alpine as goenv
+RUN go env GOARCH > /goarch && \
+  go env GOARM > /goarm
+
+FROM --platform=linux/amd64 $BUILD_IMAGE as builder
+COPY --from=goenv /goarch /goarm /
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY operator/go.mod go.mod
@@ -16,7 +21,7 @@ COPY operator/controllers/ controllers/
 COPY operator/internal/ internal/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go build -a -o manager main.go
+RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on GOARCH=$(cat /goarch) GOARM=$(cat /goarm) go build -a -o manager main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
