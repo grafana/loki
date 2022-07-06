@@ -30,7 +30,7 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 
 	require.NoError(t, clu.Run())
 
-	tenantID := randStringRunes(12)
+	tenantID := randStringRunes()
 
 	now := time.Now()
 	cliWrite := client.New(tenantID, "", tWrite.HTTPURL().String())
