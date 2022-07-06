@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -241,7 +243,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
-	deleteStore, err := t.deleteRequestsClient("querier")
+	deleteStore, err := t.deleteRequestsClient("querier", t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -774,7 +776,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	deleteStore, err := t.deleteRequestsClient("ruler")
+	deleteStore, err := t.deleteRequestsClient("ruler", t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -987,7 +989,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	return ur, nil
 }
 
-func (t *Loki) deleteRequestsClient(clientType string) (deletion.DeleteRequestsClient, error) {
+func (t *Loki) deleteRequestsClient(clientType string, limits retention.Limits) (deletion.DeleteRequestsClient, error) {
 	// TODO(owen-d): enable delete request storage in tsdb
 	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
@@ -1007,7 +1009,12 @@ func (t *Loki) deleteRequestsClient(clientType string) (deletion.DeleteRequestsC
 		return nil, err
 	}
 
-	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, t.deleteClientMetrics, clientType)
+	client, err := deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, t.deleteClientMetrics, clientType)
+	if err != nil {
+		return nil, err
+	}
+
+	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
