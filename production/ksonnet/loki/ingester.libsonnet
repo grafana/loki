@@ -88,5 +88,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     podDisruptionBudget.mixin.metadata.withName('loki-ingester-pdb') +
     podDisruptionBudget.mixin.metadata.withLabels({ name: 'loki-ingester-pdb' }) +
     podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: name }) +
-    podDisruptionBudget.mixin.spec.withMaxUnavailable(1),
+    podDisruptionBudget.mixin.spec.withMaxUnavailable(0),
 }
