@@ -1,9 +1,9 @@
 reviewers:
 - alanconway
+- aminesnow
 - btaani
 - jcantrill
 - periklis
-- sasagarw
 - shwetaap
 - syedriko
 - vimalk78
@@ -13,3 +13,4 @@ approvers:
 - alanconway
 - jcantrill
 - periklis
+- xperimental
