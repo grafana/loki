@@ -3,7 +3,10 @@ package cache
 import (
 	"context"
 	"flag"
+	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,10 +40,12 @@ type Config struct {
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
-	GroupCache     GroupCacheConfig      `yaml:"groupcache"`
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
+
+	// GroupCache is configured/initialized as part of modules and injected here
+	GroupCache Cache `yaml:"-"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -58,7 +63,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
-	cfg.GroupCache.RegisterFlagsWithPrefix(prefix, description, f)
 	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
@@ -87,7 +91,7 @@ func IsRedisSet(cfg Config) bool {
 }
 
 func IsGroupCacheSet(cfg Config) bool {
-	return cfg.GroupCache.Cache != nil
+	return cfg.GroupCache != nil
 }
 
 // New creates a new Cache using Config.
@@ -96,49 +100,48 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		return cfg.Cache, nil
 	}
 
-	caches := []Cache{}
+	var caches []Cache
+	if cfg.EnableFifoCache {
+		if cfg.Fifocache.TTL == 0 && cfg.DefaultValidity != 0 {
+			cfg.Fifocache.TTL = cfg.DefaultValidity
+		}
 
-	//if cfg.EnableFifoCache {
-	//	if cfg.Fifocache.TTL == 0 && cfg.DefaultValidity != 0 {
-	//		cfg.Fifocache.TTL = cfg.DefaultValidity
-	//	}
-	//
-	//	if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger, cacheType); cache != nil {
-	//		caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
-	//	}
-	//}
-	//
-	//if IsMemcacheSet(cfg) && IsRedisSet(cfg) {
-	//	return nil, errors.New("use of multiple cache storage systems is not supported")
-	//}
-	//
-	//if IsMemcacheSet(cfg) {
-	//	if cfg.Memcache.Expiration == 0 && cfg.DefaultValidity != 0 {
-	//		cfg.Memcache.Expiration = cfg.DefaultValidity
-	//	}
-	//
-	//	client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
-	//	cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
-	//
-	//	cacheName := cfg.Prefix + "memcache"
-	//	caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
-	//}
-	//
-	//if IsRedisSet(cfg) {
-	//	if cfg.Redis.Expiration == 0 && cfg.DefaultValidity != 0 {
-	//		cfg.Redis.Expiration = cfg.DefaultValidity
-	//	}
-	//	cacheName := cfg.Prefix + "redis"
-	//	client, err := NewRedisClient(&cfg.Redis)
-	//	if err != nil {
-	//		return nil, fmt.Errorf("redis client setup failed: %w", err)
-	//	}
-	//	cache := NewRedisCache(cacheName, client, logger, cacheType)
-	//	caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
-	//}
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger, cacheType); cache != nil {
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
+		}
+	}
+
+	if IsMemcacheSet(cfg) && IsRedisSet(cfg) {
+		return nil, errors.New("use of multiple cache storage systems is not supported")
+	}
+
+	if IsMemcacheSet(cfg) {
+		if cfg.Memcache.Expiration == 0 && cfg.DefaultValidity != 0 {
+			cfg.Memcache.Expiration = cfg.DefaultValidity
+		}
+
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
+		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
+
+		cacheName := cfg.Prefix + "memcache"
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+	}
+
+	if IsRedisSet(cfg) {
+		if cfg.Redis.Expiration == 0 && cfg.DefaultValidity != 0 {
+			cfg.Redis.Expiration = cfg.DefaultValidity
+		}
+		cacheName := cfg.Prefix + "redis"
+		client, err := NewRedisClient(&cfg.Redis)
+		if err != nil {
+			return nil, fmt.Errorf("redis client setup failed: %w", err)
+		}
+		cache := NewRedisCache(cacheName, client, logger, cacheType)
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+	}
 
 	if IsGroupCacheSet(cfg) {
-		caches = append(caches, CollectStats(cfg.GroupCache.Cache))
+		caches = append(caches, CollectStats(cfg.GroupCache))
 	}
 
 	cache := NewTiered(caches)
