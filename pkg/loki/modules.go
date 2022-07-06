@@ -224,12 +224,12 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initGroupcache() (_ services.Service, err error) {
-	//TODO, only do this when groupcache is enabled
+	if !t.Cfg.Common.GroupCacheConfig.Enabled {
+		return nil, nil
+	}
 
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
-	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.ChunkStoreConfig.ChunkCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
@@ -242,10 +242,9 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	// TODO, there _has_ to be a better way to do this
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache)
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Cache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache)
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Cache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache)
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache)
+	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache)
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache)
 
 	return t.groupcacheRingManager, nil
 }
@@ -1111,9 +1110,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Common.GroupCacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

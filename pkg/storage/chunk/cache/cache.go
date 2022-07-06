@@ -41,6 +41,9 @@ type Config struct {
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
+	// GroupCache is configured/initialized as part of modules and injected here
+	GroupCache Cache `yaml:"-"`
+
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
 
@@ -86,7 +89,7 @@ func IsRedisSet(cfg Config) bool {
 }
 
 func IsGroupCacheSet(cfg Config) bool {
-	return cfg.GroupCache.Cache != nil
+	return cfg.GroupCache != nil
 }
 
 func IsEmbeddedCacheSet(cfg Config) bool {
@@ -180,7 +183,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	}
 
 	if IsGroupCacheSet(cfg) {
-		caches = append(caches, CollectStats(cfg.GroupCache.Cache))
+		caches = append(caches, CollectStats(cfg.GroupCache))
 	}
 
 	cache := NewTiered(caches)

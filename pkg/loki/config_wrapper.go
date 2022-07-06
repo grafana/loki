@@ -170,6 +170,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -178,9 +179,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -309,42 +308,17 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
 
-	// CacheRing
-	if mergeWithExisting || reflect.DeepEqual(r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring, defaults.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring) {
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstancePort = rc.InstancePort
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceAddr = rc.InstanceAddr
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceID = rc.InstanceID
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceZone = rc.InstanceZone
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore = rc.KVStore
-	}
-
-	// CacheRing
-	if mergeWithExisting || reflect.DeepEqual(r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring, defaults.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring) {
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstancePort = rc.InstancePort
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceAddr = rc.InstanceAddr
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceID = rc.InstanceID
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceZone = rc.InstanceZone
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.KVStore = rc.KVStore
-	}
-	// CacheRing for index cache
-	if mergeWithExisting || reflect.DeepEqual(r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring, defaults.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring) {
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstancePort = rc.InstancePort
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceAddr = rc.InstanceAddr
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceID = rc.InstanceID
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceZone = rc.InstanceZone
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.KVStore = rc.KVStore
+	// GroupCacheRing
+	if mergeWithExisting || reflect.DeepEqual(r.Common.GroupCacheConfig.Ring, defaults.Common.GroupCacheConfig.Ring) {
+		r.Common.GroupCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Common.GroupCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Common.GroupCacheConfig.Ring.InstancePort = rc.InstancePort
+		r.Common.GroupCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceID = rc.InstanceID
+		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Common.GroupCacheConfig.Ring.InstanceZone = rc.InstanceZone
+		r.Common.GroupCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Common.GroupCacheConfig.Ring.KVStore = rc.KVStore
 	}
 }
 
@@ -376,13 +350,11 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
 
-	f, err = tokensFile(cfg, "cache.tokens")
+	f, err = tokensFile(cfg, "groupcache.tokens")
 	if err != nil {
 		return err
 	}
-	cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.TokensFilePath = f
-	cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.TokensFilePath = f
-	cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.TokensFilePath = f
+	cfg.Common.GroupCacheConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -461,14 +433,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames, defaults.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames) {
-		cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames = append(cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceInterfaceNames, loopbackIface)
-	}
-	if reflect.DeepEqual(cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames, defaults.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames) {
-		cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames = append(cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceInterfaceNames, loopbackIface)
-	}
-	if reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceInterfaceNames, defaults.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceInterfaceNames) {
-		cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceInterfaceNames = append(cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.GroupCacheConfig.Ring.InstanceInterfaceNames) {
+		cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -483,9 +449,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.KVStore.Store = memberlistStr
-	r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.KVStore.Store = memberlistStr
-	r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.KVStore.Store = memberlistStr
+	r.Common.GroupCacheConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
