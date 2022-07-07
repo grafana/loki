@@ -47,7 +47,7 @@ jobs:
         with:
           ref_name: "${{ github.ref_name }}"
           release_tag_regexp: "^v(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
-          release_branch_regexp: "^release-(0|[1-9]\\d*)\\.(0|[1-9]\\d*).x$"
+          release_branch_regexp: "^release-(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x$"
 
       - name: "Determine technical documentation version"
         if: "steps.has-matching-release-tag.outputs.bool == 'true'"
