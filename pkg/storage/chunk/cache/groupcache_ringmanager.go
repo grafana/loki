@@ -189,7 +189,7 @@ func (rm *GroupcacheRingManager) Addr() string {
 	return rm.addr
 }
 
-func (rm *GroupcacheRingManager) Ring() *ring.Ring {
+func (rm *GroupcacheRingManager) Ring() ring.ReadRing {
 	return rm.ring
 }
 
