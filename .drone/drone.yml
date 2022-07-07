@@ -707,6 +707,7 @@ steps:
   image: plugins/docker
   name: build-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: true
     password:
@@ -722,6 +723,7 @@ steps:
   image: plugins/docker
   name: publish-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: false
     password:
@@ -759,6 +761,7 @@ steps:
   image: plugins/docker
   name: build-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: true
     password:
@@ -774,6 +777,7 @@ steps:
   image: plugins/docker
   name: publish-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: false
     password:
@@ -811,6 +815,7 @@ steps:
   image: plugins/docker
   name: build-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: true
     password:
@@ -826,6 +831,7 @@ steps:
   image: plugins/docker
   name: publish-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: false
     password:
@@ -1411,6 +1417,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 2082d23dcc8f69038e55b027f55a8b1fe8bc52b27f07d785db781fc935a434ad
+hmac: b99e5220d2f2fc15a0bca24bfd3ead78bb6b1ac276fc01ea76a06705fc920190
 
 ...

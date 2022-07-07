@@ -87,6 +87,7 @@ local docker_operator(arch, operator) = {
   image: 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % operator,
+    context: 'operator',
     dockerfile: 'operator/Dockerfile',
     username: { from_secret: docker_username_secret.name },
     password: { from_secret: docker_password_secret.name },
