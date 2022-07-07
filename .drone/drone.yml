@@ -1409,3 +1409,8 @@ get:
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
 name: deploy_config
+---
+kind: signature
+hmac: 2082d23dcc8f69038e55b027f55a8b1fe8bc52b27f07d785db781fc935a434ad
+
+...
