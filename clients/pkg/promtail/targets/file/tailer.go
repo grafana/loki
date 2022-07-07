@@ -173,7 +173,7 @@ func (t *tailer) readLines() {
 			if err != nil {
 				level.Error(t.logger).Log("msg", "failed to convert encoding", "error", err)
 				t.metrics.encodingFailures.WithLabelValues(t.path).Inc()
-				text = fmt.Sprintf("failed to convert encoding: %s", err.Error())
+				text = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
 			}
 		} else {
 			text = line.Text
