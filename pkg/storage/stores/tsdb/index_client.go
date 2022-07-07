@@ -7,10 +7,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // implements stores.Index
@@ -64,13 +66,30 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	log, ctx := spanlogger.New(ctx, "IndexClient.GetChunkRefs")
+	defer log.Span.Finish()
+
+	var kvps []interface{}
+	defer func() {
+		log.Log(kvps...)
+	}()
+
 	matchers, shard, err := cleanMatchers(matchers...)
+	kvps = append(kvps,
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"cleanMatcherErr", err,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO(owen-d): use a pool to reduce allocs here
 	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	kvps = append(kvps,
+		"chunks", len(chks),
+		"indexErr", err,
+	)
 	if err != nil {
 		return nil, err
 	}
