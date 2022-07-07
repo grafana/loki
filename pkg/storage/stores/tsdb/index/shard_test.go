@@ -63,6 +63,11 @@ func TestShardBounds(t *testing.T) {
 		from, through uint64
 	}{
 		{
+			shard:   NewShard(0, 1),
+			from:    0,
+			through: math.MaxUint64,
+		},
+		{
 			shard:   NewShard(0, 2),
 			from:    0,
 			through: 1 << 63,
