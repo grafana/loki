@@ -4,11 +4,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
+    local uid = if $._config.ssd.enabled then 'chunks-ssd' else 'chunks',
     'loki-chunks.json': {
                           local cfg = self,
                           labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'),
                         } +
-                        $.dashboard('Loki / Chunks', uid='chunks')
+                        $.dashboard('Loki / Chunks', uid=uid)
                         .addCluster()
                         .addNamespace()
                         .addTag()

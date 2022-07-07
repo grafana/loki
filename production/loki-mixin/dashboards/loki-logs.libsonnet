@@ -43,6 +43,7 @@ local template = import 'grafonnet/template.libsonnet';
 
   grafanaDashboards+: {
     local dashboards = self,
+    local uid = if $._config.ssd.enabled then 'logs-ssd' else 'logs',
 
     'loki-logs.json': {
                         local cfg = self,
@@ -51,7 +52,7 @@ local template = import 'grafonnet/template.libsonnet';
                         clusterLabel:: $._config.per_cluster_label,
 
                       } + lokiLogs +
-                      $.dashboard('Loki / Logs', uid='logs')
+                      $.dashboard('Loki / Logs', uid=uid)
                       .addCluster()
                       .addNamespace()
                       .addTag()

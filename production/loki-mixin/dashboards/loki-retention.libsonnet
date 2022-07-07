@@ -1,12 +1,14 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
+  local uid = if $._config.ssd.enabled then 'retention-ssd' else 'retention',
+
   local compactor_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
   local compactor_job_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
   grafanaDashboards+::
     {
       'loki-retention.json':
-        ($.dashboard('Loki / Retention', uid='retention'))
+        ($.dashboard('Loki / Retention', uid=uid))
         .addCluster()
         .addNamespace()
         .addTag()

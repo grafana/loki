@@ -4,6 +4,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
+    local uid = if $._config.ssd.enabled then 'operational-ssd' else 'operational',
 
     'loki-operational.json': {
                                local cfg = self,
@@ -189,7 +190,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  if !(p.type == 'row' && isRowHidden(p.title))
                                ],
                              } +
-                             $.dashboard('Loki / Operational', uid='operational')
+                             $.dashboard('Loki / Operational', uid=uid)
                              // The queries in this dashboard don't make use of the cluster tempalte label selector
                              // but we keep it here to allow selecting a namespace specific to a certain cluster, the
                              // namespace template variable selectors query uses the cluster value.

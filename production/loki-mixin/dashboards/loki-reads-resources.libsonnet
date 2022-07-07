@@ -2,6 +2,8 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
+  local uid = if $._config.ssd.enabled then 'reads-resources-ssd' else 'reads-resources',
+
   local index_gateway_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="index-gateway"',
   local index_gateway_job_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway',
 
@@ -11,7 +13,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+::
     {
       'loki-reads-resources.json':
-        ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
+        ($.dashboard('Loki / Reads Resources', uid=uid))
         .addCluster()
         .addNamespace()
         .addTag()

@@ -2,11 +2,12 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
+  local uid = if $._config.ssd.enabled then 'deletion-ssd' else 'deletion',
   local compactor_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
   grafanaDashboards+::
     {
       'loki-deletion.json':
-        ($.dashboard('Loki / Deletion', uid='deletion'))
+        ($.dashboard('Loki / Deletion', uid=uid))
         .addCluster()
         .addNamespace()
         .addTag()

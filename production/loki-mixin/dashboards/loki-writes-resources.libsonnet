@@ -2,13 +2,14 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
+  local uid = if $._config.ssd.enabled then 'writes-resources-ssd' else 'writes-resources',
   local ingester_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
   local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester',
 
   grafanaDashboards+::
     {
       'loki-writes-resources.json':
-        ($.dashboard('Loki / Writes Resources', uid='writes-resources'))
+        ($.dashboard('Loki / Writes Resources', uid=uid))
         .addCluster()
         .addNamespace()
         .addTag()

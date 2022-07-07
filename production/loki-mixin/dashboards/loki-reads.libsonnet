@@ -2,6 +2,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
+    local uid = if $._config.ssd.enabled then 'reads-ssd' else 'reads',
+
     local dashboards = self,
     local showBigTable = false,
 
@@ -39,7 +41,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          ingesterSelector:: selector('ingester'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
                        } +
-                       $.dashboard('Loki / Reads', uid='reads')
+                       $.dashboard('Loki / Reads', uid=uid)
                        .addCluster()
                        .addNamespace()
                        .addTag()
