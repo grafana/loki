@@ -50,6 +50,49 @@ The DaemonSet deployment works well at collecting the logs of all containers wit
 cluster. It's the best solution for a single-tenant model. Please make sure you set the {YOUR_LOKI_ENDPOINT} placeholder with your Loki endpoint.
 
 ```yaml
+--- # Daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail-daemonset
+spec:
+  selector:
+    matchLabels:
+      name: promtail
+  template:
+    metadata:
+      labels:
+        name: promtail
+    spec:
+      serviceAccount: promtail-serviceaccount
+      containers:
+      - name: promtail-container
+        image: grafana/promtail
+        args:
+        - -config.file=/etc/promtail/promtail.yaml
+        env: 
+        - name: 'HOSTNAME' # needed when using kubernetes_sd_configs
+          valueFrom:
+            fieldRef:
+              fieldPath: 'spec.nodeName'
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log
+        - name: promtail-config
+          mountPath: /etc/promtail
+        - mountPath: /var/lib/docker/containers
+          name: varlibdockercontainers
+          readOnly: true
+      volumes:
+      - name: logs
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: promtail-config
+        configMap:
+          name: promtail-config
 --- # configmap.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -141,47 +184,4 @@ roleRef:
     kind: ClusterRole
     name: promtail-clusterrole
     apiGroup: rbac.authorization.k8s.io
---- # Daemonset.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: promtail-daemonset
-spec:
-  selector:
-    matchLabels:
-      name: promtail
-  template:
-    metadata:
-      labels:
-        name: promtail
-    spec:
-      serviceAccount: promtail-serviceaccount
-      containers:
-      - name: promtail-container
-        image: grafana/promtail
-        args:
-        - -config.file=/etc/promtail/promtail.yaml
-        env: 
-        - name: 'HOSTNAME' # needed when using kubernetes_sd_configs
-          valueFrom:
-            fieldRef:
-              fieldPath: 'spec.nodeName'
-        volumeMounts:
-        - name: logs
-          mountPath: /var/log
-        - name: promtail-config
-          mountPath: /etc/promtail
-        - mountPath: /var/lib/docker/containers
-          name: varlibdockercontainers
-          readOnly: true
-      volumes:
-      - name: logs
-        hostPath:
-          path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
-      - name: promtail-config
-        configMap:
-          name: promtail-config
 ```

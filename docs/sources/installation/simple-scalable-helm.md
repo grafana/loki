@@ -22,13 +22,13 @@ within a Kubernetes cluster.
     helm repo add grafana https://grafana.github.io/helm-charts
     ```
 
-2. Update the chart repository:
+1. Update the chart repository:
 
     ```bash
     helm repo update
     ```
 
-3. Deploy the Loki cluster using one of these commands.
+1. Deploy the Loki cluster using one of these commands.
 
     - Deploy with the default configuration:
 
