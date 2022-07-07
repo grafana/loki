@@ -23,9 +23,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 
-	"github.com/go-kit/kit/log/level"
-
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -49,11 +48,9 @@ type GroupCache struct {
 	peerRing             *ring.Ring
 	cache                *groupcache.Group
 	pool                 *groupcache.HTTPPool
-	cacheType            stats.CacheType
 	stopChan             chan struct{}
 	updateInterval       time.Duration
 	logger               log.Logger
-	listenPort           int
 	wg                   sync.WaitGroup
 	reg                  prometheus.Registerer
 	startWaitingForClose context.CancelFunc
