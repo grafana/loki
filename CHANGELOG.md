@@ -41,6 +41,7 @@ Here is the list with the changes that were produced since the previous release.
 * [5790](https://github.com/grafana/loki/pull/5790) **chaudum**: Add UDP support for Promtail's syslog target.
 * [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail.
 * [6099](https://github.com/grafana/loki/pull/6099) **cstyan**: Drop lines with malformed JSON in Promtail JSON pipeline stage.
+* [6395](https://github.com/grafana/loki/pull/6395) **DylanGuedes**: Add encoding support
 ##### Fixes
 * [6034](https://github.com/grafana/loki/pull/6034) **DylanGuedes**: Promtail: Fix symlink tailing behavior.
 ##### Changes

@@ -8,10 +8,11 @@ type Metrics struct {
 	reg prometheus.Registerer
 
 	// File-specific metrics
-	readBytes   *prometheus.GaugeVec
-	totalBytes  *prometheus.GaugeVec
-	readLines   *prometheus.CounterVec
-	filesActive prometheus.Gauge
+	readBytes        *prometheus.GaugeVec
+	totalBytes       *prometheus.GaugeVec
+	readLines        *prometheus.CounterVec
+	encodingFailures *prometheus.CounterVec
+	filesActive      prometheus.Gauge
 
 	// Manager metrics
 	failedTargets *prometheus.CounterVec
