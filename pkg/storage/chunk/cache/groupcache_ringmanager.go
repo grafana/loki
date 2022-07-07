@@ -22,9 +22,9 @@ type GroupcacheRingManager struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	Addr           string
-	RingLifecycler *ring.BasicLifecycler
-	Ring           *ring.Ring
+	addr           string
+	ringLifecycler *ring.BasicLifecycler
+	ring           *ring.Ring
 
 	cfg GroupCacheConfig
 
@@ -52,7 +52,7 @@ func NewgGroupcacheRingManager(cfg GroupCacheConfig, log log.Logger, registerer 
 
 	// instantiate ring for both mode modes.
 	ringCfg := rm.cfg.Ring.ToRingConfig(1)
-	rm.Ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, GroupcacheRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
+	rm.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, GroupcacheRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
 	if err != nil {
 		return nil, errors.Wrap(err, "groupcache ring manager create ring client")
 	}
@@ -68,19 +68,19 @@ func (rm *GroupcacheRingManager) startRing(ringStore kv.Client, registerer prome
 	if err != nil {
 		return errors.Wrap(err, "invalid ring lifecycler config")
 	}
-	rm.Addr = lifecyclerCfg.Addr
+	rm.addr = lifecyclerCfg.Addr
 
 	delegate := ring.BasicLifecyclerDelegate(rm)
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, rm.log)
 	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.Ring.TokensFilePath, ring.JOINING, delegate, rm.log)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.Ring.HeartbeatTimeout, delegate, rm.log)
 
-	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, GroupcacheRingKey, ringStore, delegate, rm.log, registerer)
+	rm.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, GroupcacheRingKey, ringStore, delegate, rm.log, registerer)
 	if err != nil {
 		return errors.Wrap(err, "groupcache ring manager create ring lifecycler")
 	}
 
-	svcs := []services.Service{rm.RingLifecycler, rm.Ring}
+	svcs := []services.Service{rm.ringLifecycler, rm.ring}
 	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
 		return errors.Wrap(err, "new groupcache services manager in server mode")
@@ -119,12 +119,12 @@ func (rm *GroupcacheRingManager) starting(ctx context.Context) (err error) {
 	// state to make sure that when we'll run the initial sync we already
 	// know the tokens assigned to this instance.
 	level.Info(rm.log).Log("msg", "waiting until groupcache is JOINING in the ring")
-	if err := ring.WaitInstanceState(ctx, rm.Ring, rm.RingLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+	if err := ring.WaitInstanceState(ctx, rm.ring, rm.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
 		return err
 	}
 	level.Info(rm.log).Log("msg", "groupcache is JOINING in the ring")
 
-	if err = rm.RingLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
+	if err = rm.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
 		return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
 	}
 
@@ -132,7 +132,7 @@ func (rm *GroupcacheRingManager) starting(ctx context.Context) (err error) {
 	// make sure that when we'll run the loop it won't be detected as a ring
 	// topology change.
 	level.Info(rm.log).Log("msg", "waiting until groupcache is ACTIVE in the ring")
-	if err := ring.WaitInstanceState(ctx, rm.Ring, rm.RingLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+	if err := ring.WaitInstanceState(ctx, rm.ring, rm.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
 		return err
 	}
 	level.Info(rm.log).Log("msg", "groupcache is ACTIVE in the ring")
@@ -164,7 +164,7 @@ func (rm *GroupcacheRingManager) stopping(_ error) error {
 
 // ServeHTTP serves the HTTP route /groupcache/ring.
 func (rm *GroupcacheRingManager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	rm.Ring.ServeHTTP(w, req)
+	rm.ring.ServeHTTP(w, req)
 }
 
 func (rm *GroupcacheRingManager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
@@ -183,6 +183,14 @@ func (rm *GroupcacheRingManager) OnRingInstanceRegister(_ *ring.BasicLifecycler,
 	tokens = append(tokens, newTokens...)
 
 	return ring.JOINING, tokens
+}
+
+func (rm *GroupcacheRingManager) Addr() string {
+	return rm.addr
+}
+
+func (rm *GroupcacheRingManager) Ring() ring.ReadRing {
+	return rm.ring
 }
 
 func (rm *GroupcacheRingManager) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
