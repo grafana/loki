@@ -5,6 +5,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+:
     {
       local uid = if $._config.ssd.enabled then 'recording-rules-ssd' else 'recording-rules',
-      'loki-mixin-recording-rules.json': raw + $.dashboard('Recording Rules', uid=uid),
+      'loki-mixin-recording-rules.json': raw {
+        uid: uid,
+      },
     },
 }

@@ -627,6 +627,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Deletion",
-      "uid": "deletion",
+      "uid": "deletion-ssd",
       "version": 0
    }

@@ -1331,6 +1331,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Chunks",
-      "uid": "chunks",
+      "uid": "chunks-ssd",
       "version": 0
    }

@@ -959,6 +959,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Reads Resources",
-      "uid": "reads-resources",
+      "uid": "reads-resources-ssd",
       "version": 0
    }

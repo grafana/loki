@@ -695,6 +695,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Writes Resources",
-      "uid": "writes-resources",
+      "uid": "writes-resources-ssd",
       "version": 0
    }

@@ -1068,6 +1068,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Logs",
-      "uid": "logs",
+      "uid": "logs-ssd",
       "version": 0
    }

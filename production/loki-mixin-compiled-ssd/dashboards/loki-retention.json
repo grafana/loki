@@ -1532,6 +1532,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Retention",
-      "uid": "retention",
+      "uid": "retention-ssd",
       "version": 0
    }

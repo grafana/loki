@@ -6264,6 +6264,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Operational",
-      "uid": "operational",
+      "uid": "operational-ssd",
       "version": 0
    }
