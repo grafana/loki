@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/status"
 	"github.com/stretchr/testify/require"
@@ -31,7 +31,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsError_ReturnError(t *test
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchema{})
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1.ObjectStorageSchema{})
 	require.Error(t, err)
 }
 
@@ -49,7 +49,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *tes
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchema{})
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1.ObjectStorageSchema{})
 	require.NoError(t, err)
 }
 
@@ -59,16 +59,16 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	s := lokiv1beta1.LokiStack{
+	s := lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
-		Status: lokiv1beta1.LokiStackStatus{
-			Storage: lokiv1beta1.LokiStackStorageStatus{
-				Schemas: []lokiv1beta1.ObjectStorageSchema{
+		Status: lokiv1.LokiStackStatus{
+			Storage: lokiv1.LokiStackStorageStatus{
+				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -83,26 +83,26 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 	}
 
-	schemas := []lokiv1beta1.ObjectStorageSchema{
+	schemas := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV11,
 			EffectiveDate: "2020-10-11",
 		},
 		{
-			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV12,
 			EffectiveDate: "2021-10-11",
 		},
 	}
 
-	expected := []lokiv1beta1.ObjectStorageSchema{
+	expected := []lokiv1.ObjectStorageSchema{
 		{
 
-			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV11,
 			EffectiveDate: "2020-10-11",
 		},
 		{
 
-			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV12,
 			EffectiveDate: "2021-10-11",
 		},
 	}
@@ -116,7 +116,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 	}
 
 	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
-		stack := obj.(*lokiv1beta1.LokiStack)
+		stack := obj.(*lokiv1.LokiStack)
 		require.Equal(t, expected, stack.Status.Storage.Schemas)
 		return nil
 	}

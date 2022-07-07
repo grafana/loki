@@ -54,7 +54,7 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 				}
 			}
 
-			return q.indexShipper.ForEach(ctx, table, userID, func(idx shipper_index.Index) error {
+			return q.indexShipper.ForEach(ctx, table, userID, func(_ bool, idx shipper_index.Index) error {
 				boltdbIndexFile, ok := idx.(*indexfile.IndexFile)
 				if !ok {
 					return fmt.Errorf("unexpected index type %T", idx)

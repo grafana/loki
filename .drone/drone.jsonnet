@@ -87,6 +87,7 @@ local docker_operator(arch, operator) = {
   image: 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % operator,
+    context: 'operator',
     dockerfile: 'operator/Dockerfile',
     username: { from_secret: docker_username_secret.name },
     password: { from_secret: docker_password_secret.name },
@@ -287,12 +288,12 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
   depends_on: ['check'],
 };
 
-local lokiopertor(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
+local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -301,7 +302,7 @@ local lokiopertor(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {},
     },
   ],
@@ -535,7 +536,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
-  lokiopertor(arch)
+  lokioperator(arch)
   for arch in archs
 ] + [
   fluentbit(),

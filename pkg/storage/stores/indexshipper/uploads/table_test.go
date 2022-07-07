@@ -35,7 +35,7 @@ func TestTable(t *testing.T) {
 
 			// see if we can find all the added indexes in the table.
 			indexesFound := map[string]*mockIndex{}
-			err := testTable.ForEach(userID, func(index index.Index) error {
+			err := testTable.ForEach(userID, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})

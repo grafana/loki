@@ -11,7 +11,7 @@ import (
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"sigs.k8s.io/yaml"
@@ -120,7 +120,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ls := &v1beta1.LokiStack{}
+	ls := &lokiv1.LokiStack{}
 	if err = yaml.Unmarshal(b, ls); err != nil {
 		logger.Error(err, "failed to unmarshal LokiStack CR", "path", cfg.crFilepath)
 		os.Exit(1)

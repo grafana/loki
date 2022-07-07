@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"text/template"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 )
@@ -62,7 +62,7 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 		return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	// Build loki gateway observatorium rego for static mode
-	if opts.Stack.Tenants.Mode == lokiv1beta1.Static {
+	if opts.Stack.Tenants.Mode == lokiv1.Static {
 		w = bytes.NewBuffer(nil)
 		err = lokiStackGatewayRegoTmpl.Execute(w, opts)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -253,10 +254,10 @@ func (i *TSDBIndex) Checksum() uint32 {
 	return i.reader.Checksum()
 }
 
-func (i *TSDBIndex) Identifier(tenant string) SingleTenantTSDBIdentifier {
+func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	lower, upper := i.Bounds()
 	return SingleTenantTSDBIdentifier{
-		Tenant:   tenant,
+		TS:       time.Now(),
 		From:     lower,
 		Through:  upper,
 		Checksum: i.Checksum(),

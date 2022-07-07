@@ -707,6 +707,7 @@ steps:
   image: plugins/docker
   name: build-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: true
     password:
@@ -715,16 +716,14 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
   name: publish-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: false
     password:
@@ -733,16 +732,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -763,6 +761,7 @@ steps:
   image: plugins/docker
   name: build-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: true
     password:
@@ -771,16 +770,14 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
   name: publish-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: false
     password:
@@ -789,16 +786,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -819,6 +815,7 @@ steps:
   image: plugins/docker
   name: build-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: true
     password:
@@ -827,16 +824,14 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
   name: publish-loki-operator-image
   settings:
+    context: operator
     dockerfile: operator/Dockerfile
     dry_run: false
     password:
@@ -845,16 +840,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -1423,6 +1417,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 340c892b7147c1735d4a8a8aadbae154a5633484bcf99c7fbf9453726afe9b96
+hmac: b99e5220d2f2fc15a0bca24bfd3ead78bb6b1ac276fc01ea76a06705fc920190
 
 ...
