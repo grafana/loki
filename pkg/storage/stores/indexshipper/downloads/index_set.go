@@ -187,7 +187,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	for _, idx := range t.index {
-		if err := callback(idx); err != nil {
+		if err := callback(t.userID == "", idx); err != nil {
 			return err
 		}
 	}

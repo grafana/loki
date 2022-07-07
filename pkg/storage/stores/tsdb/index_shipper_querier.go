@@ -31,8 +31,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 	// Ensure we query both per tenant and multitenant TSDBs
 
 	for _, bkt := range indexBuckets(from, through) {
-		if err := i.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(idx shipper_index.Index) error {
-			_, multitenant := parseMultitenantTSDBName(idx.Name())
+		if err := i.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(multitenant bool, idx shipper_index.Index) error {
 			impl, ok := idx.(Index)
 			if !ok {
 				return fmt.Errorf("unexpected shipper index type: %T", idx)
