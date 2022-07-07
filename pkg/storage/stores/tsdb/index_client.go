@@ -76,6 +76,8 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 
 	matchers, shard, err := cleanMatchers(matchers...)
 	kvps = append(kvps,
+		"from", from.Time(),
+		"through", through.Time(),
 		"matchers", syntax.MatchersString(matchers),
 		"shard", shard,
 		"cleanMatcherErr", err,
