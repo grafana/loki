@@ -11,6 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weaveworks/common/instrument"
+
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"golang.org/x/net/http2"
 
 	"github.com/grafana/groupcache_exporter"
@@ -19,9 +23,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 
-	"github.com/go-kit/kit/log/level"
-
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -45,11 +48,9 @@ type GroupCache struct {
 	peerRing             *ring.Ring
 	cache                *groupcache.Group
 	pool                 *groupcache.HTTPPool
-	cacheType            stats.CacheType
 	stopChan             chan struct{}
 	updateInterval       time.Duration
 	logger               log.Logger
-	listenPort           int
 	wg                   sync.WaitGroup
 	reg                  prometheus.Registerer
 	startWaitingForClose context.CancelFunc
@@ -144,6 +145,22 @@ func (c *GroupCache) peerUrls() ([]string, error) {
 	return addrs, nil
 }
 
+func (c *GroupCache) Stats() *groupcache.Stats {
+	if c.cache == nil {
+		return nil
+	}
+
+	return &c.cache.Stats
+}
+
+type group struct {
+	cache           *groupcache.Group
+	logger          log.Logger
+	wg              *sync.WaitGroup
+	cacheType       stats.CacheType
+	requestDuration *prometheus.HistogramVec
+}
+
 func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	// Return a known error on miss to track which keys need to be inserted
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
@@ -158,34 +175,29 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 		logger:    c.logger,
 		wg:        &c.wg,
 		cacheType: ct,
+		requestDuration: promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:   "loki",
+			Name:        "groupcache_request_duration_seconds",
+			Help:        "Total time spent in seconds doing groupcache requests.",
+			Buckets:     instrument.DefBuckets,
+			ConstLabels: prometheus.Labels{"cache_type": string(ct)},
+		}, []string{"operation"}),
 	}
 
 	exp := groupcache_exporter.NewExporter(map[string]string{"cache_type": string(ct)}, g)
-	c.reg.MustRegister(exp)
+	prometheus.WrapRegistererWithPrefix("loki_groupcache_", c.reg).MustRegister(exp)
 
 	return g
 }
 
-func (c *GroupCache) Stats() *groupcache.Stats {
-	if c.cache == nil {
-		return nil
-	}
-
-	return &c.cache.Stats
-}
-
-type group struct {
-	cache     *groupcache.Group
-	logger    log.Logger
-	wg        *sync.WaitGroup
-	cacheType stats.CacheType
-}
-
 // TODO(tpatterson): Issue the key requests in parallel?
 func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	values := make([][]byte, 0, len(keys))
-	missed := make([]string, 0, len(keys))
-	found := make([]string, 0, len(keys))
+	var (
+		start  = time.Now()
+		values = make([][]byte, 0, len(keys))
+		missed = make([]string, 0, len(keys))
+		found  = make([]string, 0, len(keys))
+	)
 
 	var data []byte
 	for _, key := range keys {
@@ -204,11 +216,14 @@ func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 		values = append(values, data)
 	}
 
-	return found, values, missed, nil // count everything as a cache miss for now
+	c.requestDuration.WithLabelValues("fetch").Observe(time.Since(start).Seconds())
+	return found, values, missed, nil
 }
 
 // Store implements Cache.
 func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error {
+	start := time.Now()
+
 	var err error
 	for i, key := range keys {
 		if cacheErr := c.cache.Set(ctx, key, values[i], time.Time{}, true); cacheErr != nil {
@@ -217,6 +232,7 @@ func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error
 		}
 	}
 
+	c.requestDuration.WithLabelValues("store").Observe(time.Since(start).Seconds())
 	return err
 }
 
