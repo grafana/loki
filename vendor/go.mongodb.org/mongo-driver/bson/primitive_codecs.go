@@ -14,9 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/bsonrw"
 )
 
-var tRawValue = reflect.TypeOf(RawValue{})
-var tRaw = reflect.TypeOf(Raw(nil))
-
 var primitiveCodecs PrimitiveCodecs
 
 // PrimitiveCodecs is a namespace for all of the default bsoncodec.Codecs for the primitive types
@@ -89,4 +86,26 @@ func (PrimitiveCodecs) RawDecodeValue(dc bsoncodec.DecodeContext, vr bsonrw.Valu
 	rdr, err := bsonrw.Copier{}.AppendDocumentBytes(val.Interface().(Raw), vr)
 	val.Set(reflect.ValueOf(rdr))
 	return err
+}
+
+func (pc PrimitiveCodecs) encodeRaw(ec bsoncodec.EncodeContext, dw bsonrw.DocumentWriter, raw Raw) error {
+	var copier bsonrw.Copier
+	elems, err := raw.Elements()
+	if err != nil {
+		return err
+	}
+	for _, elem := range elems {
+		dvw, err := dw.WriteDocumentElement(elem.Key())
+		if err != nil {
+			return err
+		}
+
+		val := elem.Value()
+		err = copier.CopyValueFromBytes(dvw, val.Type, val.Value)
+		if err != nil {
+			return err
+		}
+	}
+
+	return dw.WriteDocumentEnd()
 }

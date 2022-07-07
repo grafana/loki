@@ -14,7 +14,7 @@ build: off
 environment:
   GOPATH: c:\gopath
 
-stack: go 1.16
+stack: go 1.15
 
 test_script:
   - go test -v -timeout 20m ./...

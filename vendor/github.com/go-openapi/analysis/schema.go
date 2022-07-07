@@ -47,7 +47,6 @@ func Schema(opts SchemaOpts) (*AnalyzedSchema, error) {
 	}
 
 	a.inferSimpleSchema()
-
 	return a, nil
 }
 
@@ -124,7 +123,6 @@ func (a *AnalyzedSchema) inferFromRef() error {
 		}
 		a.inherits(rsch)
 	}
-
 	return nil
 }
 
@@ -144,33 +142,26 @@ func (a *AnalyzedSchema) inferKnownType() {
 }
 
 func (a *AnalyzedSchema) inferMap() error {
-	if !a.isObjectType() {
-		return nil
-	}
-
-	hasExtra := a.hasProps || a.hasAllOf
-	a.IsMap = a.hasAdditionalProps && !hasExtra
-	a.IsExtendedObject = a.hasAdditionalProps && hasExtra
-
-	if !a.IsMap {
-		return nil
-	}
-
-	// maps
-	if a.schema.AdditionalProperties.Schema != nil {
-		msch, err := Schema(SchemaOpts{
-			Schema:   a.schema.AdditionalProperties.Schema,
-			Root:     a.root,
-			BasePath: a.basePath,
-		})
-		if err != nil {
-			return err
+	if a.isObjectType() {
+		hasExtra := a.hasProps || a.hasAllOf
+		a.IsMap = a.hasAdditionalProps && !hasExtra
+		a.IsExtendedObject = a.hasAdditionalProps && hasExtra
+		if a.IsMap {
+			if a.schema.AdditionalProperties.Schema != nil {
+				msch, err := Schema(SchemaOpts{
+					Schema:   a.schema.AdditionalProperties.Schema,
+					Root:     a.root,
+					BasePath: a.basePath,
+				})
+				if err != nil {
+					return err
+				}
+				a.IsSimpleMap = msch.IsSimpleSchema
+			} else if a.schema.AdditionalProperties.Allows {
+				a.IsSimpleMap = true
+			}
 		}
-		a.IsSimpleMap = msch.IsSimpleSchema
-	} else if a.schema.AdditionalProperties.Allows {
-		a.IsSimpleMap = true
 	}
-
 	return nil
 }
 
@@ -193,15 +184,12 @@ func (a *AnalyzedSchema) inferArray() error {
 			if err != nil {
 				return err
 			}
-
 			a.IsSimpleArray = itsch.IsSimpleSchema
 		}
 	}
-
 	if a.IsArray && !a.hasItems {
 		a.IsSimpleArray = true
 	}
-
 	return nil
 }
 
@@ -234,6 +222,7 @@ func (a *AnalyzedSchema) initializeFlags() {
 
 	a.hasAdditionalItems = a.schema.AdditionalItems != nil &&
 		(a.schema.AdditionalItems.Schema != nil || a.schema.AdditionalItems.Allows)
+
 }
 
 func (a *AnalyzedSchema) isObjectType() bool {
@@ -242,15 +231,4 @@ func (a *AnalyzedSchema) isObjectType() bool {
 
 func (a *AnalyzedSchema) isArrayType() bool {
 	return !a.hasRef && (a.schema.Type != nil && a.schema.Type.Contains("array"))
-}
-
-// isAnalyzedAsComplex determines if an analyzed schema is eligible to flattening (i.e. it is "complex").
-//
-// Complex means the schema is any of:
-//  - a simple type (primitive)
-//  - an array of something (items are possibly complex ; if this is the case, items will generate a definition)
-//  - a map of something (additionalProperties are possibly complex ; if this is the case, additionalProperties will
-//    generate a definition)
-func (a *AnalyzedSchema) isAnalyzedAsComplex() bool {
-	return !a.IsSimpleSchema && !a.IsArray && !a.IsMap
 }

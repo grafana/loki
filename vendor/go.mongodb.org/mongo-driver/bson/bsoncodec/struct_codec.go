@@ -331,7 +331,14 @@ func (sc *StructCodec) DecodeValue(r DecodeContext, vr bsonrw.ValueReader, val r
 			return newDecodeError(fd.name, ErrNoDecoder{Type: field.Elem().Type()})
 		}
 
-		err = fd.decoder.DecodeValue(dctx, vr, field.Elem())
+		if decoder, ok := fd.decoder.(ValueDecoder); ok {
+			err = decoder.DecodeValue(dctx, vr, field.Elem())
+			if err != nil {
+				return newDecodeError(fd.name, err)
+			}
+			continue
+		}
+		err = fd.decoder.DecodeValue(dctx, vr, field)
 		if err != nil {
 			return newDecodeError(fd.name, err)
 		}
@@ -560,7 +567,7 @@ func (sc *StructCodec) describeStruct(r *Registry, t reflect.Type) (*structDescr
 		}
 		dominant, ok := dominantField(fields[i : i+advance])
 		if !ok || !sc.OverwriteDuplicatedInlinedFields {
-			return nil, fmt.Errorf("struct %s has duplicated key %s", t.String(), name)
+			return nil, fmt.Errorf("struct %s) duplicated key %s", t.String(), name)
 		}
 		sd.fl = append(sd.fl, dominant)
 		sd.fm[name] = dominant

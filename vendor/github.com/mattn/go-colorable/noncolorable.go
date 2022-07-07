@@ -18,21 +18,20 @@ func NewNonColorable(w io.Writer) io.Writer {
 // Write writes data on console
 func (w *NonColorable) Write(data []byte) (n int, err error) {
 	er := bytes.NewReader(data)
-	var plaintext bytes.Buffer
+	var bw [1]byte
 loop:
 	for {
 		c1, err := er.ReadByte()
 		if err != nil {
-			plaintext.WriteTo(w.out)
 			break loop
 		}
 		if c1 != 0x1b {
-			plaintext.WriteByte(c1)
+			bw[0] = c1
+			_, err = w.out.Write(bw[:])
+			if err != nil {
+				break loop
+			}
 			continue
-		}
-		_, err = plaintext.WriteTo(w.out)
-		if err != nil {
-			break loop
 		}
 		c2, err := er.ReadByte()
 		if err != nil {
@@ -42,6 +41,7 @@ loop:
 			continue
 		}
 
+		var buf bytes.Buffer
 		for {
 			c, err := er.ReadByte()
 			if err != nil {
@@ -50,6 +50,7 @@ loop:
 			if ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '@' {
 				break
 			}
+			buf.Write([]byte(string(c)))
 		}
 	}
 

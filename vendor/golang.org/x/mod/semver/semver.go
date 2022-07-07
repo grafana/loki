@@ -32,6 +32,7 @@ type parsed struct {
 	short      string
 	prerelease string
 	build      string
+	err        string
 }
 
 // IsValid reports whether v is a valid semantic version string.
@@ -171,10 +172,12 @@ func Sort(list []string) {
 
 func parse(v string) (p parsed, ok bool) {
 	if v == "" || v[0] != 'v' {
+		p.err = "missing v prefix"
 		return
 	}
 	p.major, v, ok = parseInt(v[1:])
 	if !ok {
+		p.err = "bad major version"
 		return
 	}
 	if v == "" {
@@ -184,11 +187,13 @@ func parse(v string) (p parsed, ok bool) {
 		return
 	}
 	if v[0] != '.' {
+		p.err = "bad minor prefix"
 		ok = false
 		return
 	}
 	p.minor, v, ok = parseInt(v[1:])
 	if !ok {
+		p.err = "bad minor version"
 		return
 	}
 	if v == "" {
@@ -197,26 +202,31 @@ func parse(v string) (p parsed, ok bool) {
 		return
 	}
 	if v[0] != '.' {
+		p.err = "bad patch prefix"
 		ok = false
 		return
 	}
 	p.patch, v, ok = parseInt(v[1:])
 	if !ok {
+		p.err = "bad patch version"
 		return
 	}
 	if len(v) > 0 && v[0] == '-' {
 		p.prerelease, v, ok = parsePrerelease(v)
 		if !ok {
+			p.err = "bad prerelease"
 			return
 		}
 	}
 	if len(v) > 0 && v[0] == '+' {
 		p.build, v, ok = parseBuild(v)
 		if !ok {
+			p.err = "bad build"
 			return
 		}
 	}
 	if v != "" {
+		p.err = "junk on end"
 		ok = false
 		return
 	}

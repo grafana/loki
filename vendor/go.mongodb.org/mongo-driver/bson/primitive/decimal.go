@@ -133,9 +133,11 @@ Loop:
 }
 
 // BigInt returns significand as big.Int and exponent, bi * 10 ^ exp.
-func (d Decimal128) BigInt() (*big.Int, int, error) {
+func (d Decimal128) BigInt() (bi *big.Int, exp int, err error) {
 	high, low := d.GetBytes()
-	posSign := high>>63&1 == 0 // positive sign
+	var posSign bool // positive sign
+
+	posSign = high>>63&1 == 0
 
 	switch high >> 58 & (1<<5 - 1) {
 	case 0x1F:
@@ -147,7 +149,6 @@ func (d Decimal128) BigInt() (*big.Int, int, error) {
 		return nil, 0, ErrParseNegInf
 	}
 
-	var exp int
 	if high>>61&3 == 3 {
 		// Bits: 1*sign 2*ignored 14*exponent 111*significand.
 		// Implicit 0b100 prefix in significand.
@@ -170,7 +171,7 @@ func (d Decimal128) BigInt() (*big.Int, int, error) {
 		return new(big.Int), 0, nil
 	}
 
-	bi := big.NewInt(0)
+	bi = big.NewInt(0)
 	const host32bit = ^uint(0)>>32 == 0
 	if host32bit {
 		bi.SetBits([]big.Word{big.Word(low), big.Word(low >> 32), big.Word(high), big.Word(high >> 32)})
@@ -181,7 +182,7 @@ func (d Decimal128) BigInt() (*big.Int, int, error) {
 	if !posSign {
 		return bi.Neg(bi), exp, nil
 	}
-	return bi, exp, nil
+	return
 }
 
 // IsNaN returns whether d is NaN.

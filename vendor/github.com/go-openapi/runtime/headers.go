@@ -12,30 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package debug
+package runtime
 
 import (
-	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-	"runtime"
+	"mime"
+	"net/http"
+
+	"github.com/go-openapi/errors"
 )
 
-var (
-	output = os.Stdout
-)
-
-// GetLogger provides a prefix debug logger
-func GetLogger(prefix string, debug bool) func(string, ...interface{}) {
-	if debug {
-		logger := log.New(output, fmt.Sprintf("%s:", prefix), log.LstdFlags)
-
-		return func(msg string, args ...interface{}) {
-			_, file1, pos1, _ := runtime.Caller(1)
-			logger.Printf("%s:%d: %s", filepath.Base(file1), pos1, fmt.Sprintf(msg, args...))
-		}
+// ContentType parses a content type header
+func ContentType(headers http.Header) (string, string, error) {
+	ct := headers.Get(HeaderContentType)
+	orig := ct
+	if ct == "" {
+		ct = DefaultMime
+	}
+	if ct == "" {
+		return "", "", nil
 	}
 
-	return func(msg string, args ...interface{}) {}
+	mt, opts, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return "", "", errors.NewParseError(HeaderContentType, "header", orig, err)
+	}
+
+	if cs, ok := opts[charsetKey]; ok {
+		return mt, cs, nil
+	}
+
+	return mt, "", nil
 }
