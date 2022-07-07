@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
@@ -72,16 +73,7 @@ func main() {
 
 	// loads everything into memory.
 	if err := db.View(func(t *bbolt.Tx) error {
-		it, err := retention.NewChunkIndexIterator(t.Bucket([]byte("index")), periodConfig)
-		if err != nil {
-			return err
-		}
-
-		for it.Next() {
-			if it.Err() != nil {
-				return it.Err()
-			}
-			entry := it.Entry()
+		return compactor.ForEachChunk(t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
 			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),
@@ -89,9 +81,8 @@ func main() {
 				KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
 				Entries:  10000,                  // guess: 10k entries
 			}})
-		}
-
-		return nil
+			return false, nil
+		})
 	}); err != nil {
 		panic(err)
 	}

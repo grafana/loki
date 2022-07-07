@@ -78,6 +78,8 @@ spec:
                 type: boolean
               enableTlsServiceMonitorConfig:
                 type: boolean
+              enableTlsHttpServices:
+                type: boolean
             type: object
           gracefulShutDown:
             description: GracefulShutdownTimeout is the duration given to runnable

@@ -98,6 +98,7 @@ func ConfigureGatewayDeployment(
 	keyFilePath := path.Join(tlsDir, keyFile)
 	caFilePath := path.Join(caDir, caFile)
 	gwArgs = append(gwArgs,
+		"--tls.client-auth-type=NoClientCert",
 		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
 		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
 		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
@@ -107,7 +108,7 @@ func ConfigureGatewayDeployment(
 	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
 
-	// Create and mount TLS secrets volumes if it's not already done by the service monitor config.
+	// Create and mount TLS secrets volumes if not already created.
 	if !withTLS {
 		gwVolumes = append(gwVolumes, corev1.Volume{
 			Name: secretVolumeName,

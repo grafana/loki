@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
+
+const compactedFileUploader = "compactor"
 
 // Identifier can resolve an index to a name (in object storage)
 // and a path (on disk)
@@ -22,18 +22,19 @@ type Identifier interface {
 
 // identifierFromPath will detect whether this is a single or multitenant TSDB
 func identifierFromPath(p string) (Identifier, error) {
-	multiID, multitenant := parseMultitenantTSDBPath(p)
-	if multitenant {
-		parent := filepath.Dir(p)
-		return newPrefixedIdentifier(multiID, parent, ""), nil
+	// try parsing as single tenant since the filename is more deterministic without an arbitrary nodename for uploader
+	id, ok := parseSingleTenantTSDBPath(p)
+	if ok {
+		return newPrefixedIdentifier(id, filepath.Dir(p), ""), nil
 	}
 
-	id, parent, ok := parseSingleTenantTSDBPath(p)
+	multiID, ok := parseMultitenantTSDBPath(p)
 	if !ok {
 		return nil, fmt.Errorf("invalid tsdb path: %s", p)
 	}
 
-	return newPrefixedIdentifier(id, parent, ""), nil
+	parent := filepath.Dir(p)
+	return newPrefixedIdentifier(multiID, parent, ""), nil
 }
 
 func newPrefixedIdentifier(id Identifier, path, name string) prefixedIdentifier {
@@ -78,15 +79,16 @@ func (s suffixedIdentifier) Path() string {
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {
-	Tenant        string
+	TS            time.Time
 	From, Through model.Time
 	Checksum      uint32
 }
 
 func (i SingleTenantTSDBIdentifier) str() string {
 	return fmt.Sprintf(
-		"%s-%d-%d-%x.tsdb",
-		index.IndexFilename,
+		"%d-%s-%d-%d-%x.tsdb",
+		i.TS.Unix(),
+		compactedFileUploader,
 		i.From,
 		i.Through,
 		i.Checksum,
@@ -94,61 +96,57 @@ func (i SingleTenantTSDBIdentifier) str() string {
 }
 
 func (i SingleTenantTSDBIdentifier) Name() string {
-	return path.Join(i.Tenant, i.str())
+	return i.str()
 }
 
 func (i SingleTenantTSDBIdentifier) Path() string {
-	return filepath.Join(i.Tenant, i.str())
+	return i.str()
 }
 
-func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, parent string, ok bool) {
+func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
 	// parsing as multitenant didn't work, so try single tenant
-	file := filepath.Base(p)
-	parents := filepath.Dir(p)
-	pathPrefix := filepath.Dir(parents)
-	tenant := filepath.Base(parents)
-
-	// no tenant was provided
-	if tenant == "." {
-		return
-	}
 
 	// incorrect suffix
-	trimmed := strings.TrimSuffix(file, ".tsdb")
-	if trimmed == file {
+	trimmed := strings.TrimSuffix(p, ".tsdb")
+	if trimmed == p {
 		return
 	}
 
 	elems := strings.Split(trimmed, "-")
-	if len(elems) != 4 {
+	if len(elems) != 5 {
 		return
 	}
 
-	if elems[0] != index.IndexFilename {
-		return
-	}
-
-	from, err := strconv.ParseInt(elems[1], 10, 64)
+	ts, err := strconv.Atoi(elems[0])
 	if err != nil {
 		return
 	}
 
-	through, err := strconv.ParseInt(elems[2], 10, 64)
+	if elems[1] != compactedFileUploader {
+		return
+	}
+
+	from, err := strconv.ParseInt(elems[2], 10, 64)
 	if err != nil {
 		return
 	}
 
-	checksum, err := strconv.ParseInt(elems[3], 16, 32)
+	through, err := strconv.ParseInt(elems[3], 10, 64)
+	if err != nil {
+		return
+	}
+
+	checksum, err := strconv.ParseInt(elems[4], 16, 32)
 	if err != nil {
 		return
 	}
 
 	return SingleTenantTSDBIdentifier{
-		Tenant:   tenant,
+		TS:       time.Unix(int64(ts), 0),
 		From:     model.Time(from),
 		Through:  model.Time(through),
 		Checksum: uint32(checksum),
-	}, pathPrefix, true
+	}, true
 
 }
 
@@ -168,11 +166,6 @@ func (id MultitenantTSDBIdentifier) Path() string {
 
 func parseMultitenantTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
 	cleaned := filepath.Base(p)
-	return parseMultitenantTSDBNameFromBase(cleaned)
-}
-
-func parseMultitenantTSDBName(p string) (id MultitenantTSDBIdentifier, ok bool) {
-	cleaned := path.Base(p)
 	return parseMultitenantTSDBNameFromBase(cleaned)
 }
 

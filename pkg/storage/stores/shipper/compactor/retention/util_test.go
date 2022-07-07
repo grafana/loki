@@ -3,7 +3,6 @@ package retention
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -14,21 +13,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
-	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 func dayFromTime(t model.Time) config.DayTime {
@@ -42,7 +35,8 @@ func dayFromTime(t model.Time) config.DayTime {
 }
 
 var (
-	start     = model.Now().Add(-30 * 24 * time.Hour)
+	start = model.Now().Add(-30 * 24 * time.Hour)
+	// ToDo(Sandeep): See if we can get rid of schemaCfg now that we mock the index store.
 	schemaCfg = config.SchemaConfig{
 		// we want to test over all supported schema.
 		Configs: []config.PeriodConfig{
@@ -122,16 +116,113 @@ func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
 	}
 }
 
-type testStore struct {
-	storage.Store
-	cfg                storage.Config
-	objectClient       client.ObjectClient
-	indexDir, chunkDir string
-	schemaCfg          config.SchemaConfig
-	t                  testing.TB
-	limits             storage.StoreLimits
-	clientMetrics      storage.ClientMetrics
+type table struct {
+	name   string
+	chunks map[string][]chunk.Chunk
 }
+
+func (t *table) ForEachChunk(callback ChunkEntryCallback) error {
+	for userID, chks := range t.chunks {
+		i := 0
+		for _, chk := range chks {
+			deleteChunk, err := callback(entryFromChunk(chk))
+			if err != nil {
+				return err
+			}
+
+			if !deleteChunk {
+				t.chunks[userID][i] = chk
+				i++
+			}
+		}
+
+		t.chunks[userID] = t.chunks[userID][:i]
+	}
+
+	return nil
+}
+
+func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
+	t.chunks[chunk.UserID] = append(t.chunks[chunk.UserID], chunk)
+	return true, nil
+}
+
+func (t *table) CleanupSeries(userID []byte, lbls labels.Labels) error {
+	return nil
+}
+
+func newTable(name string) *table {
+	return &table{
+		name:   name,
+		chunks: map[string][]chunk.Chunk{},
+	}
+}
+
+func (t *table) Put(chk chunk.Chunk) {
+	if _, ok := t.chunks[chk.UserID]; !ok {
+		t.chunks[chk.UserID] = []chunk.Chunk{}
+	}
+
+	t.chunks[chk.UserID] = append(t.chunks[chk.UserID], chk)
+}
+
+func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
+	var chunks []chunk.Chunk
+	var matchers []*labels.Matcher
+	for _, l := range metric {
+		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
+	}
+
+	for _, chk := range t.chunks[userID] {
+		if chk.From > through || chk.Through < from || !allMatch(matchers, chk.Metric) {
+			continue
+		}
+		chunks = append(chunks, chk)
+	}
+
+	return chunks
+}
+
+func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
+	for _, m := range matchers {
+		if !m.Matches(labels.Get(m.Name)) {
+			return false
+		}
+	}
+	return true
+}
+
+func tablesInInterval(from, through model.Time) (res []string) {
+	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
+	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
+	for cur := start; cur <= end; cur++ {
+		res = append(res, fmt.Sprintf("index_%d", cur))
+	}
+	return
+}
+
+type testStore struct {
+	chunkClient  client.Client
+	objectClient client.ObjectClient
+	t            testing.TB
+	tables       map[string]*table
+}
+
+func (t *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+	for _, chk := range chunks {
+		for _, tableName := range tablesInInterval(chk.From, chk.Through) {
+			if _, ok := t.tables[tableName]; !ok {
+				t.tables[tableName] = newTable(tableName)
+			}
+
+			t.tables[tableName].Put(chk)
+		}
+	}
+
+	return t.chunkClient.PutChunks(ctx, chunks)
+}
+
+func (t *testStore) Stop() {}
 
 // testObjectClient is a testing object client
 type testObjectClient struct {
@@ -139,12 +230,10 @@ type testObjectClient struct {
 	path string
 }
 
-func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) client.ObjectClient {
-	c, err := storage.NewObjectClient("filesystem", storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: path,
-		},
-	}, clientMetrics)
+func newTestObjectClient(path string) client.ObjectClient {
+	c, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: path,
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -154,80 +243,74 @@ func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) clien
 	}
 }
 
-type table struct {
-	name string
-	*bbolt.DB
-}
-
-func (t *testStore) indexTables() []table {
+func (t *testStore) indexTables() []*table {
 	t.t.Helper()
-	res := []table{}
-	indexFilesInfo, err := ioutil.ReadDir(t.indexDir)
-	require.NoError(t.t, err)
-	for _, indexFileInfo := range indexFilesInfo {
-		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(t.indexDir, indexFileInfo.Name()))
-		require.NoError(t.t, err)
-		res = append(res, table{name: indexFileInfo.Name(), DB: db})
+	res := []*table{}
+
+	for _, table := range t.tables {
+		res = append(res, table)
 	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].name < res[j].name
+	})
 	return res
 }
 
 func (t *testStore) HasChunk(c chunk.Chunk) bool {
 	chunks := t.GetChunks(c.UserID, c.From, c.Through, c.Metric)
 
-	chunkIDs := make(map[string]struct{})
 	for _, chk := range chunks {
-		chunkIDs[t.schemaCfg.ExternalKey(chk.ChunkRef)] = struct{}{}
+		if chk.ChunkRef != c.ChunkRef {
+			return false
+		}
 	}
-	return len(chunkIDs) == 1 && t.schemaCfg.ExternalKey(c.ChunkRef) == t.schemaCfg.ExternalKey(chunks[0].ChunkRef)
+	return len(chunks) > 0
 }
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	t.t.Helper()
-	var matchers []*labels.Matcher
-	for _, l := range metric {
-		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
-	ctx := user.InjectOrgID(context.Background(), userID)
-	chunks, fetchers, err := t.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
-	require.NoError(t.t, err)
 	fetchedChunk := []chunk.Chunk{}
-	for _, f := range fetchers {
-		for _, cs := range chunks {
-			keys := make([]string, 0, len(cs))
-			sort.Slice(chunks, func(i, j int) bool {
-				return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
-			})
+	seen := map[string]struct{}{}
 
-			for _, c := range cs {
-				keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
-			}
-			cks, err := f.FetchChunks(ctx, cs, keys)
-			if err != nil {
-				t.t.Fatal(err)
-			}
-		outer:
-			for _, c := range cks {
-				for _, matcher := range matchers {
-					if !matcher.Matches(c.Metric.Get(matcher.Name)) {
-						continue outer
-					}
-				}
-				fetchedChunk = append(fetchedChunk, c)
+	for _, tableName := range tablesInInterval(from, through) {
+		table, ok := t.tables[tableName]
+		if !ok {
+			continue
+		}
+
+		for _, chk := range table.GetChunks(userID, from, through, metric) {
+			chunkID := getChunkID(chk.ChunkRef)
+			if _, ok := seen[chunkID]; ok {
+				continue
 			}
 
+			fetchedChunk = append(fetchedChunk, chk)
+			seen[chunkID] = struct{}{}
 		}
 	}
+
 	return fetchedChunk
 }
 
-func (t *testStore) open() {
-	store, err := storage.NewStore(t.cfg, config.ChunkStoreConfig{}, schemaCfg, t.limits, t.clientMetrics, nil, util_log.Logger)
-	require.NoError(t.t, err)
-	t.Store = store
+func entryFromChunk(c chunk.Chunk) ChunkEntry {
+	return ChunkEntry{
+		ChunkRef: ChunkRef{
+			UserID:   []byte(c.UserID),
+			SeriesID: labelsSeriesID(c.Metric),
+			ChunkID:  []byte(getChunkID(c.ChunkRef)),
+			From:     c.From,
+			Through:  c.Through,
+		},
+		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
+	}
 }
 
-func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore {
+func getChunkID(c logproto.ChunkRef) string {
+	return schemaCfg.ExternalKey(c)
+}
+
+func newTestStore(t testing.TB) *testStore {
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
@@ -245,44 +328,14 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 
 	defer func() {
 	}()
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
-	require.NoError(t, err)
 
 	require.NoError(t, schemaCfg.Validate())
 
-	cfg := storage.Config{
-		BoltDBConfig: local.BoltDBConfig{
-			Directory: indexDir,
-		},
-		FSConfig: local.FSConfig{
-			Directory: chunkDir,
-		},
-		MaxParallelGetChunk: 150,
-
-		BoltDBShipperConfig: shipper.Config{
-			Config: indexshipper.Config{
-				ActiveIndexDirectory: indexDir,
-				SharedStoreType:      "filesystem",
-				SharedStoreKeyPrefix: "index",
-				ResyncInterval:       1 * time.Millisecond,
-				IngesterName:         "foo",
-				Mode:                 indexshipper.ModeReadWrite,
-			},
-		},
-	}
-
-	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger)
-	require.NoError(t, err)
 	return &testStore{
-		indexDir:      indexDir,
-		chunkDir:      chunkDir,
-		t:             t,
-		Store:         store,
-		schemaCfg:     schemaCfg,
-		objectClient:  newTestObjectClient(workdir, clientMetrics),
-		cfg:           cfg,
-		limits:        limits,
-		clientMetrics: clientMetrics,
+		chunkClient:  client.NewClient(newTestObjectClient(chunkDir), client.FSEncoder, schemaCfg),
+		t:            t,
+		objectClient: newTestObjectClient(workdir),
+		tables:       map[string]*table{},
 	}
 }
 

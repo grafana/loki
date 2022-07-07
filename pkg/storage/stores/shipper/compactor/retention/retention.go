@@ -11,49 +11,83 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"go.etcd.io/bbolt"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var chunkBucket = []byte("chunks")
 
 const (
-	logMetricName = "logs"
 	markersFolder = "markers"
-	separator     = "\000"
 )
+
+type ChunkRef struct {
+	UserID   []byte
+	SeriesID []byte
+	ChunkID  []byte
+	From     model.Time
+	Through  model.Time
+}
+
+func (c ChunkRef) String() string {
+	return fmt.Sprintf("UserID: %s , SeriesID: %s , Time: [%s,%s]", c.UserID, c.SeriesID, c.From, c.Through)
+}
+
+type ChunkEntry struct {
+	ChunkRef
+	Labels labels.Labels
+}
+
+type ChunkEntryCallback func(ChunkEntry) (deleteChunk bool, err error)
+
+type ChunkIterator interface {
+	ForEachChunk(callback ChunkEntryCallback) error
+}
+
+type SeriesCleaner interface {
+	// CleanupSeries is for cleaning up the series that do have any chunks left in the index.
+	// It would only be called for the series that have all their chunks deleted without adding new ones.
+	CleanupSeries(userID []byte, lbls labels.Labels) error
+}
+
+type chunkIndexer interface {
+	// IndexChunk is for indexing a new chunk that was built from an existing chunk while processing delete requests.
+	// It should return true if the chunk was indexed else false if not.
+	// The implementation could skip indexing a chunk due to it not belonging to the table.
+	// ToDo(Sandeep): We already have a check in the caller of IndexChunk to check if the chunk belongs to the table.
+	// See if we can drop the redundant check in the underlying implementation.
+	IndexChunk(chunk chunk.Chunk) (chunkIndexed bool, err error)
+}
+
+type IndexProcessor interface {
+	ChunkIterator
+	chunkIndexer
+	SeriesCleaner
+}
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
 
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
-	MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
+	MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error)
 }
 
 type Marker struct {
 	workingDirectory string
-	config           config.SchemaConfig
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
 	chunkClient      client.Client
 }
 
-func NewMarker(workingDirectory string, config config.SchemaConfig, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
-	if err := validatePeriods(config); err != nil {
-		return nil, err
-	}
+func NewMarker(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	metrics := newMarkerMetrics(r)
 	return &Marker{
 		workingDirectory: workingDirectory,
-		config:           config,
 		expiration:       expiration,
 		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
@@ -61,7 +95,7 @@ func NewMarker(workingDirectory string, config config.SchemaConfig, expiration E
 }
 
 // MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
@@ -70,7 +104,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, db
 	}()
 	level.Debug(logger).Log("msg", "starting to process table")
 
-	empty, modified, err := t.markTable(ctx, tableName, userID, db)
+	empty, modified, err := t.markTable(ctx, tableName, userID, indexProcessor)
 	if err != nil {
 		status = statusFailure
 		return false, false, err
@@ -78,49 +112,28 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, db
 	return empty, modified, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName, userID string, db *bbolt.DB) (bool, bool, error) {
-	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
-	if !ok {
-		return false, false, fmt.Errorf("could not find schema for table: %s", tableName)
-	}
-
+func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor) (bool, bool, error) {
 	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
 	}
 
-	var empty, modified bool
-	err = db.Update(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(local.IndexBucketName)
-		if bucket == nil {
-			return nil
-		}
+	if ctx.Err() != nil {
+		return false, false, ctx.Err()
+	}
 
-		chunkIt, err := NewChunkIndexIterator(bucket, schemaCfg)
-		if err != nil {
-			return fmt.Errorf("failed to create chunk index iterator: %w", err)
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		chunkRewriter, err := newChunkRewriter(t.chunkClient, schemaCfg, tableName, bucket)
-		if err != nil {
-			return err
-		}
+	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
 
-		empty, modified, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg, tableName), t.expiration, chunkRewriter)
-		if err != nil {
-			return err
-		}
-		t.markerMetrics.tableMarksCreatedTotal.WithLabelValues(tableName).Add(float64(markerWriter.Count()))
-		if err := markerWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close marker writer: %w", err)
-		}
-		return nil
-	})
+	empty, modified, err := markforDelete(ctx, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter)
 	if err != nil {
 		return false, false, err
 	}
+
+	t.markerMetrics.tableMarksCreatedTotal.WithLabelValues(tableName).Add(float64(markerWriter.Count()))
+	if err := markerWriter.Close(); err != nil {
+		return false, false, fmt.Errorf("failed to close marker writer: %w", err)
+	}
+
 	if empty {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionDeleted).Inc()
 		return empty, true, nil
@@ -133,7 +146,8 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, db *bb
 	return empty, modified, nil
 }
 
-func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, bool, error) {
+func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, indexFile IndexProcessor,
+	expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, bool, error) {
 	seriesMap := newUserSeriesMap()
 	// tableInterval holds the interval for which the table is expected to have the chunks indexed
 	tableInterval := ExtractIntervalFromTableName(tableName)
@@ -142,20 +156,16 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 	now := model.Now()
 	chunksFound := false
 
-	for chunkIt.Next() {
-		if chunkIt.Err() != nil {
-			return false, false, chunkIt.Err()
-		}
+	err := indexFile.ForEachChunk(func(c ChunkEntry) (bool, error) {
 		chunksFound = true
-		c := chunkIt.Entry()
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
 		// see if the chunk is deleted completely or partially
 		if expired, nonDeletedIntervalFilters := expiration.Expired(c, now); expired {
 			if len(nonDeletedIntervalFilters) > 0 {
-				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervalFilters)
+				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, tableInterval, nonDeletedIntervalFilters)
 				if err != nil {
-					return false, false, fmt.Errorf("failed to rewrite chunk %s for intervals %+v with error %s", c.ChunkID, nonDeletedIntervalFilters, err)
+					return false, fmt.Errorf("failed to rewrite chunk %s for intervals %+v with error %s", c.ChunkID, nonDeletedIntervalFilters, err)
 				}
 
 				if wroteChunks {
@@ -165,9 +175,6 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 				}
 			}
 
-			if err := chunkIt.Delete(); err != nil {
-				return false, false, err
-			}
 			modified = true
 
 			// Mark the chunk for deletion only if it is completely deleted, or this is the last table that the chunk is index in.
@@ -175,10 +182,10 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			// the retention would fail because it would fail to find it in the storage.
 			if len(nonDeletedIntervalFilters) == 0 || c.Through <= tableInterval.End {
 				if err := marker.Put(c.ChunkID); err != nil {
-					return false, false, err
+					return false, err
 				}
 			}
-			continue
+			return true, nil
 		}
 
 		// The chunk is not deleted, now see if we can drop its index entry based on end time from tableInterval.
@@ -187,17 +194,19 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 		// we can drop the chunk entry from this table without removing the chunk from the store.
 		if c.Through.After(tableInterval.End) {
 			if expiration.DropFromIndex(c, tableInterval.End, now) {
-				if err := chunkIt.Delete(); err != nil {
-					return false, false, err
-				}
 				modified = true
-				continue
+				return true, nil
 			}
 		}
 
 		empty = false
 		seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
+		return false, nil
+	})
+	if err != nil {
+		return false, false, err
 	}
+
 	if !chunksFound {
 		return false, false, errNoChunksFound
 	}
@@ -213,7 +222,7 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			return nil
 		}
 
-		return seriesCleaner.Cleanup(info.UserID(), info.lbls)
+		return indexFile.CleanupSeries(info.UserID(), info.lbls)
 	})
 }
 
@@ -282,32 +291,20 @@ func (s *Sweeper) Stop() {
 }
 
 type chunkRewriter struct {
-	chunkClient client.Client
-	tableName   string
-	bucket      *bbolt.Bucket
-	scfg        config.SchemaConfig
-
-	seriesStoreSchema index.SeriesStoreSchema
+	chunkClient  client.Client
+	tableName    string
+	chunkIndexer chunkIndexer
 }
 
-func newChunkRewriter(chunkClient client.Client, schemaCfg config.PeriodConfig,
-	tableName string, bucket *bbolt.Bucket,
-) (*chunkRewriter, error) {
-	seriesStoreSchema, err := index.CreateSchema(schemaCfg)
-	if err != nil {
-		return nil, err
-	}
-
+func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer) *chunkRewriter {
 	return &chunkRewriter{
-		chunkClient:       chunkClient,
-		tableName:         tableName,
-		bucket:            bucket,
-		scfg:              config.SchemaConfig{Configs: []config.PeriodConfig{schemaCfg}},
-		seriesStoreSchema: seriesStoreSchema,
-	}, nil
+		chunkClient:  chunkClient,
+		tableName:    tableName,
+		chunkIndexer: chunkIndexer,
+	}
 }
 
-func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, intervalFilters []IntervalFilter) (bool, error) {
+func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableInterval model.Interval, intervalFilters []IntervalFilter) (bool, error) {
 	userID := unsafeGetString(ce.UserID)
 	chunkID := unsafeGetString(ce.ChunkID)
 
@@ -341,6 +338,10 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 			return false, err
 		}
 
+		if start > tableInterval.End || end < tableInterval.Start {
+			continue
+		}
+
 		facade, ok := newChunkData.(*chunkenc.Facade)
 		if !ok {
 			return false, errors.New("invalid chunk type")
@@ -358,22 +359,9 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 			return false, err
 		}
 
-		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(newChunk.From, newChunk.Through, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk.ChunkRef))
+		uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk)
 		if err != nil {
 			return false, err
-		}
-
-		uploadChunk := false
-
-		for _, entry := range entries {
-			// write an entry only if it belongs to this table
-			if entry.TableName == c.tableName {
-				key := entry.HashValue + separator + string(entry.RangeValue)
-				if err := c.bucket.Put([]byte(key), nil); err != nil {
-					return false, err
-				}
-				uploadChunk = true
-			}
 		}
 
 		// upload chunk only if an entry was written

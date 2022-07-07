@@ -70,7 +70,7 @@ func (t *indexSet) ForEach(callback index.ForEachIndexCallback) error {
 	defer t.indexMtx.RUnlock()
 
 	for _, idx := range t.index {
-		if err := callback(idx); err != nil {
+		if err := callback(t.userID == "", idx); err != nil {
 			return err
 		}
 	}

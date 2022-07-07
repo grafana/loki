@@ -49,7 +49,7 @@ type IndexShipper interface {
 	// ForEach lets us iterates through each index file in a table for a specific user.
 	// On the write path, it would iterate on the files given to the shipper for uploading, until they eventually get dropped from local disk.
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
-	ForEach(ctx context.Context, tableName, userID string, callback func(index index.Index) error) error
+	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	Stop()
 }
 
@@ -166,7 +166,7 @@ func (s *indexShipper) AddIndex(tableName, userID string, index index.Index) err
 	return s.uploadsManager.AddIndex(tableName, userID, index)
 }
 
-func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback func(index index.Index) error) error {
+func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 	if s.downloadsManager != nil {
 		if err := s.downloadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
 			return err

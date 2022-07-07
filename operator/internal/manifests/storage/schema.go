@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // BuildSchemaConfig creates a list of schemas to be used to configure
@@ -17,9 +17,9 @@ import (
 //
 func BuildSchemaConfig(
 	utcTime time.Time,
-	spec lokiv1beta1.ObjectStorageSpec,
-	status lokiv1beta1.LokiStackStorageStatus,
-) ([]lokiv1beta1.ObjectStorageSchema, error) {
+	spec lokiv1.ObjectStorageSpec,
+	status lokiv1.LokiStackStorageStatus,
+) ([]lokiv1.ObjectStorageSchema, error) {
 	if len(spec.Schemas) == 0 {
 		return nil, kverrors.New("spec does not contain any schemas")
 	}
@@ -35,8 +35,8 @@ func BuildSchemaConfig(
 }
 
 // buildSchemas creates a sorted and reduced list of schemaConfigs
-func buildSchemas(schemas []lokiv1beta1.ObjectStorageSchema) []lokiv1beta1.ObjectStorageSchema {
-	sortedSchemas := make([]lokiv1beta1.ObjectStorageSchema, len(schemas))
+func buildSchemas(schemas []lokiv1.ObjectStorageSchema) []lokiv1.ObjectStorageSchema {
+	sortedSchemas := make([]lokiv1.ObjectStorageSchema, len(schemas))
 	copy(sortedSchemas, schemas)
 
 	sort.SliceStable(sortedSchemas, func(i, j int) bool {
@@ -50,9 +50,9 @@ func buildSchemas(schemas []lokiv1beta1.ObjectStorageSchema) []lokiv1beta1.Objec
 }
 
 // reduceSortedSchemas returns a list of schemas that have removed redundant entries.
-func reduceSortedSchemas(schemas []lokiv1beta1.ObjectStorageSchema) []lokiv1beta1.ObjectStorageSchema {
+func reduceSortedSchemas(schemas []lokiv1.ObjectStorageSchema) []lokiv1.ObjectStorageSchema {
 	version := ""
-	reduced := []lokiv1beta1.ObjectStorageSchema{}
+	reduced := []lokiv1.ObjectStorageSchema{}
 
 	for _, schema := range schemas {
 		strSchemaVersion := string(schema.Version)

@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -53,6 +55,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/generationnumber"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/shipper/index"
+	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -249,7 +252,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Querier.PostMetricsFilterChunk {
 		t.Store.SetPostFetcherChunkMetricsFilterer(storage.NewRequestPostFetcherChunkFiltererForRequest(t.Cfg.Querier.PostFilterMaxParallel))
 	}
-	deleteStore, err := t.deleteRequestsClient()
+	deleteStore, err := t.deleteRequestsClient("querier", t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -781,7 +784,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	deleteStore, err := t.deleteRequestsClient()
+	deleteStore, err := t.deleteRequestsClient("ruler", t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -885,11 +888,18 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
+
+	objectClient, err := storage.NewObjectClient(t.Cfg.CompactorConfig.SharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClient, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
 	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode().DeleteEnabled() {
@@ -994,7 +1004,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	return ur, nil
 }
 
-func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
+func (t *Loki) deleteRequestsClient(clientType string, limits retention.Limits) (deletion.DeleteRequestsClient, error) {
 	// TODO(owen-d): enable delete request storage in tsdb
 	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
@@ -1014,7 +1024,12 @@ func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 		return nil, err
 	}
 
-	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, t.deleteClientMetrics)
+	client, err := deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, t.deleteClientMetrics, clientType)
+	if err != nil {
+		return nil, err
+	}
+
+	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

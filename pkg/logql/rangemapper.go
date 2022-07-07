@@ -124,26 +124,40 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		if err != nil {
 			return nil, err
 		}
-		// if left hand side is a noop, we need to return the original expression
+		// if left-hand side is a noop, we need to return the original expression
 		// so the whole expression is a noop and thus not executed using the
-		// downstream engine
-		if e.SampleExpr.String() == lhsMapped.String() {
+		// downstream engine.
+		// Note: literal expressions are identical to their mapped expression,
+		// map binary expression if left-hand size is a literal
+		if _, ok := e.SampleExpr.(*syntax.LiteralExpr); e.SampleExpr.String() == lhsMapped.String() && !ok {
 			return e, nil
 		}
 		rhsMapped, err := m.Map(e.RHS, vectorAggrPushdown, recorder)
 		if err != nil {
 			return nil, err
 		}
-		// if right hand side is a noop, we need to return the original expression
+		// if right-hand side is a noop, we need to return the original expression
 		// so the whole expression is a noop and thus not executed using the
 		// downstream engine
-		if e.RHS.String() == rhsMapped.String() {
+		// Note: literal expressions are identical to their mapped expression,
+		// map binary expression if right-hand size is a literal
+		if _, ok := e.RHS.(*syntax.LiteralExpr); e.RHS.String() == rhsMapped.String() && !ok {
 			return e, nil
 		}
 		e.SampleExpr = lhsMapped
 		e.RHS = rhsMapped
 		return e, nil
+	case *syntax.LabelReplaceExpr:
+		lhsMapped, err := m.Map(e.Left, vectorAggrPushdown, recorder)
+		if err != nil {
+			return nil, err
+		}
+		e.Left = lhsMapped
+		return e, nil
+	case *syntax.LiteralExpr:
+		return e, nil
 	default:
+		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 	}
 }
@@ -413,13 +427,17 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 	case *syntax.VectorAggregationExpr:
 		_, ok := splittableVectorOp[e.Operation]
 		return ok && isSplittableByRange(e.Left)
-	case *syntax.BinOpExpr:
-		return isSplittableByRange(e.SampleExpr) && isSplittableByRange(e.RHS)
-	case *syntax.LabelReplaceExpr:
-		return isSplittableByRange(e.Left)
 	case *syntax.RangeAggregationExpr:
 		_, ok := splittableRangeVectorOp[e.Operation]
 		return ok
+	case *syntax.BinOpExpr:
+		_, literalLHS := e.SampleExpr.(*syntax.LiteralExpr)
+		_, literalRHS := e.RHS.(*syntax.LiteralExpr)
+		// Note: if both left-hand side and right-hand side are literal expressions,
+		// the syntax.ParseSampleExpr returns a literal expression
+		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
+	case *syntax.LabelReplaceExpr:
+		return isSplittableByRange(e.Left)
 	default:
 		return false
 	}

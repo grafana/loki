@@ -7,7 +7,8 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -27,16 +28,16 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 		{
 			desc: "static mode",
 			opts: &Options{
-				Stack: lokiv1beta1.LokiStackSpec{
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.Static,
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
 					},
 				},
 			},
 			want: &Options{
-				Stack: lokiv1beta1.LokiStackSpec{
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.Static,
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
 					},
 				},
 			},
@@ -44,16 +45,16 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 		{
 			desc: "dynamic mode",
 			opts: &Options{
-				Stack: lokiv1beta1.LokiStackSpec{
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.Dynamic,
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
 					},
 				},
 			},
 			want: &Options{
-				Stack: lokiv1beta1.LokiStackSpec{
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.Dynamic,
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
 					},
 				},
 			},
@@ -64,9 +65,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.OpenshiftLogging,
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
 				Tenants: Tenants{
@@ -93,9 +94,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.OpenshiftLogging,
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
 				Tenants: Tenants{
@@ -178,32 +179,32 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 
 func TestConfigureDeploymentForMode(t *testing.T) {
 	type tt struct {
-		desc      string
-		mode      lokiv1beta1.ModeType
-		stackName string
-		stackNs   string
-		flags     FeatureFlags
-		dpl       *appsv1.Deployment
-		want      *appsv1.Deployment
+		desc         string
+		mode         lokiv1.ModeType
+		stackName    string
+		stackNs      string
+		featureGates configv1.FeatureGates
+		dpl          *appsv1.Deployment
+		want         *appsv1.Deployment
 	}
 
 	tc := []tt{
 		{
 			desc: "static mode",
-			mode: lokiv1beta1.Static,
+			mode: lokiv1.Static,
 			dpl:  &appsv1.Deployment{},
 			want: &appsv1.Deployment{},
 		},
 		{
 			desc: "dynamic mode",
-			mode: lokiv1beta1.Dynamic,
+			mode: lokiv1.Dynamic,
 			dpl:  &appsv1.Deployment{},
 			want: &appsv1.Deployment{},
 		},
 		{
 
 			desc:      "openshift-logging mode",
-			mode:      lokiv1beta1.OpenshiftLogging,
+			mode:      lokiv1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
 			dpl: &appsv1.Deployment{
@@ -257,6 +258,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
+										"--tls.client-auth-type=NoClientCert",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -353,11 +355,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		},
 		{
 			desc:      "openshift-logging mode with-tls-service-monitor-config",
-			mode:      lokiv1beta1.OpenshiftLogging,
+			mode:      lokiv1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
-			flags: FeatureFlags{
-				EnableTLSServiceMonitorConfig: true,
+			featureGates: configv1.FeatureGates{
+				HTTPEncryption:             true,
+				ServiceMonitorTLSEndpoints: true,
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
@@ -427,6 +430,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
+										"--tls.client-auth-type=NoClientCert",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -532,12 +536,15 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		},
 		{
 			desc:      "openshift-logging mode with-cert-signing-service",
-			mode:      lokiv1beta1.OpenshiftLogging,
+			mode:      lokiv1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
-			flags: FeatureFlags{
-				EnableTLSServiceMonitorConfig:   true,
-				EnableCertificateSigningService: true,
+			featureGates: configv1.FeatureGates{
+				HTTPEncryption:             true,
+				ServiceMonitorTLSEndpoints: true,
+				OpenShift: configv1.OpenShiftFeatureGates{
+					ServingCertsService: true,
+				},
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
@@ -608,6 +615,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.write.endpoint=https://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
+										"--tls.client-auth-type=NoClientCert",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -727,7 +735,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, tc.stackName, tc.stackNs)
+			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, tc.stackName, tc.stackNs)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -737,7 +745,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 func TestConfigureServiceForMode(t *testing.T) {
 	type tt struct {
 		desc string
-		mode lokiv1beta1.ModeType
+		mode lokiv1.ModeType
 		svc  *corev1.ServiceSpec
 		want *corev1.ServiceSpec
 	}
@@ -745,19 +753,19 @@ func TestConfigureServiceForMode(t *testing.T) {
 	tc := []tt{
 		{
 			desc: "static mode",
-			mode: lokiv1beta1.Static,
+			mode: lokiv1.Static,
 			svc:  &corev1.ServiceSpec{},
 			want: &corev1.ServiceSpec{},
 		},
 		{
 			desc: "dynamic mode",
-			mode: lokiv1beta1.Dynamic,
+			mode: lokiv1.Dynamic,
 			svc:  &corev1.ServiceSpec{},
 			want: &corev1.ServiceSpec{},
 		},
 		{
 			desc: "openshift-logging mode",
-			mode: lokiv1beta1.OpenshiftLogging,
+			mode: lokiv1.OpenshiftLogging,
 			svc:  &corev1.ServiceSpec{},
 			want: &corev1.ServiceSpec{
 				Ports: []corev1.ServicePort{
@@ -782,29 +790,29 @@ func TestConfigureServiceForMode(t *testing.T) {
 
 func TestConfigureServiceMonitorForMode(t *testing.T) {
 	type tt struct {
-		desc  string
-		mode  lokiv1beta1.ModeType
-		flags FeatureFlags
-		sm    *monitoringv1.ServiceMonitor
-		want  *monitoringv1.ServiceMonitor
+		desc         string
+		mode         lokiv1.ModeType
+		featureGates configv1.FeatureGates
+		sm           *monitoringv1.ServiceMonitor
+		want         *monitoringv1.ServiceMonitor
 	}
 
 	tc := []tt{
 		{
 			desc: "static mode",
-			mode: lokiv1beta1.Static,
+			mode: lokiv1.Static,
 			sm:   &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{},
 		},
 		{
 			desc: "dynamic mode",
-			mode: lokiv1beta1.Dynamic,
+			mode: lokiv1.Dynamic,
 			sm:   &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{},
 		},
 		{
 			desc: "openshift-logging mode",
-			mode: lokiv1beta1.OpenshiftLogging,
+			mode: lokiv1.OpenshiftLogging,
 			sm:   &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{
 				Spec: monitoringv1.ServiceMonitorSpec{
@@ -820,9 +828,10 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		},
 		{
 			desc: "openshift-logging mode with-tls-service-monitor-config",
-			mode: lokiv1beta1.OpenshiftLogging,
-			flags: FeatureFlags{
-				EnableTLSServiceMonitorConfig: true,
+			mode: lokiv1.OpenshiftLogging,
+			featureGates: configv1.FeatureGates{
+				HTTPEncryption:             true,
+				ServiceMonitorTLSEndpoints: true,
 			},
 			sm: &monitoringv1.ServiceMonitor{
 				Spec: monitoringv1.ServiceMonitorSpec{
@@ -867,7 +876,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureServiceMonitorForMode(tc.sm, tc.mode, tc.flags)
+			err := configureServiceMonitorForMode(tc.sm, tc.mode, tc.featureGates)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sm)
 		})

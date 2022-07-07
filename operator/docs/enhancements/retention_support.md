@@ -1,17 +1,20 @@
 ---
-title: lokistack log retention support
+title: Stream-based Retention Support
 authors:
-  - @shwetaap
+  - "@shwetaap"
 reviewers:
-  - @xperimental
-  - @periklis
-creation-date: 2022-05-21
-last-updated: 2022-05-21
-tracking-link:
-see-also:
+  - "@xperimental"
+  - "@periklis"
+lead: ""
+date: 2022-05-21T08:48:45+00:00
+lastmod: 2022-05-21T08:48:45+00:00
+draft: false
+menu:
+  docs:
+    parent: "enhancements"
+weight: 100
+toc: true
 ---
-
-# LokiStack Log Retention Support
 
 ## Summary
 
