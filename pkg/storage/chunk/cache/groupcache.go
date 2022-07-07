@@ -2,18 +2,22 @@ package cache
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	"github.com/grafana/groupcache_exporter"
+	"github.com/mailgun/groupcache/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
-
-	"github.com/mailgun/groupcache/v2"
 
 	"github.com/go-kit/kit/log/level"
 
@@ -74,7 +78,7 @@ func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.
 	addr := fmt.Sprintf("http://%s", rm.Addr)
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
-	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{})
+	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{Transport: http2Transport})
 	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
@@ -223,4 +227,14 @@ func (c *group) Stop() {
 
 func (c *group) GetCacheType() stats.CacheType {
 	return c.cacheType
+}
+
+func http2Transport(ctx context.Context) http.RoundTripper {
+	return &http2.Transport{
+
+		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+			return net.Dial(network, addr)
+		},
+		AllowHTTP: true,
+	}
 }

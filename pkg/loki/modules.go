@@ -14,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 
 	"github.com/NYTimes/gziphandler"
@@ -163,6 +166,10 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
+	// Allow us to receive http/2 cleartext in addition to http/1.1. This needs to be
+	// the outermost handler so it can upgrade requests if necessary
+	t.Server.HTTPServer.Handler = http2CleartextHandler(t.Server.HTTPServer.Handler)
+
 	if t.Cfg.Server.HTTPListenPort == 0 {
 		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
 	}
@@ -208,6 +215,11 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 	s := NewServerService(t.InternalServer, servicesToWaitFor)
 
 	return s, nil
+}
+
+func http2CleartextHandler(h http.Handler) http.Handler {
+	h2s := &http2.Server{}
+	return h2c.NewHandler(h, h2s)
 }
 
 func (t *Loki) initRing() (_ services.Service, err error) {
