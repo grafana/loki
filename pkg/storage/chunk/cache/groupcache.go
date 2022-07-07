@@ -45,7 +45,7 @@ var (
 )
 
 type GroupCache struct {
-	peerRing             *ring.Ring
+	peerRing             ring.ReadRing
 	cache                *groupcache.Group
 	pool                 *groupcache.HTTPPool
 	stopChan             chan struct{}
@@ -75,8 +75,13 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
 }
 
-func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
-	addr := fmt.Sprintf("http://%s", rm.Addr)
+type ringManager interface {
+	Addr() string
+	Ring() ring.ReadRing
+}
+
+func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
+	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
 	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{Transport: http2Transport})
@@ -84,7 +89,7 @@ func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.
 
 	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
-		peerRing:             rm.Ring,
+		peerRing:             rm.Ring(),
 		pool:                 pool,
 		logger:               logger,
 		stopChan:             make(chan struct{}),
