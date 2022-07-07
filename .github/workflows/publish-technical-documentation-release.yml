@@ -21,7 +21,7 @@ jobs:
           # that no refs to external content can be used as these refs will not resolve in the
           # docs-base image.
         run: |
-          docker run -v ${PWD}/docs/sources:/hugo/content/docs/loki/latest -e HUGO_REFLINKSERRORLEVEL=ERROR --rm grafana/docs-base:latest /bin/bash -c 'make hugo'
+          docker run -v ${PWD}/docs/sources:/hugo/content/docs/loki/release -e HUGO_REFLINKSERRORLEVEL=ERROR --rm grafana/docs-base:latest /bin/bash -c 'make hugo'
 
   sync:
     runs-on: "ubuntu-latest"
@@ -47,7 +47,7 @@ jobs:
         with:
           ref_name: "${{ github.ref_name }}"
           release_tag_regexp: "^v(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
-          release_branch_regexp: "^release-(0|[1-9]\\d*)\\.(0|[1-9]\\d*).x$"
+          release_branch_regexp: "^release-(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x$"
 
       - name: "Determine technical documentation version"
         if: "steps.has-matching-release-tag.outputs.bool == 'true'"
@@ -70,4 +70,4 @@ jobs:
           host: "github.com"
           github_pat: "${{ secrets.GH_BOT_ACCESS_TOKEN }}"
           source_folder: "docs/sources"
-          target_folder: "content/docs/oncall/${{ steps.target.outputs.target }}"
+          target_folder: "content/docs/loki/${{ steps.target.outputs.target }}"
