@@ -90,13 +90,6 @@ type Distributor struct {
 	logSender              LogSender
 }
 
-var DefaultLogSender LogSender
-
-//send log to ES or kafka
-type LogSender interface {
-	Send(ctx context.Context, tenantID string, req *logproto.PushRequest, header http.Header) error
-}
-
 // New a distributor creates.
 func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
 	factory := cfg.factory
@@ -279,6 +272,23 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
+			}
+
+			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+				validationErr = err
+				continue
+			}
+
+			if DefaultLogPipeline != nil {
+				pass, pipelineErr := DefaultLogPipeline.Pipeline(ctx, userID, stream.Labels, entry)
+				if pipelineErr != nil {
+					validationErr = err
+					continue
+				}
+				if !pass {
+					continue
+				}
+
 			}
 
 			stream.Entries[n] = entry
