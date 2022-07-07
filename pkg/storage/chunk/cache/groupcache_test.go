@@ -23,33 +23,25 @@ func TestGroupCache(t *testing.T) {
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
 	miss := []string{"miss1", "miss2"}
 
-	// ensure input correctness
-	nHit := len(keys)
-	require.Len(t, bufs, nHit)
-
-	nMiss := len(miss)
-
-	ctx := context.Background()
-
-	err = c.Store(ctx, keys, bufs)
+	err = c.Store(context.Background(), keys, bufs)
 	require.NoError(t, err)
 
 	// test hits
-	found, data, missed, _ := c.Fetch(ctx, keys)
+	found, data, missed, _ := c.Fetch(context.Background(), keys)
 
-	require.Len(t, found, nHit)
+	require.Len(t, found, len(keys))
 	require.Len(t, missed, 0)
-	for i := 0; i < nHit; i++ {
+	for i := 0; i < len(keys); i++ {
 		require.Equal(t, keys[i], found[i])
 		require.Equal(t, bufs[i], data[i])
 	}
 
 	// test misses
-	found, _, missed, _ = c.Fetch(ctx, miss)
+	found, _, missed, _ = c.Fetch(context.Background(), miss)
 
 	require.Len(t, found, 0)
-	require.Len(t, missed, nMiss)
-	for i := 0; i < nMiss; i++ {
+	require.Len(t, missed, len(miss))
+	for i := 0; i < len(miss); i++ {
 		require.Equal(t, miss[i], missed[i])
 	}
 }
