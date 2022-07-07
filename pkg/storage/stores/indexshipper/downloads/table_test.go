@@ -83,7 +83,7 @@ type mockIndexSet struct {
 
 func (m *mockIndexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallback) error {
 	for _, idx := range m.indexes {
-		if err := callback(idx); err != nil {
+		if err := callback(false, idx); err != nil {
 			return err
 		}
 	}
@@ -148,7 +148,7 @@ func TestTable_ForEach(t *testing.T) {
 
 			var indexesFound []index.Index
 
-			err := table.ForEach(context.Background(), tc.withUserID, func(idx index.Index) error {
+			err := table.ForEach(context.Background(), tc.withUserID, func(_ bool, idx index.Index) error {
 				indexesFound = append(indexesFound, idx)
 				return nil
 			})
@@ -313,7 +313,7 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table has expected indexes setup
 	var indexesFound []string
-	err := table.ForEach(context.Background(), userID, func(idx index.Index) error {
+	err := table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
@@ -334,7 +334,7 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table got the new index and dropped the deleted index
 	indexesFound = []string{}
-	err = table.ForEach(context.Background(), userID, func(idx index.Index) error {
+	err = table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
@@ -376,7 +376,7 @@ func TestTable_Sync(t *testing.T) {
 
 	// verify that table has got only compacted db
 	indexesFound = []string{}
-	err = table.ForEach(context.Background(), userID, func(idx index.Index) error {
+	err = table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
@@ -409,7 +409,7 @@ func TestLoadTable(t *testing.T) {
 
 	// check the loaded table to see it has right index files.
 	expectedIndexes := append(buildListOfExpectedIndexes(userID, 0, 5), buildListOfExpectedIndexes("", 0, 5)...)
-	verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 		return table.ForEach(context.Background(), userID, callbackFunc)
 	})
 
@@ -430,7 +430,7 @@ func TestLoadTable(t *testing.T) {
 	defer table.Close()
 
 	expectedIndexes = append(buildListOfExpectedIndexes(userID, 0, 10), buildListOfExpectedIndexes("", 0, 10)...)
-	verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 		return table.ForEach(context.Background(), userID, callbackFunc)
 	})
 }
@@ -449,9 +449,9 @@ func ensureIndexSetExistsInTable(t *testing.T, table *table, indexSetName string
 	require.True(t, ok)
 }
 
-func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func(callbackFunc func(index.Index) error) error) {
+func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func(callbackFunc index.ForEachIndexCallback) error) {
 	var indexesFound []string
-	err := forEachFunc(func(idx index.Index) error {
+	err := forEachFunc(func(_ bool, idx index.Index) error {
 		// get the reader for the index.
 		readSeeker, err := idx.Reader()
 		require.NoError(t, err)
