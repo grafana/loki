@@ -31,7 +31,7 @@ jobs:
         host: github.com
         github_pat: '${{ secrets.GH_BOT_ACCESS_TOKEN }}'
         source_folder: docs/sources
-        target_folder: content/docs/loki/latest
+        target_folder: content/docs/loki/v2.0.x
     - shell: bash
       run: |
         test -n "${{ steps.publish.outputs.commit_hash }}"
