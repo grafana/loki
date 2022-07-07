@@ -9,25 +9,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
-	allSizes := []lokiv1beta1.LokiStackSizeType{
-		lokiv1beta1.SizeOneXExtraSmall,
-		lokiv1beta1.SizeOneXSmall,
-		lokiv1beta1.SizeOneXMedium,
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
 	}
 	for _, size := range allSizes {
 		opt := Options{
 			Name:      "abcd",
 			Namespace: "efgh",
-			Stack: lokiv1beta1.LokiStackSpec{
+			Stack: lokiv1.LokiStackSpec{
 				Size: size,
-				Template: &lokiv1beta1.LokiTemplateSpec{
-					Distributor: &lokiv1beta1.LokiComponentSpec{
+				Template: &lokiv1.LokiTemplateSpec{
+					Distributor: &lokiv1.LokiComponentSpec{
 						Replicas: 42,
 					},
 				},
@@ -55,19 +55,19 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 }
 
 func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
-	allSizes := []lokiv1beta1.LokiStackSizeType{
-		lokiv1beta1.SizeOneXExtraSmall,
-		lokiv1beta1.SizeOneXSmall,
-		lokiv1beta1.SizeOneXMedium,
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
 	}
 	for _, size := range allSizes {
 		opt := Options{
 			Name:      "abcd",
 			Namespace: "efgh",
-			Stack: lokiv1beta1.LokiStackSpec{
+			Stack: lokiv1.LokiStackSpec{
 				Size: size,
-				Template: &lokiv1beta1.LokiTemplateSpec{
-					Compactor: &lokiv1beta1.LokiComponentSpec{
+				Template: &lokiv1.LokiTemplateSpec{
+					Compactor: &lokiv1.LokiComponentSpec{
 						Replicas: 2,
 					},
 				},
@@ -97,9 +97,9 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
 				},
@@ -118,8 +118,8 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
 				Gates: configv1.FeatureGates{
 					ServiceMonitors:            true,
@@ -160,8 +160,8 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
 				Gates: configv1.FeatureGates{
 					ServiceMonitors:            false,
@@ -177,8 +177,8 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
 				Gates: configv1.FeatureGates{
 					ServiceMonitors:            false,
@@ -232,9 +232,9 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 	opts := Options{
 		Name:      "test",
 		Namespace: "test",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXSmall,
-			Rules: &lokiv1beta1.RulesSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXSmall,
+			Rules: &lokiv1.RulesSpec{
 				Enabled: true,
 			},
 		},
@@ -306,9 +306,9 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 	opts := Options{
 		Name:      "test",
 		Namespace: "test",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXSmall,
-			Rules: &lokiv1beta1.RulesSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXSmall,
+			Rules: &lokiv1.RulesSpec{
 				Enabled: true,
 			},
 		},
@@ -391,34 +391,34 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
-					Template: &lokiv1beta1.LokiTemplateSpec{
-						Compactor: &lokiv1beta1.LokiComponentSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Distributor: &lokiv1beta1.LokiComponentSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ingester: &lokiv1beta1.LokiComponentSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Querier: &lokiv1beta1.LokiComponentSpec{
+						Querier: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1beta1.LokiComponentSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ruler: &lokiv1beta1.LokiComponentSpec{
+						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
@@ -433,34 +433,34 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
-					Template: &lokiv1beta1.LokiTemplateSpec{
-						Compactor: &lokiv1beta1.LokiComponentSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Distributor: &lokiv1beta1.LokiComponentSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ingester: &lokiv1beta1.LokiComponentSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Querier: &lokiv1beta1.LokiComponentSpec{
+						Querier: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1beta1.LokiComponentSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ruler: &lokiv1beta1.LokiComponentSpec{
+						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
@@ -560,34 +560,34 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
-					Template: &lokiv1beta1.LokiTemplateSpec{
-						Compactor: &lokiv1beta1.LokiComponentSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Distributor: &lokiv1beta1.LokiComponentSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ingester: &lokiv1beta1.LokiComponentSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Querier: &lokiv1beta1.LokiComponentSpec{
+						Querier: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1beta1.LokiComponentSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ruler: &lokiv1beta1.LokiComponentSpec{
+						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
@@ -602,34 +602,34 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
-					Template: &lokiv1beta1.LokiTemplateSpec{
-						Compactor: &lokiv1beta1.LokiComponentSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Distributor: &lokiv1beta1.LokiComponentSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ingester: &lokiv1beta1.LokiComponentSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Querier: &lokiv1beta1.LokiComponentSpec{
+						Querier: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1beta1.LokiComponentSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ruler: &lokiv1beta1.LokiComponentSpec{
+						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
@@ -692,8 +692,8 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
 				Gates: configv1.FeatureGates{
 					LokiStackGateway:           false,
@@ -707,16 +707,16 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.Dynamic,
-						Authentication: []lokiv1beta1.AuthenticationSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+						Authentication: []lokiv1.AuthenticationSpec{
 							{
 								TenantName: "test",
 								TenantID:   "1234",
-								OIDC: &lokiv1beta1.OIDCSpec{
-									Secret: &lokiv1beta1.TenantSecretSpec{
+								OIDC: &lokiv1.OIDCSpec{
+									Secret: &lokiv1.TenantSecretSpec{
 										Name: "test",
 									},
 									IssuerURL:     "https://127.0.0.1:5556/dex",
@@ -726,8 +726,8 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 								},
 							},
 						},
-						Authorization: &lokiv1beta1.AuthorizationSpec{
-							OPA: &lokiv1beta1.OPASpec{
+						Authorization: &lokiv1.AuthorizationSpec{
+							OPA: &lokiv1.OPASpec{
 								URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
 							},
 						},
@@ -769,8 +769,8 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
 				Gates: configv1.FeatureGates{
 					ServiceMonitors: false,
@@ -783,8 +783,8 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
 				Gates: configv1.FeatureGates{
 					ServiceMonitors: true,

@@ -2,8 +2,9 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -23,10 +24,10 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	}
 
 	switch opts.Stack.Tenants.Mode {
-	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // continue using user input
 
-	case lokiv1beta1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
 			tenantData[name] = openshift.TenantData{
@@ -54,11 +55,11 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType, fg configv1.FeatureGates, stackName, stackNs string) error {
+func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, stackName, stackNs string) error {
 	switch mode {
-	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1beta1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging:
 		caBundleName := signingCABundleName(stackName)
 		serviceName := serviceNameGatewayHTTP(stackName)
 		secretName := signingServiceSecretName(serviceName)
@@ -84,11 +85,11 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 	return nil
 }
 
-func configureServiceForMode(s *corev1.ServiceSpec, mode lokiv1beta1.ModeType) error {
+func configureServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType) error {
 	switch mode {
-	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1beta1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging:
 		return openshift.ConfigureGatewayService(s)
 	}
 
@@ -97,9 +98,9 @@ func configureServiceForMode(s *corev1.ServiceSpec, mode lokiv1beta1.ModeType) e
 
 func configureLokiStackObjsForMode(objs []client.Object, opts Options) []client.Object {
 	switch opts.Stack.Tenants.Mode {
-	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
-	case lokiv1beta1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging:
 		openShiftObjs := openshift.BuildLokiStackObjects(opts.OpenShiftOptions)
 		objs = append(objs, openShiftObjs...)
 	}
@@ -109,9 +110,9 @@ func configureLokiStackObjsForMode(objs []client.Object, opts Options) []client.
 
 func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Object {
 	switch opts.Stack.Tenants.Mode {
-	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
-	case lokiv1beta1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging:
 		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
 
 		var cObjs []client.Object
@@ -133,11 +134,11 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 	return objs
 }
 
-func configureServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1beta1.ModeType, fg configv1.FeatureGates) error {
+func configureServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1.ModeType, fg configv1.FeatureGates) error {
 	switch mode {
-	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1beta1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging:
 		return openshift.ConfigureGatewayServiceMonitor(sm, fg.ServiceMonitorTLSEndpoints)
 	}
 

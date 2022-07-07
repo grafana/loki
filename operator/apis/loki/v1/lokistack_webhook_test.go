@@ -1,9 +1,9 @@
-package v1beta1_test
+package v1_test
 
 import (
 	"testing"
 
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
+	v1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/stretchr/testify/require"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,21 +14,21 @@ import (
 
 var ltt = []struct {
 	desc string
-	spec v1beta1.LokiStack
+	spec v1.LokiStack
 	err  *apierrors.StatusError
 }{
 	{
 		desc: "valid spec - no status",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-13",
 						},
 					},
@@ -38,30 +38,30 @@ var ltt = []struct {
 	},
 	{
 		desc: "valid spec - with status",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
 			},
-			Status: v1beta1.LokiStackStatus{
-				Storage: v1beta1.LokiStackStorageStatus{
-					Schemas: []v1beta1.ObjectStorageSchema{
+			Status: v1.LokiStackStatus{
+				Storage: v1.LokiStackStorageStatus{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-13",
 						},
 					},
@@ -71,16 +71,16 @@ var ltt = []struct {
 	},
 	{
 		desc: "not unique schema effective dates",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-11",
 						},
 					},
@@ -94,19 +94,19 @@ var ltt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Storage").Child("Schemas").Index(1).Child("EffectiveDate"),
 					"2020-10-11",
-					v1beta1.ErrEffectiveDatesNotUnique.Error(),
+					v1.ErrEffectiveDatesNotUnique.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "schema effective dates bad format",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020/10/11",
 						},
 					},
@@ -120,19 +120,19 @@ var ltt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Storage").Child("Schemas").Index(0).Child("EffectiveDate"),
 					"2020/10/11",
-					v1beta1.ErrParseEffectiveDates.Error(),
+					v1.ErrParseEffectiveDates.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "missing valid starting date",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "9000-10-10",
 						},
 					},
@@ -145,39 +145,39 @@ var ltt = []struct {
 			field.ErrorList{
 				field.Invalid(
 					field.NewPath("Spec").Child("Storage").Child("Schemas"),
-					[]v1beta1.ObjectStorageSchema{
+					[]v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "9000-10-10",
 						},
 					},
-					v1beta1.ErrMissingValidStartDate.Error(),
+					v1.ErrMissingValidStartDate.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "retroactively adding schema",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-14",
 						},
 					},
 				},
 			},
-			Status: v1beta1.LokiStackStatus{
-				Storage: v1beta1.LokiStackStorageStatus{
-					Schemas: []v1beta1.ObjectStorageSchema{
+			Status: v1.LokiStackStatus{
+				Storage: v1.LokiStackStorageStatus{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 					},
@@ -190,37 +190,37 @@ var ltt = []struct {
 			field.ErrorList{
 				field.Invalid(
 					field.NewPath("Spec").Child("Storage").Child("Schemas"),
-					v1beta1.ObjectStorageSchema{
-						Version:       v1beta1.ObjectStorageSchemaV12,
+					v1.ObjectStorageSchema{
+						Version:       v1.ObjectStorageSchemaV12,
 						EffectiveDate: "2020-10-14",
 					},
-					v1beta1.ErrSchemaRetroactivelyAdded.Error(),
+					v1.ErrSchemaRetroactivelyAdded.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "retroactively removing schema",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 					},
 				},
 			},
-			Status: v1beta1.LokiStackStatus{
-				Storage: v1beta1.LokiStackStorageStatus{
-					Schemas: []v1beta1.ObjectStorageSchema{
+			Status: v1.LokiStackStatus{
+				Storage: v1.LokiStackStorageStatus{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -233,35 +233,35 @@ var ltt = []struct {
 			field.ErrorList{
 				field.Invalid(
 					field.NewPath("Spec").Child("Storage").Child("Schemas"),
-					[]v1beta1.ObjectStorageSchema{
+					[]v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 					},
-					v1beta1.ErrSchemaRetroactivelyRemoved.Error(),
+					v1.ErrSchemaRetroactivelyRemoved.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "retroactively changing schema",
-		spec: v1beta1.LokiStack{
-			Spec: v1beta1.LokiStackSpec{
-				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchema{
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV12,
+							Version:       v1.ObjectStorageSchemaV12,
 							EffectiveDate: "2020-10-11",
 						},
 					},
 				},
 			},
-			Status: v1beta1.LokiStackStatus{
-				Storage: v1beta1.LokiStackStorageStatus{
-					Schemas: []v1beta1.ObjectStorageSchema{
+			Status: v1.LokiStackStatus{
+				Storage: v1.LokiStackStorageStatus{
+					Schemas: []v1.ObjectStorageSchema{
 						{
-							Version:       v1beta1.ObjectStorageSchemaV11,
+							Version:       v1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
 						},
 					},
@@ -274,11 +274,11 @@ var ltt = []struct {
 			field.ErrorList{
 				field.Invalid(
 					field.NewPath("Spec").Child("Storage").Child("Schemas"),
-					v1beta1.ObjectStorageSchema{
-						Version:       v1beta1.ObjectStorageSchemaV12,
+					v1.ObjectStorageSchema{
+						Version:       v1.ObjectStorageSchemaV12,
 						EffectiveDate: "2020-10-11",
 					},
-					v1beta1.ErrSchemaRetroactivelyChanged.Error(),
+					v1.ErrSchemaRetroactivelyChanged.Error(),
 				),
 			},
 		),
@@ -290,7 +290,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			l := v1beta1.LokiStack{
+			l := v1.LokiStack{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
@@ -312,14 +312,14 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			l := v1beta1.LokiStack{
+			l := v1.LokiStack{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
 				Spec: tc.spec.Spec,
 			}
 
-			err := l.ValidateUpdate(&v1beta1.LokiStack{})
+			err := l.ValidateUpdate(&v1.LokiStack{})
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

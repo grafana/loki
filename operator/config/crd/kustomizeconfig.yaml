@@ -4,15 +4,15 @@ nameReference:
   version: v1
   fieldSpecs:
   - kind: CustomResourceDefinition
-    version: v1beta1
+    version: v1
     group: apiextensions.k8s.io
-    path: spec/conversion/webhookClientConfig/service/name
+    path: spec/conversion/webhook/clientConfig/service/name
 
 namespace:
 - kind: CustomResourceDefinition
-  version: v1beta1
+  version: v1
   group: apiextensions.k8s.io
-  path: spec/conversion/webhookClientConfig/service/namespace
+  path: spec/conversion/webhook/clientConfig/service/namespace
   create: false
 
 varReference:

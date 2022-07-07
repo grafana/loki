@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokistackv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -15,7 +15,7 @@ import (
 // to the named Lokistack in the same namespace of the RulerConfig. If no LokiStack is found, then
 // skip reconciliation.
 func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace string) error {
-	var s lokistackv1beta1.LokiStack
+	var s lokiv1.LokiStack
 	key := client.ObjectKey{Name: name, Namespace: namespace}
 
 	if err := k.Get(ctx, key, &s); err != nil {
