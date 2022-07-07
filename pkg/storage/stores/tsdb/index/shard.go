@@ -1,6 +1,7 @@
 package index
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -13,6 +14,8 @@ const (
 	// ShardLabelFmt is the fmt of the ShardLabel key.
 	ShardLabelFmt = "%d_of_%d"
 )
+
+var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding.")
 
 // ShardAnnotation is a convenience struct which holds data from a parsed shard label
 // Of MUST be a power of 2 to ensure sharding logic works correctly.
@@ -49,6 +52,17 @@ func (shard ShardAnnotation) RequiredBits() uint64 {
 	// The minimum number of bits required to represent shard.Of
 	return uint64(math.Log2(float64(shard.Of)))
 
+}
+
+func (shard ShardAnnotation) Validate() error {
+	if shard.Of == 1 {
+		return errDisallowedIdentityShard
+	}
+
+	if 1<<shard.RequiredBits() != shard.Of {
+		return fmt.Errorf("Shard factor must be a power of two, got %d", shard.Of)
+	}
+	return nil
 }
 
 // Bounds shows the [minimum, maximum) fingerprints. If there is no maximum

@@ -95,3 +95,33 @@ func TestShardBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestShardValidate(t *testing.T) {
+	for _, tc := range []struct {
+		desc   string
+		factor uint32
+		err    bool
+	}{
+		{
+			factor: 0,
+			err:    false,
+		},
+		{
+			factor: 1,
+			err:    true,
+		},
+		{
+			factor: 2,
+			err:    false,
+		},
+	} {
+		t.Run(fmt.Sprint(tc.factor), func(t *testing.T) {
+			err := NewShard(0, tc.factor).Validate()
+			if tc.err {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+			}
+		})
+	}
+}

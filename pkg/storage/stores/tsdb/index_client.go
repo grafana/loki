@@ -45,6 +45,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 			Shard: uint32(s.Shard),
 			Of:    uint32(s.Of),
 		}
+
+		if err := shard.Validate(); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if len(matchers) == 0 {
