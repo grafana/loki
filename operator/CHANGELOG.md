@@ -1,5 +1,6 @@
 ## Main
 
+- [6594](https://github.com/grafana/loki/pull/6594) **xperimental**: Disable client certificate authentication on gateway
 - [6551](https://github.com/grafana/loki/pull/6561) **periklis**: Add operator docs for object storage
 - [6549](https://github.com/grafana/loki/pull/6549) **periklis**: Refactor feature gates to use custom resource definition
 - [6514](https://github.com/grafana/loki/pull/6514) **Red-GV** Update all pods and containers to be compliant with restricted Pod Security Standard
