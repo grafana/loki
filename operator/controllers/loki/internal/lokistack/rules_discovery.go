@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,7 +14,7 @@ import (
 // AnnotateForDiscoveredRules adds/updates the `loki.grafana.com/rulesDiscoveredAt` annotation
 // to all instance of LokiStack on all namespaces to trigger the reconciliation loop.
 func AnnotateForDiscoveredRules(ctx context.Context, k k8s.Client) error {
-	var stacks lokiv1beta1.LokiStackList
+	var stacks lokiv1.LokiStackList
 	err := k.List(ctx, &stacks, client.MatchingLabelsSelector{Selector: labels.Everything()})
 	if err != nil {
 		return kverrors.Wrap(err, "failed to list any lokistack instances", "req")

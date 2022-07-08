@@ -6,7 +6,7 @@ resources:
 - ../../prometheus
 
 # Adds namespace to all resources.
-namespace: openshift-logging
+namespace: openshift-operators-redhat
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named

@@ -216,6 +216,7 @@ clients/cmd/promtail/promtail-debug:
 
 MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
+MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
 loki-mixin:
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -226,11 +227,16 @@ else
 	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
 	@cd $(MIXIN_PATH) && jb install
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PATH)/rules.yaml --directory $(MIXIN_OUT_PATH)/dashboards ${MIXIN_PATH}/mixin.libsonnet
+
+	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
+	@cd $(MIXIN_PATH) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
 endif
 
 loki-mixin-check: loki-mixin
 	@echo "Checking diff"
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
+	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
 ###############
 # Migrate #
@@ -573,7 +579,14 @@ endif
 	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
 	$(call push,loki-build-image,latest)
 
-
+# loki-operator
+loki-operator-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile operator/
+loki-operator-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
+loki-operator-push: loki-operator-image-cross
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+	
 ########
 # Misc #
 ########

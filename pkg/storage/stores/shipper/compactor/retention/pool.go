@@ -5,18 +5,7 @@ import (
 	"sync"
 )
 
-type componentRef struct {
-	components [][]byte
-}
-
 var (
-	componentPools = sync.Pool{
-		New: func() interface{} {
-			return &componentRef{
-				components: make([][]byte, 0, 5),
-			}
-		},
-	}
 	keyPool = sync.Pool{
 		New: func() interface{} {
 			return &keyPair{
@@ -26,16 +15,6 @@ var (
 		},
 	}
 )
-
-func getComponents() *componentRef {
-	ref := componentPools.Get().(*componentRef)
-	ref.components = ref.components[:0]
-	return ref
-}
-
-func putComponents(ref *componentRef) {
-	componentPools.Put(ref)
-}
 
 type keyPair struct {
 	key   *bytes.Buffer

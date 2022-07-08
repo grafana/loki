@@ -82,7 +82,7 @@ func TestTableManager_ForEach(t *testing.T) {
 			if i == 0 {
 				expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 			}
-			verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+			verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 				return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
 			})
 		}
@@ -357,7 +357,7 @@ func TestTableManager_loadTables(t *testing.T) {
 				if i == 0 {
 					expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 				}
-				verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+				verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 					return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
 				})
 			}

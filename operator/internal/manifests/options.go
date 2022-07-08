@@ -2,6 +2,7 @@ package manifests
 
 import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -19,7 +20,7 @@ type Options struct {
 	ConfigSHA1        string
 
 	Gates                configv1.FeatureGates
-	Stack                lokiv1beta1.LokiStackSpec
+	Stack                lokiv1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 
 	AlertingRules  []lokiv1beta1.AlertingRule

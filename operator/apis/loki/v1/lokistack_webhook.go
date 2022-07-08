@@ -1,4 +1,4 @@
-package v1beta1
+package v1
 
 import (
 	"reflect"
@@ -14,35 +14,38 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
+// objectStorageSchemaMap defines the type for mapping a schema version with a date
+type objectStorageSchemaMap map[StorageSchemaEffectiveDate]ObjectStorageSchemaVersion
+
 // SetupWebhookWithManager registers the Lokistack to the controller-runtime manager
 // or returns an error.
-func (s *LokiStack) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (r *LokiStack) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(s).
+		For(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-lokistack,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=lokistacks,verbs=create;update,versions=v1beta1,name=vlokistack.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1-lokistack,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=lokistacks,verbs=create;update,versions=v1,name=vlokistack.loki.grafana.com,admissionReviewVersions=v1
 
 var _ webhook.Validator = &LokiStack{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (s *LokiStack) ValidateCreate() error {
-	return s.validate(nil)
+func (r *LokiStack) ValidateCreate() error {
+	return r.validate(nil)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (s *LokiStack) ValidateUpdate(old runtime.Object) error {
+func (r *LokiStack) ValidateUpdate(old runtime.Object) error {
 	oldStack, ok := old.(*LokiStack)
 	if !ok {
 		t := reflect.TypeOf(old).String()
 		return apierrors.NewInternalError(kverrors.New("runtime object is incorrect type", "type", t))
 	}
-	return s.validate(oldStack)
+	return r.validate(oldStack)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (s *LokiStack) ValidateDelete() error {
+func (r *LokiStack) ValidateDelete() error {
 	// Do nothing
 	return nil
 }
@@ -131,7 +134,7 @@ func (s *ObjectStorageSpec) ValidateSchemas(utcTime time.Time, status LokiStackS
 	return allErrs
 }
 
-func (s *LokiStack) validate(old *LokiStack) error {
+func (r *LokiStack) validate(old *LokiStack) error {
 	var allErrs field.ErrorList
 
 	storageStatus := LokiStackStorageStatus{}
@@ -139,7 +142,7 @@ func (s *LokiStack) validate(old *LokiStack) error {
 		storageStatus = old.Status.Storage
 	}
 
-	errors := s.Spec.Storage.ValidateSchemas(time.Now().UTC(), storageStatus)
+	errors := r.Spec.Storage.ValidateSchemas(time.Now().UTC(), storageStatus)
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}
@@ -150,7 +153,7 @@ func (s *LokiStack) validate(old *LokiStack) error {
 
 	return apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-		s.Name,
+		r.Name,
 		allErrs,
 	)
 }

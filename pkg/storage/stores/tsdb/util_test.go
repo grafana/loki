@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,7 +26,7 @@ func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBF
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{
-			Tenant:   tenant,
+			TS:       time.Now(),
 			From:     from,
 			Through:  through,
 			Checksum: checksum,

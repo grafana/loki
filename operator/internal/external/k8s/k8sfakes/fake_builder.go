@@ -84,15 +84,15 @@ type FakeBuilder struct {
 	withEventFilterReturnsOnCall map[int]struct {
 		result1 k8s.Builder
 	}
-	WithLoggerStub        func(logr.Logger) k8s.Builder
-	withLoggerMutex       sync.RWMutex
-	withLoggerArgsForCall []struct {
-		arg1 logr.Logger
+	WithLogConstructorStub        func(func(*reconcile.Request) logr.Logger) k8s.Builder
+	withLogConstructorMutex       sync.RWMutex
+	withLogConstructorArgsForCall []struct {
+		arg1 func(*reconcile.Request) logr.Logger
 	}
-	withLoggerReturns struct {
+	withLogConstructorReturns struct {
 		result1 k8s.Builder
 	}
-	withLoggerReturnsOnCall map[int]struct {
+	withLogConstructorReturnsOnCall map[int]struct {
 		result1 k8s.Builder
 	}
 	WithOptionsStub        func(controller.Options) k8s.Builder
@@ -481,16 +481,16 @@ func (fake *FakeBuilder) WithEventFilterReturnsOnCall(i int, result1 k8s.Builder
 	}{result1}
 }
 
-func (fake *FakeBuilder) WithLogger(arg1 logr.Logger) k8s.Builder {
-	fake.withLoggerMutex.Lock()
-	ret, specificReturn := fake.withLoggerReturnsOnCall[len(fake.withLoggerArgsForCall)]
-	fake.withLoggerArgsForCall = append(fake.withLoggerArgsForCall, struct {
-		arg1 logr.Logger
+func (fake *FakeBuilder) WithLogConstructor(arg1 func(*reconcile.Request) logr.Logger) k8s.Builder {
+	fake.withLogConstructorMutex.Lock()
+	ret, specificReturn := fake.withLogConstructorReturnsOnCall[len(fake.withLogConstructorArgsForCall)]
+	fake.withLogConstructorArgsForCall = append(fake.withLogConstructorArgsForCall, struct {
+		arg1 func(*reconcile.Request) logr.Logger
 	}{arg1})
-	stub := fake.WithLoggerStub
-	fakeReturns := fake.withLoggerReturns
-	fake.recordInvocation("WithLogger", []interface{}{arg1})
-	fake.withLoggerMutex.Unlock()
+	stub := fake.WithLogConstructorStub
+	fakeReturns := fake.withLogConstructorReturns
+	fake.recordInvocation("WithLogConstructor", []interface{}{arg1})
+	fake.withLogConstructorMutex.Unlock()
 	if stub != nil {
 		return stub(arg1)
 	}
@@ -500,44 +500,44 @@ func (fake *FakeBuilder) WithLogger(arg1 logr.Logger) k8s.Builder {
 	return fakeReturns.result1
 }
 
-func (fake *FakeBuilder) WithLoggerCallCount() int {
-	fake.withLoggerMutex.RLock()
-	defer fake.withLoggerMutex.RUnlock()
-	return len(fake.withLoggerArgsForCall)
+func (fake *FakeBuilder) WithLogConstructorCallCount() int {
+	fake.withLogConstructorMutex.RLock()
+	defer fake.withLogConstructorMutex.RUnlock()
+	return len(fake.withLogConstructorArgsForCall)
 }
 
-func (fake *FakeBuilder) WithLoggerCalls(stub func(logr.Logger) k8s.Builder) {
-	fake.withLoggerMutex.Lock()
-	defer fake.withLoggerMutex.Unlock()
-	fake.WithLoggerStub = stub
+func (fake *FakeBuilder) WithLogConstructorCalls(stub func(func(*reconcile.Request) logr.Logger) k8s.Builder) {
+	fake.withLogConstructorMutex.Lock()
+	defer fake.withLogConstructorMutex.Unlock()
+	fake.WithLogConstructorStub = stub
 }
 
-func (fake *FakeBuilder) WithLoggerArgsForCall(i int) logr.Logger {
-	fake.withLoggerMutex.RLock()
-	defer fake.withLoggerMutex.RUnlock()
-	argsForCall := fake.withLoggerArgsForCall[i]
+func (fake *FakeBuilder) WithLogConstructorArgsForCall(i int) func(*reconcile.Request) logr.Logger {
+	fake.withLogConstructorMutex.RLock()
+	defer fake.withLogConstructorMutex.RUnlock()
+	argsForCall := fake.withLogConstructorArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeBuilder) WithLoggerReturns(result1 k8s.Builder) {
-	fake.withLoggerMutex.Lock()
-	defer fake.withLoggerMutex.Unlock()
-	fake.WithLoggerStub = nil
-	fake.withLoggerReturns = struct {
+func (fake *FakeBuilder) WithLogConstructorReturns(result1 k8s.Builder) {
+	fake.withLogConstructorMutex.Lock()
+	defer fake.withLogConstructorMutex.Unlock()
+	fake.WithLogConstructorStub = nil
+	fake.withLogConstructorReturns = struct {
 		result1 k8s.Builder
 	}{result1}
 }
 
-func (fake *FakeBuilder) WithLoggerReturnsOnCall(i int, result1 k8s.Builder) {
-	fake.withLoggerMutex.Lock()
-	defer fake.withLoggerMutex.Unlock()
-	fake.WithLoggerStub = nil
-	if fake.withLoggerReturnsOnCall == nil {
-		fake.withLoggerReturnsOnCall = make(map[int]struct {
+func (fake *FakeBuilder) WithLogConstructorReturnsOnCall(i int, result1 k8s.Builder) {
+	fake.withLogConstructorMutex.Lock()
+	defer fake.withLogConstructorMutex.Unlock()
+	fake.WithLogConstructorStub = nil
+	if fake.withLogConstructorReturnsOnCall == nil {
+		fake.withLogConstructorReturnsOnCall = make(map[int]struct {
 			result1 k8s.Builder
 		})
 	}
-	fake.withLoggerReturnsOnCall[i] = struct {
+	fake.withLogConstructorReturnsOnCall[i] = struct {
 		result1 k8s.Builder
 	}{result1}
 }
@@ -618,8 +618,8 @@ func (fake *FakeBuilder) Invocations() map[string][][]interface{} {
 	defer fake.ownsMutex.RUnlock()
 	fake.withEventFilterMutex.RLock()
 	defer fake.withEventFilterMutex.RUnlock()
-	fake.withLoggerMutex.RLock()
-	defer fake.withLoggerMutex.RUnlock()
+	fake.withLogConstructorMutex.RLock()
+	defer fake.withLogConstructorMutex.RUnlock()
 	fake.withOptionsMutex.RLock()
 	defer fake.withOptionsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

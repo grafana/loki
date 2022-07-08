@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -75,7 +76,7 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res Ide
 		c.parentDir,
 		func(from, through model.Time, checksum uint32) Identifier {
 			id := SingleTenantTSDBIdentifier{
-				Tenant:   c.tenant,
+				TS:       time.Now(),
 				From:     from,
 				Through:  through,
 				Checksum: checksum,

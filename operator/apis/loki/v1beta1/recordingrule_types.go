@@ -88,7 +88,7 @@ type RecordingRuleStatus struct {
 
 // RecordingRule is the Schema for the recordingrules API
 //
-// +operator-sdk:csv:customresourcedefinitions:displayName="RecordingRule",resources={{LokiStack,v1beta1}}
+// +operator-sdk:csv:customresourcedefinitions:displayName="RecordingRule",resources={{LokiStack,v1}}
 type RecordingRule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

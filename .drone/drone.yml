@@ -12,14 +12,10 @@ steps:
     tags:
     - 0.22.0
   when:
+    event:
+    - pull_request
     paths:
-      include:
-      - loki-build-image/**
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    - loki-build-image/**
 - image: plugins/docker
   name: push-image
   settings:
@@ -34,19 +30,17 @@ steps:
     username:
       from_secret: docker_username
   when:
+    event:
+    - push
+    - tag
     paths:
-      include:
-      - loki-build-image/**
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    - loki-build-image/**
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 workspace:
   base: /src
   path: loki
@@ -160,10 +154,11 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: check-example-config-doc
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 workspace:
   base: /src
   path: loki
@@ -186,10 +181,11 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: loki-mixin-check
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 workspace:
   base: /src
   path: loki
@@ -221,11 +217,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -239,11 +232,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -257,11 +247,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -275,11 +262,9 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -293,11 +278,9 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -311,16 +294,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -349,11 +331,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -367,11 +346,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -385,11 +361,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -403,11 +376,9 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -421,11 +392,9 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -439,16 +408,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -477,11 +445,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -495,11 +460,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -513,11 +475,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -531,11 +490,9 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -549,11 +506,9 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -567,16 +522,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -605,11 +559,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -623,16 +574,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -661,11 +611,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -679,16 +626,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -717,11 +663,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -735,16 +678,177 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+depends_on:
+- check
+kind: pipeline
+name: lokioperator-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-loki-operator-image
+  settings:
+    context: operator
+    dockerfile: operator/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-operator-image
+  settings:
+    context: operator
+    dockerfile: operator/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+depends_on:
+- check
+kind: pipeline
+name: lokioperator-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-loki-operator-image
+  settings:
+    context: operator
+    dockerfile: operator/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-operator-image
+  settings:
+    context: operator
+    dockerfile: operator/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+depends_on:
+- check
+kind: pipeline
+name: lokioperator-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-loki-operator-image
+  settings:
+    context: operator
+    dockerfile: operator/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-operator-image
+  settings:
+    context: operator
+    dockerfile: operator/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -774,11 +878,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -792,16 +893,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -831,11 +931,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -849,16 +946,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -888,11 +984,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -906,16 +999,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -945,11 +1037,8 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -963,16 +1052,15 @@ steps:
     username:
       from_secret: docker_username
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - docker-amd64
@@ -1027,10 +1115,10 @@ trigger:
   - push
   - tag
   ref:
-    include:
-    - refs/heads/main
-    - refs/heads/k???
-    - refs/tags/v*
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - manifest
@@ -1064,10 +1152,10 @@ trigger:
   - push
   - tag
   ref:
-    include:
-    - refs/heads/main
-    - refs/heads/k???
-    - refs/tags/v*
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 kind: pipeline
 name: promtail-windows
@@ -1085,10 +1173,11 @@ steps:
   image: golang:windowsservercore-1809
   name: test
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 image_pull_secrets:
 - dockerconfigjson
@@ -1117,6 +1206,11 @@ trigger:
   event:
   - pull_request
   - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -1148,11 +1242,8 @@ steps:
     secret_key:
       from_secret: ecr_secret_key
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -1169,16 +1260,15 @@ steps:
     secret_key:
       from_secret: ecr_secret_key
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - check
@@ -1210,11 +1300,8 @@ steps:
     secret_key:
       from_secret: ecr_secret_key
   when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - pull_request
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -1231,16 +1318,15 @@ steps:
     secret_key:
       from_secret: ecr_secret_key
   when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k???
-      - refs/tags/v*
+    event:
+    - push
+    - tag
 trigger:
-  event:
-  - push
-  - pull_request
-  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 depends_on:
 - lambda-promtail-amd64
@@ -1280,10 +1366,10 @@ trigger:
   event:
   - push
   ref:
-    include:
-    - refs/heads/main
-    - refs/heads/k???
-    - refs/tags/v*
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 volumes:
 - name: dockerconf
   temp: {}
@@ -1331,6 +1417,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: a81e5cc63bc5ef62ace94e345c1bba623f515741991cafb3386ebeb9b0a96989
+hmac: b99e5220d2f2fc15a0bca24bfd3ead78bb6b1ac276fc01ea76a06705fc920190
 
 ...
