@@ -36,10 +36,14 @@ func NewShard(x, of uint32) ShardAnnotation {
 // Inclusion in a shard is calculated by determining the arbitrary bit prefix
 // for a shard, then ensuring the fingerprint has the same prefix
 func (shard ShardAnnotation) Match(fp model.Fingerprint) bool {
+	if shard.Of < 2 {
+		return true
+	}
 	requiredBits := shard.RequiredBits()
 
 	// A shard only matches a fingerprint when they both start with the same prefix
 	prefix := uint64(shard.Shard) << (64 - requiredBits)
+
 	return prefix^uint64(fp) < 1<<(64-requiredBits)
 }
 

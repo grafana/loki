@@ -50,6 +50,11 @@ func TestShardMatch(t *testing.T) {
 			fp:    3 << 62,
 			exp:   false,
 		},
+		{
+			shard: NewShard(0, 1),
+			fp:    5287603155525329,
+			exp:   true,
+		},
 	} {
 		t.Run(fmt.Sprint(tc.shard, tc.fp), func(t *testing.T) {
 			require.Equal(t, tc.exp, tc.shard.Match(model.Fingerprint(tc.fp)))
