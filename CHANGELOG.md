@@ -46,8 +46,6 @@ Check the history of the branch FIXME.
 
 * Go Version:     FIXME
 
-
-# 2.6.0 (date TBD)
 # 2.6.0 (2022/07/08)
 
 ### All Changes
