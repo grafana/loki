@@ -227,8 +227,14 @@ type perTenantIndexConfig struct {
 
 func TestCompactor_Compact(t *testing.T) {
 	now := model.Now()
-	todaysTableNumber := indexBuckets(now, now)[0]
-	tableName := fmt.Sprintf("index_%d", todaysTableNumber)
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		Schema:      "v12",
+	}
+	indexBkts, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	require.NoError(t, err)
+
+	tableName := indexBkts[0]
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
 	lbls2 := mustParseLabels(`{fizz="buzz", a="b"}`)
 
@@ -635,8 +641,16 @@ func chunkMetaToChunkRef(userID string, chunkMeta index.ChunkMeta, lbls labels.L
 
 func TestCompactedIndex(t *testing.T) {
 	now := model.Now()
-	todaysTableNumber := indexBuckets(now, now)[0]
-	tableName := fmt.Sprintf("index_%d", todaysTableNumber)
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		Schema:      "v12",
+	}
+	schemaCfg := config.SchemaConfig{
+		Configs: []config.PeriodConfig{periodConfig},
+	}
+	indexBuckets, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	require.NoError(t, err)
+	tableName := indexBuckets[0]
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	// shiftTableStart shift tableInterval.Start by the given amount of milliseconds.
 	// It is used for building chunkmetas relative to start time of the table.
@@ -647,10 +661,6 @@ func TestCompactedIndex(t *testing.T) {
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
 	lbls2 := mustParseLabels(`{fizz="buzz", a="b"}`)
 	userID := buildUserID(0)
-	periodConfig := config.PeriodConfig{Schema: "v12"}
-	schemaCfg := config.SchemaConfig{
-		Configs: []config.PeriodConfig{periodConfig},
-	}
 
 	buildCompactedIndex := func() *compactedIndex {
 		builder := NewBuilder()

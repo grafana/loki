@@ -73,9 +73,9 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 			nodeName,
 			dir,
 			shpr,
+			tableRanges,
 			util_log.Logger,
 			tsdbMetrics,
-			tableRanges,
 		)
 
 		headManager := NewHeadManager(

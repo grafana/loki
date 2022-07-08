@@ -63,8 +63,8 @@ var (
 // TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
 // Both Start and End are inclusive.
 type TableRange struct {
-	Start, End int64
-	cfg        *PeriodConfig
+	Start, End   int64
+	PeriodConfig *PeriodConfig
 }
 
 // TableRanges represents a list of table ranges for multiple schemas.
@@ -78,7 +78,7 @@ func (t TableRanges) TableNumberInRange(tableNumber int64) bool {
 func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	for _, r := range t {
 		if r.Start <= tableNumber && tableNumber <= r.End {
-			return r.cfg
+			return r.PeriodConfig
 		}
 	}
 
@@ -116,9 +116,9 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // the configured schema start date, index table period and the given schemaEndDate
 func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
 	return TableRange{
-		Start: cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
-		End:   schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
-		cfg:   cfg,
+		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		PeriodConfig: cfg,
 	}
 }
 
