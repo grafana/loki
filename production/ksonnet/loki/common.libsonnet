@@ -30,7 +30,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     ],
 
     // This helps ensure we create SRV records starting with _grpclb
-    grpclbServiceFor(deployment):: k.util.serviceFor(deployment, nameFormat='%(port)s'),
+    grpclbServiceFor(deployment):: k.util.serviceFor(deployment, $._config.service_ignored_labels, nameFormat='%(port)s'),
 
 
     readinessProbe::
