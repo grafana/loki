@@ -1,5 +1,7 @@
 # 2.6.0 (2022/07/08)
 
+Release notes for 2.6.0 can be found on the [release notes page](https://grafana.com/docs/loki/v2.6.x/release-notes/v2-6/)
+
 ### All Changes
 Here is the list with the changes that were produced since the previous release.
 
