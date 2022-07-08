@@ -949,4 +949,5 @@ func TestShardedPostings(t *testing.T) {
 		require.Equal(t, true, shardedPostings.Next())
 		require.Equal(t, storage.SeriesRef(i), shardedPostings.At())
 	}
+	require.Equal(t, false, shardedPostings.Next())
 }

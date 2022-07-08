@@ -871,7 +871,7 @@ func (sp *ShardedPostings) Next() bool {
 		return false
 	}
 
-	if sp.p.At() > storage.SeriesRef(sp.maxOffset) {
+	if sp.p.At() >= storage.SeriesRef(sp.maxOffset) {
 		return false
 	}
 
@@ -881,7 +881,7 @@ func (sp *ShardedPostings) Next() bool {
 // Seek advances the iterator to value v or greater and returns
 // true if a value was found.
 func (sp *ShardedPostings) Seek(v storage.SeriesRef) (res bool) {
-	if v > storage.SeriesRef(sp.maxOffset) {
+	if v >= storage.SeriesRef(sp.maxOffset) {
 		return false
 	}
 	if v < storage.SeriesRef(sp.minOffset) {
