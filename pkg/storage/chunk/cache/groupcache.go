@@ -159,11 +159,12 @@ func (c *GroupCache) Stats() *groupcache.Stats {
 }
 
 type group struct {
-	cache           *groupcache.Group
-	logger          log.Logger
-	wg              *sync.WaitGroup
-	cacheType       stats.CacheType
-	requestDuration *prometheus.HistogramVec
+	cache         *groupcache.Group
+	logger        log.Logger
+	wg            *sync.WaitGroup
+	cacheType     stats.CacheType
+	fetchDuration prometheus.Observer
+	storeDuration prometheus.Observer
 }
 
 func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
@@ -175,18 +176,21 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	c.wg.Add(1)
 	c.startWaitingForClose()
 
+	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:   "loki",
+		Name:        "groupcache_request_duration_seconds",
+		Help:        "Total time spent in seconds doing groupcache requests.",
+		Buckets:     instrument.DefBuckets,
+		ConstLabels: prometheus.Labels{"cache_type": string(ct)},
+	}, []string{"operation"})
+
 	g := &group{
-		cache:     groupcache.NewGroup(name, 1<<30, missGetter),
-		logger:    c.logger,
-		wg:        &c.wg,
-		cacheType: ct,
-		requestDuration: promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace:   "loki",
-			Name:        "groupcache_request_duration_seconds",
-			Help:        "Total time spent in seconds doing groupcache requests.",
-			Buckets:     instrument.DefBuckets,
-			ConstLabels: prometheus.Labels{"cache_type": string(ct)},
-		}, []string{"operation"}),
+		cache:         groupcache.NewGroup(name, 1<<30, missGetter),
+		logger:        c.logger,
+		wg:            &c.wg,
+		cacheType:     ct,
+		fetchDuration: requestDuration.WithLabelValues("fetch"),
+		storeDuration: requestDuration.WithLabelValues("store"),
 	}
 
 	exp := groupcache_exporter.NewExporter(map[string]string{"cache_type": string(ct)}, g)
@@ -195,19 +199,18 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	return g
 }
 
-// TODO(tpatterson): Issue the key requests in parallel?
 func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
 	var (
 		start  = time.Now()
 		values = make([][]byte, 0, len(keys))
 		missed = make([]string, 0, len(keys))
 		found  = make([]string, 0, len(keys))
+		data   = groupcache.ByteView{}
+		sink   = groupcache.ByteViewSink(&data)
 	)
 
-	var data []byte
 	for _, key := range keys {
-		// TODO: this allocates a new slice every time, there's some necessary optimization here
-		if err := c.cache.Get(ctx, key, groupcache.AllocatingByteSliceSink(&data)); err != nil {
+		if err := c.cache.Get(ctx, key, sink); err != nil {
 			if errors.Is(err, ErrGroupcacheMiss) {
 				missed = append(missed, key)
 				continue
@@ -218,30 +221,28 @@ func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 		}
 
 		found = append(found, key)
-		values = append(values, data)
+		values = append(values, data.ByteSlice())
 	}
 
-	c.requestDuration.WithLabelValues("fetch").Observe(time.Since(start).Seconds())
+	c.fetchDuration.Observe(time.Since(start).Seconds())
 	return found, values, missed, nil
 }
 
-// Store implements Cache.
 func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error {
 	start := time.Now()
 
-	var err error
+	var lastErr error
 	for i, key := range keys {
-		if cacheErr := c.cache.Set(ctx, key, values[i], time.Time{}, true); cacheErr != nil {
-			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", cacheErr)
-			err = cacheErr
+		if err := c.cache.Set(ctx, key, values[i], time.Time{}, true); err != nil {
+			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
+			lastErr = err
 		}
 	}
 
-	c.requestDuration.WithLabelValues("store").Observe(time.Since(start).Seconds())
-	return err
+	c.storeDuration.Observe(time.Since(start).Seconds())
+	return lastErr
 }
 
-// Stop implements Cache.
 func (c *group) Stop() {
 	c.wg.Done()
 }
@@ -250,9 +251,8 @@ func (c *group) GetCacheType() stats.CacheType {
 	return c.cacheType
 }
 
-func http2Transport(ctx context.Context) http.RoundTripper {
+func http2Transport(_ context.Context) http.RoundTripper {
 	return &http2.Transport{
-
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 			return net.Dial(network, addr)
 		},
