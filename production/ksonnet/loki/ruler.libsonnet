@@ -56,8 +56,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   then {}
   else
     if $._config.stateful_rulers
-    then k.util.serviceFor($.ruler_statefulset)
-    else k.util.serviceFor($.ruler_deployment),
+    then k.util.serviceFor($.ruler_statefulset, $._config.service_ignored_labels)
+    else k.util.serviceFor($.ruler_deployment, $._config.service_ignored_labels),
 
 
   // PVC for rulers when running as statefulsets

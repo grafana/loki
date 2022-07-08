@@ -119,7 +119,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	}
 
 	combined := stats.MergeStats(results...)
-	factor := guessShardFactor(combined, r.maxParallelism)
+	factor := guessShardFactor(combined)
 	var bytesPerShard = combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
@@ -143,21 +143,18 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 const (
 	// Just some observed values to get us started on better query planning.
 	p90BytesPerSecond = 300 << 20 // 300MB/s/core
-	// At max, schedule a query for 10s of execution before
-	// splitting it into more requests. This is a lot of guesswork.
-	maxSeconds          = 10
-	maxSchedulableBytes = maxSeconds * p90BytesPerSecond
 )
 
-func guessShardFactor(stats stats.Stats, maxParallelism int) int {
-	expectedSeconds := float64(stats.Bytes / p90BytesPerSecond)
-	if expectedSeconds <= float64(maxParallelism) {
-		power := math.Ceil(math.Log2(expectedSeconds)) // round up to nearest power of 2
-		// Ideally, parallelize down to 1s queries
-		return int(math.Pow(2, power))
-	}
+func guessShardFactor(stats stats.Stats) int {
+	expectedSeconds := float64(stats.Bytes) / float64(p90BytesPerSecond)
+	power := math.Ceil(math.Log2(expectedSeconds)) // round up to nearest power of 2
 
-	n := stats.Bytes / maxSchedulableBytes
-	power := math.Ceil(math.Log2(float64(n)))
-	return int(math.Pow(2, power))
+	// Parallelize down to 1s queries
+	// Since x^0 == 1 and we only support factors of 2
+	// reset this edge case manually
+	factor := int(math.Pow(2, power))
+	if factor == 1 {
+		factor = 0
+	}
+	return factor
 }
