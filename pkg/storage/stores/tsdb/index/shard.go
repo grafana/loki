@@ -15,7 +15,7 @@ const (
 	ShardLabelFmt = "%d_of_%d"
 )
 
-var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding.")
+var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding")
 
 // ShardAnnotation is a convenience struct which holds data from a parsed shard label
 // Of MUST be a power of 2 to ensure sharding logic works correctly.
@@ -70,7 +70,7 @@ func (shard ShardAnnotation) Validate() error {
 }
 
 // Bounds shows the [minimum, maximum) fingerprints. If there is no maximum
-// fingerprint (for example )
+// fingerprint (for example the last shard), math.MaxUint64 is used as the maximum.
 func (shard ShardAnnotation) Bounds() (model.Fingerprint, model.Fingerprint) {
 	requiredBits := model.Fingerprint(shard.RequiredBits())
 	from := model.Fingerprint(shard.Shard) << (64 - requiredBits)

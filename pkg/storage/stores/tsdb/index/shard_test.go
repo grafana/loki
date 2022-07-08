@@ -22,6 +22,11 @@ func TestShardMatch(t *testing.T) {
 		},
 		{
 			shard: NewShard(0, 2),
+			fp:    5287603155525329,
+			exp:   true,
+		},
+		{
+			shard: NewShard(0, 2),
 			fp:    1 << 63,
 			exp:   false,
 		},
