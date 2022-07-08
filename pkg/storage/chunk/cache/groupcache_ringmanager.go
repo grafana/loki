@@ -48,7 +48,6 @@ func NewgGroupcacheRingManager(cfg GroupCacheConfig, log log.Logger, registerer 
 		cfg: cfg, log: log,
 	}
 
-	// instantiate kv store for both modes.
 	ringStore, err := kv.NewClient(
 		rm.cfg.Ring.KVStore,
 		ring.GetCodec(),
@@ -59,7 +58,6 @@ func NewgGroupcacheRingManager(cfg GroupCacheConfig, log log.Logger, registerer 
 		return nil, errors.Wrap(err, "groupcache ring manager create KV store client")
 	}
 
-	// instantiate ring for both mode modes.
 	ringCfg := rm.cfg.Ring.ToRingConfig(1)
 	rm.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, GroupcacheRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
 	if err != nil {
