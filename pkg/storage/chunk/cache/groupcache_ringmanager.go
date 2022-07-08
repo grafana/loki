@@ -15,6 +15,15 @@ import (
 	"github.com/go-kit/log"
 )
 
+const (
+	ringAutoForgetUnhealthyPeriods = 10
+	ringNameForServer              = "groupcache"
+	ringNumTokens                  = 1
+	ringCheckPeriod                = 3 * time.Second
+
+	GroupcacheRingKey = "groupcache"
+)
+
 // GroupcacheRingManager is a component instantiated before all the others and is responsible for the ring setup.
 type GroupcacheRingManager struct {
 	services.Service

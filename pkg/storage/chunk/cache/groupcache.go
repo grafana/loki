@@ -31,15 +31,6 @@ import (
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
-const (
-	ringAutoForgetUnhealthyPeriods = 10
-	ringNameForServer              = "groupcache"
-	ringNumTokens                  = 1
-	ringCheckPeriod                = 3 * time.Second
-
-	GroupcacheRingKey = "groupcache"
-)
-
 var (
 	ErrGroupcacheMiss = errors.New("cache miss")
 )
