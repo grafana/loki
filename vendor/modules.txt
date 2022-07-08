@@ -870,8 +870,6 @@ github.com/prometheus/common/sigv4
 # github.com/prometheus/exporter-toolkit v0.7.1
 ## explicit; go 1.14
 github.com/prometheus/exporter-toolkit/web
-# github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289
-## explicit; go 1.13
 # github.com/prometheus/procfs v0.7.3
 ## explicit; go 1.13
 github.com/prometheus/procfs
