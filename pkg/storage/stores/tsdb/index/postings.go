@@ -864,7 +864,7 @@ func (sp *ShardedPostings) Next() bool {
 		if ok := sp.p.Next(); !ok {
 			return false
 		}
-		return sp.p.Seek(storage.SeriesRef(sp.minOffset))
+		return sp.Seek(0)
 	}
 	ok := sp.p.Next()
 	if !ok {
