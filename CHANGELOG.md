@@ -1,4 +1,4 @@
-# 2.6.0 (date TBD)
+# 2.6.0 (2022/07/08)
 
 ### All Changes
 Here is the list with the changes that were produced since the previous release.
@@ -55,9 +55,9 @@ Here is the list with the changes that were produced since the previous release.
 * [6310](https://github.com/grafana/loki/pull/6310) **chodges15**: Add support for client-side TLS certs in loki-canary for Loki connection
 ### Notes
 
-This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+This release was created from a branch starting at commit `1794a766134f07b54386b1a431b58e1d44e6d7f7` but it may also contain backported changes from main.
 
-Check the history of the branch FIXME.
+Check the history of the branch `release-2.6.x`.
 
 ### Dependencies
 
