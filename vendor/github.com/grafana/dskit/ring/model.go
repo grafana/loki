@@ -489,6 +489,27 @@ func (d *Desc) getTokensByZone() map[string][]uint32 {
 	return MergeTokensByZone(zones)
 }
 
+// getOldestRegisteredTimestamp returns unix timestamp of oldest "RegisteredTimestamp" value from all instances.
+// If any instance has 0 value of RegisteredTimestamp, this function returns 0.
+func (d *Desc) getOldestRegisteredTimestamp() int64 {
+	var result int64
+
+	for _, instance := range d.Ingesters {
+		switch {
+		case instance.RegisteredTimestamp == 0:
+			return 0
+
+		case result == 0:
+			result = instance.RegisteredTimestamp
+
+		case instance.RegisteredTimestamp < result:
+			result = instance.RegisteredTimestamp
+		}
+	}
+
+	return result
+}
+
 type CompareResult int
 
 // CompareResult responses
