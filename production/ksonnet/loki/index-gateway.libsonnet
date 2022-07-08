@@ -62,6 +62,6 @@
   else {},
 
   index_gateway_service: if $._config.use_index_gateway then
-    k.util.serviceFor($.index_gateway_statefulset)
+    k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels)
   else {},
 }
