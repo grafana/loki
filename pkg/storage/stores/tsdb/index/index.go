@@ -535,16 +535,19 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 
 	w.buf2.PutHash(w.crc32)
 
-	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
-		return errors.Wrap(err, "write series data")
-	}
-
 	w.lastSeries = append(w.lastSeries[:0], lset...)
 	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
 	if ref%fingerprintInterval == 0 {
-		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{uint64(ref), labelHash})
+		// series references are the 16-byte aligned offsets
+		// Do NOT ask me how long I debugged this particular bit >:O
+		sRef := w.f.pos / 16
+		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{sRef, labelHash})
+	}
+
+	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
+		return errors.Wrap(err, "write series data")
 	}
 
 	return nil
