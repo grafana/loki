@@ -75,7 +75,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   querier_service:
     if !$._config.stateful_queriers then
-      k.util.serviceFor($.querier_deployment)
+      k.util.serviceFor($.querier_deployment, $._config.service_ignored_labels)
     else
-      k.util.serviceFor($.querier_statefulset),
+      k.util.serviceFor($.querier_statefulset, $._config.service_ignored_labels),
 }
