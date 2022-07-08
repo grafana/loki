@@ -354,6 +354,38 @@ func TestDistributorPushConcurrently(t *testing.T) {
 	}
 }
 
+func TestDistributorPushErrors(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	t.Run("with RF=3 a single push can fail", func(t *testing.T) {
+		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		ingesters[0].failAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 10 * time.Millisecond
+		ingesters[2].succeedAfter = 15 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		require.Equal(t, 0, len(ingesters[0].pushed))
+		require.Equal(t, 1, len(ingesters[1].pushed))
+		require.Equal(t, 1, len(ingesters[2].pushed))
+	})
+	t.Run("with RF=3 two push failures result in error", func(t *testing.T) {
+		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		ingesters[0].failAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 10 * time.Millisecond
+		ingesters[2].failAfter = 15 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.Error(t, err)
+		require.Equal(t, 0, len(ingesters[0].pushed))
+		require.Equal(t, 1, len(ingesters[1].pushed))
+		require.Equal(t, 0, len(ingesters[2].pushed))
+	})
+}
+
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -661,12 +693,22 @@ func makeWriteRequest(lines, size int) *logproto.PushRequest {
 type mockIngester struct {
 	grpc_health_v1.HealthClient
 	logproto.PusherClient
-	mu sync.Mutex
 
-	pushed []*logproto.PushRequest
+	failAfter    time.Duration
+	succeedAfter time.Duration
+	mu           sync.Mutex
+	pushed       []*logproto.PushRequest
 }
 
 func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+	if i.failAfter > 0 {
+		time.Sleep(i.failAfter)
+		return nil, fmt.Errorf("push request failed")
+	}
+	if i.succeedAfter > 0 {
+		time.Sleep(i.succeedAfter)
+	}
+
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
