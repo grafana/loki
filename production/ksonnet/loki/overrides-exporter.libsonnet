@@ -33,6 +33,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   else {},
 
   overrides_exporter_service: if $._config.overrides_exporter_enabled then
-    k.util.serviceFor($.overrides_exporter_deployment)
+    k.util.serviceFor($.overrides_exporter_deployment, $._config.service_ignored_labels)
   else {},
 }
