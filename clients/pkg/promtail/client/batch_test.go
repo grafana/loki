@@ -103,9 +103,15 @@ func TestBatch_encode(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			_, entriesCount, err := testData.inputBatch.encode()
+			buf, entriesCount, err := testData.inputBatch.encode()
 			require.NoError(t, err)
 			assert.Equal(t, testData.expectedEntriesCount, entriesCount)
+
+			// check if encode generated idempotent key
+			req, err := testData.inputBatch.decode(buf)
+			require.NoError(t, err)
+
+			assert.NotEmpty(t, req.IdempotentKey)
 		})
 	}
 }

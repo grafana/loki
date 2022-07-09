@@ -341,7 +341,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, ingester, samples, &tracker)
+			d.sendSamples(localCtx, req.IdempotentKey, ingester, samples, &tracker)
 		}(ingesterDescs[ingester], samples)
 	}
 	select {
@@ -374,8 +374,8 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
-	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
+func (d *Distributor) sendSamples(ctx context.Context, idempotentKey string, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
+	err := d.sendSamplesErr(ctx, idempotentKey, ingester, streamTrackers)
 
 	// If we succeed, decrement each sample's pending count by one.  If we reach
 	// the required number of successful puts on this sample, then decrement the
@@ -406,14 +406,15 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDes
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
+func (d *Distributor) sendSamplesErr(ctx context.Context, idempotentKey string, ingester ring.InstanceDesc, streams []*streamTracker) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(streams)),
+		Streams:       make([]logproto.Stream, len(streams)),
+		IdempotentKey: idempotentKey,
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream

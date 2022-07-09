@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
@@ -30,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/util"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 	"github.com/grafana/loki/pkg/util/test"
@@ -96,6 +98,25 @@ func TestDistributor(t *testing.T) {
 			response, err := d.Push(ctx, request)
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
+
+			// make sure distributor forwarded the `idempotentKey` to the upstream ingesters.
+			// 1. Get ingesters replicaset used in distributor's push call
+			// 2. Check those ingesters got the non-empty idempotent key.
+
+			key := util.TokenFor("test", request.Streams[0].Labels)
+			replicas, err := d.ingestersRing.Get(key, ring.Write, nil, nil, nil)
+			require.NoError(t, err)
+			require.Len(t, replicas.Instances, 3)
+			for _, inst := range replicas.Instances {
+				ing, err := d.cfg.factory(inst.Addr)
+				require.NoError(t, err)
+				ingester := ing.(*mockIngester)
+				for _, req := range ingester.pushed {
+					assert.NotEmpty(t, req.IdempotentKey)
+				}
+
+			}
+
 		})
 	}
 }
@@ -570,6 +591,7 @@ func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 				Labels: `{foo="bar"}`,
 			},
 		},
+		IdempotentKey: uuid.NewString(),
 	}
 
 	for i := 0; i < lines; i++ {

@@ -202,6 +202,9 @@ type Ingester struct {
 	loopQuit    chan struct{}
 	tailersQuit chan struct{}
 
+	reqLock       sync.RWMutex
+	knownRequests map[string]bool // TODO(kavi): Should it be isolated per tenant?
+
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
 	flushQueues     []*util.PriorityQueue
@@ -245,6 +248,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
+		knownRequests:         make(map[string]bool),
 		store:                 store,
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
@@ -599,6 +603,14 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	i.reqLock.RLock()
+	if req.IdempotentKey != "" && i.knownRequests[req.IdempotentKey] {
+		// checking for idempotentKey == "", as during first rollout, need to support promtail that is not sending any idempotent key.
+		level.Info(util_log.Logger).Log("msg", "duplicate push request", "idempotent-key", req.IdempotentKey)
+		return &logproto.PushResponse{}, nil
+	}
+	i.reqLock.RUnlock()
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -611,6 +623,15 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 	err = instance.Push(ctx, req)
+	if err != nil {
+		return &logproto.PushResponse{}, err
+	}
+
+	if req.IdempotentKey != "" {
+		i.reqLock.Lock()
+		i.knownRequests[req.IdempotentKey] = true
+		i.reqLock.Unlock()
+	}
 	return &logproto.PushResponse{}, err
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/google/uuid"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -102,10 +103,28 @@ func (b *batch) encode() ([]byte, int, error) {
 	return buf, entriesCount, nil
 }
 
+// decode the batch of snappy-compressed push request, and returns
+// the decoded logproto.PushRequest.
+func (b *batch) decode(buf []byte) (*logproto.PushRequest, error) {
+	buf, err := snappy.Decode(nil, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	var req logproto.PushRequest
+
+	if err := proto.Unmarshal(buf, &req); err != nil {
+		return nil, err
+	}
+
+	return &req, nil
+}
+
 // creates push request and returns it, together with number of entries
 func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 	req := logproto.PushRequest{
-		Streams: make([]logproto.Stream, 0, len(b.streams)),
+		Streams:       make([]logproto.Stream, 0, len(b.streams)),
+		IdempotentKey: uuid.NewString(),
 	}
 
 	entriesCount := 0
