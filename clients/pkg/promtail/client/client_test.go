@@ -298,7 +298,15 @@ func TestClient_Handle(t *testing.T) {
 			// Due to implementation details (maps iteration ordering is random) we just check
 			// that the expected requests are equal to the received requests, without checking
 			// the exact order which is not guaranteed in case of multi-tenant
-			require.ElementsMatch(t, testData.expectedReqs, receivedReqs)
+			assert.Len(t, testData.expectedReqs, len(receivedReqs))
+			for i := range testData.expectedReqs {
+				// make sure we received exact streams and tenant id
+				assert.Equal(t, testData.expectedReqs[i].tenantID, receivedReqs[i].tenantID)
+				assert.Equal(t, testData.expectedReqs[i].pushReq.Streams, receivedReqs[i].pushReq.Streams)
+
+				// make sure received request got idempotent key
+				assert.NotEmpty(t, receivedReqs[i].pushReq.IdempotentKey)
+			}
 
 			expectedMetrics := strings.Replace(testData.expectedMetrics, "__HOST__", serverURL.Host, -1)
 			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
@@ -436,7 +444,15 @@ func TestClient_StopNow(t *testing.T) {
 			// Due to implementation details (maps iteration ordering is random) we just check
 			// that the expected requests are equal to the received requests, without checking
 			// the exact order which is not guaranteed in case of multi-tenant
-			require.ElementsMatch(t, c.expectedReqs, receivedReqs)
+			assert.Len(t, c.expectedReqs, len(receivedReqs))
+			for i := range c.expectedReqs {
+				// make sure we received exact streams and tenant id
+				assert.Equal(t, c.expectedReqs[i].tenantID, receivedReqs[i].tenantID)
+				assert.Equal(t, c.expectedReqs[i].pushReq.Streams, receivedReqs[i].pushReq.Streams)
+
+				// make sure received request got idempotent key
+				assert.NotEmpty(t, receivedReqs[i].pushReq.IdempotentKey)
+			}
 
 			expectedMetrics := strings.Replace(c.expectedMetrics, "__HOST__", serverURL.Host, -1)
 			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
