@@ -259,6 +259,7 @@ func TestIngesterPush_idempotent(t *testing.T) {
 	req.IdempotentKey = uuid.NewString() // changed for brand new request
 
 	_, err = i.Push(ctx, &req) // push another legit payload to change the lastLine's content (TODO: also check by changing just lastLine's timestamp)
+	require.NoError(t, err)
 
 	req.Streams[0].Entries[0].Line = oldLine
 	req.IdempotentKey = oldKey // same old request

@@ -643,7 +643,9 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 	if req.IdempotentKey != "" {
 		i.reqLock.Lock()
-		i.knownRequests.Store(ctx, []string{req.IdempotentKey}, [][]byte{nil})
+		if err := i.knownRequests.Store(ctx, []string{req.IdempotentKey}, [][]byte{nil}); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to store idempotent key", "key", req.IdempotentKey, "err", err)
+		}
 		i.reqLock.Unlock()
 	}
 	return &logproto.PushResponse{}, err
