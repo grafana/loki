@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -203,7 +204,7 @@ type Ingester struct {
 	tailersQuit chan struct{}
 
 	reqLock       sync.RWMutex
-	knownRequests map[string]bool // TODO(kavi): Should it be isolated per tenant?
+	knownRequests *cache.FifoCache
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -243,12 +244,22 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 	metrics := newIngesterMetrics(registerer)
 
+	requestsCache := cache.NewFifoCache(
+		"idempotent-keys",
+		cache.FifoCacheConfig{
+			MaxSizeBytes: "2MB",
+		},
+		registerer,
+		util_log.Logger,
+		stats.IdempotentKeysCache,
+	)
+
 	i := &Ingester{
 		cfg:                   cfg,
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
-		knownRequests:         make(map[string]bool),
+		knownRequests:         requestsCache,
 		store:                 store,
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
@@ -604,10 +615,13 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	i.reqLock.RLock()
-	if req.IdempotentKey != "" && i.knownRequests[req.IdempotentKey] {
+	if req.IdempotentKey != "" {
 		// checking for idempotentKey == "", as during first rollout, need to support promtail that is not sending any idempotent key.
-		level.Info(util_log.Logger).Log("msg", "duplicate push request", "idempotent-key", req.IdempotentKey)
-		return &logproto.PushResponse{}, nil
+		_, ok := i.knownRequests.Get(ctx, req.IdempotentKey)
+		if ok {
+			level.Info(util_log.Logger).Log("msg", "duplicate push request", "idempotent-key", req.IdempotentKey)
+			return &logproto.PushResponse{}, nil
+		}
 	}
 	i.reqLock.RUnlock()
 
@@ -629,7 +643,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 	if req.IdempotentKey != "" {
 		i.reqLock.Lock()
-		i.knownRequests[req.IdempotentKey] = true
+		i.knownRequests.Store(ctx, []string{req.IdempotentKey}, [][]byte{nil})
 		i.reqLock.Unlock()
 	}
 	return &logproto.PushResponse{}, err

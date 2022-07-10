@@ -56,10 +56,11 @@ type Context struct {
 type CacheType string
 
 const (
-	ChunkCache       CacheType = "chunk" //nolint:staticcheck
-	IndexCache                 = "index"
-	ResultCache                = "result"
-	WriteDedupeCache           = "write-dedupe"
+	ChunkCache          CacheType = "chunk" //nolint:staticcheck
+	IndexCache                    = "index"
+	ResultCache                   = "result"
+	WriteDedupeCache              = "write-dedupe"
+	IdempotentKeysCache           = "indempotent-keys"
 )
 
 // NewContext creates a new statistics context
