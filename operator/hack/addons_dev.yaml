@@ -50,6 +50,7 @@ spec:
               - ALL
       serviceAccountName: lokistack-dev-addons-logcli
       securityContext:
+        runAsUser: 10002
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
@@ -106,6 +107,7 @@ spec:
               - ALL
       serviceAccountName: lokistack-dev-addons-promtail
       securityContext:
+        runAsUser: 10002
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
