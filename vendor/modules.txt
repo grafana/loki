@@ -526,7 +526,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 ## explicit; go 1.12
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20220518152339-07166f9e6d96
+# github.com/grafana/dskit v0.0.0-20220708141012-99f3d0043c23
 ## explicit; go 1.17
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency
@@ -542,7 +542,6 @@ github.com/grafana/dskit/kv/consul
 github.com/grafana/dskit/kv/etcd
 github.com/grafana/dskit/kv/memberlist
 github.com/grafana/dskit/limiter
-github.com/grafana/dskit/middleware
 github.com/grafana/dskit/modules
 github.com/grafana/dskit/multierror
 github.com/grafana/dskit/netutil
@@ -868,9 +867,9 @@ github.com/prometheus/common/version
 # github.com/prometheus/common/sigv4 v0.1.0
 ## explicit; go 1.15
 github.com/prometheus/common/sigv4
-# github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289
-## explicit; go 1.13
-github.com/prometheus/node_exporter/https
+# github.com/prometheus/exporter-toolkit v0.7.1
+## explicit; go 1.14
+github.com/prometheus/exporter-toolkit/web
 # github.com/prometheus/procfs v0.7.3
 ## explicit; go 1.13
 github.com/prometheus/procfs
@@ -1034,8 +1033,8 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
-# github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e
-## explicit; go 1.13
+# github.com/weaveworks/common v0.0.0-20220629114710-e3b70df0f08b
+## explicit; go 1.14
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/grpc
