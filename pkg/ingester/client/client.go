@@ -94,7 +94,7 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	streamInterceptors = append(streamInterceptors,
 		otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 		middleware.StreamClientUserHeaderInterceptor,
-		middleware.UnaryClientInstrumentInterceptor(ingesterClientRequestDuration),
+		middleware.StreamClientInstrumentInterceptor(ingesterClientRequestDuration),
 	)
 
 	return unaryInterceptors, streamInterceptors
