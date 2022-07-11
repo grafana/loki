@@ -615,7 +615,7 @@ func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through mo
 }
 
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas)) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
@@ -639,7 +639,9 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.C
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
-				fn(user, ls, chks)
+				if err := fn(user, ls, chks); err != nil {
+					return err
+				}
 			}
 		}
 	}

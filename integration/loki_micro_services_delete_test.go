@@ -65,7 +65,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	require.NoError(t, clu.Run())
 
-	tenantID := randStringRunes(12)
+	tenantID := randStringRunes()
 
 	now := time.Now()
 	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL().String())

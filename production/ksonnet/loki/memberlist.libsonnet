@@ -17,6 +17,8 @@
 
   _config+:: {
     gossip_member_label: 'loki_gossip_member',
+    service_ignored_labels:: [$._config.gossip_member_label],
+
     // Enables use of memberlist for all rings, instead of consul. If multikv_migration_enabled is true, consul hostname is still configured,
     // but "primary" KV depends on value of multikv_primary.
     memberlist_ring_enabled: false,
