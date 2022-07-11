@@ -97,6 +97,7 @@ scrape_configs:
       json: false
       max_age: 12h
       path: /var/log/journal
+      matches: _TRANSPORT=kernel
       labels:
         job: systemd-journal
     relabel_configs:
@@ -109,7 +110,9 @@ here for reference. The `max_age` field ensures that no older entry than the
 time specified will be sent to Loki; this circumvents "entry too old" errors.
 The `path` field tells Promtail where to read journal entries from. The labels
 map defines a constant list of labels to add to every journal entry that Promtail
-reads.
+reads. The `matches` field adds journal filters. If multiple filters are specified
+matching different fields, the log entries are filtered by both, if two filters
+apply to the same field, then they are automatically matched as alternatives.
 
 When the `json` field is set to `true`, messages from the journal will be
 passed through the pipeline as JSON, keeping all of the original fields from the
