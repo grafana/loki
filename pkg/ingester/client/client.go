@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/grpcclient"
-	dsmiddleware "github.com/grafana/dskit/middleware"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,14 +87,14 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	unaryInterceptors = append(unaryInterceptors,
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		dsmiddleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
+		middleware.UnaryClientInstrumentInterceptor(ingesterClientRequestDuration),
 	)
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors,
 		otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 		middleware.StreamClientUserHeaderInterceptor,
-		dsmiddleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
+		middleware.StreamClientInstrumentInterceptor(ingesterClientRequestDuration),
 	)
 
 	return unaryInterceptors, streamInterceptors

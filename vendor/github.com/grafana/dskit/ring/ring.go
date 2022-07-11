@@ -167,6 +167,10 @@ type Ring struct {
 	ringTokens       []uint32
 	ringTokensByZone map[string][]uint32
 
+	// Oldest value of RegisteredTimestamp from all instances. If any instance had RegisteredTimestamp == 0,
+	// then this value will be 0.
+	oldestRegisteredTimestamp int64
+
 	// Maps a token with the information of the instance holding it. This map is immutable and
 	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
 	// change it is to create a new one and replace it).
@@ -310,6 +314,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	ringTokensByZone := ringDesc.getTokensByZone()
 	ringInstanceByToken := ringDesc.getTokensInfo()
 	ringZones := getZones(ringTokensByZone)
+	oldestRegisteredTimestamp := ringDesc.getOldestRegisteredTimestamp()
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -318,6 +323,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
 	r.ringZones = ringZones
+	r.oldestRegisteredTimestamp = oldestRegisteredTimestamp
 	r.lastTopologyChange = now
 	if r.shuffledSubringCache != nil {
 		// Invalidate all cached subrings.
@@ -603,8 +609,11 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	}
 
 	result := r.shuffleShard(identifier, size, 0, time.Now())
-
-	r.setCachedShuffledSubring(identifier, size, result)
+	// Only cache subring if it is different from this ring, to avoid deadlocks in getCachedShuffledSubring,
+	// when we update the cached ring.
+	if result != r {
+		r.setCachedShuffledSubring(identifier, size, result)
+	}
 	return result
 }
 
@@ -629,6 +638,16 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
+
+	// If all instances have RegisteredTimestamp within the lookback period,
+	// then all instances would be included in the resulting ring, so we can
+	// simply return this ring.
+	//
+	// If any instance had RegisteredTimestamp equal to 0 (it would not cause additional lookup of next instance),
+	// then r.oldestRegisteredTimestamp is zero too, and we skip this optimization.
+	if lookbackPeriod > 0 && r.oldestRegisteredTimestamp > 0 && r.oldestRegisteredTimestamp >= lookbackUntil {
+		return r
+	}
 
 	var numInstancesPerZone int
 	var actualZones []string
@@ -721,6 +740,8 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		ringTokensByZone: shardTokensByZone,
 		ringZones:        getZones(shardTokensByZone),
 
+		oldestRegisteredTimestamp: shardDesc.getOldestRegisteredTimestamp(),
+
 		// We reference the original map as is in order to avoid copying. It's safe to do
 		// because this map is immutable by design and it's a superset of the actual instances
 		// with the subring.
@@ -768,6 +789,11 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
 	if cached == nil {
 		return nil
+	}
+
+	// No need to update cached subring, if it is the original ring itself.
+	if r == cached {
+		return cached
 	}
 
 	cached.mtx.Lock()
