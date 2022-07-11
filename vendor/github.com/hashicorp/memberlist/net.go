@@ -249,10 +249,6 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 	}
 
 	if m.config.SkipInboundLabelCheck {
-		if streamLabel != "" {
-			m.logger.Printf("[ERR] memberlist: unexpected double stream label header: %s", LogConn(conn))
-			return
-		}
 		// Set this from config so that the auth data assertions work below.
 		streamLabel = m.config.Label
 	}
@@ -369,10 +365,6 @@ func (m *Memberlist) ingestPacket(buf []byte, from net.Addr, timestamp time.Time
 	}
 
 	if m.config.SkipInboundLabelCheck {
-		if packetLabel != "" {
-			m.logger.Printf("[ERR] memberlist: unexpected double packet label header: %s", LogAddress(from))
-			return
-		}
 		// Set this from config so that the auth data assertions work below.
 		packetLabel = m.config.Label
 	}
