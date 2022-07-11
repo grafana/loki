@@ -153,6 +153,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -161,6 +162,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -288,6 +290,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	// GroupCacheRing
+	if mergeWithExisting || reflect.DeepEqual(r.Common.GroupCacheConfig.Ring, defaults.Common.GroupCacheConfig.Ring) {
+		r.Common.GroupCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Common.GroupCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Common.GroupCacheConfig.Ring.InstancePort = rc.InstancePort
+		r.Common.GroupCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceID = rc.InstanceID
+		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Common.GroupCacheConfig.Ring.InstanceZone = rc.InstanceZone
+		r.Common.GroupCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Common.GroupCacheConfig.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -318,6 +333,11 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
 
+	f, err = tokensFile(cfg, "groupcache.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.Common.GroupCacheConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -395,6 +415,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.GroupCacheConfig.Ring.InstanceInterfaceNames) {
+		cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -408,6 +432,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.Common.GroupCacheConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
