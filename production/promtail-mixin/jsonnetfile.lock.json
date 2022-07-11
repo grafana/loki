@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "dependencies": [
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/grafonnet-lib.git",
+          "subdir": "grafonnet"
+        }
+      },
+      "version": "6db00c292d3a1c71661fc875f90e0ec7caa538c2",
+      "sum": "gF8foHByYcB25jcUOBqP6jxk0OPifQMjPvKY0HaCk6w="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "grafana-builder"
+        }
+      },
+      "version": "63274170cdeca59bc33d0f4be61efc6bd5bbb669",
+      "sum": "TieGrr7GyKjURk1+wXHFpdoCiwNaIVfZvyc5mbI9OM0="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "mixin-utils"
+        }
+      },
+      "version": "63274170cdeca59bc33d0f4be61efc6bd5bbb669",
+      "sum": "vzHAzFgkPo2hg4JJZb4dULQiFzhrqc3W2QUOHLSVQ9Q="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/loki.git",
+          "subdir": "production/loki-mixin"
+        }
+      },
+      "version": "c69605f2afa075c3aa3095f63abf3823f73a8e38",
+      "sum": "F7DpeqmTr5THe7UTIXh3sGu3lkdtpvbmXxrBOA5tPgo="
+    }
+  ],
+  "legacyImports": false
+}
