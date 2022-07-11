@@ -335,4 +335,4 @@ replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.
 
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.
-replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220425183535-6b97a09b7167
+replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220708130638-bd88e10a3d91
