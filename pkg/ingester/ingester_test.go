@@ -223,65 +223,120 @@ func TestIngesterPush_idempotent(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.MaxLocalStreamsPerUser = 2
+
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
-
 	require.NoError(t, err)
-
-	store := &mockStore{
-		chunks: map[string][]chunk.Chunk{},
-	}
-
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil)
-	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	req := logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Labels: `{foo="bar",bar="baz1"}`,
-			},
-		},
-		IdempotentKey: uuid.NewString(),
-	}
-
-	req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
-		Timestamp: time.Unix(0, 0),
-		Line:      "/GET path 400",
-	})
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = i.Push(ctx, &req)
-	require.NoError(t, err)
 
-	oldLine := req.Streams[0].Entries[0].Line
-	oldKey := req.IdempotentKey
-	req.Streams[0].Entries[0].Line = "/GET path 401"
-	req.IdempotentKey = uuid.NewString() // changed for brand new request
-
-	_, err = i.Push(ctx, &req) // push another legit payload to change the lastLine's content (TODO: also check by changing just lastLine's timestamp)
-	require.NoError(t, err)
-
-	req.Streams[0].Entries[0].Line = oldLine
-	req.IdempotentKey = oldKey // same old request
-
-	_, err = i.Push(ctx, &req) // push exact same old request (retry)
-	require.NoError(t, err)
-
-	result := mockQuerierServer{
-		ctx: ctx,
+	cases := []struct {
+		name          string
+		req1          logproto.PushRequest
+		req2          logproto.PushRequest
+		expectedCount int
+	}{
+		{
+			name: "without idempotent-key. duplicates",
+			req1: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{foo="bar",bar="baz1"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 0),
+								Line:      "/GET path 400",
+							},
+						},
+					},
+				},
+			},
+			req2: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{foo="bar",bar="baz1"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 1), // change in time
+								Line:      "/GET path 401", // change in content
+							},
+						},
+					},
+				},
+			},
+			expectedCount: 3, // when req1 is retried. total 3.
+		},
+		{
+			name: "with idempotent-key. no-duplicates",
+			req1: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{foo="bar",bar="baz1"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 0),
+								Line:      "/GET path 400",
+							},
+						},
+					},
+				},
+				IdempotentKey: uuid.NewString(),
+			},
+			req2: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{foo="bar",bar="baz1"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 1), // change in time
+								Line:      "/GET path 401", // change in content
+							},
+						},
+					},
+				},
+				IdempotentKey: uuid.NewString(),
+			},
+			expectedCount: 2, // when req1 is retried. idempotentKey protects from duplicates. So total 2.
+		},
 	}
-	err = i.Query(&logproto.QueryRequest{
-		Selector: `{foo="bar"}`,
-		Limit:    100,
-		Start:    time.Unix(0, 0),
-		End:      time.Unix(1, 0),
-	}, &result)
-	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
-	require.Len(t, result.resps[0].Streams, 1)
-	require.Len(t, result.resps[0].Streams[0].Entries, 2) // should be two without any duplicates
 
-	fmt.Println(result.resps[0].Streams[0].Entries)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			store := &mockStore{
+				chunks: map[string][]chunk.Chunk{},
+			}
+
+			i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil)
+			require.NoError(t, err)
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// push first request
+			_, err = i.Push(ctx, &tc.req1)
+			require.NoError(t, err)
+
+			// push second request
+			_, err = i.Push(ctx, &tc.req2)
+			require.NoError(t, err)
+
+			// push first request again (retry)
+			_, err = i.Push(ctx, &tc.req1)
+			require.NoError(t, err)
+
+			result := mockQuerierServer{
+				ctx: ctx,
+			}
+			err = i.Query(&logproto.QueryRequest{
+				Selector: `{foo="bar"}`,
+				Limit:    100,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(2, 0),
+			}, &result)
+			require.NoError(t, err)
+			require.Len(t, result.resps, 1)
+			require.Len(t, result.resps[0].Streams, 1)
+			require.Len(t, result.resps[0].Streams[0].Entries, tc.expectedCount)
+		})
+	}
 }
 
 func TestIngesterStreamLimitExceeded(t *testing.T) {
