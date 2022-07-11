@@ -1,11 +1,13 @@
 package client
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -301,8 +303,16 @@ func TestClient_Handle(t *testing.T) {
 			assert.Len(t, testData.expectedReqs, len(receivedReqs))
 			for i := range testData.expectedReqs {
 				// make sure we received exact streams and tenant id
-				assert.Equal(t, testData.expectedReqs[i].tenantID, receivedReqs[i].tenantID)
-				assert.Equal(t, testData.expectedReqs[i].pushReq.Streams, receivedReqs[i].pushReq.Streams)
+				// since ordering is not guaranteed, loop through every receivedReq to find and assert it.
+				asserted := false
+				for j := range receivedReqs {
+					if testData.expectedReqs[i].tenantID == receivedReqs[j].tenantID &&
+						reflect.DeepEqual(testData.expectedReqs[i].pushReq.Streams, receivedReqs[j].pushReq.Streams) {
+						asserted = true
+					}
+				}
+
+				assert.True(t, asserted, fmt.Sprintf("expectedReq :%v, not found in any of the receivedReq", testData.expectedReqs[i]))
 
 				// make sure received request got idempotent key
 				assert.NotEmpty(t, receivedReqs[i].pushReq.IdempotentKey)
