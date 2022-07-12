@@ -99,6 +99,7 @@ func ConfigureGatewayDeployment(
 	caFilePath := path.Join(caDir, caFile)
 	gwArgs = append(gwArgs,
 		"--tls.client-auth-type=NoClientCert",
+		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
 		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
 		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
