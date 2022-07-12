@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -9,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/tracing"
 )
 
 // Instrument returns an instrumented cache.
@@ -70,7 +73,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
 
-	method := "store"
+	method := i.name + ".store"
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
@@ -89,8 +92,17 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		bufs     [][]byte
 		missing  []string
 		fetchErr error
-		method   = "fetch"
+		method   = i.name + ".fetch"
 	)
+
+	defer func() {
+		if p := recover(); p != nil {
+			if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
+				fmt.Println(time.Now(), " - panic traceid :", traceID)
+			}
+			panic(p)
+		}
+	}()
 
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
