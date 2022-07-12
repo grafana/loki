@@ -1,5 +1,7 @@
 ## Main
 
+- [6663](https://github.com/grafana/loki/pull/6663) **aminesnow**: Generalize live tail fix to all clusters using TLS
+- [6443](https://github.com/grafana/loki/pull/6443) **aminesnow**: Fix live tail of logs not working on OpenShift-based clusters
 - [6646](https://github.com/grafana/loki/pull/6646) **periklis**: Update Loki operand to v2.6.0
 - [6443](https://github.com/grafana/loki/pull/6443) **aminesnow**: Fix live tail of logs not working on OpenShift-based clusters
 - [6646](https://github.com/grafana/loki/pull/6646) **periklis**: Update Loki operand to v2.6.0

@@ -198,8 +198,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -444,8 +445,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -513,8 +515,9 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -795,8 +798,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1125,8 +1129,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1469,8 +1474,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
