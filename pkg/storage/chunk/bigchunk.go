@@ -172,6 +172,9 @@ func (b *bigchunk) Len() int {
 	return sum
 }
 
+// Unused, but for compatibility
+func (b *bigchunk) UncompressedSize() int { return b.Size() }
+
 func (b *bigchunk) Size() int {
 	sum := 2 // For the number of sub chunks.
 	for _, c := range b.chunks {
