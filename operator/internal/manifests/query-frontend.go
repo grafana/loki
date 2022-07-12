@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"path"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,13 +27,6 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 
 	if opts.Gates.GRPCEncryption {
 		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
-			return nil, err
-		}
-	}
-
-	if opts.Stack.Tenants != nil {
-		mode := opts.Stack.Tenants.Mode
-		if err := configureQueryFrontendDeploymentForMode(deployment, mode, &opts); err != nil {
 			return nil, err
 		}
 	}
@@ -219,6 +212,11 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 
 func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendHTTP(stackName)
+	caBundleName := signingCABundleName(stackName)
+
+	if err := configureTailCA(deployment, lokiFrontendContainerName, caBundleName, caBundleDir, caFile); err != nil {
+		return err
+	}
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
@@ -227,17 +225,53 @@ func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackNa
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureQueryFrontendDeploymentForMode(deployment *appsv1.Deployment, mode lokiv1.ModeType, opts *Options) error {
-	switch mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging:
-		url := fmt.Sprintf("https://%s:%d", fqdn(serviceNameQuerierHTTP(opts.Name), opts.Namespace), httpPort)
-		caBundleName := signingCABundleName(opts.Name)
-
-		if opts.Gates.ServiceMonitorTLSEndpoints {
-			return openshift.ConfigureQueryFrontendDeployment(deployment, url, lokiFrontendContainerName, caBundleName, caBundleDir, caFile)
+// ConfigureQueryFrontendDeployment configures CA certificate when TLS is enabled.
+func configureTailCA(d *appsv1.Deployment,
+	qfContainerName, caBundleVolumeName, caDir, caFile string,
+) error {
+	var qfIdx int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == qfContainerName {
+			qfIdx = i
+			break
 		}
+	}
+
+	containerSpec := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleVolumeName,
+				ReadOnly:  true,
+				MountPath: caDir,
+			},
+		},
+	}
+
+	p := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						DefaultMode: &defaultConfigMapMode,
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleVolumeName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[qfIdx], containerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to add tls config args")
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to add tls volumes")
 	}
 
 	return nil
