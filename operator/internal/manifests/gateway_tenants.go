@@ -55,7 +55,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, stackName, stackNs string) error {
+func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, stackName, stackNs string) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
@@ -85,7 +85,7 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg c
 	return nil
 }
 
-func configureServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType) error {
+func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
@@ -134,7 +134,7 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 	return objs
 }
 
-func configureServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1.ModeType, fg configv1.FeatureGates) error {
+func configureGatewayServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1.ModeType, fg configv1.FeatureGates) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure

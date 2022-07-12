@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"path"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +27,13 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 
 	if opts.Gates.GRPCEncryption {
 		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Stack.Tenants != nil {
+		mode := opts.Stack.Tenants.Mode
+		if err := configureQueryFrontendDeploymentForMode(deployment, mode, &opts); err != nil {
 			return nil, err
 		}
 	}
@@ -55,7 +64,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name:  "loki-query-frontend",
+				Name:  lokiFrontendContainerName,
 				Resources: corev1.ResourceRequirements{
 					Limits:   opts.ResourceRequirements.QueryFrontend.Limits,
 					Requests: opts.ResourceRequirements.QueryFrontend.Requests,
@@ -136,7 +145,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-query-frontend-%s", opts.Name),
+					Name:        fmt.Sprintf("%s-%s", lokiFrontendContainerName, opts.Name),
 					Labels:      labels.Merge(l, GossipLabels()),
 					Annotations: a,
 				},
@@ -216,4 +225,20 @@ func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackNa
 func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendGRPC(stackName)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+func configureQueryFrontendDeploymentForMode(deployment *appsv1.Deployment, mode lokiv1.ModeType, opts *Options) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging:
+		url := fmt.Sprintf("https://%s:%d", fqdn(serviceNameQuerierHTTP(opts.Name), opts.Namespace), httpPort)
+		caBundleName := signingCABundleName(opts.Name)
+
+		if opts.Gates.ServiceMonitorTLSEndpoints {
+			return openshift.ConfigureQueryFrontendDeployment(deployment, url, lokiFrontendContainerName, caBundleName, caBundleDir, caFile)
+		}
+	}
+
+	return nil
 }
