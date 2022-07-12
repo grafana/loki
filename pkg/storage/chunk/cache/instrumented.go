@@ -70,7 +70,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
 
-	method := i.name + ".store"
+	method := "store"
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
@@ -89,7 +89,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		bufs     [][]byte
 		missing  []string
 		fetchErr error
-		method   = i.name + ".fetch"
+		method   = "fetch"
 	)
 
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
