@@ -735,7 +735,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, tc.stackName, tc.stackNs)
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "test", "test-ns")
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -781,7 +781,7 @@ func TestConfigureServiceForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureServiceForMode(tc.svc, tc.mode)
+			err := configureGatewayServiceForMode(tc.svc, tc.mode)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.svc)
 		})
@@ -876,7 +876,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureServiceMonitorForMode(tc.sm, tc.mode, tc.featureGates)
+			err := configureGatewayServiceMonitorForMode(tc.sm, tc.mode, tc.featureGates)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sm)
 		})

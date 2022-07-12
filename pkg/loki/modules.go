@@ -10,6 +10,11 @@ import (
 	"os"
 	"time"
 
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 
 	"github.com/NYTimes/gziphandler"
@@ -71,6 +76,7 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
+	GroupCache               string = "groupcache"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -134,7 +140,16 @@ func (t *Loki) initServer() (services.Service, error) {
 		})
 	}(t.Server.HTTPServer.Handler)
 
+	// Allow us to receive http/2 cleartext in addition to http/1.1. This needs to be
+	// the outermost handler so it can upgrade requests if necessary
+	t.Server.HTTPServer.Handler = http2CleartextHandler(t.Server.HTTPServer.Handler)
+
 	return s, nil
+}
+
+func http2CleartextHandler(h http.Handler) http.Handler {
+	h2s := &http2.Server{}
+	return h2c.NewHandler(h, h2s)
 }
 
 func (t *Loki) initRing() (_ services.Service, err error) {
@@ -144,6 +159,32 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 	}
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 	return t.ring, nil
+}
+
+func (t *Loki) initGroupcache() (_ services.Service, err error) {
+	if !t.Cfg.Common.GroupCacheConfig.Enabled {
+		return nil, nil
+	}
+
+	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "new index gateway ring manager")
+	}
+
+	t.groupcacheRingManager = rm
+	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
+
+	gc, err := cache.NewGroupCache(rm, t.Server, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache)
+	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache)
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache)
+
+	return t.groupcacheRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
@@ -863,6 +904,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Common.GroupCacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

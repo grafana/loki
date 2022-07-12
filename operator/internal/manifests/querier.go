@@ -244,9 +244,9 @@ func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, st
 			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNS)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
-			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
 		},
 	}
 

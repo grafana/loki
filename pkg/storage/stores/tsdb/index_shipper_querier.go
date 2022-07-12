@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -19,19 +20,23 @@ import (
 type indexShipperQuerier struct {
 	shipper     indexshipper.IndexShipper
 	chunkFilter chunk.RequestChunkFilterer
+	tableRanges config.TableRanges
 }
 
-func newIndexShipperQuerier(shipper indexshipper.IndexShipper) Index {
-	return &indexShipperQuerier{shipper: shipper}
+func newIndexShipperQuerier(shipper indexshipper.IndexShipper, tableRanges config.TableRanges) Index {
+	return &indexShipperQuerier{shipper: shipper, tableRanges: tableRanges}
 }
 
 func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
 	var indices []Index
 
 	// Ensure we query both per tenant and multitenant TSDBs
-
-	for _, bkt := range indexBuckets(from, through) {
-		if err := i.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(multitenant bool, idx shipper_index.Index) error {
+	idxBuckets, err := indexBuckets(from, through, i.tableRanges)
+	if err != nil {
+		return nil, err
+	}
+	for _, bkt := range idxBuckets {
+		if err := i.shipper.ForEach(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
 			impl, ok := idx.(Index)
 			if !ok {
 				return fmt.Errorf("unexpected shipper index type: %T", idx)

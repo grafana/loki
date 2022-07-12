@@ -487,7 +487,8 @@ func (c *Compactor) stopping(_ error) error {
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
 	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
 	if !ok {
-		return fmt.Errorf("could not find schema for table: %s", tableName)
+		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
+		return nil
 	}
 
 	indexCompactor, ok := c.indexCompactors[schemaCfg.IndexType]

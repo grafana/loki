@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,7 +57,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name:  "loki-query-frontend",
+				Name:  lokiFrontendContainerName,
 				Resources: corev1.ResourceRequirements{
 					Limits:   opts.ResourceRequirements.QueryFrontend.Limits,
 					Requests: opts.ResourceRequirements.QueryFrontend.Requests,
@@ -136,7 +138,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-query-frontend-%s", opts.Name),
+					Name:        fmt.Sprintf("%s-%s", lokiFrontendContainerName, opts.Name),
 					Labels:      labels.Merge(l, GossipLabels()),
 					Annotations: a,
 				},
@@ -210,10 +212,67 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 
 func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendHTTP(stackName)
+	caBundleName := signingCABundleName(stackName)
+
+	if err := configureTailCA(deployment, lokiFrontendContainerName, caBundleName, caBundleDir, caFile); err != nil {
+		return err
+	}
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendGRPC(stackName)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+// ConfigureQueryFrontendDeployment configures CA certificate when TLS is enabled.
+func configureTailCA(d *appsv1.Deployment,
+	qfContainerName, caBundleVolumeName, caDir, caFile string,
+) error {
+	var qfIdx int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == qfContainerName {
+			qfIdx = i
+			break
+		}
+	}
+
+	containerSpec := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleVolumeName,
+				ReadOnly:  true,
+				MountPath: caDir,
+			},
+		},
+	}
+
+	p := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						DefaultMode: &defaultConfigMapMode,
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleVolumeName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[qfIdx], containerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to add tls config args")
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to add tls volumes")
+	}
+
+	return nil
 }
