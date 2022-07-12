@@ -65,7 +65,7 @@ func (w *ChunkWriter) PutOne(ctx context.Context, from, through model.Time, chk 
 	}
 
 	// Always write the index to benefit durability via replication factor.
-	approxKB := math.Round(float64(chk.Data.Size()) / float64(1<<10))
+	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := index.ChunkMetas{
 		{
 			Checksum: chk.ChunkRef.Checksum,
