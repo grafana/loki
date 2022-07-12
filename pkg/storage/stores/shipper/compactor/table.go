@@ -211,6 +211,25 @@ func (t *table) done() error {
 	return nil
 }
 
+func (t *table) chunkIDsForIndexSet(is *indexSet, ids []string) ([]string, error) {
+	ids = ids[:0]
+
+	if is.compactedIndex == nil && len(is.ListSourceFiles()) == 1 {
+		if err := t.openCompactedIndexForRetention(is); err != nil {
+			return ids, err
+		}
+	}
+
+	defer is.cleanup()
+
+	is.compactedIndex.ForEachChunk(func(ce retention.ChunkEntry) (deleteChunk bool, err error) {
+		ids = append(ids, string(ce.ChunkID))
+		return false, nil
+	})
+
+	return ids, nil
+}
+
 // applyRetention applies retention on the index sets
 func (t *table) applyRetention() error {
 	tableInterval := retention.ExtractIntervalFromTableName(t.name)

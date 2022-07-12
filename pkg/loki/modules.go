@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/compactorpb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 
 	"github.com/NYTimes/gziphandler"
@@ -935,9 +936,13 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
+	compactorpb.RegisterCompactorServer(t.Server.GRPC, t.compactor)
+
 	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+
+	t.Server.HTTP.Path("/loki/api/v1/objects").Methods("GET").HandlerFunc(t.compactor.HandleGetObjectKeys)
 
 	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode().DeleteEnabled() {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler()))

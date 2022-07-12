@@ -2,27 +2,33 @@ package compactor
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/compactorpb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -719,4 +725,85 @@ func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return matched, found
+}
+
+func (c *Compactor) GetObjectKeys(ctx context.Context, req *compactorpb.GetObjectKeysRequest) (*compactorpb.GetObjectKeysResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tables, err := c.indexStorageClient.ListTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	refs := make([]string, 0, 1024)
+	buf := make([]string, 0, 1024)
+	var logger log.Logger
+	for _, table := range tables {
+		logger = log.With(util_log.Logger, "table", table, "user", userID)
+
+		files, err := c.indexStorageClient.ListUserFiles(ctx, table, userID, true)
+		if err != nil {
+			return nil, err
+		}
+		if len(files) == 0 {
+			level.Error(logger).Log("msg", "no user files for table")
+			continue
+		}
+		level.Debug(logger).Log("msg", "append index ids", "count", len(files))
+		for _, file := range files {
+			// TODO(chaudum): Is there a better way?
+			// There should only be a single file per table. Do we need to check that?
+			refs = append(refs, path.Join("index", table, userID, file.Name))
+		}
+
+		schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, table)
+		if !ok {
+			level.Error(logger).Log("msg", "could not find schema period config for table")
+			continue
+		}
+
+		indexCompactor, ok := c.indexCompactors[schemaCfg.IndexType]
+		if !ok {
+			level.Error(logger).Log("msg", "could not find index compactor for index type", "index_type", schemaCfg.IndexType)
+			continue
+		}
+
+		t, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, table), c.indexStorageClient, indexCompactor, schemaCfg, c.tableMarker, c.expirationChecker)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to initialize table", "err", err)
+			return nil, err
+		}
+		is, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to initialize index set", "err", err)
+			return nil, err
+		}
+
+		buf, err = t.chunkIDsForIndexSet(is, buf)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to get chunk IDs for table", "err", err)
+			return nil, err
+		}
+		level.Debug(logger).Log("msg", "append chunk ids", "count", len(buf))
+		refs = append(refs, buf...)
+	}
+
+	return &compactorpb.GetObjectKeysResponse{Keys: refs}, nil
+}
+
+func (c *Compactor) HandleGetObjectKeys(w http.ResponseWriter, r *http.Request) {
+	_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+	req := compactorpb.GetObjectKeysRequest{
+		From:    model.Now().Add(-7 * 24 * time.Hour),
+		Through: model.Now(),
+	}
+	res, err := c.GetObjectKeys(ctx, &req)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	} else {
+		json.NewEncoder(w).Encode(res)
+	}
 }
