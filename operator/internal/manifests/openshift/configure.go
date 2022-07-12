@@ -194,3 +194,59 @@ func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS boo
 
 	return nil
 }
+
+// ConfigureQueryFrontendDeployment configures use of TLS when enabled.
+func ConfigureQueryFrontendDeployment(
+	d *appsv1.Deployment,
+	proxyURL string,
+	qfContainerName string,
+	caBundleVolumeName, caDir, caFile string,
+) error {
+	var qfIdx int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == qfContainerName {
+			qfIdx = i
+			break
+		}
+	}
+
+	containerSpec := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("-frontend.tail-proxy-url=%s", proxyURL),
+			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleVolumeName,
+				ReadOnly:  true,
+				MountPath: caDir,
+			},
+		},
+	}
+
+	p := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						DefaultMode: &defaultConfigMapMode,
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleVolumeName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[qfIdx], containerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to add tls config args")
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to add tls volumes")
+	}
+
+	return nil
+}
