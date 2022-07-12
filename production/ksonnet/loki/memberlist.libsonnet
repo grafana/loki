@@ -91,8 +91,9 @@
         max_join_retries: 10,
         min_join_backoff: '1s',
         cluster_label: if $._config.memberlist_cluster_label == '' then '' else $._config.memberlist_cluster_label,
-        cluster_label_verification_disabled:  if !$._config.memberlist_cluster_label_verification_disabled then false else true,
+        cluster_label_verification_disabled: if !$._config.memberlist_cluster_label_verification_disabled then false else true,
       },
+    } else {},
 
     // When doing migration via multi KV store, this section can be used
     // to configure runtime parameters of multi KV store
