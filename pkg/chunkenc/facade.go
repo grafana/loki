@@ -81,7 +81,7 @@ func (f Facade) Size() int {
 		return 0
 	}
 	// Note this is an estimation (which is OK)
-	return f.c.CompressedSize()
+	return f.c.UncompressedSize()
 }
 
 func (f Facade) Entries() int {
