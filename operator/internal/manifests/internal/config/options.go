@@ -30,6 +30,8 @@ type Options struct {
 
 // Address FQDN and port for a k8s service.
 type Address struct {
+	// Protocol is optional
+	Protocol string
 	// FQDN is required
 	FQDN string
 	// Port is required

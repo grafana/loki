@@ -1,13 +1,16 @@
 package manifests
 
 import (
+	"fmt"
+	"path"
 	"testing"
 
-	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestNewQueryFrontendDeployment_SelectorMatchesLabels(t *testing.T) {
@@ -48,99 +51,139 @@ func TestNewQueryFrontendDeployment_HasTemplateConfigHashAnnotation(t *testing.T
 	require.Equal(t, annotations[expected], "deadbeef")
 }
 
-func TestConfigureQueryFrontendDeploymentForMode(t *testing.T) {
-	type tt struct {
-		desc string
-		opts *Options
-		dpl  *appsv1.Deployment
-		want *appsv1.Deployment
+func TestConfigureQueryFrontendHTTPServicePKI(t *testing.T) {
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+	d := appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Deployment",
+			APIVersion: appsv1.SchemeGroupVersion.String(),
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name: lokiFrontendContainerName,
+							Args: []string{
+								"-target=query-frontend",
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      configVolumeName,
+									ReadOnly:  false,
+									MountPath: config.LokiConfigMountDir,
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: configVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									DefaultMode: &defaultConfigMapMode,
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: lokiConfigMapName(opts.Name),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
-	tc := []tt{
-		{
-			desc: "static mode",
-			opts: &Options{
-				Stack: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.Static,
-					},
-				},
-			},
-			dpl:  &appsv1.Deployment{},
-			want: &appsv1.Deployment{},
+	caBundleVolumeName := signingCABundleName(opts.Name)
+	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
+	expected := appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Deployment",
+			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
-		{
-			desc: "dynamic mode",
-			opts: &Options{
-				Stack: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.Dynamic,
-					},
-				},
-			},
-			dpl:  &appsv1.Deployment{},
-			want: &appsv1.Deployment{},
-		},
-		{
-			desc: "openshift-logging mode",
-			opts: &Options{
-				Name:      "test",
-				Namespace: "test-ns",
-				Stack: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-				},
-				Gates: v1.FeatureGates{
-					ServiceMonitorTLSEndpoints: true,
-				},
-			},
-			dpl: &appsv1.Deployment{
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name: lokiFrontendContainerName,
+							Args: []string{
+								"-target=query-frontend",
+								fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caBundleDir, caFile),
+								fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
+								fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
+							},
+							VolumeMounts: []corev1.VolumeMount{
 								{
-									Args: []string{
-										"-target=query-frontend",
+									Name:      configVolumeName,
+									ReadOnly:  false,
+									MountPath: config.LokiConfigMountDir,
+								},
+								{
+									Name:      caBundleVolumeName,
+									ReadOnly:  true,
+									MountPath: caBundleDir,
+								},
+								{
+									Name:      serviceName,
+									ReadOnly:  false,
+									MountPath: httpTLSDir,
+								},
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
+									},
+								},
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
 									},
 								},
 							},
 						},
 					},
-				},
-			},
-			want: &appsv1.Deployment{
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Args: []string{
-										"-target=query-frontend",
-										"-frontend.tail-proxy-url=https://test-querier-http.test-ns.svc.cluster.local:3100",
-										"-frontend.tail-tls-config.tls-ca-path=/var/run/ca/service-ca.crt",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "test-ca-bundle",
-											ReadOnly:  true,
-											MountPath: "/var/run/ca",
-										},
+					Volumes: []corev1.Volume{
+						{
+							Name: configVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									DefaultMode: &defaultConfigMapMode,
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: lokiConfigMapName(opts.Name),
 									},
 								},
 							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "test-ca-bundle",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "test-ca-bundle",
-											},
-										},
+						},
+						{
+							Name: caBundleVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									DefaultMode: &defaultConfigMapMode,
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: caBundleVolumeName,
 									},
+								},
+							},
+						},
+						{
+							Name: serviceName,
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: serviceName,
 								},
 							},
 						},
@@ -149,13 +192,8 @@ func TestConfigureQueryFrontendDeploymentForMode(t *testing.T) {
 			},
 		},
 	}
-	for _, tc := range tc {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-			err := configureQueryFrontendDeploymentForMode(tc.dpl, tc.opts.Stack.Tenants.Mode, tc.opts)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, tc.dpl)
-		})
-	}
+
+	err := configureQueryFrontendHTTPServicePKI(&d, opts.Name)
+	require.Nil(t, err)
+	require.Equal(t, expected, d)
 }
