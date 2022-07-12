@@ -2,10 +2,11 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,6 +37,9 @@ type Config struct {
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
+
+	// GroupCache is configured/initialized as part of modules and injected here
+	GroupCache Cache `yaml:"-"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -80,14 +84,17 @@ func IsRedisSet(cfg Config) bool {
 	return cfg.Redis.Endpoint != ""
 }
 
+func IsGroupCacheSet(cfg Config) bool {
+	return cfg.GroupCache != nil
+}
+
 // New creates a new Cache using Config.
 func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (Cache, error) {
 	if cfg.Cache != nil {
 		return cfg.Cache, nil
 	}
 
-	caches := []Cache{}
-
+	var caches []Cache
 	if cfg.EnableFifoCache {
 		if cfg.Fifocache.TTL == 0 && cfg.DefaultValidity != 0 {
 			cfg.Fifocache.TTL = cfg.DefaultValidity
@@ -125,6 +132,10 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		}
 		cache := NewRedisCache(cacheName, client, logger, cacheType)
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+	}
+
+	if IsGroupCacheSet(cfg) {
+		caches = append(caches, CollectStats(cfg.GroupCache))
 	}
 
 	cache := NewTiered(caches)

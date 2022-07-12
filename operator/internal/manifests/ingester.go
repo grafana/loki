@@ -290,9 +290,9 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
-			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
 		},
 	}
 
