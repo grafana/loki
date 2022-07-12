@@ -95,6 +95,13 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		method   = i.name + ".fetch"
 	)
 
+	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
+		if len(traceID) > 30 {
+			fmt.Println(time.Now(), " - panic traceid :", traceID)
+			panic(" - panic traceid :" + traceID)
+		}
+	}
+
 	defer func() {
 		if p := recover(); p != nil {
 			if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
