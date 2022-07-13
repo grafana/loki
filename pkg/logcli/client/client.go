@@ -212,6 +212,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	attempts := c.Retries + 1
 	success := false
 
+	respErrorMsg := ""
 	for attempts > 0 {
 		attempts--
 
@@ -226,13 +227,14 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
+			respErrorMsg = string(buf)
 			continue
 		}
 		success = true
 		break
 	}
 	if !success {
-		return fmt.Errorf("Run out of attempts while querying the server")
+		return fmt.Errorf("Run out of attempts while querying the server,err: %v", respErrorMsg)
 	}
 
 	defer func() {
