@@ -236,7 +236,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	if !success {
 		return fmt.Errorf("Run out of attempts while querying the server,err: %v", respErrorMsg)
 	}
-	
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			log.Println("error closing body", err)
