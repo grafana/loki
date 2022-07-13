@@ -85,6 +85,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyInstanceConfigs(r, &defaults)
 
+		applyCommonCacheConfigs(r, &defaults)
+
 		applyCommonReplicationFactor(r, &defaults)
 
 		applyDynamicRingConfigs(r, &defaults)
@@ -163,6 +165,17 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+	}
+}
+
+// applyCommonCacheConfigs applies to Loki components the cache-related configurations under the common config section
+// NOTE: only used for GroupCache at the moment
+// TODO: apply to other caches as well
+func applyCommonCacheConfigs(r, _ *ConfigWrapper) {
+	if r.Config.Common.GroupCacheConfig.Enabled {
+		r.Config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache = true
+		r.Config.QueryRange.ResultsCacheConfig.CacheConfig.EnableGroupCache = true
+		r.Config.StorageConfig.IndexQueriesCacheConfig.EnableGroupCache = true
 	}
 }
 
@@ -585,12 +598,12 @@ func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.Perio
 // (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
-	if !cache.IsRedisSet(chunkCacheConfig) && !cache.IsMemcacheSet(chunkCacheConfig) {
+	if !cache.IsCacheConfigured(chunkCacheConfig) {
 		r.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = true
 	}
 
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
-	if !cache.IsRedisSet(resultsCacheConfig) && !cache.IsMemcacheSet(resultsCacheConfig) {
+	if !cache.IsCacheConfigured(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
 		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
 		// so instead we will override them here.
