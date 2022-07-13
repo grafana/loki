@@ -1,0 +1,123 @@
+version: "3.8"
+
+networks:
+  loki:
+
+services:
+
+  # Since the Loki containers are running as user 10001 and the mounted data volume is owned by root,
+  # Loki would not have permissions to create the directories.
+  # Therefore the init container changes permissions of the mounted directory.
+  init:
+    image: grafana/loki:2.6.0
+    user: root
+    entrypoint:
+      - "chown"
+      - "10001:10001"
+      - "/loki"
+    volumes:
+      - ./loki:/loki
+    networks:
+      - loki
+
+  grafana:
+    image: grafana/grafana:8.5.9
+    ports:
+      - "3000:3000"
+    networks:
+      - loki
+
+  promtail:
+    image: grafana/promtail:2.6.0
+    volumes:
+      - ./config:/etc/promtail/
+    ports:
+      - "9080:9080"
+    command: -config.file=/etc/promtail/promtail.yaml
+    networks:
+      - loki
+
+  minio:
+    image: minio/minio
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/loki-data && \
+        mkdir -p /data/loki-ruler &&
+        minio server /data
+    environment:
+      - MINIO_ACCESS_KEY=loki
+      - MINIO_SECRET_KEY=supersecret
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
+      - MINIO_UPDATE=off
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./.data/minio:/data
+    networks:
+      - loki
+
+  loki-gateway:
+    image: nginx:1.19
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "8080:80"
+    networks:
+      - loki
+
+  loki-frontend:
+    image: grafana/loki:2.6.0
+    volumes:
+        - ./config:/etc/loki/
+    ports:
+        - "3100"
+    command: "-config.file=/etc/loki/loki.yaml -target=query-frontend -frontend.downstream-url=http://loki-read:3100"
+    networks:
+      - loki
+    deploy:
+      mode: replicated
+      replicas: 2
+
+  loki-read:
+    image: grafana/loki:2.6.0
+    volumes:
+      - ./config:/etc/loki/
+    ports:
+      - "3100"
+      - "7946"
+      # - "40000-40002:40000" # uncomment to enable interactive debugging on ports (40000, 400001, 400002)
+    command: "-config.file=/etc/loki/loki.yaml -target=read"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+    # only needed for debugging
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor=unconfined
+
+  loki-write:
+    image: grafana/loki:2.6.0
+    volumes:
+      - ./config:/etc/loki/
+    ports:
+      - "3100"
+      - "7946"
+      # - "50000-50002:40000" # uncomment to enable interactive debugging on ports (50000, 50001, 50002)
+    command: "-config.file=/etc/loki/loki.yaml -target=write"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+    # only needed for debugging
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor=unconfined
