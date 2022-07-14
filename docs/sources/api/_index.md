@@ -1,5 +1,7 @@
 ---
 title: HTTP API
+menuTitle: "HTTP API"
+description: "Loki exposes REST endpoints for operating on a Loki cluster. This section details the endpoints."
 weight: 900
 ---
 
@@ -1024,7 +1026,8 @@ POST /loki/api/v1/delete
 PUT /loki/api/v1/delete
 ```
 
-Create a new delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
+Create a new delete request for the authenticated tenant.
+The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
