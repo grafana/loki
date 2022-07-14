@@ -13,7 +13,7 @@ import (
 )
 
 func TestGroupCache(t *testing.T) {
-	gc, err := setupGroupCache()
+	gc, err := setupGroupCache(1)
 	require.Nil(t, err)
 
 	c := gc.NewGroup("test-group", "test")
@@ -46,13 +46,31 @@ func TestGroupCache(t *testing.T) {
 	}
 }
 
-func setupGroupCache() (*GroupCache, error) {
-	return NewGroupCache(
-		&mockRingManager{},
-		&server.Server{HTTP: mux.NewRouter()},
-		log.NewNopLogger(),
-		nil,
-	)
+func TestGroupCacheNoCapacity(t *testing.T) {
+	gc, err := setupGroupCache(0)
+	require.Nil(t, err)
+
+	c := gc.NewGroup("test-group", "test")
+	defer c.Stop()
+
+	keys := []string{"key1", "key2", "key3"}
+	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
+
+	err = c.Store(context.Background(), keys, bufs)
+	require.NoError(t, err)
+
+	// test hits
+	found, _, missed, _ := c.Fetch(context.Background(), keys)
+
+	require.Len(t, found, 0)
+	require.Len(t, missed, len(keys))
+}
+
+func setupGroupCache(capacityMB int64) (*GroupCache, error) {
+	return NewGroupCache(&mockRingManager{}, GroupCacheConfig{
+		Enabled:    true,
+		CapacityMB: capacityMB,
+	}, &server.Server{HTTP: mux.NewRouter()}, log.NewNopLogger(), nil)
 }
 
 type mockRingManager struct{}
