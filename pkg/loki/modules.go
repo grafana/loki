@@ -1061,10 +1061,10 @@ func (t *Loki) deleteRequestsClient(clientType string, limits retention.Limits) 
 		return nil, err
 	}
 
-	transport := *(http.DefaultTransport.(*http.Transport))
+	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 250
 	transport.MaxIdleConnsPerHost = 250
-	client, err := deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second, Transport: &transport}, t.deleteClientMetrics, clientType)
+	client, err := deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second, Transport: transport}, t.deleteClientMetrics, clientType)
 	if err != nil {
 		return nil, err
 	}

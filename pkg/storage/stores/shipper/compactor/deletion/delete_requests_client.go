@@ -167,8 +167,8 @@ func (c *deleteRequestsClient) getRequestsFromServer(ctx context.Context, userID
 		return nil, err
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, resp.Body)
-		resp.Body.Close()
+		_, _ = io.Copy(ioutil.Discard, resp.Body)
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode/100 != 2 {
