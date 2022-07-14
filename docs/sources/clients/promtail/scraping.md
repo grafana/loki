@@ -408,11 +408,6 @@ The [server](../configuration.md#server) section configures the HTTP server crea
 `labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
 the timestamp received from Heroku.
 
-`project_id` and `subscription` are the only required fields.
-
-- `project_id` is the GCP project ID.
-- `subscription` is the GCP Pub/Sub subscription from which Promtail can consume log entries.
-
 Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening. 
 Follow the steps in [Heroku HTTPS Drain docs](https://devcenter.heroku.com/articles/log-drains#https-drains) for using the Heroku CLI
 with a command like the following:
