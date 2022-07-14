@@ -1084,7 +1084,7 @@ curl -X GET \
   -H 'X-Scope-OrgID: <orgid>'
 ```
 
-The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable:
+The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
 
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
