@@ -25,7 +25,8 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableFifoCache bool `yaml:"enable_fifocache"`
+	EnableFifoCache  bool `yaml:"enable_fifocache"`
+	EnableGroupCache bool `yaml:"enable_groupcache"`
 
 	DefaultValidity time.Duration `yaml:"default_validity"`
 
@@ -61,6 +62,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
+	f.BoolVar(&cfg.EnableGroupCache, prefix+"cache.enable-groupcache", false, description+"Enable distributed in-memory cache.")
 
 	cfg.Prefix = prefix
 }
@@ -85,7 +87,12 @@ func IsRedisSet(cfg Config) bool {
 }
 
 func IsGroupCacheSet(cfg Config) bool {
-	return cfg.GroupCache != nil
+	return cfg.EnableGroupCache
+}
+
+// IsCacheConfigured determines if memcached, redis, or groupcache have been configured
+func IsCacheConfigured(cfg Config) bool {
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsGroupCacheSet(cfg)
 }
 
 // New creates a new Cache using Config.

@@ -820,6 +820,25 @@ ingester:
 			assert.Equal(t, 12*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
 		})
 	})
+
+	t.Run("common groupcache setting is applied to chunk, index, and result caches", func(t *testing.T) {
+		// ensure they are all false by default
+		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+		assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache)
+		assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableGroupCache)
+		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableGroupCache)
+
+		configFileString := `---
+common:
+  groupcache:
+    enabled: true`
+
+		config, _ = testContext(configFileString, nil)
+
+		assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache)
+		assert.True(t, config.StorageConfig.IndexQueriesCacheConfig.EnableGroupCache)
+		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableGroupCache)
+	})
 }
 
 func TestDefaultFIFOCacheBehavior(t *testing.T) {
@@ -846,6 +865,18 @@ chunk_store_config:
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
 			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if GroupCache is set", func(t *testing.T) {
+			configFileString := `---
+common:
+  groupcache:
+    enabled: true`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
