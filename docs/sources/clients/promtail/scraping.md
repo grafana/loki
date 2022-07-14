@@ -402,19 +402,18 @@ Configuration is specified in a`heroku_drain` block within the Promtail `scrape_
       - source_labels: ['__heroku_drain_log_id']
         target_label: 'log_id'
 ```
-When configuring a Scrape Config with a Heroku Drain target, the `job_name` must be a [Prometheus-compatible metric name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels).
+Within the `scrape_configs` configuration for a Heroku Drain target, the `job_name` must be a Prometheus-compatible [metric name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels).
 
-Here the `server` section (described in depth [here](./configuration.md#server)) is used for configure the HTTP server created for receiving logs.
-`labels` defines a static set of label values added to each received log entry. Last, `use_incoming_timestamp` can be used to pass
+The [server](../configuration.md#server) section configures the HTTP server created for receiving logs.
+`labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
 the timestamp received from Heroku.
 
+`project_id` and `subscription` are the only required fields.
 
-Here `project_id` and `subscription` are the only required fields.
+- `project_id` is the GCP project ID.
+- `subscription` is the GCP Pub/Sub subscription from which Promtail can consume log entries.
 
-- `project_id` is the GCP project id.
-- `subscription` is the GCP pubsub subscription where Promtail can consume log entries from.
-
-Before using `heroku_datin` target, Heroku should be configured with the URL where the Promtail instance will be listening to. 
+Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening. 
 Follow the steps in [Heroku HTTPS Drain docs](https://devcenter.heroku.com/articles/log-drains#https-drains) for using the Heroku CLI
 with a command like the following:
 
