@@ -336,7 +336,7 @@ job_name: <string>
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
 
-# Configuration describing how to pull logs from Cloudflare.
+# Configuration describing how to pull logs from a Heroku LogPlex drain.
 [heroku_drain: <heroku_drain>]
 
 # Describes how to relabel targets to determine if they should
