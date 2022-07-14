@@ -1065,7 +1065,8 @@ curl -u "Tenant1:$API_TOKEN" \
 GET /loki/api/v1/delete
 ```
 
-List the existing delete requests for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
+List the existing delete requests for the authenticated tenant.
+The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1101,7 +1102,8 @@ curl -u "Tenant1:$API_TOKEN" \
 DELETE /loki/api/v1/delete
 ```
 
-Remove a delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).
+Remove a delete request for the authenticated tenant.
+The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
 
