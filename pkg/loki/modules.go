@@ -1007,7 +1007,11 @@ func (t *Loki) deleteRequestsClient(clientType string) (deletion.DeleteRequestsC
 		return nil, err
 	}
 
-	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, t.deleteClientMetrics, clientType)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 250
+	transport.MaxIdleConnsPerHost = 250
+
+	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second, Transport: transport}, t.deleteClientMetrics, clientType)
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
