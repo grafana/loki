@@ -1222,14 +1222,14 @@ labels:
 #### Available Labels
 
 Heroku Log drains send logs in [Syslog-formatted messages](https://datatracker.ietf.org/doc/html/rfc5424#section-6) (with
-some [minor tweaks](https://devcenter.heroku.com/articles/log-drains#https-drain-caveats) which doesn't make then RFC-compatible).
+some [minor tweaks](https://devcenter.heroku.com/articles/log-drains#https-drain-caveats); they are not RFC-compatible).
 
-The Heroku Drain target exposes for each log entry the received syslog-fields en the following labels:
+The Heroku Drain target exposes for each log entry the received syslog fields with the following labels:
 
-- `__heroku_drain_host`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
-- `__heroku_drain_app`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
-- `__heroku_drain_proc`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
-- `__heroku_drain_log_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
+- `__heroku_drain_host`: The [HOSTNAME](https://tools.ietf.org/html/rfc5424#section-6.2.4) field parsed from the message.
+- `__heroku_drain_app`: The [APP-NAME](https://tools.ietf.org/html/rfc5424#section-6.2.5) field parsed from the message.
+- `__heroku_drain_proc`: The [PROCID](https://tools.ietf.org/html/rfc5424#section-6.2.6) field parsed from the message.
+- `__heroku_drain_log_id`: The [MSGID](https://tools.ietf.org/html/rfc5424#section-6.2.7) field parsed from the message.
 
 ### relabel_configs
 
