@@ -1196,14 +1196,13 @@ You can leverage [pipeline stages](pipeline_stages) if, for example, you want to
 
 ### heroku_drain
 
-The `heroku_drain` configured Promtail to expose a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
+The `heroku_drain` block configures Promtail to expose a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
 
+Each job configured with a Heroku Drain will expose a Drain and will require a separate port.
 
-Each job configured with a `heroku_drain` will expose a Drain and will require a separate port.
+The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for each new drain.
 
-Note the `server` configuration is the same as [server](#server), since Promtail exposes and HTTP server for each new drain.
-
-Promtail exposes an endpoint on `/heroku/api/v1/drain` which expects requests from Heroku's log delivery.
+Promtail exposes an endpoint at `/heroku/api/v1/drain`, which expects requests from Heroku's log delivery.
 
 ```yaml
 # The heroku drain server configuration options
