@@ -1205,7 +1205,7 @@ The `server` configuration is the same as [server](#server), since Promtail expo
 Promtail exposes an endpoint at `/heroku/api/v1/drain`, which expects requests from Heroku's log delivery.
 
 ```yaml
-# The heroku drain server configuration options
+# The Heroku drain server configuration options
 [server: <server_config>]
 
 # Label map to add to every log message.
