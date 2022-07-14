@@ -1072,7 +1072,7 @@ List the existing delete requests using the following API:
 GET /loki/api/v1/delete
 ```
 
-This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
+This endpoint returns both processed and unprocessed deletion requests. It does not list canceled requests, as those requests will have been removed from storage.
 
 #### Examples
 
