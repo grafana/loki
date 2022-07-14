@@ -49,6 +49,7 @@ type BasicLifecyclerConfig struct {
 	Zone string
 
 	HeartbeatPeriod     time.Duration
+	HeartbeatTimeout    time.Duration
 	TokensObservePeriod time.Duration
 	NumTokens           int
 
@@ -512,5 +513,5 @@ func (l *BasicLifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (l *BasicLifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(l, l.cfg.HeartbeatPeriod).handle(w, req)
+	newRingPageHandler(l, l.cfg.HeartbeatTimeout).handle(w, req)
 }

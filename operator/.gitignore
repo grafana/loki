@@ -23,3 +23,8 @@ testbin/*
 *.swp
 *.swo
 *~
+
+# website
+
+website/public/*
+website/resources/*

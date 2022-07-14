@@ -46,8 +46,9 @@ func buildTestTableManager(t *testing.T, path string, tableRangesToHandle config
 	if tableRangesToHandle == nil {
 		tableRangesToHandle = config.TableRanges{
 			{
-				Start: 0,
-				End:   math.MaxInt64,
+				Start:        0,
+				End:          math.MaxInt64,
+				PeriodConfig: &config.PeriodConfig{},
 			},
 		}
 	}
@@ -82,7 +83,7 @@ func TestTableManager_ForEach(t *testing.T) {
 			if i == 0 {
 				expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 			}
-			verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+			verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 				return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
 			})
 		}
@@ -135,7 +136,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		indexStorageClient: mockIndexStorageClient,
 		tables:             make(map[string]Table),
 		tableRangesToHandle: config.TableRanges{{
-			Start: 0, End: math.MaxInt64,
+			Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{},
 		}},
 		ctx:    context.Background(),
 		cancel: func() {},
@@ -268,12 +269,14 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			queryReadyNumDaysCfg: 20,
 			tableRangesToHandle: config.TableRanges{
 				{
-					End:   buildTableNumber(0),
-					Start: buildTableNumber(4),
+					End:          buildTableNumber(0),
+					Start:        buildTableNumber(4),
+					PeriodConfig: &config.PeriodConfig{},
 				},
 				{
-					End:   buildTableNumber(7),
-					Start: buildTableNumber(9),
+					End:          buildTableNumber(7),
+					Start:        buildTableNumber(9),
+					PeriodConfig: &config.PeriodConfig{},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
@@ -296,12 +299,14 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			queryReadyNumDaysCfg: 5,
 			tableRangesToHandle: config.TableRanges{
 				{
-					End:   buildTableNumber(0),
-					Start: buildTableNumber(1),
+					End:          buildTableNumber(0),
+					Start:        buildTableNumber(1),
+					PeriodConfig: &config.PeriodConfig{},
 				},
 				{
-					End:   buildTableNumber(4),
-					Start: buildTableNumber(5),
+					End:          buildTableNumber(4),
+					Start:        buildTableNumber(5),
+					PeriodConfig: &config.PeriodConfig{},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
@@ -319,7 +324,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
 			if tc.tableRangesToHandle == nil {
 				tableManager.tableRangesToHandle = config.TableRanges{{
-					Start: 0, End: math.MaxInt64,
+					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{},
 				}}
 			} else {
 				tableManager.tableRangesToHandle = tc.tableRangesToHandle
@@ -357,7 +362,7 @@ func TestTableManager_loadTables(t *testing.T) {
 				if i == 0 {
 					expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 				}
-				verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+				verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 					return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
 				})
 			}
@@ -372,12 +377,14 @@ func TestTableManager_loadTables(t *testing.T) {
 
 	tableManager, stopFunc = buildTestTableManager(t, tempDir, config.TableRanges{
 		{
-			End:   buildTableNumber(0),
-			Start: buildTableNumber(1),
+			End:          buildTableNumber(0),
+			Start:        buildTableNumber(1),
+			PeriodConfig: &config.PeriodConfig{},
 		},
 		{
-			End:   buildTableNumber(5),
-			Start: buildTableNumber(8),
+			End:          buildTableNumber(5),
+			Start:        buildTableNumber(8),
+			PeriodConfig: &config.PeriodConfig{},
 		},
 	})
 	defer stopFunc()

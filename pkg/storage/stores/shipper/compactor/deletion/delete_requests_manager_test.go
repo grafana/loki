@@ -41,7 +41,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	}{
 		{
 			name:         "no delete requests",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			expectedResp: resp{
 				isExpired:           false,
 				nonDeletedIntervals: nil,
@@ -49,7 +49,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "no relevant delete requests",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    "different-user",
@@ -65,7 +65,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "whole chunk deleted by single request",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -81,7 +81,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "deleted interval out of range",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -97,7 +97,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple delete requests with one deleting the whole chunk",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -119,7 +119,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple delete requests causing multiple holes",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -172,7 +172,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple overlapping requests deleting the whole chunk",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -194,7 +194,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple non-overlapping requests deleting the whole chunk",
-			deletionMode: WholeStreamDeletion,
+			deletionMode: FilterAndDelete,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,

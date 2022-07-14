@@ -47,7 +47,7 @@ variable "keep_stream" {
   default     = "false"
 }
 
-variable "extra_labels"{
+variable "extra_labels" {
   type = string
   description = "Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail."
   default = ""
@@ -62,11 +62,11 @@ variable "batch_size" {
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."
-  default     = [""]
+  default     = []
 }
 
 variable "lambda_vpc_security_groups" {
   type        = list(string)
   description = "List of security group IDs associated with the Lambda function."
-  default     = [""]
+  default     = []
 }

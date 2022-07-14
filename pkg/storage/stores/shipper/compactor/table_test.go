@@ -3,23 +3,20 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 const (
@@ -31,7 +28,6 @@ const (
 type indexSetState struct {
 	uploadCompactedDB   bool
 	removeSourceObjects bool
-	recreateCompactedDB bool
 }
 
 func TestTable_Compaction(t *testing.T) {
@@ -42,11 +38,8 @@ func TestTable_Compaction(t *testing.T) {
 				numUnCompactedPerUserDBs int
 				numCompactedDBs          int
 
-				shouldInitializeCommonIndexSet bool
-				commonIndexSetState            *indexSetState
-
-				shouldInitializeUserIndexSet bool
-				userIndexSetState            *indexSetState
+				commonIndexSetState indexSetState
+				userIndexSetState   indexSetState
 			}{
 				{},
 				{
@@ -54,25 +47,25 @@ func TestTable_Compaction(t *testing.T) {
 				},
 				{
 					numCompactedDBs: 2,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
 				},
 				{
 					numUnCompactedCommonDBs: 1,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
 				},
 				{
 					numUnCompactedCommonDBs: 10,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -80,7 +73,7 @@ func TestTable_Compaction(t *testing.T) {
 				{
 					numUnCompactedCommonDBs: 10,
 					numCompactedDBs:         1,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -88,21 +81,21 @@ func TestTable_Compaction(t *testing.T) {
 				{
 					numUnCompactedCommonDBs: 10,
 					numCompactedDBs:         2,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
 				},
 				{
 					numUnCompactedPerUserDBs: 1,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -110,11 +103,11 @@ func TestTable_Compaction(t *testing.T) {
 				{
 					numUnCompactedPerUserDBs: 1,
 					numCompactedDBs:          1,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -122,21 +115,21 @@ func TestTable_Compaction(t *testing.T) {
 				{
 					numUnCompactedPerUserDBs: 1,
 					numCompactedDBs:          2,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
 				},
 				{
 					numUnCompactedPerUserDBs: 10,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -144,11 +137,11 @@ func TestTable_Compaction(t *testing.T) {
 				{
 					numUnCompactedCommonDBs:  10,
 					numUnCompactedPerUserDBs: 10,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -157,11 +150,11 @@ func TestTable_Compaction(t *testing.T) {
 					numUnCompactedCommonDBs:  10,
 					numUnCompactedPerUserDBs: 10,
 					numCompactedDBs:          1,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
@@ -170,24 +163,24 @@ func TestTable_Compaction(t *testing.T) {
 					numUnCompactedCommonDBs:  10,
 					numUnCompactedPerUserDBs: 10,
 					numCompactedDBs:          2,
-					commonIndexSetState: &indexSetState{
+					commonIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
-					userIndexSetState: &indexSetState{
+					userIndexSetState: indexSetState{
 						uploadCompactedDB:   true,
 						removeSourceObjects: true,
 					},
 				},
 			} {
-				commonDBsConfig := testutil.DBsConfig{
-					NumCompactedDBs:   tc.numCompactedDBs,
-					NumUnCompactedDBs: tc.numUnCompactedCommonDBs,
+				commonDBsConfig := IndexesConfig{
+					NumCompactedFiles:   tc.numCompactedDBs,
+					NumUnCompactedFiles: tc.numUnCompactedCommonDBs,
 				}
-				perUserDBsConfig := testutil.PerUserDBsConfig{
-					DBsConfig: testutil.DBsConfig{
-						NumCompactedDBs:   tc.numCompactedDBs,
-						NumUnCompactedDBs: tc.numUnCompactedPerUserDBs,
+				perUserDBsConfig := PerUserIndexesConfig{
+					IndexesConfig: IndexesConfig{
+						NumCompactedFiles:   tc.numCompactedDBs,
+						NumUnCompactedFiles: tc.numUnCompactedPerUserDBs,
 					},
 					NumUsers: numUsers,
 				}
@@ -199,15 +192,14 @@ func TestTable_Compaction(t *testing.T) {
 					tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 					tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
-					testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
-					testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
+					SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
 
 					// do the compaction
 					objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 					require.NoError(t, err)
 
 					table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						nil, nil)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -223,40 +215,28 @@ func TestTable_Compaction(t *testing.T) {
 							require.Equal(t, tc.commonIndexSetState.removeSourceObjects, is.removeSourceObjects)
 							numCommonIndexSets++
 						}
-						require.False(t, is.compactedDBRecreated)
-					}
-
-					if tc.commonIndexSetState != nil {
-						require.Equal(t, 1, numCommonIndexSets)
-					} else {
-						require.Equal(t, 0, numCommonIndexSets)
-					}
-
-					if tc.userIndexSetState != nil {
-						require.Equal(t, numUsers, numUserIndexSets)
-					} else {
-						require.Equal(t, 0, numUserIndexSets)
 					}
 
 					// verify the state in the storage after compaction.
 					expectedNumCommonDBs := 0
-					if (commonDBsConfig.NumUnCompactedDBs + commonDBsConfig.NumCompactedDBs) > 0 {
+					if (commonDBsConfig.NumUnCompactedFiles + commonDBsConfig.NumCompactedFiles) > 0 {
+						require.Equal(t, 1, numCommonIndexSets)
 						expectedNumCommonDBs = 1
 					}
 					numExpectedUsers := 0
-					if (perUserDBsConfig.NumUnCompactedDBs + perUserDBsConfig.NumCompactedDBs) > 0 {
+					if (perUserDBsConfig.NumUnCompactedFiles + perUserDBsConfig.NumCompactedFiles) > 0 {
+						require.Equal(t, numUsers, numUserIndexSets)
 						numExpectedUsers = numUsers
 					}
 					validateTable(t, tablePathInStorage, expectedNumCommonDBs, numExpectedUsers, func(filename string) {
-						require.True(t, strings.HasSuffix(filename, ".gz"))
+						require.True(t, strings.HasSuffix(filename, ".gz"), filename)
 					})
 
-					// verify we have all the kvs in compacted db which were there in source dbs.
-					compareCompactedTable(t, tablePathInStorage, filepath.Join(objectStoragePath, "test-copy"))
+					verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, tablePathInStorage)
 
 					// running compaction again should not do anything.
 					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						nil, nil)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -264,7 +244,6 @@ func TestTable_Compaction(t *testing.T) {
 					for _, is := range table.indexSets {
 						require.False(t, is.uploadCompactedDB)
 						require.False(t, is.removeSourceObjects)
-						require.False(t, is.compactedDBRecreated)
 					}
 				})
 			}
@@ -272,10 +251,10 @@ func TestTable_Compaction(t *testing.T) {
 	}
 }
 
-type TableMarkerFunc func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
+type TableMarkerFunc func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error)
 
-func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
-	return t(ctx, tableName, userID, db, logger)
+func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+	return t(ctx, tableName, userID, indexFile, logger)
 }
 
 type IntervalMayHaveExpiredChunksFunc func(interval model.Interval, userID string) bool
@@ -285,19 +264,33 @@ func (f IntervalMayHaveExpiredChunksFunc) IntervalMayHaveExpiredChunks(interval 
 }
 
 func TestTable_CompactionRetention(t *testing.T) {
+	numUsers := 10
 	type dbsSetup struct {
-		withCompactedDBs, withUnCompactedDBs bool
+		numUnCompactedCommonDBs  int
+		numUnCompactedPerUserDBs int
+		numCompactedDBs          int
 	}
 	for _, setup := range []dbsSetup{
 		{
-			withUnCompactedDBs: true,
+			numUnCompactedCommonDBs:  10,
+			numUnCompactedPerUserDBs: 10,
 		},
 		{
-			withCompactedDBs: true,
+			numCompactedDBs: 1,
 		},
 		{
-			withCompactedDBs:   true,
-			withUnCompactedDBs: true,
+			numCompactedDBs: 10,
+		},
+		{
+			numUnCompactedCommonDBs:  10,
+			numUnCompactedPerUserDBs: 10,
+			numCompactedDBs:          1,
+		},
+		{
+			numUnCompactedCommonDBs: 1,
+		},
+		{
+			numUnCompactedPerUserDBs: 1,
 		},
 	} {
 		for name, tt := range map[string]struct {
@@ -312,63 +305,78 @@ func TestTable_CompactionRetention(t *testing.T) {
 					_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
 					return true, true, nil
 				}),
 			},
 			"marked table": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
+					expectedNumCommonDBs := 0
+					if setup.numUnCompactedCommonDBs+setup.numCompactedDBs > 0 {
+						expectedNumCommonDBs = 1
+					}
+
+					expectedNumUsers := 0
+					if setup.numUnCompactedPerUserDBs+setup.numCompactedDBs > 0 {
+						expectedNumUsers = numUsers
+					}
+					validateTable(t, filepath.Join(storagePath, tableName), expectedNumCommonDBs, expectedNumUsers, func(filename string) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
-					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
 					return false, true, nil
 				}),
 			},
 			"not modified": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
+					expectedNumCommonDBs := 0
+					if setup.numUnCompactedCommonDBs+setup.numCompactedDBs > 0 {
+						expectedNumCommonDBs = 1
+					}
+
+					expectedNumUsers := 0
+					if setup.numUnCompactedPerUserDBs+setup.numCompactedDBs > 0 {
+						expectedNumUsers = numUsers
+					}
+					validateTable(t, filepath.Join(storagePath, tableName), expectedNumCommonDBs, expectedNumUsers, func(filename string) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
-					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
 					return false, false, nil
 				}),
 			},
 		} {
 			tt := tt
-			t.Run(name, func(t *testing.T) {
+			commonDBsConfig := IndexesConfig{
+				NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
+				NumUnCompactedFiles: tt.dbsSetup.numUnCompactedCommonDBs,
+			}
+			perUserDBsConfig := PerUserIndexesConfig{
+				IndexesConfig: IndexesConfig{
+					NumUnCompactedFiles: tt.dbsSetup.numUnCompactedPerUserDBs,
+					NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
+				},
+				NumUsers: numUsers,
+			}
+			t.Run(fmt.Sprintf("%s - %s ; %s", name, commonDBsConfig.String(), perUserDBsConfig.String()), func(t *testing.T) {
 				tempDir := t.TempDir()
 				tableName := fmt.Sprintf("%s12345", tableName)
 
 				objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 				tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
-				commonDBsConfig := testutil.DBsConfig{}
-				perUserDBsConfig := testutil.PerUserDBsConfig{}
-				if tt.dbsSetup.withUnCompactedDBs {
-					commonDBsConfig.NumCompactedDBs = 10
-					perUserDBsConfig.NumCompactedDBs = 10
-				}
-				if tt.dbsSetup.withCompactedDBs {
-					commonDBsConfig.NumCompactedDBs = 1
-					perUserDBsConfig.NumCompactedDBs = 1
-				}
-				perUserDBsConfig.NumUsers = 10
-
-				testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
-				testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
+				SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
 
 				// do the compaction
 				objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 				require.NoError(t, err)
 
 				table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
+					newTestIndexCompactor(), config.PeriodConfig{},
 					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
 						return true
 					}))
@@ -426,29 +434,25 @@ func TestTable_CompactionFailure(t *testing.T) {
 
 	// setup some dbs
 	numDBs := 10
-	numRecordsPerDB := 100
 
-	dbsToSetup := make(map[string]testutil.DBConfig)
+	dbsToSetup := make(map[string]IndexFileConfig)
 	for i := 0; i < numDBs; i++ {
-		dbsToSetup[fmt.Sprint(i)] = testutil.DBConfig{
+		dbsToSetup[fmt.Sprint(i)] = IndexFileConfig{
 			CompressFile: i%2 == 0,
-			DBRecords: testutil.DBRecords{
-				Start:      i * numRecordsPerDB,
-				NumRecords: (i + 1) * numRecordsPerDB,
-			},
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), dbsToSetup, nil)
+	SetupTable(t, filepath.Join(objectStoragePath, tableName), IndexesConfig{NumCompactedFiles: numDBs}, PerUserIndexesConfig{})
 
-	// put a non-boltdb file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.txt"), []byte("fail the compaction"), 0o666))
+	// put a corrupt zip file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.gz"), []byte("fail the compaction"), 0o666))
 
 	// do the compaction
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
-	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""), nil, nil)
+	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
@@ -462,255 +466,14 @@ func TestTable_CompactionFailure(t *testing.T) {
 	// ensure that we have cleanup the local working directory after failing the compaction.
 	require.NoFileExists(t, tableWorkingDirectory)
 
-	// remove the non-boltdb file and ensure that compaction succeeds now.
-	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.txt")))
+	// remove the corrupt zip file and ensure that compaction succeeds now.
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.gz")))
 
-	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""), nil, nil)
+	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, table.compact(false))
 
 	// ensure that we have cleanup the local working directory after successful compaction.
 	require.NoFileExists(t, tableWorkingDirectory)
-}
-
-func compareCompactedTable(t *testing.T, srcTable, compactedTable string) {
-	require.Equal(t, readTable(t, srcTable), readTable(t, compactedTable))
-}
-
-func readTable(t *testing.T, tablePath string) map[string]map[string]string {
-	tempDir := t.TempDir()
-
-	filesInfo, err := ioutil.ReadDir(tablePath)
-	require.NoError(t, err)
-
-	dbRecords := make(map[string]map[string]string)
-
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
-			for _, userRecords := range readTable(t, filepath.Join(tablePath, fileInfo.Name())) {
-				if _, ok := dbRecords[fileInfo.Name()]; !ok {
-					dbRecords[fileInfo.Name()] = make(map[string]string)
-				}
-				for k, v := range userRecords {
-					dbRecords[fileInfo.Name()][k] = v
-				}
-			}
-			continue
-		}
-
-		filePath := filepath.Join(tablePath, fileInfo.Name())
-		if strings.HasSuffix(filePath, ".gz") {
-			filePath = filepath.Join(tempDir, fileInfo.Name())
-			testutil.DecompressFile(t, filepath.Join(tablePath, fileInfo.Name()), filePath)
-		}
-
-		db, err := openBoltdbFileWithNoSync(filePath)
-		require.NoError(t, err)
-		for bucketName, records := range readDB(t, db) {
-			if _, ok := dbRecords[bucketName]; !ok {
-				dbRecords[bucketName] = make(map[string]string)
-			}
-			for k, v := range records {
-				dbRecords[bucketName][k] = v
-			}
-		}
-		require.NoError(t, db.Close())
-	}
-
-	return dbRecords
-}
-
-func readDB(t *testing.T, db *bbolt.DB) map[string]map[string]string {
-	t.Helper()
-	dbRecords := map[string]map[string]string{}
-
-	err := db.View(func(tx *bbolt.Tx) error {
-		return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
-			dbRecords[string(name)] = map[string]string{}
-			return b.ForEach(func(k, v []byte) error {
-				dbRecords[string(name)][string(k)] = string(v)
-				return nil
-			})
-		})
-	})
-
-	require.NoError(t, err)
-	return dbRecords
-}
-
-func TestTable_RecreateCompactedDB(t *testing.T) {
-	for name, tt := range map[string]struct {
-		dbCount                   int
-		assert                    func(t *testing.T, storagePath, tableName string)
-		tableMarker               retention.TableMarker
-		compactedDBMtime          time.Time
-		shouldRecreateCompactedDB bool
-		expectedIndexSetState     indexSetState
-	}{
-		// must not recreate compacted db test cases:
-		"more than 1 file in table": {
-			dbCount: 2,
-			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
-					require.True(t, strings.HasSuffix(filename, ".gz"))
-					require.False(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
-				})
-				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
-			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
-				return false, false, nil
-			}),
-			expectedIndexSetState: indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		"compacted db not old enough": {
-			dbCount: 1,
-			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
-					require.True(t, strings.HasSuffix(filename, ".gz"))
-					require.False(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
-				})
-				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
-			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
-				return false, false, nil
-			}),
-			compactedDBMtime: time.Now().Add(-recreateCompactedDBOlderThan / 2),
-		},
-		"marked table": {
-			dbCount: 1,
-			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
-					require.True(t, strings.HasSuffix(filename, ".gz"))
-					require.False(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
-				})
-				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
-			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
-				return false, true, nil
-			}),
-			expectedIndexSetState: indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		"emptied table": {
-			dbCount: 2,
-			assert: func(t *testing.T, storagePath, tableName string) {
-				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
-				require.True(t, os.IsNotExist(err))
-			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
-				return true, true, nil
-			}),
-			expectedIndexSetState: indexSetState{
-				removeSourceObjects: true,
-			},
-		},
-
-		// must recreate compacted db test cases
-		"compacted db old enough": {
-			dbCount: 1,
-			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
-					require.True(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
-				})
-				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
-			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
-				return false, false, nil
-			}),
-			compactedDBMtime:          time.Now().Add(-(recreateCompactedDBOlderThan + time.Minute)),
-			shouldRecreateCompactedDB: true,
-			expectedIndexSetState: indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-				recreateCompactedDB: true,
-			},
-		},
-	} {
-		tt := tt
-		t.Run(name, func(t *testing.T) {
-			if !tt.compactedDBMtime.IsZero() {
-				require.Equal(t, 1, tt.dbCount)
-			}
-			tempDir := t.TempDir()
-			tableName := fmt.Sprintf("%s12345", tableName)
-
-			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
-			tablePathInStorage := filepath.Join(objectStoragePath, tableName)
-
-			commonDBsConfig := testutil.DBsConfig{}
-			perUserDBsConfig := testutil.PerUserDBsConfig{}
-			if tt.dbCount == 1 {
-				commonDBsConfig.NumCompactedDBs = 1
-				perUserDBsConfig.NumCompactedDBs = 1
-			} else {
-				commonDBsConfig.NumUnCompactedDBs = tt.dbCount
-				perUserDBsConfig.NumUnCompactedDBs = tt.dbCount
-			}
-			perUserDBsConfig.NumUsers = 10
-			testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
-
-			if !tt.compactedDBMtime.IsZero() && tt.dbCount == 1 {
-				err := filepath.WalkDir(tablePathInStorage, func(path string, d fs.DirEntry, err error) error {
-					require.NoError(t, err)
-					if !d.IsDir() {
-						return os.Chtimes(path, tt.compactedDBMtime, tt.compactedDBMtime)
-					}
-					return nil
-				})
-				require.NoError(t, err)
-			}
-			// setup exact same copy of dbs for comparison.
-			testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
-
-			// do the compaction
-			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
-			require.NoError(t, err)
-
-			table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-				tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
-					return true
-				}))
-			require.NoError(t, err)
-
-			require.NoError(t, table.compact(true))
-			for _, indexSet := range table.indexSets {
-				require.Equal(t, tt.expectedIndexSetState.recreateCompactedDB, indexSet.compactedDBRecreated, fmt.Sprint(indexSet))
-				require.Equal(t, tt.expectedIndexSetState.uploadCompactedDB, indexSet.uploadCompactedDB)
-				require.Equal(t, tt.expectedIndexSetState.removeSourceObjects, indexSet.removeSourceObjects)
-			}
-			tt.assert(t, objectStoragePath, tableName)
-
-			// if the compacted db was recreated, running the compaction again must not recreate the file even if the mtime is older than the threshold
-			if tt.expectedIndexSetState.recreateCompactedDB {
-				err := filepath.WalkDir(tablePathInStorage, func(path string, d fs.DirEntry, err error) error {
-					require.NoError(t, err)
-					if !d.IsDir() {
-						return os.Chtimes(path, tt.compactedDBMtime, tt.compactedDBMtime)
-					}
-					return nil
-				})
-				require.NoError(t, err)
-
-				table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
-						return true
-					}))
-				require.NoError(t, err)
-
-				require.NoError(t, table.compact(true))
-				for _, indexSet := range table.indexSets {
-					require.Equal(t, false, indexSet.compactedDBRecreated)
-					require.Equal(t, false, indexSet.uploadCompactedDB)
-					require.Equal(t, false, indexSet.removeSourceObjects)
-				}
-				tt.assert(t, objectStoragePath, tableName)
-			}
-		})
-	}
 }

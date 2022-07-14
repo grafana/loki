@@ -5,25 +5,25 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type deleteRequestClientMetrics struct {
-	deleteRequestsLookupsTotal       prometheus.Counter
-	deleteRequestsLookupsFailedTotal prometheus.Counter
+type DeleteRequestClientMetrics struct {
+	deleteRequestsLookupsTotal       *prometheus.CounterVec
+	deleteRequestsLookupsFailedTotal *prometheus.CounterVec
 }
 
-func newDeleteRequestClientMetrics(r prometheus.Registerer) *deleteRequestClientMetrics {
-	m := deleteRequestClientMetrics{}
+func NewDeleteRequestClientMetrics(r prometheus.Registerer) *DeleteRequestClientMetrics {
+	m := DeleteRequestClientMetrics{}
 
-	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_total",
 		Help:      "Number times the client has looked up delete requests",
-	})
+	}, []string{"client_type"})
 
-	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_failed_total",
 		Help:      "Number times the client has failed to look up delete requests",
-	})
+	}, []string{"client_type"})
 
 	return &m
 }

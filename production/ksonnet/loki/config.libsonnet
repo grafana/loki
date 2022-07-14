@@ -4,6 +4,8 @@
     cluster: error 'must define cluster',
     http_listen_port: 3100,
 
+    create_service_monitor: false,
+
     replication_factor: 3,
     memcached_replicas: 3,
 
@@ -386,4 +388,5 @@
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({
       config_hash: std.md5(std.toString($._config.loki)),
     }),
+
 }

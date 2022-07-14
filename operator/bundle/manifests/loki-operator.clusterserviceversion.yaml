@@ -5,6 +5,22 @@ metadata:
     alm-examples: |-
       [
         {
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "LokiStack",
+          "metadata": {
+            "name": "lokistack-sample"
+          },
+          "spec": {
+            "size": "1x.small",
+            "storage": {
+              "secret": {
+                "name": "test"
+              }
+            },
+            "storageClassName": "standard"
+          }
+        },
+        {
           "apiVersion": "loki.grafana.com/v1beta1",
           "kind": "AlertingRule",
           "metadata": {
@@ -42,22 +58,6 @@ metadata:
               }
             ],
             "tenantID": "test-tenant"
-          }
-        },
-        {
-          "apiVersion": "loki.grafana.com/v1beta1",
-          "kind": "LokiStack",
-          "metadata": {
-            "name": "lokistack-sample"
-          },
-          "spec": {
-            "size": "1x.small",
-            "storage": {
-              "secret": {
-                "name": "test"
-              }
-            },
-            "storageClassName": "standard"
           }
         },
         {
@@ -154,7 +154,7 @@ metadata:
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
       ### Loki Operator Namespace
-      The Loki Operator must be deployed to the global operator group namespace `openshift-logging`.
+      The Loki Operator must be deployed to the global operator group namespace `openshift-operators-redhat`.
       ### Memory Considerations
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
@@ -183,7 +183,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for alerting rules.
         displayName: Groups
@@ -652,7 +652,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
     - description: RecordingRule is the Schema for the recordingrules API
       displayName: RecordingRule
       kind: RecordingRule
@@ -660,7 +660,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for recording rules.
         displayName: Groups
@@ -708,7 +708,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: Defines alert manager configuration to notify on firing alerts.
         displayName: Alert Manager Configuration
@@ -1181,7 +1181,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.5.0
+                  value: quay.io/openshift-logging/loki:v2.6.0
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1210,6 +1210,9 @@ spec:
                 resources: {}
                 securityContext:
                   allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
                 volumeMounts:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: webhook-cert
@@ -1230,11 +1233,18 @@ spec:
                 - containerPort: 8443
                   name: https
                 resources: {}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
               nodeSelector:
                 kubernetes.io/os: linux
+              securityContext:
+                runAsNonRoot: true
               terminationGracePeriodSeconds: 10
               volumes:
               - name: webhook-cert
@@ -1275,7 +1285,7 @@ spec:
         serviceAccountName: default
     strategy: deployment
   installModes:
-  - supported: true
+  - supported: false
     type: OwnNamespace
   - supported: false
     type: SingleNamespace
@@ -1297,7 +1307,7 @@ spec:
   provider:
     name: Grafana.com
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.5.0
+  - image: quay.io/openshift-logging/loki:v2.6.0
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
@@ -1305,6 +1315,18 @@ spec:
     name: opa
   version: 0.0.1
   webhookdefinitions:
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - lokistacks.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: clokistacks.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
   - admissionReviewVersions:
     - v1
     containerPort: 443
@@ -1330,12 +1352,12 @@ spec:
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: vlokistack.kb.io
+    generateName: vlokistack.loki.grafana.com
     rules:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1344,7 +1366,7 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-lokistack
+    webhookPath: /validate-loki-grafana-com-v1-lokistack
   - admissionReviewVersions:
     - v1
     containerPort: 443

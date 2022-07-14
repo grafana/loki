@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -58,27 +57,15 @@ func (w *ChunkWriter) PutOne(ctx context.Context, from, through model.Time, chk 
 	// to avoid data loss if we lose an ingester's disk
 	// but we can skip writing the chunk if another replica
 	// has already written it to storage.
-	writeChunk := true
-
-	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _, _ := w.fetcher.Cache().Fetch(ctx, []string{w.schemaCfg.ExternalKey(chk.ChunkRef)})
-
-	if len(found) > 0 {
-		writeChunk = false
-		series.DedupedChunksTotal.Inc()
-	}
-
 	chunks := []chunk.Chunk{chk}
 
 	c := w.fetcher.Client()
-	if writeChunk {
-		if err := c.PutChunks(ctx, chunks); err != nil {
-			return errors.Wrap(err, "writing chunk")
-		}
+	if err := c.PutChunks(ctx, chunks); err != nil {
+		return errors.Wrap(err, "writing chunk")
 	}
 
 	// Always write the index to benefit durability via replication factor.
-	approxKB := math.Round(float64(chk.Data.Size()) / float64(1<<10))
+	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := index.ChunkMetas{
 		{
 			Checksum: chk.ChunkRef.Checksum,
@@ -92,10 +79,8 @@ func (w *ChunkWriter) PutOne(ctx context.Context, from, through model.Time, chk 
 		return errors.Wrap(err, "writing index entry")
 	}
 
-	if writeChunk {
-		if cacheErr := w.fetcher.WriteBackCache(ctx, chunks); cacheErr != nil {
-			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
-		}
+	if cacheErr := w.fetcher.WriteBackCache(ctx, chunks); cacheErr != nil {
+		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
 	return nil

@@ -9,7 +9,20 @@ webhook:
 leaderElection:
   leaderElect: false
   resourceName: e3716011.grafana.com
-featureFlags:
-  enableLokiStackWebhook: false
-  enableAlertingRuleWebhook: false
-  enableRecordingRuleWebhook: false
+featureGates:
+  #
+  # Encryption feature gates
+  #
+  httpEncryption: true
+  grpcEncryption: true
+  #
+  # Component feature gates
+  #
+  lokiStackGateway: true
+  runtimeSeccompProfile: true
+  #
+  # Webhook feature gates
+  #
+  lokiStackWebhook: false
+  alertingRuleWebhook: false
+  recordingRuleWebhook: false

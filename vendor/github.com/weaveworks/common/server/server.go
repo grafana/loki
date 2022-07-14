@@ -16,7 +16,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	node_https "github.com/prometheus/node_exporter/https"
+	"github.com/prometheus/exporter-toolkit/web"
 	"golang.org/x/net/context"
 	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
@@ -50,6 +50,14 @@ type SignalHandler interface {
 	Stop()
 }
 
+// TLSConfig contains TLS parameters for Config.
+type TLSConfig struct {
+	TLSCertPath string `yaml:"cert_file"`
+	TLSKeyPath  string `yaml:"key_file"`
+	ClientAuth  string `yaml:"client_auth_type"`
+	ClientCAs   string `yaml:"client_ca_file"`
+}
+
 // Config for a Server
 type Config struct {
 	MetricsNamespace  string `yaml:"-"`
@@ -62,11 +70,12 @@ type Config struct {
 	GRPCListenPort    int    `yaml:"grpc_listen_port"`
 	GRPCConnLimit     int    `yaml:"grpc_listen_conn_limit"`
 
-	HTTPTLSConfig node_https.TLSStruct `yaml:"http_tls_config"`
-	GRPCTLSConfig node_https.TLSStruct `yaml:"grpc_tls_config"`
+	HTTPTLSConfig TLSConfig `yaml:"http_tls_config"`
+	GRPCTLSConfig TLSConfig `yaml:"grpc_tls_config"`
 
-	RegisterInstrumentation bool `yaml:"register_instrumentation"`
-	ExcludeRequestInLog     bool `yaml:"-"`
+	RegisterInstrumentation  bool `yaml:"register_instrumentation"`
+	ExcludeRequestInLog      bool `yaml:"-"`
+	DisableRequestSuccessLog bool `yaml:"-"`
 
 	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
 	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
@@ -91,15 +100,20 @@ type Config struct {
 	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
 	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
 
-	LogFormat          logging.Format    `yaml:"log_format"`
-	LogLevel           logging.Level     `yaml:"log_level"`
-	Log                logging.Interface `yaml:"-"`
-	LogSourceIPs       bool              `yaml:"log_source_ips_enabled"`
-	LogSourceIPsHeader string            `yaml:"log_source_ips_header"`
-	LogSourceIPsRegex  string            `yaml:"log_source_ips_regex"`
+	LogFormat             logging.Format    `yaml:"log_format"`
+	LogLevel              logging.Level     `yaml:"log_level"`
+	Log                   logging.Interface `yaml:"-"`
+	LogSourceIPs          bool              `yaml:"log_source_ips_enabled"`
+	LogSourceIPsHeader    string            `yaml:"log_source_ips_header"`
+	LogSourceIPsRegex     string            `yaml:"log_source_ips_regex"`
+	LogRequestAtInfoLevel bool              `yaml:"log_request_at_info_level_enabled"`
 
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
+
+	// If not set, default Prometheus registry is used.
+	Registerer prometheus.Registerer `yaml:"-"`
+	Gatherer   prometheus.Gatherer   `yaml:"-"`
 
 	PathPrefix string `yaml:"http_path_prefix"`
 }
@@ -145,6 +159,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogSourceIPs, "server.log-source-ips-enabled", false, "Optionally log the source IPs.")
 	f.StringVar(&cfg.LogSourceIPsHeader, "server.log-source-ips-header", "", "Header field storing the source IPs. Only used if server.log-source-ips-enabled is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For headers are used")
 	f.StringVar(&cfg.LogSourceIPsRegex, "server.log-source-ips-regex", "", "Regex for matching the source IPs. Only used if server.log-source-ips-enabled is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For headers are used")
+	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level.")
 }
 
 // Server wraps a HTTP and gRPC server, and some common initialization.
@@ -160,6 +175,8 @@ type Server struct {
 	HTTPServer *http.Server
 	GRPC       *grpc.Server
 	Log        logging.Interface
+	Registerer prometheus.Registerer
+	Gatherer   prometheus.Gatherer
 }
 
 // New makes a new Server
@@ -170,6 +187,13 @@ func New(cfg Config) (*Server, error) {
 		Help:      "Current number of accepted TCP connections.",
 	}, []string{"protocol"})
 	prometheus.MustRegister(tcpConnections)
+
+	tcpConnectionsLimit := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: cfg.MetricsNamespace,
+		Name:      "tcp_connections_limit",
+		Help:      "The max number of TCP connections that can be accepted (0 means no limit).",
+	}, []string{"protocol"})
+	prometheus.MustRegister(tcpConnectionsLimit)
 
 	network := cfg.HTTPListenNetwork
 	if network == "" {
@@ -182,6 +206,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	httpListener = middleware.CountingListener(httpListener, tcpConnections.WithLabelValues("http"))
 
+	tcpConnectionsLimit.WithLabelValues("http").Set(float64(cfg.HTTPConnLimit))
 	if cfg.HTTPConnLimit > 0 {
 		httpListener = netutil.LimitListener(httpListener, cfg.HTTPConnLimit)
 	}
@@ -196,6 +221,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	grpcListener = middleware.CountingListener(grpcListener, tcpConnections.WithLabelValues("grpc"))
 
+	tcpConnectionsLimit.WithLabelValues("grpc").Set(float64(cfg.GRPCConnLimit))
 	if cfg.GRPCConnLimit > 0 {
 		grpcListener = netutil.LimitListener(grpcListener, cfg.GRPCConnLimit)
 	}
@@ -207,19 +233,39 @@ func New(cfg Config) (*Server, error) {
 		log = logging.NewLogrus(cfg.LogLevel)
 	}
 
+	// If user doesn't supply a registerer/gatherer, use Prometheus' by default.
+	reg := cfg.Registerer
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+	gatherer := cfg.Gatherer
+	if gatherer == nil {
+		gatherer = prometheus.DefaultGatherer
+	}
+
 	// Setup TLS
 	var httpTLSConfig *tls.Config
 	if len(cfg.HTTPTLSConfig.TLSCertPath) > 0 && len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 {
-		// Note: ConfigToTLSConfig from prometheus/node_exporter is awaiting security review.
-		httpTLSConfig, err = node_https.ConfigToTLSConfig(&cfg.HTTPTLSConfig)
+		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
+		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSStruct{
+			TLSCertPath: cfg.HTTPTLSConfig.TLSCertPath,
+			TLSKeyPath:  cfg.HTTPTLSConfig.TLSKeyPath,
+			ClientAuth:  cfg.HTTPTLSConfig.ClientAuth,
+			ClientCAs:   cfg.HTTPTLSConfig.ClientCAs,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating http tls config: %v", err)
 		}
 	}
 	var grpcTLSConfig *tls.Config
 	if len(cfg.GRPCTLSConfig.TLSCertPath) > 0 && len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 {
-		// Note: ConfigToTLSConfig from prometheus/node_exporter is awaiting security review.
-		grpcTLSConfig, err = node_https.ConfigToTLSConfig(&cfg.GRPCTLSConfig)
+		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
+		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSStruct{
+			TLSCertPath: cfg.GRPCTLSConfig.TLSCertPath,
+			TLSKeyPath:  cfg.GRPCTLSConfig.TLSKeyPath,
+			ClientAuth:  cfg.GRPCTLSConfig.ClientAuth,
+			ClientCAs:   cfg.GRPCTLSConfig.ClientCAs,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating grpc tls config: %v", err)
 		}
@@ -232,7 +278,7 @@ func New(cfg Config) (*Server, error) {
 		Help:      "Time (in seconds) spent serving HTTP requests.",
 		Buckets:   instrument.DefBuckets,
 	}, []string{"method", "route", "status_code", "ws"})
-	prometheus.MustRegister(requestDuration)
+	reg.MustRegister(requestDuration)
 
 	receivedMessageSize := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: cfg.MetricsNamespace,
@@ -240,7 +286,7 @@ func New(cfg Config) (*Server, error) {
 		Help:      "Size (in bytes) of messages received in the request.",
 		Buckets:   middleware.BodySizeBuckets,
 	}, []string{"method", "route"})
-	prometheus.MustRegister(receivedMessageSize)
+	reg.MustRegister(receivedMessageSize)
 
 	sentMessageSize := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: cfg.MetricsNamespace,
@@ -248,21 +294,22 @@ func New(cfg Config) (*Server, error) {
 		Help:      "Size (in bytes) of messages sent in response.",
 		Buckets:   middleware.BodySizeBuckets,
 	}, []string{"method", "route"})
-	prometheus.MustRegister(sentMessageSize)
+	reg.MustRegister(sentMessageSize)
 
 	inflightRequests := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: cfg.MetricsNamespace,
 		Name:      "inflight_requests",
 		Help:      "Current number of inflight requests.",
 	}, []string{"method", "route"})
-	prometheus.MustRegister(inflightRequests)
+	reg.MustRegister(inflightRequests)
 
 	log.WithField("http", httpListener.Addr()).WithField("grpc", grpcListener.Addr()).Infof("server listening on addresses")
 
 	// Setup gRPC server
 	serverLog := middleware.GRPCServerLog{
-		WithRequest: !cfg.ExcludeRequestInLog,
-		Log:         log,
+		Log:                      log,
+		WithRequest:              !cfg.ExcludeRequestInLog,
+		DisableRequestSuccessLog: cfg.DisableRequestSuccessLog,
 	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
@@ -325,7 +372,7 @@ func New(cfg Config) (*Server, error) {
 		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
 	}
 	if cfg.RegisterInstrumentation {
-		RegisterInstrumentation(router)
+		RegisterInstrumentationWithGatherer(router, gatherer)
 	}
 
 	var sourceIPs *middleware.SourceIPExtractor
@@ -342,8 +389,9 @@ func New(cfg Config) (*Server, error) {
 			SourceIPs:    sourceIPs,
 		},
 		middleware.Log{
-			Log:       log,
-			SourceIPs: sourceIPs,
+			Log:                   log,
+			SourceIPs:             sourceIPs,
+			LogRequestAtInfoLevel: cfg.LogRequestAtInfoLevel,
 		},
 		middleware.Instrument{
 			RouteMatcher:     router,
@@ -385,12 +433,19 @@ func New(cfg Config) (*Server, error) {
 		HTTPServer: httpServer,
 		GRPC:       grpcServer,
 		Log:        log,
+		Registerer: reg,
+		Gatherer:   gatherer,
 	}, nil
 }
 
 // RegisterInstrumentation on the given router.
 func RegisterInstrumentation(router *mux.Router) {
-	router.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+	RegisterInstrumentationWithGatherer(router, prometheus.DefaultGatherer)
+}
+
+// RegisterInstrumentationWithGatherer on the given router.
+func RegisterInstrumentationWithGatherer(router *mux.Router, gatherer prometheus.Gatherer) {
+	router.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	}))
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)

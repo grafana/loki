@@ -3,6 +3,8 @@ package query
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,6 +19,12 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -556,4 +564,67 @@ func (t *testQueryClient) LiveTailQueryConn(queryStr string, delayFor time.Durat
 
 func (t *testQueryClient) GetOrgID() string {
 	panic("implement me")
+}
+
+var schemaConfigContents = `schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v10
+    index:
+      prefix: index_
+      period: 168h
+  - from: 2020-07-31
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+`
+
+func TestLoadFromURL(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	conf := loki.Config{
+		StorageConfig: storage.Config{
+			FSConfig: local.FSConfig{
+				Directory: tmpDir,
+			},
+		},
+	}
+
+	// Missing SharedStoreType should error
+	cm := storage.NewClientMetrics()
+	client, err := GetObjectClient(conf, cm)
+	require.Error(t, err)
+	require.Nil(t, client)
+
+	conf.StorageConfig.BoltDBShipperConfig = shipper.Config{
+		Config: indexshipper.Config{
+			SharedStoreType: config.StorageTypeFileSystem,
+		},
+	}
+
+	client, err = GetObjectClient(conf, cm)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	// Missing schema.config file should error
+	schemaConfig, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+	require.Error(t, err)
+	require.Nil(t, schemaConfig)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, SchemaConfigFilename),
+		[]byte(schemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	schemaConfig, err = LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+
+	require.NoError(t, err)
+	require.NotNil(t, schemaConfig)
 }

@@ -48,6 +48,7 @@ type Config struct {
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+	Encoding               string                 `yaml:"encoding,omitempty"`
 }
 
 type ServiceDiscoveryConfig struct {

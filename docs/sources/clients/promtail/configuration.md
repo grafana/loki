@@ -55,7 +55,7 @@ References to undefined variables are replaced by empty strings unless you speci
 To specify a default value, use:
 
 ```
-${VAR:default_value}
+${VAR:-default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
@@ -317,6 +317,9 @@ job_name: <string>
 
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
+
+# Describes from which encoding a scraped file should be converted.
+[encoding: <iana_encoding_name>]
 
 # Describes how to receive logs from syslog.
 [syslog: <syslog_config>]

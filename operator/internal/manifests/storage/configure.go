@@ -5,7 +5,7 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/imdario/mergo"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -28,9 +28,9 @@ const (
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1beta1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretGCS:
 		return configureDeployment(d, opts.SecretName)
-	case lokiv1beta1.ObjectStorageSecretS3:
+	case lokiv1.ObjectStorageSecretS3:
 		if opts.TLS == nil {
 			return nil
 		}
@@ -46,9 +46,9 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1beta1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretGCS:
 		return configureStatefulSet(d, opts.SecretName)
-	case lokiv1beta1.ObjectStorageSecretS3:
+	case lokiv1.ObjectStorageSecretS3:
 		if opts.TLS == nil {
 			return nil
 		}

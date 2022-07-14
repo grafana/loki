@@ -69,6 +69,11 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
+	protocol := "http"
+	if opt.Gates.HTTPEncryption {
+		protocol = "https"
+	}
+
 	return config.Options{
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
@@ -82,8 +87,9 @@ func ConfigOptions(opt Options) config.Options {
 			Port: gossipPort,
 		},
 		Querier: config.Address{
-			FQDN: fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
-			Port: httpPort,
+			Protocol: protocol,
+			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
+			Port:     httpPort,
 		},
 		IndexGateway: config.Address{
 			FQDN: fqdn(NewIndexGatewayGRPCService(opt).GetName(), opt.Namespace),
@@ -98,7 +104,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
-		EnableRemoteReporting: opt.Flags.EnableGrafanaLabsStats,
+		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
 			RulesStorageDirectory: rulesStorageDirectory,

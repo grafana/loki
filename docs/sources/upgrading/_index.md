@@ -38,6 +38,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
 If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
 
+#### Default value for `server.http-listen-port` changed
+
+This value now defaults to 3100, so the Loki process doesn't require special privileges. Previously, it had been set to port 80, which is a privileged port. If you need Loki to listen on port 80, you can set it back to the previous default using `-server.http-listen-port=80`.
+
+## 2.6.0
+
+### Loki
+
 #### Implementation of unwrapped `rate` aggregation changed
 
 The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).

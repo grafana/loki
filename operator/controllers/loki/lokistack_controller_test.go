@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 	// Register the clientgo and CRD schemes
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(routev1.AddToScheme(scheme))
-	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
+	utilruntime.Must(lokiv1.AddToScheme(scheme))
 
 	os.Exit(m.Run())
 }
@@ -65,7 +65,7 @@ func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing
 
 	// Require For-call options to have create and  update predicates
 	obj, opts := b.ForArgsForCall(0)
-	require.Equal(t, &lokiv1beta1.LokiStack{}, obj)
+	require.Equal(t, &lokiv1.LokiStack{}, obj)
 	require.Equal(t, opts[0], createOrUpdateOnlyPred)
 }
 
@@ -74,10 +74,10 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 
 	// Require owned resources
 	type test struct {
-		obj   client.Object
-		index int
-		flags manifests.FeatureFlags
-		pred  builder.OwnsOption
+		obj          client.Object
+		index        int
+		featureGates configv1.FeatureGates
+		pred         builder.OwnsOption
 	}
 	table := []test{
 		{
@@ -131,16 +131,20 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:   &networkingv1.Ingress{},
 			index: 9,
-			flags: manifests.FeatureFlags{
-				EnableGatewayRoute: false,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					GatewayRoute: false,
+				},
 			},
 			pred: updateOrDeleteOnlyPred,
 		},
 		{
 			obj:   &routev1.Route{},
 			index: 9,
-			flags: manifests.FeatureFlags{
-				EnableGatewayRoute: true,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					GatewayRoute: true,
+				},
 			},
 			pred: updateOrDeleteOnlyPred,
 		},
@@ -150,7 +154,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		b.ForReturns(b)
 		b.OwnsReturns(b)
 
-		c := &LokiStackReconciler{Client: k, Scheme: scheme, Flags: tst.flags}
+		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
 		err := c.buildController(b)
 		require.NoError(t, err)
 
