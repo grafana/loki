@@ -1212,10 +1212,10 @@ Promtail exposes an endpoint at `/heroku/api/v1/drain`, which expects requests f
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# Whether Promtail should pass on the timestamp from the incoming heroku drain message.
-# When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
-# Default is false
-use_incoming_timestamp: <bool>
+# Whether Promtail should pass on the timestamp from the incoming Heroku drain message.
+# When false, or if no timestamp is present in the syslog message, Promtail will assign the current
+# timestamp to the log when it was processed.
+[use_incoming_timestamp: <boolean> | default = false]
 
 ```
 
