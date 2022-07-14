@@ -123,7 +123,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
@@ -411,7 +411,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 
 	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	histReq := logql.SelectLogParams{
