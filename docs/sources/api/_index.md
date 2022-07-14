@@ -1036,6 +1036,10 @@ Query parameters:
 
 A 204 response indicates success.
 
+The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+
+#### Examples
+
 URL encode the `query` parameter. This sample form of a cURL command URL encodes `query={foo="bar"}`:
 
 ```bash
@@ -1044,7 +1048,13 @@ curl -g -X POST \
   -H 'X-Scope-OrgID: 1'
 ```
 
-The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable:
+
+```bash
+curl -u "Tenant1:$API_TOKEN" \
+  -g -X POST \
+  'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692'
+```
 
 ### List log deletion requests
 
@@ -1062,7 +1072,11 @@ List the existing delete requests using the following API:
 GET /loki/api/v1/delete
 ```
 
-Sample form of a cURL command:
+This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
+
+#### Examples
+
+Example cURL command:
 
 ```
 curl -X GET \
@@ -1070,7 +1084,13 @@ curl -X GET \
   -H 'X-Scope-OrgID: <orgid>'
 ```
 
-This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
+The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable:
+
+```bash
+curl -u "Tenant1:$API_TOKEN" \
+  -X GET \
+  <compactor_addr>/loki/api/v1/delete
+```
 
 ### Request cancellation of a delete request
 
@@ -1096,12 +1116,22 @@ Query parameters:
 
 A 204 response indicates success.
 
-Sample form of a cURL command:
+#### Examples
+
+Example cURL command:
 
 ```
 curl -X DELETE \
   '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
   -H 'X-Scope-OrgID: <tenant-id>'
+```
+
+The same example deletion cancellation request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable:
+
+```bash
+curl -u "Tenant1:$API_TOKEN" \
+  -X DELETE \
+  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>'
 ```
 
 ## Deprecated endpoints
