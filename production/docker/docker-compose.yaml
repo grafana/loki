@@ -27,9 +27,24 @@ services:
     networks:
       - loki
 
+  # for testing purposes only, disable in production
+  log-generator:
+    image: mingrammer/flog
+    command:
+      - --loop
+      - --format=json
+      - --number=10    # number of log lines to generate per second
+      - --delay=100ms  # delay between log lines
+      - --output=/var/log/generated-logs.txt
+      - --overwrite
+      - --type=log
+    volumes:
+      - ./loki/:/var/log/
+
   promtail:
     image: grafana/promtail:2.6.0
     volumes:
+      - ./loki/:/var/log/
       - ./config:/etc/promtail/
     ports:
       - "9080:9080"
@@ -87,7 +102,13 @@ services:
     ports:
       - "3100"
       - "7946"
-      # - "40000-40002:40000" # uncomment to enable interactive debugging on ports (40000, 400001, 400002)
+
+    # uncomment to use interactive debugging
+      # - "40000-40002:40000" # # makes the replicas available on ports 40000, 40001, 40002
+    #cap_add:
+    #  - SYS_PTRACE
+    #security_opt:
+    #  - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=read"
     networks:
       - loki
@@ -95,11 +116,7 @@ services:
     deploy:
       mode: replicated
       replicas: 3
-    # only needed for debugging
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - apparmor=unconfined
+    # only needed for interactive debugging with dlv
 
   loki-write:
     image: grafana/loki:2.6.0
@@ -108,7 +125,13 @@ services:
     ports:
       - "3100"
       - "7946"
-      # - "50000-50002:40000" # uncomment to enable interactive debugging on ports (50000, 50001, 50002)
+
+    # uncomment to use interactive debugging
+      # - "50000-50002:40000" # makes the replicas available on ports 50000, 50001, 50002
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=write"
     networks:
       - loki
@@ -116,8 +139,3 @@ services:
     deploy:
       mode: replicated
       replicas: 3
-    # only needed for debugging
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - apparmor=unconfined

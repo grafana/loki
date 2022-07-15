@@ -11,10 +11,18 @@ clients:
       tenant_id: docker
   
 scrape_configs:
-  - job_name: system
+  - job_name: generated-logs
     static_configs:
       - targets:
           - localhost
         labels:
-          job: varlogs
-          __path__: /var/log/*log
+          job: generated-logs
+          __path__: /var/log/generated-logs.txt
+    pipeline_stages:
+      - json:
+          expressions:
+            http_method: 'method'
+            http_status: "status"
+      - labels:
+          http_method:
+          http_status:
