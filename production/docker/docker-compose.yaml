@@ -79,6 +79,7 @@ services:
       - ./config/nginx.conf:/etc/nginx/nginx.conf
     ports:
       - "8080:80"
+      - "3100"
     networks:
       - loki
 
