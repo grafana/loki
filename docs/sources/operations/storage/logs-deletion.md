@@ -1,8 +1,10 @@
 ---
-title: Log Entry Deletion
+title: Log entry deletion
+menuTitle: "Log entry deletion"
+description: "Log entries from a specified stream may be deleted."
 weight: 60
 ---
-# Log Entry Deletion
+# Log entry deletion
 
 Grafana Loki supports the deletion of log entries from a specified stream.
 Log entries that fall within a specified time window and match an optional line filter are those that will be deleted.
