@@ -27,6 +27,17 @@ services:
     networks:
       - loki
 
+  prometheus:
+    image: prom/prometheus:v2.27.0
+    ports:
+      - 9090:9090
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus:/prometheus
+    command: [ '--log.level=debug', '--config.file=/etc/prometheus/prometheus.yml', '--query.lookback-delta=30s' ]
+    networks:
+      - loki
+
   # for testing purposes only, disable in production
   log-generator:
     image: mingrammer/flog
@@ -140,3 +151,6 @@ services:
     deploy:
       mode: replicated
       replicas: 3
+
+volumes:
+  prometheus:

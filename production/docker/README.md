@@ -12,6 +12,7 @@ You can use this `docker-compose` setup to run Docker for development or in prod
   - An optional log-generator
 - Multi-tenancy enabled (`docker` as the tenant ID)
 - Configuration for interactive debugging (see [Debugging](#debugging) section below)
+- Prometheus for metric collection
 
 ## Diagram
 
@@ -57,13 +58,12 @@ All data will be stored in the `.data` directory.
 
 The nginx gateway runs on port `8080` and you can access Loki through it.
 
+Prometheus runs on port `9090`, and you can access all metrics from Loki & Promtail here.
+
 ## Endpoints
 
 - [`/ring`](http://localhost:8080/ring) - view all components registered in the hash ring
 - [`/config`](http://localhost:8080/config) - view the configuration used by Loki
-- [`/metrics`](http://localhost:8080/metrics) - access metrics exposed by Loki
-  - note: this is a roundrobin configuration, so we may see different metrics with each request
-  - if you need to scrape each pod's metrics individually, you should use Prometheus with its docker service discovery mechanism
 - [`/memberlist`](http://localhost:8080/memberlist) - view all components in the memberlist cluster
 - [all other Loki API endpoints](https://grafana.com/docs/loki/latest/api/)
 
