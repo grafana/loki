@@ -3,7 +3,6 @@ package heroku
 import (
 	"flag"
 	"fmt"
-	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
