@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sync"
@@ -164,7 +166,10 @@ func (c *deleteRequestsClient) getRequestsFromServer(ctx context.Context, userID
 		level.Error(log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(ioutil.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode/100 != 2 {
 		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
