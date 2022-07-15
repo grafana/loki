@@ -56,7 +56,7 @@ type RingCfg struct {
 type GroupCacheConfig struct {
 	Enabled    bool    `yaml:"enabled,omitempty"`
 	Ring       RingCfg `yaml:"ring,omitempty"`
-	CapacityMB int64   `yaml:"capacity_mb,omitempty"`
+	CapacityMB int64   `yaml:"capacity_per_cache_mb,omitempty"`
 
 	Cache Cache `yaml:"-"`
 }
@@ -66,7 +66,8 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
 
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
-	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-mb", 1e3, "Capacity of each groupcache group in MB (default: 1000)")
+	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
+		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
 }
 
 type ringManager interface {
