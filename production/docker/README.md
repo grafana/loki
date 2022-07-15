@@ -69,7 +69,11 @@ The nginx gateway runs on port `8080` and you can access Loki through it.
 
 ## Debugging
 
-View the `docker-compose.yaml` file and uncomment the sections related to debugging.
+First, you'll need to build a Loki image that includes and runs [delve](https://github.com/go-delve/delve).
+
+Run `make loki-debug-image` from the root of this project. Grab the image name from the output (it'll look like `grafana/loki:...-debug`) and replace the Loki images in `docker-compose.yaml`.
+
+Next, view the `docker-compose.yaml` file and uncomment the sections related to debugging.
 
 You can follow [this guide](https://blog.jetbrains.com/go/2020/05/06/debugging-a-go-application-inside-a-docker-container/) to enable debugging in GoLand, but the basic steps are:
 
