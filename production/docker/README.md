@@ -50,15 +50,15 @@ graph LR
 
 Simply run `docker-compose up` and all the components will start.
 
-It'll take a few seconds for all the components to start up and register in the [ring](http://localhost:8080/ring). Once all instances are `ACTIVE`, Loki will start accepting reads and writes.
-
-Grafana will be made available at [http://localhost:3000](http://localhost:3000) (use `admin:admin` for the credentials). When adding a Loki datasource, use `http://loki-gateway` for the URL, and add a custom HTTP header named `X-Scope-OrgID` with a value of `docker`.
+It'll take a few seconds for all the components to start up and register in the [ring](http://localhost:8080/ring). Once all instances are `ACTIVE`, Loki will start accepting reads and writes. All logs will be stored with the tenant ID `docker`.
 
 All data will be stored in the `.data` directory.
 
 The nginx gateway runs on port `8080` and you can access Loki through it.
 
 Prometheus runs on port `9090`, and you can access all metrics from Loki & Promtail here.
+
+Grafana runs on port `3000`, and there are Loki & Prometheus datasources enabled by default.
 
 ## Endpoints
 
