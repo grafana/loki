@@ -43,7 +43,7 @@ func newMapperMetrics(registerer prometheus.Registerer, mapper string) *MapperMe
 			Namespace:   "loki",
 			Name:        "query_frontend_shard_factor",
 			Help:        "Number of downstream queries per request",
-			Buckets:     prometheus.LinearBuckets(0, 16, 4),
+			Buckets:     prometheus.ExponentialBuckets(1, 4, 8),
 			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}),
 	}
