@@ -46,6 +46,14 @@ Check the history of the branch FIXME.
 
 * Go Version:     FIXME
 
+# 2.6.1 (2022/07/18)
+
+### All Changes
+
+* [6658](https://github.com/grafana/loki/pull/6658) Updated the versions of [dskit](https://github.com/grafana/dskit) and [memberlist](https://github.com/grafana/memberlist) to allow configuring cluster labels for memberlist. Cluster labels prevent mixing the members between two consistent hash rings of separate applications that are run in the same Kubernetes cluster.
+* [6681](https://github.com/grafana/loki/pull/6681) Fixed an HTTP connection leak between the querier and the compactor when the log entry deletion feature is enabled.
+* [6583](https://github.com/grafana/loki/pull/6583) Fixed noisy error messages when the log entry deletion feature is disabled for a tenant.
+
 # 2.6.0 (2022/07/08)
 
 ### All Changes
