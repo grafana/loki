@@ -1,3 +1,59 @@
+## Main/Unreleased
+
+### All Changes
+
+#### Loki
+
+##### Enhancements
+* [6317](https://github.com/grafana/loki/pull/6317) **dannykoping**: General: add cache usage statistics
+* [6444](https://github.com/grafana/loki/pull/6444) **aminesnow** Add TLS config to query frontend.
+* [6372](https://github.com/grafana/loki/pull/6372) **splitice**: Add support for numbers in JSON fields.
+* [6179](https://github.com/grafana/loki/pull/6179) **chaudum**: Add new HTTP endpoint to delete ingester ring token file and shutdown process gracefully
+* [5997](https://github.com/grafana/loki/pull/5997) **simonswine**: Querier: parallize label queries to both stores.
+* [5406](https://github.com/grafana/loki/pull/5406) **ctovena**: Revise the configuration parameters that configure the usage report to grafana.com.
+
+##### Fixes
+* [6358](https://github.com/grafana/loki/pull/6358) **taharah**: Fixes sigv4 authentication for the Ruler's remote write configuration by allowing both a global and per tenant configuration.
+* [6375](https://github.com/grafana/loki/pull/6375) **dannykopping**: Fix bug that prevented users from using the `json` parser after a `line_format` pipeline stage.
+##### Changes
+* [6415](https://github.com/grafana/loki/pull/6415) **salvacorts** Evenly spread queriers across kubernetes nodes.
+* [6349](https://github.com/grafana/loki/pull/6349) **simonswine**: Update the default HTTP listen port from 80 to 3100. Make sure to configure the port explicitly if you are using port 80.
+
+#### Promtail
+
+##### Enhancements
+* [6395](https://github.com/grafana/loki/pull/6395) **DylanGuedes**: Add encoding support
+
+##### Fixes
+
+##### Changes
+
+#### Fluent Bit
+
+#### Loki Canary
+
+#### Jsonnet
+* [6189](https://github.com/grafana/loki/pull/6189) **irizzant**: Add creation of a `ServiceMonitor` object for Prometheus scraping through configuration parameter `create_service_monitor`. Simplify mixin usage by adding (https://github.com/prometheus-operator/kube-prometheus) library.
+
+
+### Notes
+
+This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+
+Check the history of the branch FIXME.
+
+### Dependencies
+
+* Go Version:     FIXME
+
+# 2.6.1 (2022/07/18)
+
+### All Changes
+
+* [6658](https://github.com/grafana/loki/pull/6658) Updated the versions of [dskit](https://github.com/grafana/dskit) and [memberlist](https://github.com/grafana/memberlist) to allow configuring cluster labels for memberlist. Cluster labels prevent mixing the members between two consistent hash rings of separate applications that are run in the same Kubernetes cluster.
+* [6681](https://github.com/grafana/loki/pull/6681) Fixed an HTTP connection leak between the querier and the compactor when the log entry deletion feature is enabled.
+* [6583](https://github.com/grafana/loki/pull/6583) Fixed noisy error messages when the log entry deletion feature is disabled for a tenant.
+
 # 2.6.0 (2022/07/08)
 
 Release notes for 2.6.0 can be found on the [release notes page](https://grafana.com/docs/loki/v2.6.x/release-notes/v2-6/)
