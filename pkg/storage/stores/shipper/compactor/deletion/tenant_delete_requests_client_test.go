@@ -27,6 +27,13 @@ func TestTenantDeleteRequestsClient(t *testing.T) {
 		require.Empty(t, reqs)
 	})
 
+	t.Run("tenant disabled but default enabled", func(t *testing.T) {
+		limits.defaultLimit.compactorDeletionEnabled = true
+		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "2")
+		require.Nil(t, err)
+		require.Empty(t, reqs)
+	})
+
 	t.Run("default is enabled", func(t *testing.T) {
 		limits.defaultLimit.compactorDeletionEnabled = true
 		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "3")
