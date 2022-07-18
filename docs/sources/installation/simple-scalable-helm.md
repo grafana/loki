@@ -48,7 +48,7 @@ within a Kubernetes cluster.
         helm upgrade --install loki grafana/loki-simple-scalable --values {PATH_TO_OVERRIDES_VALUES_FILE}
         ```
 
-    - Deploy with added custom configuration, useful for overriding a small amount of values:
+    - Deploy with added custom configuration, useful for overriding a small quantity of values:
 
         ```bash
         helm upgrade --install loki grafana/loki-simple-scalable --set "key1=val1,key2=val2,..."
