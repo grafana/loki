@@ -69,6 +69,8 @@ type BaseLabelsBuilder struct {
 	// nolint:structcheck
 	// https://github.com/golangci/golangci-lint/issues/826
 	err string
+	// nolint:structcheck
+	errDetails string
 
 	groups            []string
 	parserKeyHints    ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
@@ -134,6 +136,7 @@ func (b *LabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
+	b.errDetails = ""
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
@@ -156,6 +159,19 @@ func (b *LabelsBuilder) GetErr() string {
 // HasErr tells if the error label has been set.
 func (b *LabelsBuilder) HasErr() bool {
 	return b.err != ""
+}
+
+func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
+	b.errDetails = desc
+	return b
+}
+
+func (b *LabelsBuilder) GetErrorDetails() string {
+	return b.errDetails
+}
+
+func (b *LabelsBuilder) HasErrorDetails() bool {
+	return b.errDetails != ""
 }
 
 // BaseHas returns the base labels have the given key
@@ -228,6 +244,9 @@ func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
 		buf = append(buf, b.base...)
 		if b.err != "" {
 			buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+		}
+		if b.errDetails != "" {
+			buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
 		}
 		return buf
 	}

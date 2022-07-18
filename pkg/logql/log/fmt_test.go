@@ -167,7 +167,11 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			0,
 			nil,
-			labels.Labels{{Name: logqlmodel.ErrorLabel, Value: errTemplateFormat}, {Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"},
+				{Name: "__error_details__", Value: "template: line:1:2: executing \"line\" at <.foo>: foo is not a method but has arguments"},
+			},
 			nil,
 		},
 		{
@@ -323,6 +327,20 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "bar", Value: "2"}},
 			[]byte("1"),
 		},
+		{
+			"template_error",
+			newMustLineFormatter("{{.foo | now}}"),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
+			nil,
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "__error_details__", Value: "template: line:1:9: executing \"line\" at <now>: wrong number of args for now: want 0 got 1"},
+			},
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -390,6 +408,17 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			}),
 			labels.Labels{{Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
+		},
+		{
+			"template error",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{replace \"test\" .foo}}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "__error_details__", Value: "template: label:1:2: executing \"label\" at <replace>: wrong number of args for replace: want 3 got 2"},
+			},
 		},
 	}
 
