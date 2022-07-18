@@ -105,6 +105,10 @@ func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 	return decompresser, nil
 }
 
+// mountReader instantiate a reader ready to be used by the decompresser.
+//
+// The selected reader implementation is based on the extension of the given file name.
+// It'll error if the extension isn't supported.
 func mountReader(path string, logger log.Logger) (reader io.Reader, err error) {
 	ext := filepath.Ext(path)
 	var decompressLib string
@@ -158,6 +162,11 @@ func (t *decompresser) updatePosition() {
 	}
 }
 
+// readLines read all existing lines of the given compressed file.
+//
+// It first decompress the file as a whole using a reader and then it will iterate
+// over its chunks, separated by '\n'.
+// During each iteration, the parsed and decoded log line is then sent to the API with the current timestamp.
 func (t *decompresser) readLines() {
 	level.Info(t.logger).Log("msg", "read lines routine: started", "path", t.path)
 
