@@ -14,9 +14,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )

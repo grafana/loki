@@ -6,11 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
@@ -23,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"

@@ -13,10 +13,6 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -39,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -55,10 +52,11 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/generationnumber"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"

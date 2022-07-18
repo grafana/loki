@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"

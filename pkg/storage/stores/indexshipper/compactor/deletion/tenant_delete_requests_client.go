@@ -3,7 +3,7 @@ package deletion
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 )
 
 type perTenantDeleteRequestsClient struct {
