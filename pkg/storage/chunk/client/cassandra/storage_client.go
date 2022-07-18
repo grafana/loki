@@ -68,7 +68,7 @@ func (cfg *Config) RegisterFlags(name string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Keyspace, name+"cassandra.keyspace", "", "Keyspace to use in Cassandra.")
 	f.StringVar(&cfg.Consistency, name+"cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")
 	f.IntVar(&cfg.ReplicationFactor, name+"cassandra.replication-factor", 3, "Replication factor to use in Cassandra.")
-	f.BoolVar(&cfg.DisableInitialHostLookup, "cassandra.disable-initial-host-lookup", false, "Instruct the cassandra driver to not attempt to get host info from the system.peers table.")
+	f.BoolVar(&cfg.DisableInitialHostLookup, name+"cassandra.disable-initial-host-lookup", false, "Instruct the cassandra driver to not attempt to get host info from the system.peers table.")
 	f.BoolVar(&cfg.SSL, name+"cassandra.ssl", false, "Use SSL when connecting to cassandra instances.")
 	f.BoolVar(&cfg.HostVerification, name+"cassandra.host-verification", true, "Require SSL certificate validation.")
 	f.StringVar(&cfg.HostSelectionPolicy, "cassandra.host-selection-policy", HostPolicyRoundRobin, "Policy for selecting Cassandra host. Supported values are: round-robin, token-aware.")
