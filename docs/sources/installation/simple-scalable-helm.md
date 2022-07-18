@@ -42,7 +42,7 @@ within a Kubernetes cluster.
         helm upgrade --install loki --namespace=loki grafana/loki-simple-scalable
         ```
 
-    - Deploy with added custom configuration with an overrides yaml file, useful for overriding many values:
+    - Deploy with added custom configuration using an overrides YAML file, useful for overriding a set of values:
 
         ```bash
         helm upgrade --install loki grafana/loki-simple-scalable --values {PATH_TO_OVERRIDES_VALUES_FILE}
