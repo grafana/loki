@@ -17,15 +17,17 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
+
+	"github.com/grafana/loki/pkg/logproto"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/positions"
 )
 
 type decompresser struct {
@@ -216,7 +218,7 @@ func (t *decompresser) readLines() {
 		}
 
 		t.size = int64(unsafe.Sizeof(finalText))
-		t.position += 1
+		t.position++
 
 		if err != nil {
 			break
