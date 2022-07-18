@@ -37,6 +37,13 @@ import (
 // in tests for creating multiple instances of it at a time.
 var boltDBIndexClientWithShipper index.Client
 
+// ResetBoltDBIndexClientWithShipper allows to reset the singleton.
+// MUST ONLY BE USED IN TESTS
+func ResetBoltDBIndexClientWithShipper() {
+	boltDBIndexClientWithShipper.Stop()
+	boltDBIndexClientWithShipper = nil
+}
+
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	downloads.Limits
