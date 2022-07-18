@@ -47,7 +47,7 @@ $ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
 A `DaemonSet` will deploy Promtail on every node within a Kubernetes cluster.
 
 The DaemonSet deployment works well at collecting the logs of all containers within a
-cluster. It's the best solution for a single-tenant model. Please make sure you set the {YOUR_LOKI_ENDPOINT} placeholder with your Loki endpoint.
+cluster. It's the best solution for a single-tenant model. Replace `{YOUR_LOKI_ENDPOINT}` with your Loki endpoint.
 
 ```yaml
 --- # Daemonset.yaml
