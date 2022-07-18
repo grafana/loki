@@ -315,7 +315,7 @@ func TestClient_Handle(t *testing.T) {
 				assert.True(t, asserted, fmt.Sprintf("expectedReq :%v, not found in any of the receivedReq", testData.expectedReqs[i]))
 
 				// make sure received request got idempotent key
-				assert.NotEmpty(t, receivedReqs[i].pushReq.IdempotentKey)
+				assert.NotEmpty(t, receivedReqs[i].pushReq.PushID)
 			}
 
 			expectedMetrics := strings.Replace(testData.expectedMetrics, "__HOST__", serverURL.Host, -1)
@@ -461,7 +461,7 @@ func TestClient_StopNow(t *testing.T) {
 				assert.Equal(t, c.expectedReqs[i].pushReq.Streams, receivedReqs[i].pushReq.Streams)
 
 				// make sure received request got idempotent key
-				assert.NotEmpty(t, receivedReqs[i].pushReq.IdempotentKey)
+				assert.NotEmpty(t, receivedReqs[i].pushReq.PushID)
 			}
 
 			expectedMetrics := strings.Replace(c.expectedMetrics, "__HOST__", serverURL.Host, -1)

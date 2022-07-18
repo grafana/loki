@@ -123,8 +123,8 @@ func (b *batch) decode(buf []byte) (*logproto.PushRequest, error) {
 // creates push request and returns it, together with number of entries
 func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 	req := logproto.PushRequest{
-		Streams:       make([]logproto.Stream, 0, len(b.streams)),
-		IdempotentKey: uuid.NewString(),
+		Streams: make([]logproto.Stream, 0, len(b.streams)),
+		PushID:  uuid.NewString(),
 	}
 
 	entriesCount := 0

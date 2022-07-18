@@ -341,7 +341,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, req.IdempotentKey, ingester, samples, &tracker)
+			d.sendSamples(localCtx, req.PushID, ingester, samples, &tracker)
 		}(ingesterDescs[ingester], samples)
 	}
 	select {
@@ -413,8 +413,8 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, idempotentKey string, 
 	}
 
 	req := &logproto.PushRequest{
-		Streams:       make([]logproto.Stream, len(streams)),
-		IdempotentKey: idempotentKey,
+		Streams: make([]logproto.Stream, len(streams)),
+		PushID:  idempotentKey,
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream

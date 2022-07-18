@@ -279,7 +279,7 @@ func TestIngesterPush_idempotent(t *testing.T) {
 						},
 					},
 				},
-				IdempotentKey: uuid.NewString(),
+				PushID: uuid.NewString(),
 			},
 			req2: logproto.PushRequest{
 				Streams: []logproto.Stream{
@@ -293,7 +293,7 @@ func TestIngesterPush_idempotent(t *testing.T) {
 						},
 					},
 				},
-				IdempotentKey: uuid.NewString(),
+				PushID: uuid.NewString(),
 			},
 			expectedCount: 2, // when req1 is retried. idempotentKey protects from duplicates. So total 2.
 		},

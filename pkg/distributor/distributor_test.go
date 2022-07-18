@@ -112,7 +112,7 @@ func TestDistributor(t *testing.T) {
 				require.NoError(t, err)
 				ingester := ing.(*mockIngester)
 				for _, req := range ingester.pushed {
-					assert.NotEmpty(t, req.IdempotentKey)
+					assert.NotEmpty(t, req.PushID)
 				}
 
 			}
@@ -591,7 +591,7 @@ func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 				Labels: `{foo="bar"}`,
 			},
 		},
-		IdempotentKey: uuid.NewString(),
+		PushID: uuid.NewString(),
 	}
 
 	for i := 0; i < lines; i++ {

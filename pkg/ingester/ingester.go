@@ -615,11 +615,11 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	i.reqLock.RLock()
-	if req.IdempotentKey != "" {
+	if req.PushID != "" {
 		// checking for idempotentKey == "", as during first rollout, need to support promtail that is not sending any idempotent key.
-		_, ok := i.knownRequests.Get(ctx, req.IdempotentKey)
+		_, ok := i.knownRequests.Get(ctx, req.PushID)
 		if ok {
-			level.Info(util_log.Logger).Log("msg", "duplicate push request", "idempotent-key", req.IdempotentKey)
+			level.Info(util_log.Logger).Log("msg", "duplicate push request", "idempotent-key", req.PushID)
 			return &logproto.PushResponse{}, nil
 		}
 	}
@@ -641,10 +641,10 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 
-	if req.IdempotentKey != "" {
+	if req.PushID != "" {
 		i.reqLock.Lock()
-		if err := i.knownRequests.Store(ctx, []string{req.IdempotentKey}, [][]byte{nil}); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to store idempotent key", "key", req.IdempotentKey, "err", err)
+		if err := i.knownRequests.Store(ctx, []string{req.PushID}, [][]byte{nil}); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to store idempotent key", "key", req.PushID, "err", err)
 		}
 		i.reqLock.Unlock()
 	}

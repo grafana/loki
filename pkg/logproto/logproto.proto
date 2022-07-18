@@ -37,7 +37,7 @@ message PushRequest {
     (gogoproto.jsontag) = "streams",
     (gogoproto.customtype) = "Stream"
   ];
-  string idempotentKey = 2;
+  string pushID = 2;
 }
 
 message PushResponse {}

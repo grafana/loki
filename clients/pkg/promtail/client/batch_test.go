@@ -111,7 +111,7 @@ func TestBatch_encode(t *testing.T) {
 			req, err := testData.inputBatch.decode(buf)
 			require.NoError(t, err)
 
-			assert.NotEmpty(t, req.IdempotentKey)
+			assert.NotEmpty(t, req.PushID)
 		})
 	}
 }
