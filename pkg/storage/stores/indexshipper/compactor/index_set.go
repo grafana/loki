@@ -16,8 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -120,14 +119,14 @@ func (is *indexSet) ListSourceFiles() []storage.IndexFile {
 }
 
 func (is *indexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
-	decompress := shipper_util.IsCompressedFile(indexFile.Name)
+	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(is.workingDir, indexFile.Name)
 	if decompress {
 		dst = strings.Trim(dst, gzipExtension)
 	}
 
-	err := shipper_util.DownloadFileFromStorage(dst, shipper_util.IsCompressedFile(indexFile.Name),
-		false, shipper_util.LoggerWithFilename(is.logger, indexFile.Name),
+	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
+		false, storage.LoggerWithFilename(is.logger, indexFile.Name),
 		func() (io.ReadCloser, error) {
 			return is.baseIndexSet.GetFile(is.ctx, is.tableName, is.userID, indexFile.Name)
 		})

@@ -24,8 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -81,14 +80,14 @@ func (m *mockIndexSet) ListSourceFiles() []storage.IndexFile {
 }
 
 func (m *mockIndexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
-	decompress := shipper_util.IsCompressedFile(indexFile.Name)
+	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(m.workingDir, indexFile.Name)
 	if decompress {
 		dst = strings.Trim(dst, ".gz")
 	}
 
-	err := shipper_util.DownloadFileFromStorage(dst, shipper_util.IsCompressedFile(indexFile.Name),
-		false, shipper_util.LoggerWithFilename(util_log.Logger, indexFile.Name),
+	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
+		false, storage.LoggerWithFilename(util_log.Logger, indexFile.Name),
 		func() (io.ReadCloser, error) {
 			rc, _, err := m.objectClient.GetObject(context.Background(), path.Join(m.tableName, m.userID, indexFile.Name))
 			return rc, err
