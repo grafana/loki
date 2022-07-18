@@ -42,6 +42,16 @@ If you want to run at most a single querier per node, set `$._config.querier.use
 
 This value now defaults to 3100, so the Loki process doesn't require special privileges. Previously, it had been set to port 80, which is a privileged port. If you need Loki to listen on port 80, you can set it back to the previous default using `-server.http-listen-port=80`.
 
+#### docker-compose setup has been updated
+
+The docker-compose [setup](https://github.com/grafana/loki/blob/main/production/docker) has been updated to **v2.6.0** and includes many improvements.
+
+Notable changes include:
+- authentication (multi-tenancy) is **enabled** by default; you can disable it in `production/docker/config/loki.yaml` by setting `auth_enabled: false`
+- storage is now using Minio instead of local filesystem
+  - move your current storage into `.data/minio` and it should work transparently
+- log-generator was added - if you don't need it, simply remove the service from `docker-compose.yaml` or don't start the service
+
 ## 2.6.0
 
 ### Loki

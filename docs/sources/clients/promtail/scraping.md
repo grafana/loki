@@ -379,6 +379,52 @@ scrape_configs:
 Only `api_token` and `zone_id` are required.
 Refer to the [Cloudfare](../../configuration/#cloudflare) configuration section for details.
 
+## Heroku Drain
+Promtail supports receiving logs from a Heroku application by using a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
+Configuration is specified in a`heroku_drain` block within the Promtail `scrape_config` configuration.
+
+```yaml
+- job_name: heroku_drain
+    heroku_drain:
+      server:
+        http_listen_address: 0.0.0.0
+        http_listen_port: 8080
+      labels:
+        job: heroku_drain_docs
+      use_incoming_timestamp: true
+    relabel_configs:
+      - source_labels: ['__heroku_drain_host']
+        target_label: 'host'
+      - source_labels: ['__heroku_drain_app']
+        target_label: 'app'
+      - source_labels: ['__heroku_drain_proc']
+        target_label: 'proc'
+      - source_labels: ['__heroku_drain_log_id']
+        target_label: 'log_id'
+```
+Within the `scrape_configs` configuration for a Heroku Drain target, the `job_name` must be a Prometheus-compatible [metric name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels).
+
+The [server](../configuration.md#server) section configures the HTTP server created for receiving logs.
+`labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
+the timestamp received from Heroku.
+
+Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening. 
+Follow the steps in [Heroku HTTPS Drain docs](https://devcenter.heroku.com/articles/log-drains#https-drains) for using the Heroku CLI
+with a command like the following:
+
+```
+heroku drains:add [http|https]://HOSTNAME:8080/heroku/api/v1/drain -a HEROKU_APP_NAME
+```
+
+It also supports `relabeling` and `pipeline` stages just like other targets.
+
+When Promtail receives Heroku Drain logs, various internal labels are made available for [relabeling](#relabeling):
+- `__heroku_drain_host`
+- `__heroku_drain_app`
+- `__heroku_drain_proc`
+- `__heroku_drain_log_id`
+In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.

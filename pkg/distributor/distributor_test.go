@@ -514,7 +514,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 			// If the distributors ring is setup, wait until the first distributor
 			// updates to the expected size
-			if distributors[0].distributorsRing != nil {
+			if distributors[0].distributorsLifecycler != nil {
 				test.Poll(t, time.Second, testData.distributors, func() interface{} {
 					return distributors[0].distributorsLifecycler.HealthyInstancesCount()
 				})

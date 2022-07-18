@@ -278,41 +278,54 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 	return errors.New(msg)
 }
 
+const stripeSize = 1 << 6
+
 type requestsInProgress struct {
-	mu       sync.Mutex
-	requests map[uint64]*frontendRequest
+	locks    []sync.Mutex
+	requests []map[uint64]*frontendRequest
 }
 
 func newRequestsInProgress() *requestsInProgress {
-	return &requestsInProgress{
-		requests: map[uint64]*frontendRequest{},
+	x := &requestsInProgress{
+		requests: make([]map[uint64]*frontendRequest, stripeSize),
+		locks:    make([]sync.Mutex, stripeSize),
 	}
+
+	for i := range x.requests {
+		x.requests[i] = map[uint64]*frontendRequest{}
+	}
+
+	return x
 }
 
-func (r *requestsInProgress) count() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return len(r.requests)
+func (r *requestsInProgress) count() (res int) {
+	for i := range r.requests {
+		r.locks[i].Lock()
+		res += len(r.requests[i])
+		r.locks[i].Unlock()
+	}
+	return
 }
 
 func (r *requestsInProgress) put(req *frontendRequest) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.requests[req.queryID] = req
+	i := req.queryID & uint64(stripeSize-1)
+	r.locks[i].Lock()
+	r.requests[i][req.queryID] = req
+	r.locks[i].Unlock()
 }
 
 func (r *requestsInProgress) delete(queryID uint64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	i := queryID & uint64(stripeSize-1)
+	r.locks[i].Lock()
+	delete(r.requests[i], queryID)
+	r.locks[i].Unlock()
 
-	delete(r.requests, queryID)
 }
 
 func (r *requestsInProgress) get(queryID uint64) *frontendRequest {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return r.requests[queryID]
+	i := queryID & uint64(stripeSize-1)
+	r.locks[i].Lock()
+	req := r.requests[i][queryID]
+	r.locks[i].Unlock()
+	return req
 }
