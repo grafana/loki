@@ -54,7 +54,7 @@ within a Kubernetes cluster.
         helm upgrade --install loki grafana/loki-simple-scalable --set "key1=val1,key2=val2,..."
         ```
 
-You can find examples of deploying Loki and Grafana Enterprise Logs within the [docs folder of the Simple Scalable Chart](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable/docs/examples).
+Find deployment examples at [https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable/docs/examples](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable/docs/examples).
 
 ## Deploy Grafana to your Kubernetes cluster
 
