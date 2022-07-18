@@ -319,14 +319,40 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 
-		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
-		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
-			continue
+		var reader Reader
+		if isCompressed(p) {
+			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
+			decompresser, err := newDecompresser(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "failed to start decompresser", "error", err, "filename", p)
+				continue
+			}
+			reader = decompresser
+		} else {
+			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
+			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
+				continue
+			}
+			reader = tailer
 		}
-		t.readers[p] = tailer
+		t.readers[p] = reader
 	}
+}
+
+func isCompressed(p string) bool {
+	ext := filepath.Ext(p)
+
+	switch ext {
+	case "zip":
+	case "gz":
+	case "tar.gz":
+	case "z":
+	case "bz2":
+		return true
+	}
+	return false
 }
 
 // stopTailingAndRemovePosition will stop the tailer and remove the positions entry.
