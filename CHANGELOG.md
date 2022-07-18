@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [6691](https://github.com/grafana/loki/pull/6691) **dannykopping**: Update production-ready Loki cluster in docker-compose
 * [6317](https://github.com/grafana/loki/pull/6317) **dannykoping**: General: add cache usage statistics
 * [6444](https://github.com/grafana/loki/pull/6444) **aminesnow** Add TLS config to query frontend.
 * [6372](https://github.com/grafana/loki/pull/6372) **splitice**: Add support for numbers in JSON fields.
