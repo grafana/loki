@@ -47,12 +47,10 @@ func TestGroupCache(t *testing.T) {
 }
 
 func setupGroupCache() (*GroupCache, error) {
-	return NewGroupCache(
-		&mockRingManager{},
-		&server.Server{HTTP: mux.NewRouter()},
-		log.NewNopLogger(),
-		nil,
-	)
+	return NewGroupCache(&mockRingManager{}, GroupCacheConfig{
+		Enabled:    true,
+		CapacityMB: 1,
+	}, &server.Server{HTTP: mux.NewRouter()}, log.NewNopLogger(), nil)
 }
 
 type mockRingManager struct{}

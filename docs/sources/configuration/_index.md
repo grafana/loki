@@ -2660,6 +2660,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
+
+# Groupcache is an in-process, distributed cache that behaves similarly to memcached but is built-in to Loki
+groupcache:
+  # Enable groupcache
+  # CLI flag: -common.groupcache.enabled
+  [enabled: <boolean>: default = false]
+  # Set the maximum available memory to use for each groupcache group
+  # NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.
+  # CLI flag: -common.groupcache.capacity-per-cache-mb
+  [capacity_per_cache_mb: <int>: default = 100]
 ```
 
 ## analytics
