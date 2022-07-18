@@ -167,7 +167,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 	}
 
 	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
-	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := cache.NewGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
@@ -175,7 +175,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 	t.groupcacheRingManager = rm
 	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
 
-	gc, err := cache.NewGroupCache(rm, t.Server, util_log.Logger, prometheus.DefaultRegisterer)
+	gc, err := cache.NewGroupCache(rm, t.Cfg.Common.GroupCacheConfig, t.Server, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
