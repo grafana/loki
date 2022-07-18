@@ -28,6 +28,7 @@ const (
 	StorageTypeBOS            = "bos"
 	StorageTypeBoltDB         = "boltdb"
 	StorageTypeCassandra      = "cassandra"
+	StorageTypeCassandra2     = "cassandra2"
 	StorageTypeInMemory       = "inmemory"
 	StorageTypeBigTable       = "bigtable"
 	StorageTypeBigTableHashed = "bigtable-hashed"

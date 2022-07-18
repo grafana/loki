@@ -47,17 +47,18 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
-	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb"`
-	FSConfig               local.FSConfig            `yaml:"filesystem"`
-	Swift                  openstack.SwiftConfig     `yaml:"swift"`
-	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
-	Hedging                hedging.Config            `yaml:"hedging"`
+	AWSStorageConfig        aws.StorageConfig         `yaml:"aws"`
+	AzureStorageConfig      azure.BlobStorageConfig   `yaml:"azure"`
+	BOSStorageConfig        baidubce.BOSStorageConfig `yaml:"bos"`
+	GCPStorageConfig        gcp.Config                `yaml:"bigtable"`
+	GCSConfig               gcp.GCSConfig             `yaml:"gcs"`
+	CassandraStorageConfig  cassandra.Config          `yaml:"cassandra"`
+	Cassandra2StorageConfig cassandra.Config          `yaml:"cassandra2"`
+	BoltDBConfig            local.BoltDBConfig        `yaml:"boltdb"`
+	FSConfig                local.FSConfig            `yaml:"filesystem"`
+	Swift                   openstack.SwiftConfig     `yaml:"swift"`
+	GrpcConfig              grpc.Config               `yaml:"grpc_store"`
+	Hedging                 hedging.Config            `yaml:"hedging"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
@@ -83,6 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
+	cfg.Cassandra2StorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
@@ -102,6 +104,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
+	}
+	if err := cfg.Cassandra2StorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Cassandra2 Storage config")
 	}
 	if err := cfg.GCPStorageConfig.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid GCP Storage Storage config")
@@ -151,6 +156,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeCassandra:
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
+	case config.StorageTypeCassandra2:
+		return cassandra.NewStorageClient(cfg.Cassandra2StorageConfig, schemaCfg, registerer)
 	case config.StorageTypeBoltDB:
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case config.StorageTypeGrpc:
@@ -236,6 +243,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
+	case config.StorageTypeCassandra2:
+		return cassandra.NewObjectClient(cfg.Cassandra2StorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case config.StorageTypeFileSystem:
 		store, err := local.NewFSObjectClient(cfg.FSConfig)
 		if err != nil {
@@ -267,6 +276,8 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case config.StorageTypeCassandra:
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
+	case config.StorageTypeCassandra2:
+		return cassandra.NewTableClient(context.Background(), cfg.Cassandra2StorageConfig, registerer)
 	case config.StorageTypeBoltDB:
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case config.StorageTypeGrpc:
