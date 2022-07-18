@@ -2,7 +2,6 @@ package file
 
 import (
 	"bufio"
-	"bytes"
 	"compress/bzip2"
 	"compress/flate"
 	"compress/gzip"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -46,9 +46,6 @@ type decompresser struct {
 
 	decoder *encoding.Decoder
 
-	compressionReader io.Reader
-	compressionBuf    *bytes.Buffer
-
 	position int64
 	size     int64
 }
@@ -56,23 +53,9 @@ type decompresser struct {
 func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string) (*decompresser, error) {
 	logger = log.With(logger, "component", "decompresser")
 
-	fi, err := os.Stat(path)
-	if err != nil {
-		return nil, errors.Wrap(err, "os stat")
-	}
-
 	pos, err := positions.Get(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "get positions")
-	}
-
-	if fi.Size() < pos {
-		positions.Remove(path)
-	}
-
-	compressionReader, err := mountReader(path, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "mount reader")
 	}
 
 	var decoder *encoding.Decoder
@@ -86,17 +69,17 @@ func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 	}
 
 	decompresser := &decompresser{
-		metrics:           metrics,
-		logger:            logger,
-		handler:           api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
-		positions:         positions,
-		path:              path,
-		running:           atomic.NewBool(false),
-		posquit:           make(chan struct{}),
-		posdone:           make(chan struct{}),
-		done:              make(chan struct{}),
-		compressionReader: compressionReader,
-		decoder:           decoder,
+		metrics:   metrics,
+		logger:    logger,
+		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
+		positions: positions,
+		path:      path,
+		running:   atomic.NewBool(false),
+		posquit:   make(chan struct{}),
+		posdone:   make(chan struct{}),
+		done:      make(chan struct{}),
+		position:  pos,
+		decoder:   decoder,
 	}
 
 	go decompresser.readLines()
@@ -109,35 +92,35 @@ func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 //
 // The selected reader implementation is based on the extension of the given file name.
 // It'll error if the extension isn't supported.
-func mountReader(path string, logger log.Logger) (reader io.Reader, err error) {
-	ext := filepath.Ext(path)
+func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
+	ext := filepath.Ext(f.Name())
 	var decompressLib string
 
 	if strings.Contains(ext, "gz") { // .gz, .tar.gz
 		decompressLib = "compress/gzip"
-		reader, err = gzip.NewReader(&bytes.Buffer{})
-	} else if ext == "z" {
+		reader, err = gzip.NewReader(f)
+	} else if ext == ".z" {
 		decompressLib = "compress/zlib"
-		reader, err = zlib.NewReader(&bytes.Buffer{})
-	} else if ext == "zip" {
+		reader, err = zlib.NewReader(f)
+	} else if ext == ".zip" {
 		decompressLib = "compress/flate"
-		reader = flate.NewReader(&bytes.Buffer{})
-	} else if ext == "bz2" {
+		reader = flate.NewReader(f)
+	} else if ext == ".bz2" {
 		decompressLib = "bzip2"
-		reader = bzip2.NewReader(&bytes.Buffer{})
+		reader = bzip2.NewReader(f)
 	}
 
-	level.Info(logger).Log("msg", fmt.Sprintf("using %q to decompress file %q", decompressLib, path))
+	level.Info(logger).Log("msg", fmt.Sprintf("using %q to decompress file %q", decompressLib, f.Name()))
 
-	if reader != nil && err == nil {
-		return
+	if reader != nil {
+		return reader, nil
 	}
 
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("file %q with unsupported extension", path)
+	return nil, fmt.Errorf("file %q with unsupported extension", f.Name())
 }
 
 func (t *decompresser) updatePosition() {
@@ -169,63 +152,70 @@ func (t *decompresser) updatePosition() {
 // During each iteration, the parsed and decoded log line is then sent to the API with the current timestamp.
 func (t *decompresser) readLines() {
 	level.Info(t.logger).Log("msg", "read lines routine: started", "path", t.path)
-
 	t.running.Store(true)
 
 	defer func() {
 		t.cleanupMetrics()
-		t.running.Store(false)
 		level.Info(t.logger).Log("msg", "read lines routine finished", "path", t.path)
 		close(t.done)
 	}()
 	entries := t.handler.Chan()
 
-	content, err := os.ReadFile(t.path)
+	f, err := os.Open(t.path)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "error reading file", "path", t.path, "error", err)
 		return
 	}
+	defer f.Close()
 
-	if _, err = t.compressionReader.Read(content); err != nil {
-		level.Error(t.logger).Log("msg", "error reading line", "path", t.path, "error", err)
+	r, err := mountReader(f, t.logger)
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error mounting new reader", "err", err)
 		return
 	}
 
 	level.Info(t.logger).Log("msg", "successfully decompressed file", "path", t.path)
 
-	var buf *bytes.Buffer
-	io.Copy(buf, t.compressionReader)
-	decompressedText := buf.String()
+	scanner := bufio.NewScanner(r)
+	for i := 0; ; i++ {
+		if !scanner.Scan() {
+			break
+		}
 
-	decompressedTextReader := strings.NewReader(decompressedText)
-	bufReader := bufio.NewReader(decompressedTextReader)
+		if scanner.Err() != nil {
+			break
+		}
 
-	// iterate over decompressed file, decode and send lines to API.
-	for {
-		s, err := bufReader.ReadString('\n')
-		var text string
+		if i <= int(t.position) {
+			// skip already seen lines.
+			continue
+		}
+
+		text := scanner.Text()
+		var finalText string
 		if t.decoder != nil {
 			var err error
-			text, err = t.convertToUTF8(s)
+			finalText, err = t.convertToUTF8(text)
 			if err != nil {
 				level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
 				t.metrics.encodingFailures.WithLabelValues(t.path).Inc()
-				text = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
+				finalText = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
 			}
 		} else {
-			text = s
+			finalText = text
 		}
 
 		t.metrics.readLines.WithLabelValues(t.path).Inc()
+
 		entries <- api.Entry{
 			Labels: model.LabelSet{},
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),
-				Line:      text,
+				Line:      finalText,
 			},
 		}
 
-		t.size = int64(bufReader.Size())
+		t.size = int64(unsafe.Sizeof(finalText))
 		t.position += 1
 
 		if err != nil {
@@ -263,7 +253,6 @@ func (t *decompresser) Stop() {
 		<-t.done
 		level.Info(t.logger).Log("msg", "stopped decompresser", "path", t.path)
 		t.handler.Stop()
-		t.compressionBuf.Reset()
 	})
 }
 
