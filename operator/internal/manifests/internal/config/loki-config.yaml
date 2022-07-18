@@ -48,7 +48,7 @@ compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
 frontend:
-  tail_proxy_url: http://{{ .Querier.FQDN }}:{{ .Querier.Port }}
+  tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
   compress_responses: true
   max_outstanding_per_tenant: 256
   log_queries_longer_than: 5s

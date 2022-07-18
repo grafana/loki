@@ -110,7 +110,7 @@ func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 	sm := newServiceMonitor(opts.Namespace, serviceMonitorName, l, gwEndpoint)
 
 	if opts.Stack.Tenants != nil {
-		if err := configureServiceMonitorForMode(sm, opts.Stack.Tenants.Mode, opts.Gates); err != nil {
+		if err := configureGatewayServiceMonitorForMode(sm, opts.Stack.Tenants.Mode, opts.Gates); err != nil {
 			return sm
 		}
 	}
