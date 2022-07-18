@@ -43,7 +43,7 @@ type GroupcacheRingManager struct {
 // NewRingManager is the recommended way of instantiating a GroupcacheRingManager.
 //
 // The other functions will assume the GroupcacheRingManager was instantiated through this function.
-func NewgGroupcacheRingManager(cfg GroupCacheConfig, log log.Logger, registerer prometheus.Registerer) (*GroupcacheRingManager, error) {
+func NewGroupcacheRingManager(cfg GroupCacheConfig, log log.Logger, registerer prometheus.Registerer) (*GroupcacheRingManager, error) {
 	rm := &GroupcacheRingManager{
 		cfg: cfg, log: log,
 	}
