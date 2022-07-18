@@ -366,7 +366,13 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 			break
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
+		decReq, err := batch.decode(buf)
+		if err != nil {
+			// this error shouldn't happen, as it is uncommon for decode to fail if the payload was successfully encoded before.
+			level.Warn(c.logger).Log("msg", "failed to decode request that is pushed", "error", err)
+		}
+
+		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err, "pushID", decReq.PushID)
 		c.metrics.batchRetries.WithLabelValues(c.cfg.URL.Host).Inc()
 		backoff.Wait()
 
