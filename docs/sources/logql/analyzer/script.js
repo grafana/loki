@@ -1,4 +1,5 @@
-let host = "http://localhost:3001";
+let host = "https://logql-analyzer.grafana.com/2-6-x";
+Handlebars.registerHelper("inc", (val) => parseInt(val) + 1);
 let streamSelector = `{job="analyze"}`;
 const logsSourceInputElement = document.getElementById("logs-source-input");
 const queryInputElement = document.getElementById("query-input");

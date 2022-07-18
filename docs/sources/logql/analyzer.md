@@ -70,7 +70,7 @@ weight: 60
                 <div class="line-index">
                     <div class="line-index__wrapper">
                         <i class="line-cursor expand-cursor"></i>
-                        <span>Line {{@index}}</span>
+                        <span>Line {{inc @index}}</span>
                     </div>
                 </div>
                 
@@ -87,7 +87,7 @@ weight: 60
             <div class="debug-result-row__explain hide">
                 <div class="explain-section origin-line">
                     <div class="explain-section__header">
-                        Origin log line
+                        Original log line
                         <span class="stage-expression">{{../stream_selector}}</span>
                     </div>
                     <div class="explain-section__body">
@@ -103,7 +103,7 @@ weight: 60
                     </div>
                     <div class="explain-section stage-line">
                         <div class="explain-section__header">
-                            <span>stage #{{@index}}:</span>
+                            <span>stage #{{inc @index}}:</span>
                             <span class="stage-expression"> {{stage_expression}} </span>
                         </div>
                         <div class="explain-section__body">
