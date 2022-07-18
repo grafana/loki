@@ -122,7 +122,7 @@ spec:
 
 ## Run Promtail within Kubernetes as a Daemonset
 
-In order to run Promtail within Kubernetes to gather logs from each nodes it's recommended you start with the example within the [Promtail installation docs](../../clients/promtail/installation/#daemonset-recommended)
+In order to run Promtail within Kubernetes to gather logs from each node, start with the [Promtail installation](../../clients/promtail/installation/#daemonset-recommended) documentation example.
 
 ## Run Promtail with syslog support
 
