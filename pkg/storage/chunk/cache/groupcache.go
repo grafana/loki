@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"golang.org/x/net/http2"
 
 	"github.com/grafana/groupcache_exporter"
 	"github.com/mailgun/groupcache/v2"
@@ -33,6 +33,13 @@ import (
 
 var (
 	ErrGroupcacheMiss = errors.New("cache miss")
+
+	http2Transport = &http2.Transport{
+		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+			return net.Dial(network, addr)
+		},
+		AllowHTTP: true,
+	}
 )
 
 type GroupCache struct {
@@ -79,7 +86,14 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
-	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{Transport: http2Transport})
+	pool := groupcache.NewHTTPPoolOpts(
+		addr,
+		&groupcache.HTTPPoolOptions{
+			Transport: func(_ context.Context) http.RoundTripper {
+				return http2Transport
+			},
+		},
+	)
 	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
@@ -245,13 +259,4 @@ func (c *group) Stop() {
 
 func (c *group) GetCacheType() stats.CacheType {
 	return c.cacheType
-}
-
-func http2Transport(_ context.Context) http.RoundTripper {
-	return &http2.Transport{
-		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr)
-		},
-		AllowHTTP: true,
-	}
 }
