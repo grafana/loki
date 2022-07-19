@@ -159,6 +159,7 @@ type TableManager struct {
 	services.Service
 
 	client       TableClient
+	objectClient TableClient
 	cfg          TableManagerConfig
 	schemaCfg    config.SchemaConfig
 	maxChunkAge  time.Duration
@@ -195,6 +196,10 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg config.SchemaConfig, maxC
 	return tm, nil
 }
 
+func (m *TableManager) AppendObjectTableClient(objectClient TableClient) {
+	m.objectClient = objectClient
+}
+
 // Start the TableManager
 func (m *TableManager) starting(ctx context.Context) error {
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
@@ -210,6 +215,9 @@ func (m *TableManager) stopping(_ error) error {
 		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
 	}
 	m.client.Stop()
+	if m.objectClient != nil {
+		m.objectClient.Stop()
+	}
 	return nil
 }
 
@@ -430,6 +438,16 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []confi
 		existingTables[table] = struct{}{}
 	}
 
+	if m.objectClient != nil {
+		objectTables, err := m.objectClient.ListTables(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for _, table := range objectTables {
+			existingTables[table] = struct{}{}
+		}
+	}
+
 	expectedTables := make(map[string]config.TableDesc, len(descriptions))
 	for _, desc := range descriptions {
 		expectedTables[desc.Name] = desc
@@ -482,6 +500,14 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []config.T
 			numFailures++
 			merr.Add(err)
 		}
+		if m.objectClient != nil {
+			level.Debug(util_log.Logger).Log("msg", "creating object table", "table", desc.Name)
+			err = m.objectClient.CreateTable(ctx, desc)
+			if err != nil {
+				numFailures++
+				merr.Add(err)
+			}
+		}
 	}
 
 	m.metrics.createFailures.Set(float64(numFailures))
@@ -504,6 +530,15 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []config.T
 			numFailures++
 			merr.Add(err)
 		}
+		if m.objectClient != nil {
+			level.Info(util_log.Logger).Log("msg", "deleting object table", "table", desc.Name)
+			err = m.objectClient.DeleteTable(ctx, desc.Name)
+			if err != nil {
+				numFailures++
+				merr.Add(err)
+			}
+		}
+
 	}
 
 	m.metrics.deleteFailures.Set(float64(numFailures))
@@ -512,33 +547,49 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []config.T
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []config.TableDesc) error {
 	for _, expected := range descriptions {
-		level.Debug(util_log.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
-		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
+		level.Debug(util_log.Logger).Log("msg", "index checking provisioned throughput on table", "table", expected.Name)
+		err := m.updateTable(ctx, m.client, expected)
 		if err != nil {
 			return err
 		}
-
-		m.metrics.tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
-		m.metrics.tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
-
-		if m.cfg.ThroughputUpdatesDisabled {
-			continue
+		if m.objectClient != nil {
+			level.Debug(util_log.Logger).Log("msg", "object checking provisioned throughput on table", "table", expected.Name)
+			err = m.updateTable(ctx, m.objectClient, expected)
+			if err != nil {
+				return err
+			}
 		}
+	}
+	return nil
+}
 
-		if !isActive {
-			level.Info(util_log.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
-			continue
-		}
+func (m *TableManager) updateTable(ctx context.Context, client TableClient, expected config.TableDesc) error {
+	level.Debug(util_log.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
+	current, isActive, err := client.DescribeTable(ctx, expected.Name)
+	if err != nil {
+		return err
+	}
 
-		if expected.Equals(current) {
-			level.Info(util_log.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
-			continue
-		}
+	m.metrics.tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
+	m.metrics.tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
-		err = m.client.UpdateTable(ctx, current, expected)
-		if err != nil {
-			return err
-		}
+	if m.cfg.ThroughputUpdatesDisabled {
+		return nil
+	}
+
+	if !isActive {
+		level.Info(util_log.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
+		return nil
+	}
+
+	if expected.Equals(current) {
+		level.Info(util_log.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
+		return nil
+	}
+
+	err = client.UpdateTable(ctx, current, expected)
+	if err != nil {
+		return err
 	}
 	return nil
 }
