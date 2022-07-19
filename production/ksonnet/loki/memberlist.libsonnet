@@ -20,7 +20,7 @@
     // Configures the memberlist cluster label. When verification is enabled, a memberlist member rejects any packet or stream
     // with a mismatching cluster label.
     // Cluster label and verification flag can be set here or directly to
-    // `_config.cluster_label` and `_config.cluster_label_verification_disabled` respectively.
+    // `_config.loki.memberlist.cluster_label` and `_config.loki.memberlist.cluster_label_verification_disabled` respectively.
     // Retaining this config to keep it backwards compatible with 2.6.1 release.
     memberlist_cluster_label: '',
     memberlist_cluster_label_verification_disabled: false,
