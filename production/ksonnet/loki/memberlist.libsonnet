@@ -1,10 +1,4 @@
 {
-  local memberlistConfig = {
-    'memberlist.abort-if-join-fails': false,
-    'memberlist.bind-port': gossipRingPort,
-    'memberlist.join': 'gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort],
-  },
-
   local setupGossipRing(storeOption, consulHostnameOption, multiStoreOptionsPrefix) = if $._config.multikv_migration_enabled then {
     [storeOption]: 'multi',
     [multiStoreOptionsPrefix + '.primary']: $._config.multikv_primary,
@@ -91,6 +85,11 @@
         max_join_backoff: '1m',
         max_join_retries: 10,
         min_join_backoff: '1s',
+
+        // Configures the memberlist cluster label. When verification is enabled, a memberlist member rejects any packet or stream
+        // with a mismatching cluster label.
+        cluster_label: '',
+        cluster_label_verification_disabled: false,
       },
     } else {},
 
