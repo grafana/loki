@@ -27,6 +27,7 @@ import (
 
 // Config for a StorageClient
 type Config struct {
+	Name                     string
 	Addresses                string              `yaml:"addresses"`
 	Port                     int                 `yaml:"port"`
 	Keyspace                 string              `yaml:"keyspace"`
@@ -90,6 +91,7 @@ func (cfg *Config) RegisterFlags(name string, f *flag.FlagSet) {
 	f.IntVar(&cfg.NumConnections, name+"cassandra.num-connections", 2, "Number of TCP connections per host.")
 	f.BoolVar(&cfg.ConvictHosts, name+"cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
 	f.StringVar(&cfg.TableOptions, name+"cassandra.table-options", "", "Table options used to create index or chunk tables. This value is used as plain text in the table `WITH` like this, \"CREATE TABLE <generated_by_cortex> (...) WITH <cassandra.table-options>\". For details, see https://cortexmetrics.io/docs/production/cassandra. By default it will use the default table options of your Cassandra cluster.")
+	cfg.Name = name
 }
 
 // nolint: revive
@@ -121,7 +123,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	cluster.NumConns = cfg.NumConnections
 	cluster.Logger = log.With(util_log.Logger, "module", "gocql", "client", name)
 	cluster.Registerer = prometheus.WrapRegistererWith(
-		prometheus.Labels{"client": name}, reg)
+		prometheus.Labels{"client": cfg.Name + name}, reg)
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,
