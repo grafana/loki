@@ -17,6 +17,14 @@
     // but "primary" KV depends on value of multikv_primary.
     memberlist_ring_enabled: false,
 
+    // Configures the memberlist cluster label. When verification is enabled, a memberlist member rejects any packet or stream
+    // with a mismatching cluster label.
+    // Cluster label and verification flag can be set here or directly to
+    // `_config.cluster_label` and `_config.cluster_label_verification_disabled` respectively.
+    // Retaining this config to keep it backwards compatible with 2.6.1 release.
+    memberlist_cluster_label: '',
+    memberlist_cluster_label_verification_disabled: false,
+
     // Migrating from consul to memberlist is a multi-step process:
     // 1) Enable multikv_migration_enabled, with primary=consul, secondary=memberlist, and multikv_mirror_enabled=false, restart components.
     // 2) Set multikv_mirror_enabled=true. This doesn't require restart.
@@ -86,10 +94,8 @@
         max_join_retries: 10,
         min_join_backoff: '1s',
 
-        // Configures the memberlist cluster label. When verification is enabled, a memberlist member rejects any packet or stream
-        // with a mismatching cluster label.
-        cluster_label: '',
-        cluster_label_verification_disabled: false,
+        cluster_label: $._config.memberlist_cluster_label,
+        cluster_label_verification_disabled: $._config.memberlist_cluster_label_verification_disabled,
       },
     } else {},
 
