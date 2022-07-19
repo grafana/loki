@@ -42,7 +42,7 @@ spec:
               value: /var/run/secrets/kubernetes.io/serviceaccount/token
           args:
             - -c
-            - while true; do logcli --ca-cert="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt" query '{job="systemd-journal"}'; sleep 30; done
+            - while true; do logcli --ca-cert="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt" query '{namespace="openshift-logging"}'; sleep 30; done
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -74,12 +74,17 @@ spec:
           args:
             - -config.file=/etc/promtail/promtail.yaml
             - -log.level=info
+          env:
+            - name: 'HOSTNAME'
+              valueFrom:
+                fieldRef:
+                  fieldPath: 'spec.nodeName'
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
           volumeMounts:
             - mountPath: /etc/promtail
               name: config
-            - mountPath: /run/promtail
+            - mountPath: /tmp/promtail
               name: run
             - mountPath: /var/lib/docker/containers
               name: docker
@@ -91,7 +96,9 @@ spec:
               name: journal
               readOnly: true
           securityContext:
-            allowPrivilegeEscalation: false
+            privileged: true
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
               - ALL
@@ -99,26 +106,26 @@ spec:
       securityContext:
         runAsNonRoot: true
       volumes:
-        - configMap:
+        - name: config
+          configMap:
             defaultMode: 420
             name: lokistack-dev-addons-promtail
-          name: config
-        - emptyDir:
+        - name: run
+          emptyDir:
             medium: ""
-            sizeLimit: 10G
-          name: run
-        - emptyDir:
-            medium: ""
-            sizeLimit: 10G
-          name: docker
-        - emptyDir:
-            medium: ""
-            sizeLimit: 10G
-          name: pods
-        - emptyDir:
-            medium: ""
-            sizeLimit: 10G
-          name: journal
+            sizeLimit: 5Gi
+        - name: docker
+          hostPath:
+            path: /var/lib/docker/containers
+            type: ""
+        - name: pods
+          hostPath:
+            path: /var/log/pods
+            type: ""
+        - name: journal
+          hostPath:
+            path: /var/log/journal
+            type: ""
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -140,7 +147,7 @@ data:
         batchwait: 10s
         timeout: 10s
     positions:
-      filename: /run/promtail/positions.yaml
+      filename: /tmp/promtail/positions.yaml
     server:
       http_listen_port: 3100
       grpc_listen_port: 9095
@@ -407,6 +414,20 @@ data:
               - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
               - __meta_kubernetes_pod_container_name
             target_label: __path__
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lokistack-dev-addons-writer
+rules:
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - privileged
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
