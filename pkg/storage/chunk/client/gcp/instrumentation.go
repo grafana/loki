@@ -30,8 +30,8 @@ var (
 		Name:      "gcs_request_duration_seconds",
 		Help:      "Time spent doing GCS requests.",
 
-		// 6 buckets from 5ms to 80s.
-		Buckets: prometheus.ExponentialBuckets(0.005, 4, 8),
+		// 6 buckets from 5ms to 20s.
+		Buckets: prometheus.ExponentialBuckets(0.005, 4, 7),
 	}, []string{"operation", "status_code"})
 )
 
