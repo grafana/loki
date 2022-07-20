@@ -14,18 +14,6 @@ type preparedLRU struct {
 	lru *lru.Cache
 }
 
-// Max adjusts the maximum size of the cache and cleans up the oldest records if
-// the new max is lower than the previous value. Not concurrency safe.
-func (p *preparedLRU) max(max int) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	for p.lru.Len() > max {
-		p.lru.RemoveOldest()
-	}
-	p.lru.MaxEntries = max
-}
-
 func (p *preparedLRU) clear() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -59,9 +47,9 @@ func (p *preparedLRU) execIfMissing(key string, fn func(lru *lru.Cache) *infligh
 	return fn(p.lru), false
 }
 
-func (p *preparedLRU) keyFor(addr, keyspace, statement string) string {
+func (p *preparedLRU) keyFor(hostID, keyspace, statement string) string {
 	// TODO: we should just use a struct for the key in the map
-	return addr + keyspace + statement
+	return hostID + keyspace + statement
 }
 
 func (p *preparedLRU) evictPreparedID(key string, id []byte) {

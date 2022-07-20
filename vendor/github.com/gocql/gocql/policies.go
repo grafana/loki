@@ -1,8 +1,10 @@
 // Copyright (c) 2012 The gocql Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-//This file will be the future home for more policies
+
 package gocql
+
+//This file will be the future home for more policies
 
 import (
 	"context"
@@ -15,8 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/hailocab/go-hostpool"
 )
 
@@ -37,12 +37,6 @@ func (c *cowHostList) get() []*HostInfo {
 		return nil
 	}
 	return *l
-}
-
-func (c *cowHostList) set(list []*HostInfo) {
-	c.mu.Lock()
-	c.list.Store(&list)
-	c.mu.Unlock()
 }
 
 // add will add a host if it not already in the list
@@ -68,33 +62,6 @@ func (c *cowHostList) add(host *HostInfo) bool {
 	c.list.Store(&l)
 	c.mu.Unlock()
 	return true
-}
-
-func (c *cowHostList) update(host *HostInfo) {
-	c.mu.Lock()
-	l := c.get()
-
-	if len(l) == 0 {
-		c.mu.Unlock()
-		return
-	}
-
-	found := false
-	newL := make([]*HostInfo, len(l))
-	for i := range l {
-		if host.Equal(l[i]) {
-			newL[i] = host
-			found = true
-		} else {
-			newL[i] = l[i]
-		}
-	}
-
-	if found {
-		c.list.Store(&newL)
-	}
-
-	c.mu.Unlock()
 }
 
 func (c *cowHostList) remove(ip net.IP) bool {
@@ -238,7 +205,6 @@ func (e *ExponentialBackoffRetryPolicy) GetRetryType(err error) RetryType {
 // operation is retried with the next provided consistency level.
 
 type DowngradingConsistencyRetryPolicy struct {
-	logger                 log.Logger
 	ConsistencyLevelsToTry []Consistency
 }
 
@@ -249,9 +215,6 @@ func (d *DowngradingConsistencyRetryPolicy) Attempt(q RetryableQuery) bool {
 		return false
 	} else if currentAttempt > 0 {
 		q.SetConsistency(d.ConsistencyLevelsToTry[currentAttempt-1])
-		if d.logger != nil {
-			level.Info(d.logger).Log("msg", "DowngradingConsistencyRetryPolicy set consistency", "consistency", d.ConsistencyLevelsToTry[currentAttempt-1])
-		}
 	}
 	return true
 }
@@ -299,13 +262,17 @@ type KeyspaceUpdateEvent struct {
 
 // HostSelectionPolicy is an interface for selecting
 // the most appropriate host to execute a given query.
+// HostSelectionPolicy instances cannot be shared between sessions.
 type HostSelectionPolicy interface {
 	HostStateNotifier
 	SetPartitioner
 	KeyspaceChanged(KeyspaceUpdateEvent)
 	Init(*Session)
 	IsLocal(host *HostInfo) bool
-	//Pick returns an iteration function over selected hosts
+	// Pick returns an iteration function over selected hosts.
+	// Multiple attempts of a single query execution won't call the returned NextHost function concurrently,
+	// so it's safe to have internal state without additional synchronization as long as every call to Pick returns
+	// a different instance of NextHost.
 	Pick(ExecutableQuery) NextHost
 }
 
@@ -417,11 +384,21 @@ type tokenAwareHostPolicy struct {
 	hosts       cowHostList
 	partitioner string
 	metadata    atomic.Value // *clusterMeta
+
+	logger StdLogger
 }
 
 func (t *tokenAwareHostPolicy) Init(s *Session) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.getKeyspaceMetadata != nil {
+		// Init was already called.
+		// See https://github.com/scylladb/gocql/issues/94.
+		panic("sharing token aware host selection policy between sessions is not supported")
+	}
 	t.getKeyspaceMetadata = s.KeyspaceMetadata
 	t.getKeyspaceName = func() string { return s.cfg.Keyspace }
+	t.logger = s.logger
 }
 
 func (t *tokenAwareHostPolicy) IsLocal(host *HostInfo) bool {
@@ -444,7 +421,7 @@ func (t *tokenAwareHostPolicy) updateReplicas(meta *clusterMeta, keyspace string
 
 	ks, err := t.getKeyspaceMetadata(keyspace)
 	if err == nil {
-		strat := getStrategy(ks)
+		strat := getStrategy(ks, t.logger)
 		if strat != nil {
 			if meta != nil && meta.tokenRing != nil {
 				newReplicas[keyspace] = strat.replicaMap(meta.tokenRing)
@@ -469,7 +446,7 @@ func (t *tokenAwareHostPolicy) SetPartitioner(partitioner string) {
 		t.fallback.SetPartitioner(partitioner)
 		t.partitioner = partitioner
 		meta := t.getMetadataForUpdate()
-		meta.resetTokenRing(t.partitioner, t.hosts.get())
+		meta.resetTokenRing(t.partitioner, t.hosts.get(), t.logger)
 		t.updateReplicas(meta, t.getKeyspaceName())
 		t.metadata.Store(meta)
 	}
@@ -479,7 +456,7 @@ func (t *tokenAwareHostPolicy) AddHost(host *HostInfo) {
 	t.mu.Lock()
 	if t.hosts.add(host) {
 		meta := t.getMetadataForUpdate()
-		meta.resetTokenRing(t.partitioner, t.hosts.get())
+		meta.resetTokenRing(t.partitioner, t.hosts.get(), t.logger)
 		t.updateReplicas(meta, t.getKeyspaceName())
 		t.metadata.Store(meta)
 	}
@@ -496,7 +473,7 @@ func (t *tokenAwareHostPolicy) AddHosts(hosts []*HostInfo) {
 	}
 
 	meta := t.getMetadataForUpdate()
-	meta.resetTokenRing(t.partitioner, t.hosts.get())
+	meta.resetTokenRing(t.partitioner, t.hosts.get(), t.logger)
 	t.updateReplicas(meta, t.getKeyspaceName())
 	t.metadata.Store(meta)
 
@@ -511,7 +488,7 @@ func (t *tokenAwareHostPolicy) RemoveHost(host *HostInfo) {
 	t.mu.Lock()
 	if t.hosts.remove(host.ConnectAddress()) {
 		meta := t.getMetadataForUpdate()
-		meta.resetTokenRing(t.partitioner, t.hosts.get())
+		meta.resetTokenRing(t.partitioner, t.hosts.get(), t.logger)
 		t.updateReplicas(meta, t.getKeyspaceName())
 		t.metadata.Store(meta)
 	}
@@ -551,21 +528,21 @@ func (t *tokenAwareHostPolicy) getMetadataForUpdate() *clusterMeta {
 
 // resetTokenRing creates a new tokenRing.
 // It must be called with t.mu locked.
-func (m *clusterMeta) resetTokenRing(partitioner string, hosts []*HostInfo) error {
+func (m *clusterMeta) resetTokenRing(partitioner string, hosts []*HostInfo, logger StdLogger) {
 	if partitioner == "" {
 		// partitioner not yet set
-		return nil
+		return
 	}
 
 	// create a new token ring
 	tokenRing, err := newTokenRing(partitioner, hosts)
 	if err != nil {
-		return err
+		logger.Printf("Unable to update the token ring due to error: %s", err)
+		return
 	}
 
 	// replace the token ring
 	m.tokenRing = tokenRing
-	return nil
 }
 
 func (t *tokenAwareHostPolicy) Pick(qry ExecutableQuery) NextHost {
@@ -879,6 +856,51 @@ func roundRobbin(shift int, hosts ...[]*HostInfo) NextHost {
 func (d *dcAwareRR) Pick(q ExecutableQuery) NextHost {
 	nextStartOffset := atomic.AddUint64(&d.lastUsedHostIdx, 1)
 	return roundRobbin(int(nextStartOffset), d.localHosts.get(), d.remoteHosts.get())
+}
+
+// ReadyPolicy defines a policy for when a HostSelectionPolicy can be used. After
+// each host connects during session initialization, the Ready method will be
+// called. If you only need a single Host to be up you can wrap a
+// HostSelectionPolicy policy with SingleHostReadyPolicy.
+type ReadyPolicy interface {
+	Ready() bool
+}
+
+// SingleHostReadyPolicy wraps a HostSelectionPolicy and returns Ready after a
+// single host has been added via HostUp
+func SingleHostReadyPolicy(p HostSelectionPolicy) *singleHostReadyPolicy {
+	return &singleHostReadyPolicy{
+		HostSelectionPolicy: p,
+	}
+}
+
+type singleHostReadyPolicy struct {
+	HostSelectionPolicy
+	ready    bool
+	readyMux sync.Mutex
+}
+
+func (s *singleHostReadyPolicy) HostUp(host *HostInfo) {
+	s.HostSelectionPolicy.HostUp(host)
+
+	s.readyMux.Lock()
+	s.ready = true
+	s.readyMux.Unlock()
+}
+
+func (s *singleHostReadyPolicy) Ready() bool {
+	s.readyMux.Lock()
+	ready := s.ready
+	s.readyMux.Unlock()
+	if !ready {
+		return false
+	}
+
+	// in case the wrapped policy is also a ReadyPolicy, defer to that
+	if rdy, ok := s.HostSelectionPolicy.(ReadyPolicy); ok {
+		return rdy.Ready()
+	}
+	return true
 }
 
 // ConvictionPolicy interface is used by gocql to determine if a host should be

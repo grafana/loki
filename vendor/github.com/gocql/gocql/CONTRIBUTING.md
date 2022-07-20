@@ -20,7 +20,7 @@ The following is a check list of requirements that need to be satisfied in order
 * The test coverage does not fall below the critical threshold (currently 64%) 
 * The merge commit passes the regression test suite on Travis
 * `go fmt` has been applied to the submitted code
-* Functional changes (i.e. new features or changed behavior) are appropriately documented, either as a godoc or in the README (non-functional changes such as bug fixes may not require documentation)
+* Notable changes (i.e. new features or changed behavior, bugfixes) are appropriately documented in CHANGELOG.md, functional changes also in godoc
 
 If there are any requirements that can't be reasonably satisfied, please state this either on the pull request or as part of discussion on the mailing list. Where appropriate, the core team may apply discretion and make an exception to these requirements.
 

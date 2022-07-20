@@ -1,10 +1,6 @@
 package gocql
 
-import (
-	"errors"
-	"fmt"
-	"net"
-)
+import "fmt"
 
 // HostFilter interface is used when a host is discovered via server sent events.
 type HostFilter interface {
@@ -44,7 +40,7 @@ func DataCentreHostFilter(dataCentre string) HostFilter {
 // WhiteListHostFilter filters incoming hosts by checking that their address is
 // in the initial hosts whitelist.
 func WhiteListHostFilter(hosts ...string) HostFilter {
-	hostInfos, err := addrsToHosts(hosts, 9042)
+	hostInfos, err := addrsToHosts(hosts, 9042, nopLogger{})
 	if err != nil {
 		// dont want to panic here, but rather not break the API
 		panic(fmt.Errorf("unable to lookup host info from address: %v", err))
@@ -58,24 +54,4 @@ func WhiteListHostFilter(hosts ...string) HostFilter {
 	return HostFilterFunc(func(host *HostInfo) bool {
 		return m[host.ConnectAddress().String()]
 	})
-}
-
-func addrsToHosts(addrs []string, defaultPort int) ([]*HostInfo, error) {
-	var hosts []*HostInfo
-	for _, hostport := range addrs {
-		resolvedHosts, err := hostInfo(hostport, defaultPort)
-		if err != nil {
-			// Try other hosts if unable to resolve DNS name
-			if _, ok := err.(*net.DNSError); ok {
-				continue
-			}
-			return nil, err
-		}
-
-		hosts = append(hosts, resolvedHosts...)
-	}
-	if len(hosts) == 0 {
-		return nil, errors.New("failed to resolve any of the provided hostnames")
-	}
-	return hosts, nil
 }

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/grafana/dskit/flagext"
@@ -64,7 +63,8 @@ const (
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet,
-func (cfg *Config) RegisterFlags(name string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	name := cfg.Name
 	f.StringVar(&cfg.Addresses, name+"cassandra.addresses", "", "Comma-separated hostnames or IPs of Cassandra instances.")
 	f.IntVar(&cfg.Port, name+"cassandra.port", 9042, "Port that Cassandra is running on")
 	f.StringVar(&cfg.Keyspace, name+"cassandra.keyspace", "", "Keyspace to use in Cassandra.")
@@ -92,7 +92,6 @@ func (cfg *Config) RegisterFlags(name string, f *flag.FlagSet) {
 	f.IntVar(&cfg.NumConnections, name+"cassandra.num-connections", 2, "Number of TCP connections per host.")
 	f.BoolVar(&cfg.ConvictHosts, name+"cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
 	f.StringVar(&cfg.TableOptions, name+"cassandra.table-options", "", "Table options used to create index or chunk tables. This value is used as plain text in the table `WITH` like this, \"CREATE TABLE <generated_by_cortex> (...) WITH <cassandra.table-options>\". For details, see https://cortexmetrics.io/docs/production/cassandra. By default it will use the default table options of your Cassandra cluster.")
-	cfg.Name = name
 }
 
 // nolint: revive
@@ -122,9 +121,9 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
-	cluster.Logger = log.With(util_log.Logger, "module", "gocql", "client", name)
-	cluster.Registerer = prometheus.WrapRegistererWith(
-		prometheus.Labels{"client": cfg.Name + name}, reg)
+	//cluster.Logger = log.With(util_log.Logger, "module", "gocql", "client", name)
+	//cluster.Registerer = prometheus.WrapRegistererWith(
+	//	prometheus.Labels{"client": cfg.Name + name}, reg)
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,

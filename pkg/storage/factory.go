@@ -90,8 +90,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
-	cfg.CassandraStorageConfig.RegisterFlags("cassandra-", f)
-	cfg.Cassandra2StorageConfig.RegisterFlags("Cassandra2-", f)
+	cfg.CassandraStorageConfig.Name = "cassandra-"
+	cfg.CassandraStorageConfig.RegisterFlags(f)
+	cfg.Cassandra2StorageConfig.Name = "Cassandra2-"
+	cfg.Cassandra2StorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)

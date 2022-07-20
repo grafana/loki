@@ -360,10 +360,6 @@ github.com/fsnotify/fsnotify
 ## explicit
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
-# github.com/go-kit/kit v0.12.0
-## explicit; go 1.17
-github.com/go-kit/kit/log
-github.com/go-kit/kit/log/level
 # github.com/go-kit/log v0.2.1
 ## explicit; go 1.17
 github.com/go-kit/log
@@ -427,7 +423,7 @@ github.com/go-stack/stack
 # github.com/go-zookeeper/zk v1.0.2
 ## explicit; go 1.13
 github.com/go-zookeeper/zk
-# github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7 => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
+# github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7 => github.com/gocql/gocql v1.2.0
 ## explicit; go 1.13
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
@@ -1728,7 +1724,7 @@ sigs.k8s.io/yaml
 # k8s.io/api => k8s.io/api v0.23.6
 # k8s.io/apimachinery => k8s.io/apimachinery v0.23.6
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
-# github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
+# github.com/gocql/gocql => github.com/gocql/gocql v1.2.0
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 # github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
 # k8s.io/client-go => k8s.io/client-go v0.23.6

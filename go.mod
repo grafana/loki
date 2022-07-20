@@ -167,7 +167,6 @@ require (
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
-	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.21.2 // indirect
@@ -306,7 +305,7 @@ replace k8s.io/apimachinery => k8s.io/apimachinery v0.23.6
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
-replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
+replace github.com/gocql/gocql => github.com/gocql/gocql v1.2.0
 
 // Same as Cortex
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
