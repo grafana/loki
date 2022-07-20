@@ -170,6 +170,7 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	value, err := humanize.ParseBytes(v)
 	if err != nil {
 		lbs.SetErr(errLabelFilter)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	switch d.Type {
@@ -234,6 +235,7 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 	value, err := time.ParseDuration(v)
 	if err != nil {
 		lbs.SetErr(errLabelFilter)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	switch d.Type {
@@ -292,6 +294,7 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 	value, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		lbs.SetErr(errLabelFilter)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	switch n.Type {

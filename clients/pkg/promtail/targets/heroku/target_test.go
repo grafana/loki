@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 
+	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
@@ -184,12 +185,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
 
-			// Wait for them to appear in the test handler
-			countdown := 1000
-			for len(eh.Received()) != 1 && countdown > 0 {
-				time.Sleep(1 * time.Millisecond)
-				countdown--
-			}
+			waitForMessages(eh)
 
 			// Make sure we didn't timeout
 			require.Equal(t, len(tc.args.RequestBodies), len(eh.Received()))
@@ -247,12 +243,7 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
 
-	// Wait for them to appear in the test handler
-	countdown := 1000
-	for len(eh.Received()) != 1 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	waitForMessages(eh)
 
 	// Make sure we didn't timeout
 	require.Equal(t, 1, len(eh.Received()))
@@ -285,6 +276,56 @@ func TestHerokuDrainTarget_ErrorOnNotPrometheusCompatibleJobName(t *testing.T) {
 	// Cleanup target in the case test failed and target started correctly
 	if err == nil {
 		_ = pt.Stop()
+	}
+}
+
+func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	serverConfig, port, err := getServerConfigWithAvailablePort()
+	require.NoError(t, err, "error generating server config or finding open port")
+	config := &scrapeconfig.HerokuDrainTargetConfig{
+		Server:               serverConfig,
+		Labels:               nil,
+		UseIncomingTimestamp: true,
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	require.NoError(t, err)
+	defer func() {
+		_ = pt.Stop()
+	}()
+
+	// Clear received lines after test case is ran
+	defer eh.Clear()
+
+	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), testLogLine1)
+	require.NoError(t, err, "expected test drain request to be successfully created")
+	req.Header.Set("X-Scope-OrgID", "42")
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
+
+	waitForMessages(eh)
+
+	// Make sure we didn't timeout
+	require.Equal(t, 1, len(eh.Received()))
+
+	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels[lokiClient.ReservedLabelTenantID])
+}
+
+func waitForMessages(eh *fake.Client) {
+	countdown := 1000
+	for len(eh.Received()) != 1 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
 	}
 }
 
