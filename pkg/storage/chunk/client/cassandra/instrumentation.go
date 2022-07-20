@@ -13,13 +13,15 @@ var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Name:      "cassandra_request_duration_seconds",
 	Help:      "Time spent doing Cassandra requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 9),
-}, []string{"operation", "status_code"})
+}, []string{"name", "operation", "status_code"})
 
 func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
-type observer struct{}
+type observer struct {
+	name string
+}
 
 func err(err error) string {
 	if err != nil {
@@ -28,11 +30,11 @@ func err(err error) string {
 	return "200"
 }
 
-func (observer) ObserveBatch(ctx context.Context, b gocql.ObservedBatch) {
-	requestDuration.WithLabelValues("BATCH", err(b.Err)).Observe(b.End.Sub(b.Start).Seconds())
+func (o *observer) ObserveBatch(ctx context.Context, b gocql.ObservedBatch) {
+	requestDuration.WithLabelValues(o.name, "BATCH", err(b.Err)).Observe(b.End.Sub(b.Start).Seconds())
 }
 
-func (observer) ObserveQuery(cts context.Context, q gocql.ObservedQuery) {
+func (o *observer) ObserveQuery(cts context.Context, q gocql.ObservedQuery) {
 	parts := strings.SplitN(q.Statement, " ", 2)
-	requestDuration.WithLabelValues(parts[0], err(q.Err)).Observe(q.End.Sub(q.Start).Seconds())
+	requestDuration.WithLabelValues(o.name, parts[0], err(q.Err)).Observe(q.End.Sub(q.Start).Seconds())
 }

@@ -442,15 +442,17 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	objectTableClient, err := storage.NewTableClient(lastConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics, reg)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "init objectTableClient fail,", "err", err)
+	if lastConfig.IndexType != lastConfig.ObjectType {
+		level.Warn(util_log.Logger).Log("msg", "IndexType != ObjectType, new objectTableClient", "IndexType", lastConfig.IndexType, "ObjectType", lastConfig.ObjectType)
+		objectTableClient, err := storage.NewTableClient(lastConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics, reg)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "init objectTableClient fail,", "err", err)
+		}
+		if objectTableClient != nil {
+			level.Warn(util_log.Logger).Log("msg", "tableManager Append ObjectTableClient", "type", lastConfig.ObjectType)
+			t.tableManager.AppendObjectTableClient(objectTableClient)
+		}
 	}
-	if objectTableClient != nil {
-		level.Warn(util_log.Logger).Log("msg", "tableManager Append ObjectTableClient", "type", lastConfig.ObjectType)
-		t.tableManager.AppendObjectTableClient(objectTableClient)
-	}
-
 	return t.tableManager, nil
 }
 

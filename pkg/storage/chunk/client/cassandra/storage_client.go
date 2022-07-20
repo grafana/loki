@@ -115,8 +115,8 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
-	cluster.BatchObserver = observer{}
-	cluster.QueryObserver = observer{}
+	cluster.BatchObserver = &observer{name: cfg.Name}
+	cluster.QueryObserver = &observer{name: cfg.Name}
 	cluster.Timeout = cfg.Timeout
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
