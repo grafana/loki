@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.21.0
+BUILD_IMAGE_VERSION := 0.22.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -586,7 +586,7 @@ loki-operator-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
-	
+
 ########
 # Misc #
 ########
