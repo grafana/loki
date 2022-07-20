@@ -17,32 +17,59 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-// we do not need to build store for each schema config since we do not do any schema specific handling yet.
-// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
-// running multiple head managers would be complicated and wasteful.
-var storeInstance *store
-
 type store struct {
 	indexWriter IndexWriter
 	indexStore  series.IndexStore
 }
 
+type newStoreFactoryFunc func(
+	indexShipperCfg indexshipper.Config,
+	p config.PeriodConfig,
+	f *fetcher.Fetcher,
+	objectClient client.ObjectClient,
+	limits downloads.Limits,
+	tableRanges config.TableRanges,
+	reg prometheus.Registerer,
+) (
+	stores.ChunkWriter,
+	series.IndexStore,
+	error,
+)
+
 // NewStore creates a new store if not initialized already.
 // Each call to NewStore will always build a new stores.ChunkWriter even if the store was already initialized since
 // fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
 // for storing chunks.
-func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fetcher.Fetcher,
-	objectClient client.ObjectClient, limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) (stores.ChunkWriter, series.IndexStore, error) {
-	if storeInstance == nil {
-		storeInstance = &store{}
-		err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
-		if err != nil {
-			return nil, nil, err
+// It also helps us make tsdb store a singleton because
+// we do not need to build store for each schema config since we do not do any schema specific handling yet.
+// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
+// running multiple head managers would be complicated and wasteful.
+var NewStore = func() newStoreFactoryFunc {
+	var storeInstance *store
+	return func(
+		indexShipperCfg indexshipper.Config,
+		p config.PeriodConfig,
+		f *fetcher.Fetcher,
+		objectClient client.ObjectClient,
+		limits downloads.Limits,
+		tableRanges config.TableRanges,
+		reg prometheus.Registerer,
+	) (
+		stores.ChunkWriter,
+		series.IndexStore,
+		error,
+	) {
+		if storeInstance == nil {
+			storeInstance = &store{}
+			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
-	}
 
-	return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
-}
+		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
+	}
+}()
 
 func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
