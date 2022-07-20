@@ -62,7 +62,7 @@ const (
 	HostPolicyTokenAware = "token-aware"
 )
 
-// RegisterFlags adds the flags required to config this to the given FlagSet,
+// RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Addresses, "cassandra.addresses", "", "Comma-separated hostnames or IPs of Cassandra instances.")
 	f.IntVar(&cfg.Port, "cassandra.port", 9042, "Port that Cassandra is running on")
