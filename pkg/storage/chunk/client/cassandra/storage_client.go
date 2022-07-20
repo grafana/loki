@@ -112,6 +112,7 @@ func (cfg *Config) Validate() error {
 }
 
 func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, *gocql.ClusterConfig, error) {
+	level.Warn(util_log.Logger).Log("msg", "Cassandra create session", "name", name, "reg", reg)
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace

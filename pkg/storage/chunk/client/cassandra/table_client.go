@@ -46,7 +46,7 @@ func (c *tableClient) reconnectTableSession() error {
 }
 
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
-	result, err := c.listTables(ctx)
+	result, err := c.listTables()
 	//
 	if err == gocql.ErrNoConnections {
 		connectErr := c.reconnectTableSession()
@@ -54,12 +54,12 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 			return nil, errors.Wrap(err, "ObjectClient getChunk reconnect fail")
 		}
 		// retry after reconnect
-		result, err = c.listTables(ctx)
+		result, err = c.listTables()
 	}
 	return result, err
 }
 
-func (c *tableClient) listTables(ctx context.Context) ([]string, error) {
+func (c *tableClient) listTables() ([]string, error) {
 	md, err := c.session.KeyspaceMetadata(c.cfg.Keyspace)
 	if err != nil {
 		return nil, errors.WithStack(err)
