@@ -2,16 +2,12 @@ package cache
 
 import (
 	"context"
-	"crypto/tls"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/net/http2"
 
 	"github.com/weaveworks/common/instrument"
 
@@ -33,13 +29,6 @@ import (
 
 var (
 	ErrGroupcacheMiss = errors.New("cache miss")
-
-	http2Transport = &http2.Transport{
-		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr)
-		},
-		AllowHTTP: true,
-	}
 )
 
 type GroupCache struct {
@@ -86,11 +75,13 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = 100
 	pool := groupcache.NewHTTPPoolOpts(
 		addr,
 		&groupcache.HTTPPoolOptions{
 			Transport: func(_ context.Context) http.RoundTripper {
-				return http2Transport
+				return transport
 			},
 		},
 	)
