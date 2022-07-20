@@ -25,6 +25,13 @@ import (
 	bttdpb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
 )
 
+type policyType int
+
+const (
+	policyTypeUnion policyType = iota
+	policyTypeIntersection
+)
+
 // A GCPolicy represents a rule that determines which cells are eligible for garbage collection.
 type GCPolicy interface {
 	String() string
@@ -158,10 +165,47 @@ func GCRuleToString(rule *bttdpb.GcRule) string {
 	}
 }
 
+func gcRuleToPolicy(rule *bttdpb.GcRule) GCPolicy {
+	if rule == nil {
+		return NoGcPolicy()
+	}
+	switch r := rule.Rule.(type) {
+	case *bttdpb.GcRule_Intersection_:
+		return compoundRuleToPolicy(r.Intersection.Rules, policyTypeIntersection)
+	case *bttdpb.GcRule_Union_:
+		return compoundRuleToPolicy(r.Union.Rules, policyTypeUnion)
+	case *bttdpb.GcRule_MaxAge:
+		return MaxAgePolicy(time.Duration(r.MaxAge.Seconds) * time.Second)
+	case *bttdpb.GcRule_MaxNumVersions:
+		return MaxVersionsPolicy(int(r.MaxNumVersions))
+	default:
+		return NoGcPolicy()
+	}
+}
+
 func joinRules(rules []*bttdpb.GcRule, sep string) string {
 	var chunks []string
 	for _, r := range rules {
 		chunks = append(chunks, GCRuleToString(r))
 	}
 	return "(" + strings.Join(chunks, sep) + ")"
+}
+
+func compoundRuleToPolicy(rules []*bttdpb.GcRule, mode policyType) GCPolicy {
+	sub := []GCPolicy{}
+	for _, r := range rules {
+		p := gcRuleToPolicy(r)
+		if p.String() != "" {
+			sub = append(sub, gcRuleToPolicy(r))
+		}
+	}
+
+	switch mode {
+	case policyTypeUnion:
+		return unionPolicy{sub: sub}
+	case policyTypeIntersection:
+		return intersectionPolicy{sub: sub}
+	default:
+		return NoGcPolicy()
+	}
 }

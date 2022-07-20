@@ -25,6 +25,7 @@ import (
 	"cloud.google.com/go/internal/version"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -76,7 +77,7 @@ func unaryInterceptor(ctx context.Context, method string, req, reply interface{}
 
 // DefaultClientOptions returns the default client options to use for the
 // client's gRPC connection.
-func DefaultClientOptions(endpoint, scope, userAgent string) ([]option.ClientOption, error) {
+func DefaultClientOptions(endpoint, mtlsEndpoint, scope, userAgent string) ([]option.ClientOption, error) {
 	var o []option.ClientOption
 	// Check the environment variables for the bigtable emulator.
 	// Dial it directly and don't pass any credentials.
@@ -88,7 +89,8 @@ func DefaultClientOptions(endpoint, scope, userAgent string) ([]option.ClientOpt
 		o = []option.ClientOption{option.WithGRPCConn(conn)}
 	} else {
 		o = []option.ClientOption{
-			option.WithEndpoint(endpoint),
+			internaloption.WithDefaultEndpoint(endpoint),
+			internaloption.WithDefaultMTLSEndpoint(mtlsEndpoint),
 			option.WithScopes(scope),
 			option.WithUserAgent(userAgent),
 		}

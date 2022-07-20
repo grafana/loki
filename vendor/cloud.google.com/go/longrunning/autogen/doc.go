@@ -1,4 +1,4 @@
-// Copyright 2021 Google LLC
+// Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -75,6 +75,8 @@ package longrunning // import "cloud.google.com/go/longrunning/autogen"
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -90,7 +92,14 @@ import (
 type clientHookParams struct{}
 type clientHook func(context.Context, clientHookParams) ([]option.ClientOption, error)
 
-const versionClient = "20211208"
+var versionClient string
+
+func getVersionClient() string {
+	if versionClient == "" {
+		return "UNKNOWN"
+	}
+	return versionClient
+}
 
 func insertMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
 	out, _ := metadata.FromOutgoingContext(ctx)
@@ -115,7 +124,9 @@ func checkDisableDeadlines() (bool, error) {
 
 // DefaultAuthScopes reports the default set of authentication scopes to use with this package.
 func DefaultAuthScopes() []string {
-	return []string{}
+	return []string{
+		"",
+	}
 }
 
 // versionGo returns the Go runtime version. The returned string
@@ -153,4 +164,23 @@ func versionGo() string {
 		return s
 	}
 	return "UNKNOWN"
+}
+
+// maybeUnknownEnum wraps the given proto-JSON parsing error if it is the result
+// of receiving an unknown enum value.
+func maybeUnknownEnum(err error) error {
+	if strings.Contains(err.Error(), "invalid value for enum type") {
+		err = fmt.Errorf("received an unknown enum value; a later version of the library may support it: %w", err)
+	}
+	return err
+}
+
+// buildHeaders extracts metadata from the outgoing context, joins it with any other
+// given metadata, and converts them into a http.Header.
+func buildHeaders(ctx context.Context, mds ...metadata.MD) http.Header {
+	if cmd, ok := metadata.FromOutgoingContext(ctx); ok {
+		mds = append(mds, cmd)
+	}
+	md := metadata.Join(mds...)
+	return http.Header(md)
 }
