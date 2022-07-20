@@ -48,26 +48,25 @@ RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_li
 #	github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM golang:1.18.4 as faillint
-RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
+RUN GO111MODULE=on go install github.com/fatih/faillint@v1.5.0
 
 FROM golang:1.18.4 as delve
-RUN GO111MODULE=on go get github.com/go-delve/delve/cmd/dlv@v1.7.3
+RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@v1.7.3
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
 FROM golang:1.18.4 as ghr
-RUN GO111MODULE=on go get github.com/tcnksm/ghr
+RUN GO111MODULE=on go install github.com/tcnksm/ghr@9349474
 
 # Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
 FROM golang:1.18.4 as nfpm
-RUN GO111MODULE=on go get github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
+RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 
 # Install tools used to compile jsonnet.
 FROM golang:1.18.4 as jsonnet
-RUN GO111MODULE=on go get \
-    github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0 \
-    github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066 \
-    github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
+RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0
+RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
+RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
 
 FROM golang:1.18.4-buster
 RUN apt-get update && \
@@ -97,15 +96,12 @@ COPY --from=jsonnet /go/bin/jsonnet /usr/bin/jsonnet
 # If we don't force this, Go is going to default to GOPATH mode as we do not have an active project or go.mod
 # file for it to detect and switch to Go Modules automatically.
 # It's possible this can be revisited in newer versions of Go if the behavior around GOPATH vs GO111MODULES changes
-RUN GO111MODULE=on go get \
-    github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
-    github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
-    github.com/gogo/protobuf/gogoproto@v1.3.0 \
+RUN GO111MODULE=on go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
+RUN GO111MODULE=on go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
     # Due to the lack of a proper release tag, we use the commit hash of
     # https://github.com/golang/tools/releases v0.1.7
-    golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69 \
-    github.com/mitchellh/gox && \
-    rm -rf /go/pkg /go/src
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69
+RUN GO111MODULE=on go install github.com/mitchellh/gox@9f71238 && rm -rf /go/pkg /go/src
 ENV GOCACHE=/go/cache
 
 COPY build.sh /
