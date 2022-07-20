@@ -3,6 +3,7 @@ package cassandra
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
@@ -13,23 +14,52 @@ import (
 )
 
 type tableClient struct {
-	cfg     Config
-	session *gocql.Session
+	cfg           Config
+	session       *gocql.Session
+	mtx           sync.Mutex
+	clusterConfig *gocql.ClusterConfig
 }
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config, registerer prometheus.Registerer) (index.TableClient, error) {
-	session, err := cfg.session("table-manager", registerer)
+	session, clusterConfig, err := cfg.session("table-manager", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	return &tableClient{
-		cfg:     cfg,
-		session: session,
+		cfg:           cfg,
+		session:       session,
+		clusterConfig: clusterConfig,
 	}, nil
 }
 
+func (c *tableClient) reconnectTableSession() error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	newSession, err := c.clusterConfig.CreateSession()
+	if err != nil {
+		return err
+	}
+	c.session.Close()
+	c.session = newSession
+	return nil
+}
+
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
+	result, err := c.listTables()
+	//
+	if err == gocql.ErrNoConnections {
+		connectErr := c.reconnectTableSession()
+		if connectErr != nil {
+			return nil, errors.Wrap(err, "ObjectClient getChunk reconnect fail")
+		}
+		// retry after reconnect
+		result, err = c.listTables()
+	}
+	return result, err
+}
+
+func (c *tableClient) listTables() ([]string, error) {
 	md, err := c.session.KeyspaceMetadata(c.cfg.Keyspace)
 	if err != nil {
 		return nil, errors.WithStack(err)
