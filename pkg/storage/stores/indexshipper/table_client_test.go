@@ -3,7 +3,6 @@ package indexshipper_test
 import (
 	"bytes"
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"path"
 	"testing"
 
@@ -11,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
