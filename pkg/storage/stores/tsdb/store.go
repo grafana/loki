@@ -2,7 +2,9 @@ package tsdb
 
 import (
 	"fmt"
+	"sync"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -18,8 +20,10 @@ import (
 )
 
 type store struct {
-	indexWriter IndexWriter
-	indexStore  series.IndexStore
+	indexShipper indexshipper.IndexShipper
+	indexWriter  IndexWriter
+	indexStore   series.IndexStore
+	stopOnce     sync.Once
 }
 
 type newStoreFactoryFunc func(
@@ -31,9 +35,10 @@ type newStoreFactoryFunc func(
 	tableRanges config.TableRanges,
 	reg prometheus.Registerer,
 ) (
-	stores.ChunkWriter,
-	series.IndexStore,
-	error,
+	chunkWriter stores.ChunkWriter,
+	indexStore series.IndexStore,
+	stopFunc func(),
+	err error,
 )
 
 // NewStore creates a new store if not initialized already.
@@ -57,24 +62,26 @@ var NewStore = func() newStoreFactoryFunc {
 	) (
 		stores.ChunkWriter,
 		series.IndexStore,
+		func(),
 		error,
 	) {
 		if storeInstance == nil {
 			storeInstance = &store{}
 			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 
-		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
+		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, storeInstance.Stop, nil
 	}
 }()
 
 func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
 
-	shpr, err := indexshipper.NewIndexShipper(
+	var err error
+	s.indexShipper, err = indexshipper.NewIndexShipper(
 		indexShipperCfg,
 		objectClient,
 		limits,
@@ -99,7 +106,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		tsdbManager := NewTSDBManager(
 			nodeName,
 			dir,
-			shpr,
+			s.indexShipper,
 			tableRanges,
 			util_log.Logger,
 			tsdbMetrics,
@@ -121,7 +128,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(shpr, tableRanges))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRanges))
 	multiIndex, err := NewMultiIndex(indices...)
 	if err != nil {
 		return err
@@ -130,6 +137,17 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 	s.indexStore = NewIndexClient(multiIndex)
 
 	return nil
+}
+
+func (s *store) Stop() {
+	s.stopOnce.Do(func() {
+		if hm, ok := s.indexWriter.(*HeadManager); ok {
+			if err := hm.Stop(); err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to stop head manager", "err", err)
+			}
+		}
+		s.indexShipper.Stop()
+	})
 }
 
 type failingIndexWriter struct{}
