@@ -44,6 +44,9 @@ const (
 
 	// HerokuDrainTargetType is a Heroku Logs target
 	HerokuDrainTargetType = TargetType("HerokuDrain")
+
+	// GCPPushTargetType is a GCP PubSub Push target
+	GCPPushTargetType = TargetType("GCPPush")
 )
 
 // Target is a promtail scrape target

@@ -373,6 +373,19 @@ type HerokuDrainTargetConfig struct {
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
+// GCPPushTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.
+type GCPPushTargetConfig struct {
+	// Server is the weaveworks server config for listening connections
+	Server server.Config `yaml:"server"`
+
+	// Labels optionally holds labels to associate with each record received on the push api.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming heroku log entry timestamp. If false,
+	// promtail will assign the current timestamp to the log entry when it was processed.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
 // PushTargetConfig describes a scrape config that listens for Loki push messages.
 type PushTargetConfig struct {
 	// Server is the weaveworks server config for listening connections
