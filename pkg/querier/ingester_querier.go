@@ -255,7 +255,7 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 					break
 				}
 				newLabels[key] = val
-				counts += 1
+				counts++
 			}
 			ss.Labels = newLabels
 			result.Series = append(result.Series, ss)
