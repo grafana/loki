@@ -8,9 +8,11 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       target: 'distributor',
     },
 
+  distributor_ports:: $.util.defaultPorts,
+
   distributor_container::
     container.new('distributor', $._images.distributor) +
-    container.withPorts($.util.defaultPorts) +
+    container.withPorts($.distributor_ports) +
     container.withArgsMixin(k.util.mapToFlags($.distributor_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
@@ -35,5 +37,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
   distributor_service:
-    k.util.serviceFor($.distributor_deployment),
+    k.util.serviceFor($.distributor_deployment, $._config.service_ignored_labels),
 }

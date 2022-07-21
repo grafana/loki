@@ -1,0 +1,11 @@
+groups:
+  - name: always-firing
+    rules:
+      - alert: fire
+        expr: |
+          1 > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: test

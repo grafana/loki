@@ -3,7 +3,7 @@ package manifests_test
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 )
@@ -13,10 +13,10 @@ func TestNewIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -39,10 +39,10 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	sts := manifests.NewIngesterStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},

@@ -51,8 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m, err := NewShardMapper(2, nilShardMetrics)
-	require.Nil(t, err)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -106,14 +105,15 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder()))
+			mapped, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
+			require.Nil(t, err)
+			require.Equal(t, tc.out, mapped)
 		})
 	}
 }
 
 func TestMappingStrings(t *testing.T) {
-	m, err := NewShardMapper(2, nilShardMetrics)
-	require.Nil(t, err)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -255,6 +255,14 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
+		{
+			in:  `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+			out: `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+		},
+		{
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
@@ -269,8 +277,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m, err := NewShardMapper(2, nilShardMetrics)
-	require.Nil(t, err)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
 
 	for _, tc := range []struct {
 		in   string

@@ -15,6 +15,7 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/grafana/dskit/flagext"
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,23 +39,12 @@ const (
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
 	noClientKey           = azblob.ClientProvidedKeyOptions{}
-	endpoints             = map[string]struct{ blobURLFmt, containerURLFmt string }{
-		azureGlobal: {
-			"https://%s.blob.core.windows.net/%s/%s",
-			"https://%s.blob.core.windows.net/%s",
-		},
-		azureChinaCloud: {
-			"https://%s.blob.core.chinacloudapi.cn/%s/%s",
-			"https://%s.blob.core.chinacloudapi.cn/%s",
-		},
-		azureGermanCloud: {
-			"https://%s.blob.core.cloudapi.de/%s/%s",
-			"https://%s.blob.core.cloudapi.de/%s",
-		},
-		azureUSGovernment: {
-			"https://%s.blob.core.usgovcloudapi.net/%s/%s",
-			"https://%s.blob.core.usgovcloudapi.net/%s",
-		},
+
+	defaultEndpoints = map[string]string{
+		azureGlobal:       "blob.core.windows.net",
+		azureChinaCloud:   "blob.core.chinacloudapi.cn",
+		azureGermanCloud:  "blob.core.cloudapi.de",
+		azureUSGovernment: "blob.core.usgovcloudapi.net",
 	}
 
 	// default Azure http client.
@@ -83,10 +73,13 @@ var (
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
 	Environment        string         `yaml:"environment"`
+	StorageAccountName string         `yaml:"account_name"`
+	StorageAccountKey  flagext.Secret `yaml:"account_key"`
 	ContainerName      string         `yaml:"container_name"`
-	AccountName        string         `yaml:"account_name"`
+	Endpoint           string         `yaml:"endpoint_suffix"`
+	UseManagedIdentity bool           `yaml:"use_managed_identity"`
+	UserAssignedID     string         `yaml:"user_assigned_id"`
 	ChunkDelimiter     string         `yaml:"chunk_delimiter"`
-	AccountKey         flagext.Secret `yaml:"account_key"`
 	DownloadBufferSize int            `yaml:"download_buffer_size"`
 	UploadBufferSize   int            `yaml:"upload_buffer_size"`
 	UploadBufferCount  int            `yaml:"upload_buffer_count"`
@@ -94,7 +87,6 @@ type BlobStorageConfig struct {
 	MaxRetries         int            `yaml:"max_retries"`
 	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
 	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
-	UseManagedIdentity bool           `yaml:"use_managed_identity"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -105,10 +97,13 @@ func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.Environment, prefix+"azure.environment", azureGlobal, fmt.Sprintf("Azure Cloud environment. Supported values are: %s.", strings.Join(supportedEnvironments, ", ")))
-	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "loki", "Name of the blob container used to store chunks. This container must be created before running Loki.")
-	f.StringVar(&c.AccountName, prefix+"azure.account-name", "", "The Microsoft Azure account name to be used")
+	f.StringVar(&c.StorageAccountName, prefix+"azure.account-name", "", "Azure storage account name.")
+	f.Var(&c.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key.")
+	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "loki", "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
+	f.StringVar(&c.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
+	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity to authenticate to the Azure storage account.")
+	f.StringVar(&c.UserAssignedID, prefix+"azure.user-assigned-id", "", "User assigned identity ID to authenticate to the Azure storage account.")
 	f.StringVar(&c.ChunkDelimiter, prefix+"azure.chunk-delimiter", "-", "Chunk delimiter for blob ID to be used")
-	f.Var(&c.AccountKey, prefix+"azure.account-key", "The Microsoft Azure account key to use.")
 	f.DurationVar(&c.RequestTimeout, prefix+"azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage.")
 	f.IntVar(&c.DownloadBufferSize, prefix+"azure.download-buffer-size", 512000, "Preallocated buffer size for downloads.")
 	f.IntVar(&c.UploadBufferSize, prefix+"azure.upload-buffer-size", 256000, "Preallocated buffer size for uploads.")
@@ -116,7 +111,6 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
 	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
 	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
-	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity or not.")
 }
 
 type BlobStorageMetrics struct {
@@ -256,7 +250,7 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 	blobID = strings.Replace(blobID, ":", b.cfg.ChunkDelimiter, -1)
 
 	// generate url for new chunk blob
-	u, err := url.Parse(fmt.Sprintf(b.selectBlobURLFmt(), b.cfg.AccountName, b.cfg.ContainerName, blobID))
+	u, err := url.Parse(fmt.Sprintf(b.selectBlobURLFmt(), b.cfg.StorageAccountName, b.cfg.ContainerName, blobID))
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -269,7 +263,7 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 }
 
 func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
-	u, err := url.Parse(fmt.Sprintf(b.selectContainerURLFmt(), b.cfg.AccountName, b.cfg.ContainerName))
+	u, err := url.Parse(fmt.Sprintf(b.selectContainerURLFmt(), b.cfg.StorageAccountName, b.cfg.ContainerName))
 	if err != nil {
 		return azblob.ContainerURL{}, err
 	}
@@ -287,11 +281,6 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 			RetryDelay:    b.cfg.MinRetryDelay,
 			MaxRetryDelay: b.cfg.MaxRetryDelay,
 		},
-	}
-
-	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.String())
-	if err != nil {
-		return nil, err
 	}
 
 	client := defaultClientFactory()
@@ -316,7 +305,12 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		})
 	}
 
-	if !b.cfg.UseManagedIdentity {
+	if !b.cfg.UseManagedIdentity && b.cfg.UserAssignedID == "" {
+		credential, err := azblob.NewSharedKeyCredential(b.cfg.StorageAccountName, b.cfg.StorageAccountKey.String())
+		if err != nil {
+			return nil, err
+		}
+
 		return azblob.NewPipeline(credential, opts), nil
 	}
 
@@ -329,7 +323,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 }
 
 func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
-	spt, err := b.fetchMSIToken()
+	spt, err := b.getServicePrincipalToken()
 	if err != nil {
 		return nil, err
 	}
@@ -357,18 +351,25 @@ func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
 	return &tc, nil
 }
 
-func (b *BlobStorage) fetchMSIToken() (*adal.ServicePrincipalToken, error) {
-	// msiEndpoint is the well known endpoint for getting MSI authentications tokens
-	// msiEndpoint := "http://169.254.169.254/metadata/identity/oauth2/token" for production Jobs
-	msiEndpoint, _ := adal.GetMSIVMEndpoint()
-
-	// both can be empty, systemAssignedMSI scenario
-	spt, err := adal.NewServicePrincipalTokenFromMSI(msiEndpoint, "https://storage.azure.com/")
-	if err != nil {
-		return nil, err
+func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, error) {
+	var endpoint string
+	if b.cfg.Endpoint != "" {
+		endpoint = b.cfg.Endpoint
+	} else {
+		endpoint = defaultEndpoints[b.cfg.Environment]
 	}
 
-	return spt, spt.Refresh()
+	resource := fmt.Sprintf("https://%s.%s", b.cfg.StorageAccountName, endpoint)
+
+	msiConfig := auth.MSIConfig{
+		Resource: resource,
+	}
+
+	if b.cfg.UserAssignedID != "" {
+		msiConfig.ClientID = b.cfg.UserAssignedID
+	}
+
+	return msiConfig.ServicePrincipalToken()
 }
 
 // List implements chunk.ObjectClient.
@@ -434,11 +435,11 @@ func (c *BlobStorageConfig) Validate() error {
 }
 
 func (b *BlobStorage) selectBlobURLFmt() string {
-	return endpoints[b.cfg.Environment].blobURLFmt
+	return fmt.Sprintf("https://%%s.%s/%%s/%%s", defaultEndpoints[b.cfg.Environment])
 }
 
 func (b *BlobStorage) selectContainerURLFmt() string {
-	return endpoints[b.cfg.Environment].containerURLFmt
+	return fmt.Sprintf("https://%%s.%s/%%s", defaultEndpoints[b.cfg.Environment])
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.

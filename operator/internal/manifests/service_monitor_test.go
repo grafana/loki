@@ -6,7 +6,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,39 +21,44 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 		ServiceMonitor *monitoringv1.ServiceMonitor
 	}
 
-	flags := FeatureFlags{
-		EnableCertificateSigningService: true,
-		EnableServiceMonitors:           true,
-		EnableTLSServiceMonitorConfig:   true,
+	featureGates := configv1.FeatureGates{
+		ServiceMonitors:            true,
+		ServiceMonitorTLSEndpoints: true,
+		OpenShift: configv1.OpenShiftFeatureGates{
+			ServingCertsService: true,
+		},
 	}
 
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
-		Flags:     flags,
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXExtraSmall,
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Gates:     featureGates,
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -88,6 +94,10 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 			Service:        NewIndexGatewayHTTPService(opt),
 			ServiceMonitor: NewIndexGatewayServiceMonitor(opt),
 		},
+		{
+			Service:        NewRulerHTTPService(opt),
+			ServiceMonitor: NewRulerServiceMonitor(opt),
+		},
 	}
 
 	for _, tst := range table {
@@ -105,25 +115,27 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 }
 
 func TestServiceMonitorEndpoints_ForOpenShiftLoggingMode(t *testing.T) {
-	flags := FeatureFlags{
-		EnableGateway:                   true,
-		EnableCertificateSigningService: true,
-		EnableServiceMonitors:           true,
-		EnableTLSServiceMonitorConfig:   true,
+	featureGates := configv1.FeatureGates{
+		LokiStackGateway:           true,
+		ServiceMonitors:            true,
+		ServiceMonitorTLSEndpoints: true,
+		OpenShift: configv1.OpenShiftFeatureGates{
+			ServingCertsService: true,
+		},
 	}
 
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
-		Flags:     flags,
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXExtraSmall,
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+		Gates:     featureGates,
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},

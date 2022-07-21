@@ -2,11 +2,13 @@ package tsdb
 
 import (
 	"context"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -25,10 +27,10 @@ func NewMultiTenantIndex(idx Index) *MultiTenantIndex {
 	return &MultiTenantIndex{idx: idx}
 }
 
-func withTenantLabel(userID string, matchers []*labels.Matcher) []*labels.Matcher {
-	cpy := make([]*labels.Matcher, len(matchers))
-	copy(cpy, matchers)
-	cpy = append(cpy, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID))
+func withTenantLabelMatcher(userID string, matchers []*labels.Matcher) []*labels.Matcher {
+	cpy := make([]*labels.Matcher, len(matchers)+1)
+	cpy[0] = labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID)
+	copy(cpy[1:], matchers)
 	return cpy
 }
 
@@ -51,11 +53,11 @@ func (m *MultiTenantIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilter
 func (m *MultiTenantIndex) Close() error { return m.idx.Close() }
 
 func (m *MultiTenantIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	return m.idx.GetChunkRefs(ctx, userID, from, through, res, shard, withTenantLabel(userID, matchers)...)
+	return m.idx.GetChunkRefs(ctx, userID, from, through, res, shard, withTenantLabelMatcher(userID, matchers)...)
 }
 
 func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	xs, err := m.idx.Series(ctx, userID, from, through, res, shard, withTenantLabel(userID, matchers)...)
+	xs, err := m.idx.Series(ctx, userID, from, through, res, shard, withTenantLabelMatcher(userID, matchers)...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,9 +68,28 @@ func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, thro
 }
 
 func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	return m.idx.LabelNames(ctx, userID, from, through, withTenantLabel(userID, matchers)...)
+	res, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Strip out the tenant label in response.
+	i := sort.SearchStrings(res, TenantLabel)
+	if i == len(res) || res[i] != TenantLabel {
+		return res, nil
+	}
+
+	return append(res[:i], res[i+1:]...), nil
 }
 
 func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	return m.idx.LabelValues(ctx, userID, from, through, name, withTenantLabel(userID, matchers)...)
+	// Prevent queries for the internal tenant label
+	if name == TenantLabel {
+		return nil, nil
+	}
+	return m.idx.LabelValues(ctx, userID, from, through, name, withTenantLabelMatcher(userID, matchers)...)
+}
+
+func (m *MultiTenantIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+	return m.idx.Stats(ctx, userID, from, through, blooms, shard, withTenantLabelMatcher(userID, matchers)...)
 }

@@ -25,9 +25,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -35,6 +36,13 @@ import (
 // This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 // in tests for creating multiple instances of it at a time.
 var boltDBIndexClientWithShipper index.Client
+
+// ResetBoltDBIndexClientWithShipper allows to reset the singleton.
+// MUST ONLY BE USED IN TESTS
+func ResetBoltDBIndexClientWithShipper() {
+	boltDBIndexClientWithShipper.Stop()
+	boltDBIndexClientWithShipper = nil
+}
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
@@ -120,11 +128,14 @@ func (cfg *Config) Validate() error {
 	if err := cfg.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
 	}
+	if err := cfg.TSDBShipperConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid tsdb config")
+	}
 	return nil
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, registerer prometheus.Registerer) (index.Client, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (index.Client, error) {
 	switch name {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
@@ -156,8 +167,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if shouldUseBoltDBIndexGatewayClient(cfg) {
-			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
+		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
+			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
 			}
@@ -171,7 +182,10 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, registerer)
+		tableRanges := getIndexStoreTableRanges(config.BoltDBShipperType, schemaCfg.Configs)
+
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
+			ownsTenantFn, tableRanges, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	default:
@@ -264,12 +278,16 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case config.StorageTypeGrpc:
 		return grpc.NewTableClient(cfg.GrpcConfig)
-	case config.BoltDBShipperType:
+	case config.BoltDBShipperType, config.TSDBType:
 		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
-		return shipper.NewBoltDBShipperTableClient(objectClient, cfg.BoltDBShipperConfig.SharedStoreKeyPrefix), nil
+		sharedStoreKeyPrefix := cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
+		if name == config.TSDBType {
+			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
+		}
+		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
 	}

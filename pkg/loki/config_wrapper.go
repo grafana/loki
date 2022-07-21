@@ -42,7 +42,7 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
 	f.BoolVar(&c.LogConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
-	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
+	f.StringVar(&c.ConfigFile, "config.file", "config.yaml,config/config.yaml", "configuration file to load, can be a comma separated list of paths, first existing file will be used")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
@@ -85,6 +85,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyInstanceConfigs(r, &defaults)
 
+		applyCommonCacheConfigs(r, &defaults)
+
 		applyCommonReplicationFactor(r, &defaults)
 
 		applyDynamicRingConfigs(r, &defaults)
@@ -99,12 +101,12 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if len(r.SchemaConfig.Configs) > 0 && config.UsingBoltdbShipper(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults)
+		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
-		if len(r.SchemaConfig.Configs) > 0 && config.UsingTSDB(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults)
+		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
 		applyFIFOCacheConfig(r)
@@ -114,6 +116,27 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		return nil
 	}
+}
+
+func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodConfig) bool) int {
+	for i := len(configs) - 1; i >= 0; i-- {
+		if predicate(configs[i]) {
+			return i
+		}
+	}
+	return len(configs)
+}
+
+func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
+	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
+		return p.IndexType == config.BoltDBShipperType
+	})
+}
+
+func lastTSDBConfig(configs []config.PeriodConfig) int {
+	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
+		return p.IndexType == config.TSDBType
+	})
 }
 
 // applyInstanceConfigs apply to Loki components instance-related configurations under the common
@@ -132,6 +155,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -140,6 +164,18 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+	}
+}
+
+// applyCommonCacheConfigs applies to Loki components the cache-related configurations under the common config section
+// NOTE: only used for GroupCache at the moment
+// TODO: apply to other caches as well
+func applyCommonCacheConfigs(r, _ *ConfigWrapper) {
+	if r.Config.Common.GroupCacheConfig.Enabled {
+		r.Config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache = true
+		r.Config.QueryRange.ResultsCacheConfig.CacheConfig.EnableGroupCache = true
+		r.Config.StorageConfig.IndexQueriesCacheConfig.EnableGroupCache = true
 	}
 }
 
@@ -267,6 +303,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	// GroupCacheRing
+	if mergeWithExisting || reflect.DeepEqual(r.Common.GroupCacheConfig.Ring, defaults.Common.GroupCacheConfig.Ring) {
+		r.Common.GroupCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Common.GroupCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Common.GroupCacheConfig.Ring.InstancePort = rc.InstancePort
+		r.Common.GroupCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
+		r.Common.GroupCacheConfig.Ring.InstanceID = rc.InstanceID
+		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Common.GroupCacheConfig.Ring.InstanceZone = rc.InstanceZone
+		r.Common.GroupCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Common.GroupCacheConfig.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -297,6 +346,11 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
 
+	f, err = tokensFile(cfg, "groupcache.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.Common.GroupCacheConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -374,6 +428,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.GroupCacheConfig.Ring.InstanceInterfaceNames) {
+		cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -387,6 +445,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.Common.GroupCacheConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -486,16 +545,14 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
-	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
 
 	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -511,16 +568,14 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 	}
 }
 
-func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper) {
-	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
 
 	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -543,12 +598,12 @@ func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper) {
 // (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
-	if !cache.IsRedisSet(chunkCacheConfig) && !cache.IsMemcacheSet(chunkCacheConfig) {
+	if !cache.IsCacheConfigured(chunkCacheConfig) {
 		r.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = true
 	}
 
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
-	if !cache.IsRedisSet(resultsCacheConfig) && !cache.IsMemcacheSet(resultsCacheConfig) {
+	if !cache.IsCacheConfigured(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
 		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
 		// so instead we will override them here.

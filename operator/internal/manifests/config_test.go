@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,14 +44,14 @@ func randomConfigOptions() manifests.Options {
 		Name:      uuid.New().String(),
 		Namespace: uuid.New().String(),
 		Image:     uuid.New().String(),
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size:              lokiv1beta1.SizeOneXExtraSmall,
-			Storage:           lokiv1beta1.ObjectStorageSpec{},
+		Stack: lokiv1.LokiStackSpec{
+			Size:              lokiv1.SizeOneXExtraSmall,
+			Storage:           lokiv1.ObjectStorageSpec{},
 			StorageClassName:  uuid.New().String(),
 			ReplicationFactor: rand.Int31(),
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             rand.Int31(),
 						IngestionBurstSize:        rand.Int31(),
 						MaxLabelNameLength:        rand.Int31(),
@@ -60,15 +60,15 @@ func randomConfigOptions() manifests.Options {
 						MaxGlobalStreamsPerTenant: rand.Int31(),
 						MaxLineSize:               rand.Int31(),
 					},
-					QueryLimits: &lokiv1beta1.QueryLimitSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: rand.Int31(),
 						MaxChunksPerQuery:       rand.Int31(),
 						MaxQuerySeries:          rand.Int31(),
 					},
 				},
-				Tenants: map[string]lokiv1beta1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.LimitsTemplateSpec{
 					uuid.New().String(): {
-						IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             rand.Int31(),
 							IngestionBurstSize:        rand.Int31(),
 							MaxLabelNameLength:        rand.Int31(),
@@ -77,7 +77,7 @@ func randomConfigOptions() manifests.Options {
 							MaxGlobalStreamsPerTenant: rand.Int31(),
 							MaxLineSize:               rand.Int31(),
 						},
-						QueryLimits: &lokiv1beta1.QueryLimitSpec{
+						QueryLimits: &lokiv1.QueryLimitSpec{
 							MaxEntriesLimitPerQuery: rand.Int31(),
 							MaxChunksPerQuery:       rand.Int31(),
 							MaxQuerySeries:          rand.Int31(),
@@ -85,8 +85,8 @@ func randomConfigOptions() manifests.Options {
 					},
 				},
 			},
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
@@ -101,7 +101,7 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
@@ -116,7 +116,7 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
@@ -131,7 +131,7 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
@@ -146,7 +146,7 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
@@ -161,7 +161,7 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),

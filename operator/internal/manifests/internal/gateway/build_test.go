@@ -3,7 +3,7 @@ package gateway
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/require"
 )
@@ -45,15 +45,15 @@ roles:
   - test-a
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.Static,
-				Authentication: []lokiv1beta1.AuthenticationSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+				Authentication: []lokiv1.AuthenticationSpec{
 					{
 						TenantName: "test-a",
 						TenantID:   "test",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							Secret: &lokiv1beta1.TenantSecretSpec{
+						OIDC: &lokiv1.OIDCSpec{
+							Secret: &lokiv1.TenantSecretSpec{
 								Name: "test",
 							},
 							IssuerURL:     "https://127.0.0.1:5556/dex",
@@ -63,19 +63,19 @@ roles:
 						},
 					},
 				},
-				Authorization: &lokiv1beta1.AuthorizationSpec{
-					Roles: []lokiv1beta1.RoleSpec{
+				Authorization: &lokiv1.AuthorizationSpec{
+					Roles: []lokiv1.RoleSpec{
 						{
 							Name:        "some-name",
 							Resources:   []string{"metrics"},
 							Tenants:     []string{"test-a"},
-							Permissions: []lokiv1beta1.PermissionType{"read"},
+							Permissions: []lokiv1.PermissionType{"read"},
 						},
 					},
-					RoleBindings: []lokiv1beta1.RoleBindingsSpec{
+					RoleBindings: []lokiv1.RoleBindingsSpec{
 						{
 							Name: "test-a",
-							Subjects: []lokiv1beta1.Subject{
+							Subjects: []lokiv1.Subject{
 								{
 									Name: "test@example.com",
 									Kind: "user",
@@ -122,15 +122,15 @@ tenants:
     url: http://127.0.0.1:8181/v1/data/observatorium/allow
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.Dynamic,
-				Authentication: []lokiv1beta1.AuthenticationSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Dynamic,
+				Authentication: []lokiv1.AuthenticationSpec{
 					{
 						TenantName: "test-a",
 						TenantID:   "test",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							Secret: &lokiv1beta1.TenantSecretSpec{
+						OIDC: &lokiv1.OIDCSpec{
+							Secret: &lokiv1.TenantSecretSpec{
 								Name: "test",
 							},
 							IssuerURL:     "https://127.0.0.1:5556/dex",
@@ -140,8 +140,8 @@ tenants:
 						},
 					},
 				},
-				Authorization: &lokiv1beta1.AuthorizationSpec{
-					OPA: &lokiv1beta1.OPASpec{
+				Authorization: &lokiv1.AuthorizationSpec{
+					OPA: &lokiv1.OPASpec{
 						URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
 					},
 				},
@@ -197,9 +197,9 @@ tenants:
     withAccessToken: true
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+		Stack: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 		OpenShiftOptions: openshift.Options{

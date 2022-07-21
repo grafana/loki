@@ -76,6 +76,8 @@ type FileTarget struct {
 	tails map[string]*tailer
 
 	targetConfig *Config
+
+	encoding string
 }
 
 // NewFileTarget create a new FileTarget.
@@ -91,6 +93,7 @@ func NewFileTarget(
 	targetConfig *Config,
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
+	encoding string,
 ) (*FileTarget, error) {
 	t := &FileTarget{
 		logger:             logger,
@@ -107,6 +110,7 @@ func NewFileTarget(
 		targetConfig:       targetConfig,
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
+		encoding:           encoding,
 	}
 
 	go t.run()
@@ -168,7 +172,11 @@ func (t *FileTarget) run() {
 
 	for {
 		select {
-		case event := <-t.fileEventWatcher:
+		case event, ok := <-t.fileEventWatcher:
+			if !ok {
+				// fileEventWatcher has been closed
+				return
+			}
 			switch event.Op {
 			case fsnotify.Create:
 				t.startTailing([]string{event.Name})
@@ -312,7 +320,7 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
+		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 			continue

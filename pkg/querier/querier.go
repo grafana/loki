@@ -6,23 +6,23 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
-
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -83,6 +83,7 @@ type Querier interface {
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
+	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 }
 
 // SingleTenantQuerier handles single tenant queries.
@@ -121,7 +122,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
@@ -175,7 +176,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
@@ -357,36 +358,43 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
+	g, ctx := errgroup.WithContext(ctx)
+
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
 
 	var ingesterValues [][]string
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
-		timeFramedReq := *req
-		timeFramedReq.Start = &ingesterQueryInterval.start
-		timeFramedReq.End = &ingesterQueryInterval.end
+		g.Go(func() error {
+			var err error
+			timeFramedReq := *req
+			timeFramedReq.Start = &ingesterQueryInterval.start
+			timeFramedReq.End = &ingesterQueryInterval.end
 
-		ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
-		if err != nil {
-			return nil, err
-		}
+			ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
+			return err
+		})
 	}
 
 	var storeValues []string
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
-		from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
-		through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+		g.Go(func() error {
+			var (
+				err     error
+				from    = model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+				through = model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			)
 
-		if req.Values {
-			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
-			if err != nil {
-				return nil, err
+			if req.Values {
+				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+			} else {
+				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 			}
-		} else {
-			storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-			if err != nil {
-				return nil, err
-			}
-		}
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	results := append(ingesterValues, storeValues)
@@ -409,7 +417,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 
 	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	histReq := logql.SelectLogParams{
@@ -676,4 +684,34 @@ func (q *SingleTenantQuerier) checkTailRequestLimit(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	start, end, err := validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
+	return q.store.Stats(
+		ctx,
+		userID,
+		model.TimeFromUnixNano(start.UnixNano()),
+		model.TimeFromUnixNano(end.UnixNano()),
+		matchers...,
+	)
+
 }

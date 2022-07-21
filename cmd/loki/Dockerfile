@@ -1,4 +1,4 @@
-FROM golang:1.17.9 as build
+FROM golang:1.18.4 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
@@ -20,7 +20,7 @@ RUN mkdir -p /loki/rules && \
 # See https://github.com/grafana/loki/issues/1928
 RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
-USER loki
+USER 10001
 EXPOSE 3100
 ENTRYPOINT [ "/usr/bin/loki" ]
 CMD ["-config.file=/etc/loki/local-config.yaml"]

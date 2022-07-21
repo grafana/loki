@@ -60,6 +60,7 @@ type DefaultClient struct {
 	Retries         int
 	QueryTags       string
 	AuthHeader      string
+	ProxyURL        string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -191,6 +192,14 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
+	if c.ProxyURL != "" {
+		prox, err := url.Parse(c.ProxyURL)
+		if err != nil {
+			return err
+		}
+		clientConfig.ProxyURL = config.URL{URL: prox}
+	}
+
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return err
@@ -313,6 +322,12 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
+	}
+
+	if c.ProxyURL != "" {
+		ws.Proxy = func(req *http.Request) (*url.URL, error) {
+			return url.Parse(c.ProxyURL)
+		}
 	}
 
 	conn, resp, err := ws.Dial(us, h)

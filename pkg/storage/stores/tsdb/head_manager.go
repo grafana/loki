@@ -23,6 +23,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/wal"
 )
@@ -127,8 +128,6 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 			indices = append(indices, m.activeHeads)
 		}
 
-		indices = append(indices, m.tsdbManager)
-
 		return NewMultiIndex(indices...)
 
 	})
@@ -139,7 +138,11 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 func (m *HeadManager) Stop() error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	return m.active.Stop()
+	if err := m.active.Stop(); err != nil {
+		return err
+	}
+
+	return m.buildTSDBFromWAL(m.active.initialized)
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
@@ -175,52 +178,36 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	now := time.Now()
-	curPeriod := m.period.PeriodFor(now)
-
 	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
 	}
 	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
-	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
-
 	// Load the shipper with any previously built TSDBs
 	if err := m.tsdbManager.Start(); err != nil {
 		return errors.Wrap(err, "failed to start tsdb manager")
 	}
 
-	// Build any old WALs into TSDBs for the shipper
+	// Build any old WALs into a TSDB for the shipper
+	var allWALs []WALIdentifier
 	for _, group := range walsByPeriod {
-		if group.period < curPeriod {
-			if err := m.tsdbManager.BuildFromWALs(
-				m.period.TimeForPeriod(group.period),
-				group.wals,
-			); err != nil {
-				return errors.Wrap(err, "building tsdb")
-			}
-			// Now that we've built tsdbs of this data, we can safely remove the WALs
-			if err := m.removeWALGroup(group); err != nil {
-				return errors.Wrapf(err, "removing wals for period %d", group.period)
-			}
-		}
-
-		if group.period >= curPeriod {
-			if err := recoverHead(m.dir, m.activeHeads, group.wals); err != nil {
-				return errors.Wrap(err, "recovering tsdb head from wal")
-			}
-		}
+		allWALs = append(allWALs, group.wals...)
 	}
 
-	nextWALPath := walPath(m.dir, now)
-	nextWAL, err := newHeadWAL(m.log, nextWALPath, now)
-	if err != nil {
-		return errors.Wrapf(err, "creating tsdb wal: %s", nextWALPath)
+	now := time.Now()
+	if err := m.tsdbManager.BuildFromWALs(
+		now,
+		allWALs,
+	); err != nil {
+		return errors.Wrap(err, "building tsdb")
 	}
-	m.active = nextWAL
 
-	return nil
+	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
+		return errors.New("cleaning (removing) wal dir")
+	}
+
+	return m.Rotate(now)
 }
 
 func managerRequiredDirs(parent string) []string {
@@ -248,6 +235,14 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if m.activeHeads != nil && m.period.PeriodFor(t) == m.period.PeriodFor(m.activeHeads.start) {
+		// no-op, we've already rotated to the desired period
+		return nil
+	}
+
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -272,47 +267,50 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	}
 
 	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
-	m.mtx.Lock()
 	m.prev = m.active
 	m.prevHeads = m.activeHeads
 	m.active = nextWAL
 	m.activeHeads = nextHeads
-	m.mtx.Unlock()
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
 
 	// build tsdb from rotated-out period
 	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
 	if m.prev != nil {
-		level.Debug(m.log).Log("msg", "combining tsdb WALs")
-		grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(m.prev.initialized))
-		if err != nil {
-			return errors.Wrap(err, "listing wals")
+		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			return errors.Wrap(err, "building tsdb from rotated out period")
 		}
-		level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
-
-		// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
-		// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
-		// TSDBs from orphaned WALs of previous periods during startup.
-		// we use the m.prev.initialized timestamp here for the filename to ensure it can't clobber
-		// an existing file from a previous cycle. I don't think this is possible, but
-		// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
-		if err := m.tsdbManager.BuildFromWALs(m.prev.initialized, grp.wals); err != nil {
-			return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
-		}
-
-		// Now that a TSDB has been created from this group, it's safe to remove them
-		if err := m.removeWALGroup(grp); err != nil {
-			return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
-		}
-		level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
-
 	}
 
 	// Now that the tsdbManager has the updated TSDBs, we can remove our references
-	m.mtx.Lock()
 	m.prevHeads = nil
 	m.prev = nil
-	m.mtx.Unlock()
+	return nil
+}
+
+func (m *HeadManager) buildTSDBFromWAL(t time.Time) error {
+	level.Debug(m.log).Log("msg", "combining tsdb WALs")
+	grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(t))
+	if err != nil {
+		return errors.Wrap(err, "listing wals")
+	}
+	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
+
+	// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
+	// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
+	// TSDBs from orphaned WALs of previous periods during startup.
+	// we use the same timestamp as wal here for the filename to ensure it can't clobber
+	// an existing file from a previous cycle. I don't think this is possible, but
+	// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
+	if err := m.tsdbManager.BuildFromWALs(t, grp.wals); err != nil {
+		return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
+	}
+
+	// Now that a TSDB has been created from this group, it's safe to remove them
+	if err := m.removeWALGroup(grp); err != nil {
+		return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+	}
+	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
+
 	return nil
 }
 
@@ -619,8 +617,16 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return blooms, nil
+	}
+	return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+}
+
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas)) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
@@ -644,7 +650,9 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.C
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
-				fn(user, ls, chks)
+				if err := fn(user, ls, chks); err != nil {
+					return err
+				}
 			}
 		}
 	}

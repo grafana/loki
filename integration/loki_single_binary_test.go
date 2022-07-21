@@ -26,7 +26,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 
 	require.NoError(t, clu.Run())
 
-	tenantID := randStringRunes(12)
+	tenantID := randStringRunes()
 	cli := client.New(tenantID, "", tAll.HTTPURL().String())
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	t.Run("label-names", func(t *testing.T) {
 		resp, err := cli.LabelNames()
 		require.NoError(t, err)
-		assert.ElementsMatch(t, []string{"__name__", "job"}, resp)
+		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {

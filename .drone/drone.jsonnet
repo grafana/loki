@@ -3,29 +3,26 @@ local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
 
-local condition(verb) = {
-  tagMain: {
-    ref: {
-      [verb]:
-        [
-          'refs/heads/main',
-          'refs/heads/k??',
-          'refs/tags/v*',
-        ],
-    },
-  },
-  path(path): {
-    paths: {
-      [verb]: [path],
-    },
-  },
+local onPRs = {
+  event: ['pull_request'],
+};
+
+local onTagOrMain = {
+  event: ['push', 'tag'],
+};
+
+local onPath(path) = {
+  paths+: [path],
 };
 
 local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request', 'tag'] },
+  trigger: {
+    // Only trigger pipelines for PRs, tags (v*), or pushes to "main". Excluding runs on grafana/loki (non fork) branches
+    ref: ['refs/heads/main', 'refs/heads/k???', 'refs/tags/v*', 'refs/pull/*/head'],
+  },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -79,6 +76,19 @@ local clients_docker(arch, app) = {
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
+    username: { from_secret: docker_username_secret.name },
+    password: { from_secret: docker_password_secret.name },
+    dry_run: false,
+  },
+};
+
+local docker_operator(arch, operator) = {
+  name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
+  image: 'plugins/docker',
+  settings: {
+    repo: 'grafana/%s' % operator,
+    context: 'operator',
+    dockerfile: 'operator/Dockerfile',
     username: { from_secret: docker_username_secret.name },
     password: { from_secret: docker_password_secret.name },
     dry_run: false,
@@ -145,7 +155,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/loki-query-tee',
@@ -155,7 +165,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/loki-query-tee',
       },
@@ -169,7 +179,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/fluent-bit-plugin-loki',
@@ -179,7 +189,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     clients_docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/fluent-bit-plugin-loki',
       },
@@ -193,7 +203,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/fluent-plugin-loki',
@@ -203,7 +213,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/fluent-plugin-loki',
       },
@@ -217,7 +227,7 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
         repo: 'grafana/logstash-output-loki',
@@ -227,7 +237,7 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
     // publish for tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {
         repo: 'grafana/logstash-output-loki',
       },
@@ -241,7 +251,7 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
     // dry run for everything that is not tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -250,27 +260,19 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
     // publish for tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {},
     },
   ],
   depends_on: ['check'],
 };
 
-local lambda_promtail(tags='') = pipeline('lambda-promtail') {
+local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
   steps+: [
-    {
-      name: 'image-tag',
-      image: 'alpine',
-      commands: [
-        'apk add --no-cache bash git',
-        'git fetch origin --tags',
-        'echo $(./tools/image-tag)-amd64 > .tags',
-      ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
-    },
+    // dry run for everything that is not tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -279,7 +281,28 @@ local lambda_promtail(tags='') = pipeline('lambda-promtail') {
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
+      settings+: {},
+    },
+  ],
+  depends_on: ['check'],
+};
+
+local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker_operator(arch, 'loki-operator') {
+      depends_on: ['image-tag'],
+      when: onPRs,
+      settings+: {
+        dry_run: true,
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker_operator(arch, 'loki-operator') {
+      depends_on: ['image-tag'],
+      when: onTagOrMain,
       settings+: {},
     },
   ],
@@ -291,7 +314,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     // dry run for everything that is not tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
+      when: onPRs,
       settings+: {
         dry_run: true,
       },
@@ -301,7 +324,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
-      when: condition('include').tagMain,
+      when: onTagOrMain,
       settings+: {},
     }
     for app in apps
@@ -342,24 +365,89 @@ local manifest(apps) = pipeline('manifest') {
   ],
 };
 
+local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
+  steps: std.foldl(
+    function(acc, app) acc + [{
+      name: 'manifest-' + app,
+      image: 'plugins/manifest',
+      volumes: [{
+        name: 'dockerconf',
+        path: '/.docker',
+      }],
+      settings: {
+        // the target parameter is abused for the app's name,
+        // as it is unused in spec mode. See docker-manifest-ecr.tmpl
+        target: app,
+        spec: '.drone/docker-manifest-ecr.tmpl',
+        ignore_missing: true,
+      },
+      depends_on: ['clone'] + (
+        // Depend on the previous app, if any.
+        if std.length(acc) > 0
+        then [acc[std.length(acc) - 1].name]
+        else []
+      ),
+    }],
+    apps,
+    [{
+      name: 'ecr-login',
+      image: 'docker:dind',
+      volumes: [{
+        name: 'dockerconf',
+        path: '/root/.docker',
+      }],
+      environment: {
+        AWS_ACCESS_KEY_ID: { from_secret: ecr_key.name },
+        AWS_SECRET_ACCESS_KEY: { from_secret: ecr_secret_key.name },
+      },
+      commands: [
+        'apk add --no-cache aws-cli',
+        'docker login --username AWS --password $(aws ecr-public get-login-password --region us-east-1) public.ecr.aws',
+      ],
+      depends_on: ['clone'],
+    }],
+  ),
+  volumes: [{
+    name: 'dockerconf',
+    temp: {},
+  }],
+  depends_on: [
+    'lambda-promtail-%s' % arch
+    for arch in archs
+  ],
+};
+
 [
   pipeline('loki-build-image') {
+    local build_image_tag = '0.22.0',
     workspace: {
       base: '/src',
       path: 'loki',
     },
     steps: [
       {
+        name: 'test-image',
+        image: 'plugins/docker',
+        when: onPRs + onPath('loki-build-image/**'),
+        settings: {
+          repo: 'grafana/loki-build-image',
+          context: 'loki-build-image',
+          dockerfile: 'loki-build-image/Dockerfile',
+          tags: [build_image_tag],
+          dry_run: true,
+        },
+      },
+      {
         name: 'push-image',
         image: 'plugins/docker',
-        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        when: onTagOrMain + onPath('loki-build-image/**'),
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.4'],
+          tags: [build_image_tag],
           dry_run: false,
         },
       },
@@ -413,6 +501,9 @@ local manifest(apps) = pipeline('manifest') {
         image: 'grafana/jsonnet-build:c8b75df',
         depends_on: ['clone'],
       },
+      make('loki-mixin-check', container=false) {
+        depends_on: ['clone'],
+      },
     ],
   },
 ] + [
@@ -445,21 +536,18 @@ local manifest(apps) = pipeline('manifest') {
   )
   for arch in archs
 ] + [
+  lokioperator(arch)
+  for arch in archs
+] + [
   fluentbit(),
   fluentd(),
   logstash(),
   querytee(),
-] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
-    trigger: condition('include').tagMain {
-      event: ['push', 'tag'],
-    },
+    trigger+: onTagOrMain,
   },
-] + [
   pipeline('deploy') {
-    trigger: condition('include').tagMain {
-      event: ['push', 'tag'],
-    },
+    trigger+: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
@@ -469,6 +557,7 @@ local manifest(apps) = pipeline('manifest') {
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
+          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
         ],
         depends_on: ['clone'],
@@ -485,6 +574,40 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-] + [promtail_win()]
-+ [lambda_promtail('main')]
-+ [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
+  promtail_win(),
+  pipeline('release') {
+    trigger+: {
+      event: ['pull_request', 'tag'],
+    },
+    image_pull_secrets: [pull_secret.name],
+    steps: [
+      run(
+        'test packaging',
+        commands=['make BUILD_IN_CONTAINER=false packages']
+      ) { when: { event: ['pull_request'] } },
+      run(
+        'publish',
+        commands=['make BUILD_IN_CONTAINER=false publish'],
+        env={
+          GITHUB_TOKEN: { from_secret: github_secret.name },
+        }
+      ) { when: { event: ['tag'] } },
+    ],
+  },
+]
++ [
+  lambda_promtail(arch)
+  for arch in ['amd64', 'arm64']
+] + [
+  manifest_ecr(['lambda-promtail'], ['amd64', 'arm64']) {
+    trigger+: { event: ['push'] },
+  },
+] + [
+  github_secret,
+  pull_secret,
+  docker_username_secret,
+  docker_password_secret,
+  ecr_key,
+  ecr_secret_key,
+  deploy_configuration,
+]

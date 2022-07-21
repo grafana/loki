@@ -1,0 +1,43 @@
+apiVersion: config.loki.grafana.com/v1
+kind: ProjectConfig
+health:
+  healthProbeBindAddress: :8081
+metrics:
+  # Bind only on this host to allow accessing metrics
+  # only via the kube-rbac-proxy sidecar.
+  bindAddress: 127.0.0.1:8080
+webhook:
+  port: 9443
+leaderElection:
+  leaderElect: false
+  resourceName: e3716011.grafana.com
+featureGates:
+  #
+  # Monitoring feature gates
+  #
+  serviceMonitors: true
+  serviceMonitorTlsEndpoints: true
+  lokiStackAlerts: true
+  #
+  # Encryption feature gates
+  #
+  httpEncryption: true
+  grpcEncryption: true
+  #
+  # Component feature gates
+  #
+  lokiStackGateway: true
+  grafanaLabsUsageReport: false
+  runtimeSeccompProfile: false
+  #
+  # Webhook feature gates
+  #
+  lokiStackWebhook: true
+  alertingRuleWebhook: true
+  recordingRuleWebhook: true
+  #
+  # OpenShift feature gates
+  #
+  openshift:
+    servingCertsService: true
+    gatewayRoute: true

@@ -9,10 +9,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/series"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -23,17 +24,6 @@ var _ Store = &compositeStore{}
 type StoreLimits interface {
 	MaxChunksPerQueryFromStore(userID string) int
 	MaxQueryLength(userID string) time.Duration
-}
-
-type Index interface {
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
-	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
-	// SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
-	// This is only used for GetSeries implementation.
-	// Todo we might want to pass it as a parameter to GetSeries instead.
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 }
 
 type ChunkWriter interface {
@@ -50,7 +40,7 @@ type storeEntry struct {
 	limits  StoreLimits
 	stop    func()
 	fetcher *fetcher.Fetcher
-	index   Index
+	index   series.IndexStore
 	ChunkWriter
 }
 
@@ -62,6 +52,12 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	level.Debug(log).Log(
+		"shortcut", shortcut,
+		"from", from.Time(),
+		"through", through.Time(),
+		"err", err,
+	)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {
@@ -116,6 +112,20 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 	}
 
 	return c.index.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+}
+
+func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.Stats")
+	defer log.Span.Finish()
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.index.Stats(ctx, userID, from, through, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

@@ -55,10 +55,15 @@ References to undefined variables are replaced by empty strings unless you speci
 To specify a default value, use:
 
 ```
-${VAR:default_value}
+${VAR:-default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
+
+**Note**: With `expand-env=true` the configuration will first run through
+[envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
+slashes with single slashes. Because of this every use of a slash `\` needs to
+be replaced with a double slash `\\`
 
 ### Generic placeholders:
 
@@ -313,6 +318,9 @@ job_name: <string>
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
 
+# Describes from which encoding a scraped file should be converted.
+[encoding: <iana_encoding_name>]
+
 # Describes how to receive logs from syslog.
 [syslog: <syslog_config>]
 
@@ -330,6 +338,9 @@ job_name: <string>
 
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
+
+# Configuration describing how to pull logs from a Heroku LogPlex drain.
+[heroku_drain: <heroku_drain>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
@@ -1186,6 +1197,43 @@ All Cloudflare logs are in JSON. Here is an example:
 
 You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
+### heroku_drain
+
+The `heroku_drain` block configures Promtail to expose a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
+
+Each job configured with a Heroku Drain will expose a Drain and will require a separate port.
+
+The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for each new drain.
+
+Promtail exposes an endpoint at `/heroku/api/v1/drain`, which expects requests from Heroku's log delivery.
+
+```yaml
+# The Heroku drain server configuration options
+[server: <server_config>]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# Whether Promtail should pass on the timestamp from the incoming Heroku drain message.
+# When false, or if no timestamp is present in the syslog message, Promtail will assign the current
+# timestamp to the log when it was processed.
+[use_incoming_timestamp: <boolean> | default = false]
+
+```
+
+#### Available Labels
+
+Heroku Log drains send logs in [Syslog-formatted messages](https://datatracker.ietf.org/doc/html/rfc5424#section-6) (with
+some [minor tweaks](https://devcenter.heroku.com/articles/log-drains#https-drain-caveats); they are not RFC-compatible).
+
+The Heroku Drain target exposes for each log entry the received syslog fields with the following labels:
+
+- `__heroku_drain_host`: The [HOSTNAME](https://tools.ietf.org/html/rfc5424#section-6.2.4) field parsed from the message.
+- `__heroku_drain_app`: The [APP-NAME](https://tools.ietf.org/html/rfc5424#section-6.2.5) field parsed from the message.
+- `__heroku_drain_proc`: The [PROCID](https://tools.ietf.org/html/rfc5424#section-6.2.6) field parsed from the message.
+- `__heroku_drain_log_id`: The [MSGID](https://tools.ietf.org/html/rfc5424#section-6.2.7) field parsed from the message.
+
 ### relabel_configs
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target
@@ -1797,10 +1845,11 @@ sync_period: "10s"
 ## options_config
 
 ```yaml
-# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
-# The default value is "filename". A "host" label is always included.
-# The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about using too many labels, as it can increase cardinality.
+# A comma-separated list of labels to include in the stream lag metric
+# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
+# always included. The stream lag metric indicates which streams are falling behind
+# on writes to Loki; be mindful about using too many labels,
+# as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
 ```
 

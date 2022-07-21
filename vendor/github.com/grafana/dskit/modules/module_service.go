@@ -27,6 +27,16 @@ type moduleService struct {
 	startDeps, stopDeps func(string) map[string]services.Service
 }
 
+type delegatedNamedService struct {
+	services.Service
+
+	delegate services.NamedService
+}
+
+func (n delegatedNamedService) ServiceName() string {
+	return n.delegate.ServiceName()
+}
+
 // NewModuleService wraps a module service, and makes sure that dependencies are started/stopped before module service starts or stops.
 // If any dependency fails to start, this service fails as well.
 // On stop, errors from failed dependencies are ignored.
@@ -40,6 +50,14 @@ func NewModuleService(name string, logger log.Logger, service services.Service, 
 	}
 
 	w.Service = services.NewBasicService(w.start, w.run, w.stop)
+
+	if namedService, isNamed := service.(services.NamedService); isNamed {
+		// return a value that implements services.NamedService only if the wrapped service implements services.NamedService
+		return delegatedNamedService{
+			Service:  w,
+			delegate: namedService,
+		}
+	}
 	return w
 }
 

@@ -52,7 +52,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 
 	require.NoError(t, clu.Run())
 
-	tenantID := randStringRunes(12)
+	tenantID := randStringRunes()
 
 	now := time.Now()
 	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL().String())
@@ -95,7 +95,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	t.Run("label-names", func(t *testing.T) {
 		resp, err := cliQueryFrontend.LabelNames()
 		require.NoError(t, err)
-		assert.ElementsMatch(t, []string{"__name__", "job"}, resp)
+		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {

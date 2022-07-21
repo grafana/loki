@@ -15,5 +15,5 @@ type Limits interface {
 	RejectOldSamples(userID string) bool
 	RejectOldSamplesMaxAge(userID string) time.Duration
 
-	FudgeDuplicateTimestamps(userID string) bool
+	IncrementDuplicateTimestamps(userID string) bool
 }

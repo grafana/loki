@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,28 +20,31 @@ func TestServicesMatchPorts(t *testing.T) {
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXExtraSmall,
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -98,6 +101,13 @@ func TestServicesMatchPorts(t *testing.T) {
 				NewIndexGatewayHTTPService(opt),
 			},
 		},
+		{
+			Containers: NewRulerStatefulSet(opt).Spec.Template.Spec.Containers,
+			Services: []*corev1.Service{
+				NewRulerGRPCService(opt),
+				NewRulerHTTPService(opt),
+			},
+		},
 	}
 
 	containerHasPort := func(containers []corev1.Container, port int32) bool {
@@ -139,28 +149,31 @@ func TestServicesMatchLabels(t *testing.T) {
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXExtraSmall,
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -215,6 +228,13 @@ func TestServicesMatchLabels(t *testing.T) {
 			Services: []*corev1.Service{
 				NewIndexGatewayGRPCService(opt),
 				NewIndexGatewayHTTPService(opt),
+			},
+		},
+		{
+			Object: NewRulerStatefulSet(opt),
+			Services: []*corev1.Service{
+				NewRulerGRPCService(opt),
+				NewRulerHTTPService(opt),
 			},
 		},
 	}

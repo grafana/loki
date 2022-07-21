@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -29,18 +30,20 @@ type tableManager struct {
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
+	metrics   *metrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, storageClient storage.Client) (TableManager, error) {
+func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Registerer) (TableManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := tableManager{
 		cfg:           cfg,
 		storageClient: storageClient,
 		tables:        map[string]Table{},
+		metrics:       newMetrics(reg),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -89,27 +92,38 @@ func (tm *tableManager) AddIndex(tableName, userID string, index index.Index) er
 	return tm.getOrCreateTable(tableName).AddIndex(userID, index)
 }
 
-func (tm *tableManager) getOrCreateTable(tableName string) Table {
+func (tm *tableManager) getTable(tableName string) (Table, bool) {
 	tm.tablesMtx.RLock()
+	defer tm.tablesMtx.RUnlock()
+
 	table, ok := tm.tables[tableName]
-	tm.tablesMtx.RUnlock()
+	return table, ok
+}
 
+func (tm *tableManager) getOrCreateTable(tableName string) Table {
+	table, ok := tm.getTable(tableName)
+	if ok {
+		return table
+	}
+
+	tm.tablesMtx.Lock()
+	defer tm.tablesMtx.Unlock()
+
+	table, ok = tm.tables[tableName]
 	if !ok {
-		tm.tablesMtx.Lock()
-		defer tm.tablesMtx.Unlock()
-
-		table, ok = tm.tables[tableName]
-		if !ok {
-			table = NewTable(tableName, tm.storageClient)
-			tm.tables[tableName] = table
-		}
+		table = NewTable(tableName, tm.storageClient)
+		tm.tables[tableName] = table
 	}
 
 	return table
 }
 
 func (tm *tableManager) ForEach(tableName, userID string, callback index.ForEachIndexCallback) error {
-	table := tm.getOrCreateTable(tableName)
+	table, ok := tm.getTable(tableName)
+	if !ok {
+		return nil
+	}
+
 	return table.ForEach(userID, callback)
 }
 
@@ -119,9 +133,11 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 
 	level.Info(util_log.Logger).Log("msg", "uploading tables")
 
+	status := statusSuccess
 	for _, table := range tm.tables {
 		err := table.Upload(ctx)
 		if err != nil {
+			status = statusFailure
 			level.Error(util_log.Logger).Log("msg", "failed to upload table", "table", table.Name(), "err", err)
 			continue
 		}
@@ -133,4 +149,6 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 			level.Error(util_log.Logger).Log("msg", "failed to cleanup uploaded index past their retention period", "table", table.Name(), "err", err)
 		}
 	}
+
+	tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
 }

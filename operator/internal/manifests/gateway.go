@@ -8,6 +8,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	tlsMetricsSercetVolume = "tls-metrics-secret"
+	tlsSecretVolume = "tls-secret"
 )
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
@@ -40,7 +41,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{cm, dpl, svc, ing}
 
-	if opts.Flags.EnableTLSServiceMonitorConfig {
+	if opts.Gates.HTTPEncryption {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
 		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName); err != nil {
 			return nil, err
@@ -49,16 +50,18 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureDeploymentForMode(dpl, mode, opts.Flags); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 
-		if err := configureServiceForMode(&svc.Spec, mode); err != nil {
+		if err := configureGatewayServiceForMode(&svc.Spec, mode); err != nil {
 			return nil, err
 		}
 
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
+
+	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
 
 	return objs, nil
 }
@@ -211,8 +214,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 // NewGatewayHTTPService creates a k8s service for the lokistack-gateway HTTP endpoint
 func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -221,8 +223,8 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -235,7 +237,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 					Port: gatewayInternalPort,
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -321,7 +323,7 @@ func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 // gatewayConfigOptions converts Options to gateway.Options
 func gatewayConfigOptions(opt Options) gateway.Options {
 	var gatewaySecrets []*gateway.Secret
-	for _, secret := range opt.TenantSecrets {
+	for _, secret := range opt.Tenants.Secrets {
 		gatewaySecret := &gateway.Secret{
 			TenantName:   secret.TenantName,
 			ClientID:     secret.ClientID,
@@ -331,20 +333,12 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 		gatewaySecrets = append(gatewaySecrets, gatewaySecret)
 	}
 
-	tenantConfigMap := make(map[string]gateway.TenantData)
-	for tenant, tenantData := range opt.TenantConfigMap {
-		tenantConfigMap[tenant] = gateway.TenantData{
-			CookieSecret: tenantData.CookieSecret,
-		}
-	}
-
 	return gateway.Options{
 		Stack:            opt.Stack,
 		Namespace:        opt.Namespace,
 		Name:             opt.Name,
 		OpenShiftOptions: opt.OpenShiftOptions,
 		TenantSecrets:    gatewaySecrets,
-		TenantConfigMap:  tenantConfigMap,
 	}
 }
 
@@ -357,17 +351,16 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 		}
 	}
 
-	secretName := signingServiceSecretName(serviceName)
-	certFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayCertFile)
-	keyFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayKeyFile)
+	certFile := path.Join(httpTLSDir, tlsCertFile)
+	keyFile := path.Join(httpTLSDir, tlsKeyFile)
 
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: tlsMetricsSercetVolume,
+				Name: tlsSecretVolume,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+						SecretName: serviceName,
 					},
 				},
 			},
@@ -376,9 +369,9 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      tlsMetricsSercetVolume,
+				Name:      tlsSecretVolume,
 				ReadOnly:  true,
-				MountPath: gateway.LokiGatewayTLSDir,
+				MountPath: httpTLSDir,
 			},
 		},
 		Args: []string{
@@ -416,4 +409,15 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	}
 
 	return nil
+}
+
+func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
+	podSpec := d.Spec.Template.Spec
+
+	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
+	for i := range podSpec.Containers {
+		podSpec.Containers[i].SecurityContext = containerSecurityContext()
+	}
+
+	d.Spec.Template.Spec = podSpec
 }

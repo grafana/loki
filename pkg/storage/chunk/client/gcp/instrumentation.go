@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/dskit/middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/middleware"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 )
@@ -30,20 +30,19 @@ var (
 		Name:      "gcs_request_duration_seconds",
 		Help:      "Time spent doing GCS requests.",
 
-		// GCS latency seems to range from a few ms to a few secs and is
-		// important.  So use 6 buckets from 5ms to 5s.
-		Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
+		// 6 buckets from 5ms to 20s.
+		Buckets: prometheus.ExponentialBuckets(0.005, 4, 7),
 	}, []string{"operation", "status_code"})
 )
 
 func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	return []grpc.UnaryClientInterceptor{
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.PrometheusGRPCUnaryInstrumentation(bigtableRequestDuration),
+			middleware.UnaryClientInstrumentInterceptor(bigtableRequestDuration),
 		},
 		[]grpc.StreamClientInterceptor{
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-			middleware.PrometheusGRPCStreamInstrumentation(bigtableRequestDuration),
+			middleware.StreamClientInstrumentInterceptor(bigtableRequestDuration),
 		}
 }
 

@@ -26,6 +26,8 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
@@ -259,6 +261,17 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			EndTs:   *req.End,
 			Path:    r.URL.Path,
 		}, nil
+	case IndexStatsOp:
+		req, err := loghttp.ParseIndexStatsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &indexgatewaypb.IndexStatsRequest{
+			From:     from,
+			Through:  through,
+			Matchers: req.Query,
+		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -366,6 +379,24 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		return req.WithContext(ctx), nil
+	case *indexgatewaypb.IndexStatsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+		u := &url.URL{
+			Path:     "/loki/api/v1/index/stats",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
@@ -423,6 +454,15 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    resp.Data,
 			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
+		}, nil
+	case *indexgatewaypb.IndexStatsRequest:
+		var resp indexgatewaypb.IndexStatsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &IndexStatsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
@@ -536,6 +576,11 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 				return nil, err
 			}
 		}
+	case *IndexStatsResponse:
+		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
+			return nil, err
+		}
+
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}

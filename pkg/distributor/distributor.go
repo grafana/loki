@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -20,14 +20,12 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -71,7 +69,6 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
-	distributorsRing       *ring.Ring
 	distributorsLifecycler *ring.Lifecycler
 
 	rateLimitStrat string
@@ -106,17 +103,11 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifecycler *ring.Lifecycler
-	var distributorsRing *ring.Ring
 	rateLimitStrat := validation.LocalIngestionRateStrategy
 
 	var servs []services.Service
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		rateLimitStrat = validation.GlobalIngestionRateStrategy
-		ringStore, err := kv.NewClient(
-			cfg.DistributorRing.KVStore,
-			ring.GetCodec(),
-			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "distributor"),
-			util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
@@ -126,13 +117,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			return nil, errors.Wrap(err, "create distributor lifecycler")
 		}
 
-		distributorsRing, err = ring.NewWithStoreClientAndStrategy(cfg.DistributorRing.ToRingConfig(),
-			"distributor", "distributor", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
-		if err != nil {
-			return nil, errors.Wrap(err, "create distributor ring client")
-		}
-
-		servs = append(servs, distributorsLifecycler, distributorsRing)
+		servs = append(servs, distributorsLifecycler)
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsLifecycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
@@ -148,7 +133,6 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		tenantConfigs:          configs,
 		tenantsRetention:       retention.NewTenantsRetention(overrides),
 		ingestersRing:          ingestersRing,
-		distributorsRing:       distributorsRing,
 		distributorsLifecycler: distributorsLifecycler,
 		validator:              validator,
 		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
@@ -273,13 +257,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Entries[n] = entry
 
-			// If configured for this tenant, fudge duplicate timestamps. Note, this is imperfect
+			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 			// since Loki will accept out of order writes it doesn't account for separate
 			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.fudgeDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
+			if validationContext.incrementDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
 				// Traditional logic for Loki is that 2 lines with the same timestamp and
 				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-				// To maintain this behavior, only fudge the timestamp if the log content is different
+				// To maintain this behavior, only increment the timestamp if the log content is different
 				if stream.Entries[n-1].Line != entry.Line {
 					stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
 				}

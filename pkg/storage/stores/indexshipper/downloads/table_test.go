@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -66,7 +66,7 @@ func buildTestTable(t *testing.T, path string) (*table, stopFunc) {
 
 	table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}).(*table)
+	}, newMetrics(nil)).(*table)
 	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
@@ -83,7 +83,7 @@ type mockIndexSet struct {
 
 func (m *mockIndexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallback) error {
 	for _, idx := range m.indexes {
-		if err := callback(idx); err != nil {
+		if err := callback(false, idx); err != nil {
 			return err
 		}
 	}
@@ -148,7 +148,7 @@ func TestTable_ForEach(t *testing.T) {
 
 			var indexesFound []index.Index
 
-			err := table.ForEach(context.Background(), tc.withUserID, func(idx index.Index) error {
+			err := table.ForEach(context.Background(), tc.withUserID, func(_ bool, idx index.Index) error {
 				indexesFound = append(indexesFound, idx)
 				return nil
 			})
@@ -201,6 +201,20 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 	ensureIndexSetExistsInTable(t, &table, "")
 	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
 
+	// change the lastUsedAt for common index set to expire it
+	indexSets[""].(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
+
+	// common index set should not get dropped since we still have notExpiredIndexUserID which is not expired
+	require.Equal(t, []string(nil), table.findExpiredIndexSets(ttl, now))
+	allIndexSetsDropped, err = table.DropUnusedIndex(ttl, now)
+	require.NoError(t, err)
+	require.False(t, allIndexSetsDropped)
+
+	// none of the index set should be dropped
+	require.Len(t, table.indexSets, 2)
+	ensureIndexSetExistsInTable(t, &table, "")
+	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
+
 	// change the lastUsedAt for all indexSets so that all of them get dropped
 	for _, indexSets := range table.indexSets {
 		indexSets.(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
@@ -244,7 +258,7 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 			cachePath := t.TempDir()
 			table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 				return openMockIndexFile(t, path), nil
-			}).(*table)
+			}, newMetrics(nil)).(*table)
 			defer func() {
 				table.Close()
 			}()
@@ -299,7 +313,7 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table has expected indexes setup
 	var indexesFound []string
-	err := table.ForEach(context.Background(), userID, func(idx index.Index) error {
+	err := table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
@@ -320,7 +334,7 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table got the new index and dropped the deleted index
 	indexesFound = []string{}
-	err = table.ForEach(context.Background(), userID, func(idx index.Index) error {
+	err = table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
@@ -342,6 +356,33 @@ func TestTable_Sync(t *testing.T) {
 		_, ok := expectedFilesInDir[fileInfo.Name()]
 		require.True(t, ok)
 	}
+
+	// let us simulate a compaction to test stale index list cache handling
+
+	// first, let us add a new file and refresh the index list cache
+	oneMoreDB := "one-more-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
+	table.storageClient.RefreshIndexListCache(context.Background())
+
+	// now, without syncing the table, let us compact the index in storage
+	compactedDBName := "compacted-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, noUpdatesDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, newDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, oneMoreDB)))
+
+	// let us run a sync which should detect the stale index list cache and sync the table after refreshing the cache
+	require.NoError(t, table.Sync(context.Background()))
+
+	// verify that table has got only compacted db
+	indexesFound = []string{}
+	err = table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
+		indexesFound = append(indexesFound, idx.Name())
+		return nil
+	})
+	require.NoError(t, err)
+	sort.Strings(indexesFound)
+	require.Equal(t, []string{compactedDBName}, indexesFound)
 }
 
 func TestLoadTable(t *testing.T) {
@@ -362,13 +403,13 @@ func TestLoadTable(t *testing.T) {
 	// try loading the table.
 	table, err := LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	})
+	}, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
 	// check the loaded table to see it has right index files.
 	expectedIndexes := append(buildListOfExpectedIndexes(userID, 0, 5), buildListOfExpectedIndexes("", 0, 5)...)
-	verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 		return table.ForEach(context.Background(), userID, callbackFunc)
 	})
 
@@ -382,14 +423,14 @@ func TestLoadTable(t *testing.T) {
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	})
+	}, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
 	defer table.Close()
 
 	expectedIndexes = append(buildListOfExpectedIndexes(userID, 0, 10), buildListOfExpectedIndexes("", 0, 10)...)
-	verifyIndexForEach(t, expectedIndexes, func(callbackFunc func(index.Index) error) error {
+	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 		return table.ForEach(context.Background(), userID, callbackFunc)
 	})
 }
@@ -408,9 +449,9 @@ func ensureIndexSetExistsInTable(t *testing.T, table *table, indexSetName string
 	require.True(t, ok)
 }
 
-func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func(callbackFunc func(index.Index) error) error) {
+func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func(callbackFunc index.ForEachIndexCallback) error) {
 	var indexesFound []string
-	err := forEachFunc(func(idx index.Index) error {
+	err := forEachFunc(func(_ bool, idx index.Index) error {
 		// get the reader for the index.
 		readSeeker, err := idx.Reader()
 		require.NoError(t, err)

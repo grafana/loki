@@ -446,7 +446,12 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 		return err
 	}
 
+	// Put the supplied fingerprint instead of the calculated hash.
+	// This allows us to have a synthetic label (__loki_tenant__) in
+	// the pre-compacted TSDBs which map to fingerprints (and chunks)
+	// without this label in storage.
 	labelHash := uint64(fp)
+
 	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
 	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
@@ -530,16 +535,19 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 
 	w.buf2.PutHash(w.crc32)
 
-	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
-		return errors.Wrap(err, "write series data")
-	}
-
 	w.lastSeries = append(w.lastSeries[:0], lset...)
 	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
 	if ref%fingerprintInterval == 0 {
-		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{uint64(ref), labelHash})
+		// series references are the 16-byte aligned offsets
+		// Do NOT ask me how long I debugged this particular bit >:O
+		sRef := w.f.pos / 16
+		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{sRef, labelHash})
+	}
+
+	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
+		return errors.Wrap(err, "write series data")
 	}
 
 	return nil

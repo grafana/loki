@@ -2,6 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
+  local compactor_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
   grafanaDashboards+::
     {
       'loki-deletion.json':
@@ -39,6 +40,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             g.panel('Failures in Loading Delete Requests / Hour') +
             g.queryPanel('sum(increase(loki_compactor_load_pending_requests_attempts_total{status="fail", %s}[1h]))' % $.namespaceMatcher(), 'failures'),
+          )
+        ).addRow(
+          g.row('Deleted lines')
+          .addPanel(
+            g.panel('Lines Deleted / Sec') +
+            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",job=~"$namespace/%s"}[$__rate_interval])) by (user)' % compactor_matcher, '{{user}}'),
           )
         ),
     },

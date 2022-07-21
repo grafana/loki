@@ -1,13 +1,10 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/v2/kverrors"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 )
 
@@ -20,6 +17,7 @@ func BuildServiceMonitors(opts Options) []client.Object {
 		NewCompactorServiceMonitor(opts),
 		NewQueryFrontendServiceMonitor(opts),
 		NewIndexGatewayServiceMonitor(opts),
+		NewRulerServiceMonitor(opts),
 		NewGatewayServiceMonitor(opts),
 	}
 }
@@ -30,7 +28,7 @@ func NewDistributorServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(DistributorName(opts.Name))
 	serviceName := serviceNameDistributorHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -41,7 +39,7 @@ func NewIngesterServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(IngesterName(opts.Name))
 	serviceName := serviceNameIngesterHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -52,7 +50,7 @@ func NewQuerierServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(QuerierName(opts.Name))
 	serviceName := serviceNameQuerierHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -63,7 +61,7 @@ func NewCompactorServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(CompactorName(opts.Name))
 	serviceName := serviceNameCompactorHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -74,7 +72,7 @@ func NewQueryFrontendServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(QueryFrontendName(opts.Name))
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -85,7 +83,18 @@ func NewIndexGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(IndexGatewayName(opts.Name))
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+
+	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
+}
+
+// NewRulerServiceMonitor creates a k8s service monitor for the ruler component
+func NewRulerServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+
+	serviceMonitorName := serviceMonitorName(RulerName(opts.Name))
+	serviceName := serviceNameRulerHTTP(opts.Name)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -96,12 +105,12 @@ func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(GatewayName(opts.Name))
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	gwEndpoint := serviceMonitorEndpoint(gatewayInternalPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+	gwEndpoint := serviceMonitorEndpoint(gatewayInternalPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	sm := newServiceMonitor(opts.Namespace, serviceMonitorName, l, gwEndpoint)
 
 	if opts.Stack.Tenants != nil {
-		if err := configureServiceMonitorForMode(sm, opts.Stack.Tenants.Mode, opts.Flags); err != nil {
+		if err := configureGatewayServiceMonitorForMode(sm, opts.Stack.Tenants.Mode, opts.Gates); err != nil {
 			return sm
 		}
 	}
@@ -131,63 +140,4 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 			},
 		},
 	}
-}
-
-func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) error {
-	secretName := signingServiceSecretName(serviceName)
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: secretName,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
-					},
-				},
-			},
-		},
-	}
-	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      secretName,
-				ReadOnly:  false,
-				MountPath: secretDirectory,
-			},
-		},
-		Args: []string{
-			"-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt",
-			"-server.http-tls-key-path=/etc/proxy/secrets/tls.key",
-		},
-	}
-	uriSchemeContainerSpec := corev1.Container{
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-	}
-
-	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[0], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	return nil
 }
