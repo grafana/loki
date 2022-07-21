@@ -224,7 +224,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	return reconnectClientsMap, nil
 }
 
-var maxSeries = 10
+var maxSeries = 50
 
 func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
 	var mutex sync.Mutex
@@ -248,12 +248,12 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 			}
 			newLabels := make(map[string]string, 0)
 			for key, val := range ss.Labels {
-				counts += 1
 				if counts >= maxSeries {
 					cacelByMaxSeries = true
 					break
 				}
 				newLabels[key] = val
+				counts += 1
 			}
 			ss.Labels = newLabels
 			result.Series = append(result.Series, ss)
@@ -264,7 +264,11 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 		return result, nil
 	})
 	if cacelByMaxSeries {
-		level.Warn(util_log.Logger).Log("msg", "Series Canceled error", "counts", counts, "maxSeries", maxSeries, "err", err)
+		labelVal := ""
+		if len(resps) > 0 {
+			labelVal = resps[0].response.(*logproto.SeriesResponse).GoString()
+		}
+		level.Warn(util_log.Logger).Log("msg", "Series Canceled error", "counts", counts, "maxSeries", maxSeries, "err", err, "labelVal_0", labelVal)
 	} else if err != nil {
 		return nil, err
 	}
