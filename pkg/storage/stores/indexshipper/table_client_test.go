@@ -1,4 +1,4 @@
-package shipper_test
+package indexshipper_test
 
 import (
 	"bytes"
@@ -10,8 +10,8 @@ import (
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 )
 
 func TestBoltDBShipperTableClient(t *testing.T) {
@@ -36,7 +36,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 		}
 	}
 
-	tableClient := shipper.NewBoltDBShipperTableClient(objectClient, "index/")
+	tableClient := indexshipper.NewTableClient(objectClient, "index/")
 
 	// check list of tables returns all the folders/tables created above
 	checkExpectedTables(t, tableClient, foldersWithFiles)
