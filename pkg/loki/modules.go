@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 
@@ -137,7 +139,16 @@ func (t *Loki) initServer() (services.Service, error) {
 		})
 	}(t.Server.HTTPServer.Handler)
 
+	// Allow us to receive http/2 cleartext in addition to http/1.1. This needs to be
+	// the outermost handler so it can upgrade requests if necessary
+	t.Server.HTTPServer.Handler = http2CleartextHandler(t.Server.HTTPServer.Handler)
+
 	return s, nil
+}
+
+func http2CleartextHandler(h http.Handler) http.Handler {
+	h2s := &http2.Server{}
+	return h2c.NewHandler(h, h2s)
 }
 
 func (t *Loki) initRing() (_ services.Service, err error) {
