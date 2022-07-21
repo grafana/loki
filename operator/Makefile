@@ -106,7 +106,7 @@ help: ## Display this help.
 
 .PHONY: deps
 deps: go.mod go.sum
-	go mod tidy -compat=1.17
+	go mod tidy -compat=1.18
 	go mod download
 	go mod verify
 
