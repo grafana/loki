@@ -278,12 +278,16 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case config.StorageTypeGrpc:
 		return grpc.NewTableClient(cfg.GrpcConfig)
-	case config.BoltDBShipperType:
+	case config.BoltDBShipperType, config.TSDBType:
 		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
-		return shipper.NewBoltDBShipperTableClient(objectClient, cfg.BoltDBShipperConfig.SharedStoreKeyPrefix), nil
+		sharedStoreKeyPrefix := cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
+		if name == config.TSDBType {
+			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
+		}
+		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
 	}
