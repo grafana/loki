@@ -15,9 +15,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/uploads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -86,7 +85,7 @@ func (cfg *Config) Validate() error {
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
 	}
-	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+	return storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
 type indexShipper struct {
