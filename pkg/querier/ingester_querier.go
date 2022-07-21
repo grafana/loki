@@ -231,6 +231,8 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 	counts := 0
 	ctxCancel, cancel := context.WithCancel(ctx)
 	cacelByMaxSeries := false
+	cacelResult := &logproto.SeriesResponse{}
+
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		res, err := client.Series(ctxCancel, req)
 		result := &logproto.SeriesResponse{}
@@ -260,16 +262,19 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 		}
 		if cacelByMaxSeries {
 			cancel()
+			cacelResult = result
 		}
 		return result, nil
 	})
 	if cacelByMaxSeries {
-		labelVal := ""
-		if len(resps) > 0 {
-			labelVal = resps[0].response.(*logproto.SeriesResponse).GoString()
-		}
+		labelVal := cacelResult.GoString()
 		level.Warn(util_log.Logger).Log("msg", "Series Canceled error", "counts", counts, "maxSeries", maxSeries, "err", err, "labelVal_0", labelVal)
-	} else if err != nil {
+		var acc [][]logproto.SeriesIdentifier
+		acc = append(acc, cacelResult.Series)
+		return acc, nil
+	}
+
+	if err != nil {
 		return nil, err
 	}
 	var acc [][]logproto.SeriesIdentifier
