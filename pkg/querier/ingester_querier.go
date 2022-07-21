@@ -224,16 +224,18 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	return reconnectClientsMap, nil
 }
 
-var maxSeries = 100
+var maxSeries = 10
 
 func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
 	var mutex sync.Mutex
 	counts := 0
 	ctxCancel, cancel := context.WithCancel(ctx)
-	resps, err := q.forAllIngesters(ctxCancel, func(client logproto.QuerierClient) (interface{}, error) {
+	cacelByMaxSeries := false
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		res, err := client.Series(ctxCancel, req)
+		result := &logproto.SeriesResponse{}
 		if err == context.Canceled {
-			return make([]logproto.SeriesResponse, 0), nil
+			return result, nil
 		}
 		if err != nil {
 			return nil, err
@@ -241,15 +243,28 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 		mutex.Lock()
 		defer mutex.Unlock()
 		for _, ss := range res.Series {
-			counts += len(ss.Labels)
+			if cacelByMaxSeries {
+				break
+			}
+			newLabels := make(map[string]string, 0)
+			for key, val := range ss.Labels {
+				counts += 1
+				if counts >= maxSeries {
+					cacelByMaxSeries = true
+					break
+				}
+				newLabels[key] = val
+			}
+			ss.Labels = newLabels
+			result.Series = append(result.Series, ss)
 		}
-		if counts >= maxSeries {
+		if cacelByMaxSeries {
 			cancel()
 		}
-		return res, nil
+		return result, nil
 	})
-	if err == context.Canceled {
-		level.Warn(util_log.Logger).Log("msg", "Series Canceled error", "counts", counts, "maxSeries", maxSeries)
+	if cacelByMaxSeries {
+		level.Warn(util_log.Logger).Log("msg", "Series Canceled error", "counts", counts, "maxSeries", maxSeries, "err", err)
 	} else if err != nil {
 		return nil, err
 	}
