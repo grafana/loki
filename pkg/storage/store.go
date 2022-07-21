@@ -229,7 +229,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
-		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+		writer, idx, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
 			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
@@ -239,6 +239,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			func() {
 				f.Stop()
 				chunkClient.Stop()
+				stopTSDBStoreFunc()
 				objectClient.Stop()
 			}, nil
 	}

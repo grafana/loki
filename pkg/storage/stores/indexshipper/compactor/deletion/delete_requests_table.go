@@ -15,8 +15,8 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -65,8 +65,8 @@ func (t *deleteRequestsTable) init() error {
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
-		err = shipper_util.DownloadFileFromStorage(t.dbPath, true,
-			true, shipper_util.LoggerWithFilename(util_log.Logger, deleteRequestsIndexFileName), func() (io.ReadCloser, error) {
+		err = storage.DownloadFileFromStorage(t.dbPath, true,
+			true, storage.LoggerWithFilename(util_log.Logger, deleteRequestsIndexFileName), func() (io.ReadCloser, error) {
 				return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName)
 			})
 		if err != nil && !t.indexStorageClient.IsFileNotFoundErr(err) {

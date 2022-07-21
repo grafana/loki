@@ -1,18 +1,18 @@
-package util
+package storage
 
 import (
 	"context"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 
+	gzip "github.com/klauspost/pgzip"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -29,7 +29,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
 	require.NoError(t, err)
 
-	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
+	indexStorageClient := NewIndexStorageClient(objectClient, "")
 
 	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest"), false,
 		false, util_log.Logger, func() (io.ReadCloser, error) {
@@ -43,8 +43,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 	require.Equal(t, testData, b)
 
 	// compress the file in storage
-	err = CompressFile(filepath.Join(tempDir, tableName, "src"), filepath.Join(tempDir, tableName, "src.gz"), true)
-	require.NoError(t, err)
+	compressFile(t, filepath.Join(tempDir, tableName, "src"), filepath.Join(tempDir, tableName, "src.gz"), true)
 
 	// get the compressed file from storage
 	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest.gz"), true,
@@ -59,23 +58,30 @@ func Test_GetFileFromStorage(t *testing.T) {
 	require.Equal(t, testData, b)
 }
 
-func Test_CompressFile(t *testing.T) {
-	tempDir := t.TempDir()
-
-	uncompressedFilePath := filepath.Join(tempDir, "test-file")
-	compressedFilePath := filepath.Join(tempDir, "test-file.gz")
-	decompressedFilePath := filepath.Join(tempDir, "test-file-decompressed")
-
-	testData := []byte("test-data")
-
-	require.NoError(t, ioutil.WriteFile(uncompressedFilePath, testData, 0o666))
-
-	require.NoError(t, CompressFile(uncompressedFilePath, compressedFilePath, true))
-	require.FileExists(t, compressedFilePath)
-
-	testutil.DecompressFile(t, compressedFilePath, decompressedFilePath)
-	b, err := ioutil.ReadFile(decompressedFilePath)
+func compressFile(t *testing.T, src, dest string, sync bool) {
+	uncompressedFile, err := os.Open(src)
 	require.NoError(t, err)
 
-	require.Equal(t, testData, b)
+	defer func() {
+		require.NoError(t, uncompressedFile.Close())
+	}()
+
+	compressedFile, err := os.Create(dest)
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, compressedFile.Close())
+	}()
+
+	compressedWriter := gzip.NewWriter(compressedFile)
+
+	_, err = io.Copy(compressedWriter, uncompressedFile)
+	require.NoError(t, err)
+
+	err = compressedWriter.Close()
+	require.NoError(t, err)
+
+	if sync {
+		require.NoError(t, compressedFile.Sync())
+	}
 }
