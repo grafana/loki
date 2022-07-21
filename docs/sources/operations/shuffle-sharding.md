@@ -66,7 +66,7 @@ Statistically, randomly picking two distinct tenants, there is:
 - a 0.08% chance that they will share 3 instances
 - only a 0.0004% chance that their instances will fully overlap
 
-![overlapping instances probability](./shuffle-sharding-probability.png)
+![overlapping instances probability](../shuffle-sharding-probability.png)
 
 ## Configuration
 
