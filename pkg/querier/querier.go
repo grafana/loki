@@ -55,6 +55,8 @@ type Config struct {
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
+	SeriesIngesterOnly            bool             `yaml:"series_ingester_only"`
+	LabelIngesterOnly             bool             `yaml:"label_ingester_only"`
 	PostFilterChunk               bool             `yaml:"post_filter_chunk"`
 	PostMetricsFilterChunk        bool             `yaml:"post_metrics_filter_chunk"`
 	PostFilterMaxParallel         int              `yaml:"post_filter_max_parallel"`
@@ -70,7 +72,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
-	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "Queriers should only query the ingesters and not try to query any store")
+	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "/query/ Queriers should only query the ingesters and not try to query any store")
+	f.BoolVar(&cfg.SeriesIngesterOnly, "querier.series-ingester-only", true, "/series/,Queriers should only query the ingesters and not try to query any store")
+	f.BoolVar(&cfg.LabelIngesterOnly, "querier.label-ingester-only", true, "/label/,Queriers should only query the ingesters and not try to query any store")
 	f.BoolVar(&cfg.PostFilterChunk, "querier.query-post-filter-chunk", false, "")
 	f.BoolVar(&cfg.PostMetricsFilterChunk, "querier.query-post-metrics-filter-chunk", false, "")
 	f.IntVar(&cfg.PostFilterMaxParallel, "querier.post_filter-max-parallel", 256, "post filter max parallel")
@@ -384,7 +388,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	var storeValues []string
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.LabelIngesterOnly && storeQueryInterval != nil {
 		g.Go(func() error {
 			var (
 				err     error
@@ -529,7 +533,7 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 		series <- [][]logproto.SeriesIdentifier{}
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.SeriesIngesterOnly && storeQueryInterval != nil {
 		go func() {
 			storeValues, err := q.seriesForMatchers(ctx, storeQueryInterval.start, storeQueryInterval.end, req.GetGroups(), req.Shards)
 			if err != nil {
