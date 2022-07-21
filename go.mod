@@ -309,7 +309,7 @@ replace github.com/gocql/gocql => github.com/gocql/gocql v1.2.0
 
 // Same as Cortex
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
-replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+replace github.com/bradfitz/gomemcache => github.com/owen-d/gomemcache v0.0.0-20220719101501-ce4268ea75ae
 
 // We only pin this version to avoid problems with running go get: github.com/thanos-io/thanos@main. That
 // currently fails because Thanos isn't merging release branches to main branch, and Go modules system is then
