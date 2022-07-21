@@ -10,13 +10,11 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -144,11 +142,6 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	items, err = c.memcache.GetMulti(keys)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
-		level.Error(util_log.WithContext(ctx, c.logger)).Log(
-			"msg", "Failed to get keys from memcached",
-			"keys requested", len(keys),
-			"err", err,
-		)
 		return found, bufs, keys, err
 	}
 
@@ -220,7 +213,6 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) err
 			return c.memcache.Set(&item)
 		})
 		if cacheErr != nil {
-			level.Warn(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
 			err = cacheErr
 		}
 	}
