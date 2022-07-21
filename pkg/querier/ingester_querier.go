@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
@@ -222,11 +224,33 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	return reconnectClientsMap, nil
 }
 
+var maxSeries = 100
+
 func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
-	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Series(ctx, req)
+	var mutex sync.Mutex
+	counts := 0
+	ctxCancel, cancel := context.WithCancel(ctx)
+	resps, err := q.forAllIngesters(ctxCancel, func(client logproto.QuerierClient) (interface{}, error) {
+		res, err := client.Series(ctxCancel, req)
+		if err == context.Canceled {
+			return make([]logproto.SeriesResponse, 0), nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		mutex.Lock()
+		defer mutex.Unlock()
+		for _, ss := range res.Series {
+			counts += len(ss.Labels)
+		}
+		if counts >= maxSeries {
+			cancel()
+		}
+		return res, nil
 	})
-	if err != nil {
+	if err == context.Canceled {
+		level.Warn(util_log.Logger).Log("msg", "Series Canceled error", "counts", counts, "maxSeries", maxSeries)
+	} else if err != nil {
 		return nil, err
 	}
 	var acc [][]logproto.SeriesIdentifier
