@@ -1,5 +1,6 @@
 ## Main
 
+- [6741](https://github.com/grafana/loki/pull/6741) **aminesnow**: Golang version to 1.18 and k8s client to 1.24
 - [6669](https://github.com/grafana/loki/pull/6669) **xperimental**: Set minimum TLS version to 1.2 to support FIPS
 - [6663](https://github.com/grafana/loki/pull/6663) **aminesnow**: Generalize live tail fix to all clusters using TLS
 - [6443](https://github.com/grafana/loki/pull/6443) **aminesnow**: Fix live tail of logs not working on OpenShift-based clusters
