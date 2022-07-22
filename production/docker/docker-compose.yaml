@@ -1,0 +1,164 @@
+version: "3.8"
+
+networks:
+  loki:
+
+services:
+
+  # Since the Loki containers are running as user 10001 and the mounted data volume is owned by root,
+  # Loki would not have permissions to create the directories.
+  # Therefore the init container changes permissions of the mounted directory.
+  init:
+    image: grafana/loki:2.6.1
+    user: root
+    entrypoint:
+      - "chown"
+      - "10001:10001"
+      - "/loki"
+    volumes:
+      - ./loki:/loki
+    networks:
+      - loki
+
+  grafana:
+    image: grafana/grafana:8.5.9
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+    volumes:
+      - ./config/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yml
+      - grafana:/var/lib/grafana
+    networks:
+      - loki
+
+  prometheus:
+    image: prom/prometheus:v2.27.0
+    ports:
+      - 9090:9090
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus:/prometheus
+    command: [ '--log.level=debug', '--config.file=/etc/prometheus/prometheus.yml', '--query.lookback-delta=30s' ]
+    networks:
+      - loki
+
+  # for testing purposes only, disable in production
+  log-generator:
+    image: mingrammer/flog
+    command:
+      - --loop
+      - --format=json
+      - --number=10    # number of log lines to generate per second
+      - --delay=100ms  # delay between log lines
+      - --output=/var/log/generated-logs.txt
+      - --overwrite
+      - --type=log
+    volumes:
+      - ./loki/:/var/log/
+
+  promtail:
+    image: grafana/promtail:2.6.1
+    volumes:
+      - ./loki/:/var/log/
+      - ./config:/etc/promtail/
+    ports:
+      - "9080:9080"
+    command: -config.file=/etc/promtail/promtail.yaml
+    networks:
+      - loki
+
+  minio:
+    image: minio/minio
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/loki-data && \
+        mkdir -p /data/loki-ruler &&
+        minio server /data
+    environment:
+      - MINIO_ACCESS_KEY=loki
+      - MINIO_SECRET_KEY=supersecret
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
+      - MINIO_UPDATE=off
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./.data/minio:/data
+    networks:
+      - loki
+
+  loki-gateway:
+    image: nginx:1.19
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "8080:80"
+      - "3100"
+    networks:
+      - loki
+
+  loki-frontend:
+    image: grafana/loki:2.6.1
+    volumes:
+        - ./config:/etc/loki/
+    ports:
+        - "3100"
+    command: "-config.file=/etc/loki/loki.yaml -target=query-frontend -frontend.downstream-url=http://loki-read:3100"
+    networks:
+      - loki
+    deploy:
+      mode: replicated
+      replicas: 2
+
+  loki-read:
+    image: grafana/loki:2.6.1
+    volumes:
+      - ./config:/etc/loki/
+    ports:
+      - "3100"
+      - "7946"
+
+    # uncomment to use interactive debugging
+      # - "40000-40002:40000" # # makes the replicas available on ports 40000, 40001, 40002
+    #cap_add:
+    #  - SYS_PTRACE
+    #security_opt:
+    #  - apparmor=unconfined
+    command: "-config.file=/etc/loki/loki.yaml -target=read"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+    # only needed for interactive debugging with dlv
+
+  loki-write:
+    image: grafana/loki:2.6.1
+    volumes:
+      - ./config:/etc/loki/
+    ports:
+      - "3100"
+      - "7946"
+
+    # uncomment to use interactive debugging
+      # - "50000-50002:40000" # makes the replicas available on ports 50000, 50001, 50002
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
+    command: "-config.file=/etc/loki/loki.yaml -target=write"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+
+volumes:
+  prometheus:
+  grafana:

@@ -79,7 +79,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 								{
 									Name: "loki-ingester",
 									VolumeMounts: []corev1.VolumeMount{
-
 										{
 											Name:      "test",
 											ReadOnly:  false,

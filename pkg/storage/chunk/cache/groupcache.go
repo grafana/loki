@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"golang.org/x/net/http2"
 
 	"github.com/grafana/groupcache_exporter"
 	"github.com/mailgun/groupcache/v2"
@@ -33,6 +33,13 @@ import (
 
 var (
 	ErrGroupcacheMiss = errors.New("cache miss")
+
+	http2Transport = &http2.Transport{
+		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+			return net.Dial(network, addr)
+		},
+		AllowHTTP: true,
+	}
 )
 
 type GroupCache struct {
@@ -45,6 +52,7 @@ type GroupCache struct {
 	wg                   sync.WaitGroup
 	reg                  prometheus.Registerer
 	startWaitingForClose context.CancelFunc
+	capacity             int64
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -53,8 +61,9 @@ type RingCfg struct {
 }
 
 type GroupCacheConfig struct {
-	Enabled bool    `yaml:"enabled,omitempty"`
-	Ring    RingCfg `yaml:"ring,omitempty"`
+	Enabled    bool    `yaml:"enabled,omitempty"`
+	Ring       RingCfg `yaml:"ring,omitempty"`
+	CapacityMB int64   `yaml:"capacity_per_cache_mb,omitempty"`
 
 	Cache Cache `yaml:"-"`
 }
@@ -64,6 +73,8 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
 
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
+	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
+		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
 }
 
 type ringManager interface {
@@ -71,11 +82,18 @@ type ringManager interface {
 	Ring() ring.ReadRing
 }
 
-func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
+func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
-	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{Transport: http2Transport})
+	pool := groupcache.NewHTTPPoolOpts(
+		addr,
+		&groupcache.HTTPPoolOptions{
+			Transport: func(_ context.Context) http.RoundTripper {
+				return http2Transport
+			},
+		},
+	)
 	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
@@ -88,6 +106,7 @@ func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg
 		wg:                   sync.WaitGroup{},
 		startWaitingForClose: cancel,
 		reg:                  reg,
+		capacity:             config.CapacityMB * 1e6, // MB => B
 	}
 
 	go func() {
@@ -176,7 +195,7 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, 1<<30, missGetter),
+		cache:         groupcache.NewGroup(name, c.capacity, missGetter),
 		logger:        c.logger,
 		wg:            &c.wg,
 		cacheType:     ct,
@@ -224,7 +243,7 @@ func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error
 
 	var lastErr error
 	for i, key := range keys {
-		if err := c.cache.Set(ctx, key, values[i], time.Time{}, true); err != nil {
+		if err := c.cache.Set(ctx, key, values[i], time.Time{}, false); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
 			lastErr = err
 		}
@@ -240,13 +259,4 @@ func (c *group) Stop() {
 
 func (c *group) GetCacheType() stats.CacheType {
 	return c.cacheType
-}
-
-func http2Transport(_ context.Context) http.RoundTripper {
-	return &http2.Transport{
-		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr)
-		},
-		AllowHTTP: true,
-	}
 }
