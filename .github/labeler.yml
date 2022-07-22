@@ -1,4 +1,4 @@
-area/docs:
+type/docs:
 - 'docs/**/*'
 - 'operator/docs/*'
 sig/operator:
