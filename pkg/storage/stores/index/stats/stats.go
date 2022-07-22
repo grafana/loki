@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/willf/bloom"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 

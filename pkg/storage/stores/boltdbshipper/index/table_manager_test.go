@@ -11,10 +11,10 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/index/indexfile"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/testutil"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFunc) {

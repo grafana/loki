@@ -15,10 +15,10 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/index/indexfile"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/testutil"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 const (

@@ -17,10 +17,10 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/util"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/boltdbshipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,4 @@
-package shipper
+package boltdbshipper
 
 import (
 	"github.com/prometheus/client_golang/prometheus"

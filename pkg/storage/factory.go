@@ -24,11 +24,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -72,9 +72,9 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper"`
-	TSDBShipperConfig   indexshipper.Config `yaml:"tsdb_shipper"`
+	MaxChunkBatchSize   int                  `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig boltdbshipper.Config `yaml:"boltdb_shipper"`
+	TSDBShipperConfig   indexshipper.Config  `yaml:"tsdb_shipper"`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
@@ -184,7 +184,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 
 		tableRanges := getIndexStoreTableRanges(config.BoltDBShipperType, schemaCfg.Configs)
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
+		boltDBIndexClientWithShipper, err = boltdbshipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
 			ownsTenantFn, tableRanges, registerer)
 
 		return boltDBIndexClientWithShipper, err

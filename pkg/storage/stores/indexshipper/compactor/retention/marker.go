@@ -17,7 +17,7 @@ import (
 	"go.etcd.io/bbolt"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/boltdbshipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

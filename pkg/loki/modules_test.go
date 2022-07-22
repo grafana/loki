@@ -15,10 +15,9 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -288,7 +287,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string) Config {
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
-		BoltDBShipperConfig: shipper.Config{
+		BoltDBShipperConfig: boltdbshipper.Config{
 			Config: indexshipper.Config{
 				SharedStoreType:      config.StorageTypeFileSystem,
 				ActiveIndexDirectory: dir,

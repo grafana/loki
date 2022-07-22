@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/storage/stores/boltdbshipper/indexgateway/indexgatewaypb"
 )
 
 // IndexGatewayGRPCPool represents a pool of gRPC connections to different index gateway instances.
