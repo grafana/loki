@@ -14,7 +14,7 @@ require (
 	github.com/stretchr/testify v1.7.1
 	k8s.io/api v0.24.3
 	k8s.io/apimachinery v0.24.3
-	k8s.io/client-go v12.0.0+incompatible
+	k8s.io/client-go v0.24.3
 	k8s.io/utils v0.0.0-20220713171938-56c0de1e6f5e
 	sigs.k8s.io/controller-runtime v0.12.1
 	sigs.k8s.io/yaml v1.3.0
@@ -24,7 +24,7 @@ require github.com/ViaQ/logerr/v2 v2.0.0
 
 require (
 	github.com/google/go-cmp v0.5.7
-	github.com/grafana/loki v1.6.2-0.20220420044148-f62b4ae1905c
+	github.com/grafana/loki v1.6.2-0.20220708124813-b92f113cb096
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -162,7 +162,7 @@ require (
 	google.golang.org/grpc v1.44.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6 // indirect
 	k8s.io/apiextensions-apiserver v0.24.0 // indirect
 	k8s.io/component-base v0.24.0 // indirect
