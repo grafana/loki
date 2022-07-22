@@ -243,7 +243,9 @@ func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error
 
 	var lastErr error
 	for i, key := range keys {
-		if err := c.cache.Set(ctx, key, values[i], time.Time{}, false); err != nil {
+		// don't store chunks in local (hot) cache and peer's main cache - but do so for other caches (index query, result)
+		storeInHotCache := c.GetCacheType() != stats.ChunkCache
+		if err := c.cache.Set(ctx, key, values[i], time.Time{}, storeInHotCache); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
 			lastErr = err
 		}
