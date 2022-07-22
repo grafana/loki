@@ -244,6 +244,9 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 		}
 		mutex.Lock()
 		defer mutex.Unlock()
+		if cacelByMaxSeries {
+			return result, nil
+		}
 		for _, ss := range res.Series {
 			if cacelByMaxSeries {
 				break
