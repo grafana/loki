@@ -142,7 +142,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	}
 
 	if IsGroupCacheSet(cfg) {
-		caches = append(caches, CollectStats(cfg.GroupCache))
+		caches = append(caches, CollectStats(Instrument(cfg.Prefix+"groupcache", cfg.GroupCache, reg)))
 	}
 
 	cache := NewTiered(caches)
