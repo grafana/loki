@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/imdario/mergo v0.3.12
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.3.0
-	github.com/openshift/api v0.0.0-20220124143425-d74727069f6f // release-4.10
+	github.com/openshift/api v0.0.0-20220712151050-2647eb31dee7 // release-4.11
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.48.0
 	github.com/prometheus/client_golang v1.12.1
 	github.com/prometheus/common v0.32.1
