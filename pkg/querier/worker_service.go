@@ -11,7 +11,6 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
@@ -104,7 +103,7 @@ func InitWorkerService(
 		return querier_worker.NewQuerierWorker(
 			*(cfg.QuerierWorkerConfig),
 			cfg.SchedulerRing,
-			httpgrpc_server.NewServer(externalHandler),
+			externalHandler,
 			util_log.Logger,
 			reg,
 		)
@@ -136,7 +135,7 @@ func InitWorkerService(
 	return querier_worker.NewQuerierWorker(
 		*(cfg.QuerierWorkerConfig),
 		cfg.SchedulerRing,
-		httpgrpc_server.NewServer(internalHandler),
+		internalHandler,
 		util_log.Logger,
 		reg,
 	)

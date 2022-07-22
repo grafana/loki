@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"flag"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
+	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/util"
@@ -93,7 +95,7 @@ type querierWorker struct {
 	metrics *Metrics
 }
 
-func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer) (services.Service, error) {
+func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler http.Handler, logger log.Logger, reg prometheus.Registerer) (services.Service, error) {
 	if cfg.QuerierID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -121,7 +123,7 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.FrontendAddress)
 
 		address = cfg.FrontendAddress
-		processor = newFrontendProcessor(cfg, handler, logger)
+		processor = newFrontendProcessor(cfg, httpgrpc_server.NewServer(handler), logger)
 	default:
 		return nil, errors.New("unable to start the querier worker, need to configure one of frontend_address, scheduler_address, or a ring config in the query_scheduler config block")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -261,6 +262,53 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 	}
 
 	return &frontendv2pb.QueryResultResponse{}, nil
+}
+
+func (f *Frontend) QueryResultChunked(stream frontendv2pb.FrontendForQuerier_QueryResultChunkedServer) (error) {
+	defer stream.SendAndClose(&frontendv2pb.QueryResultResponse{})
+
+	tenantIDs, err := tenant.TenantIDs(stream.Context())
+	if err != nil {
+		return err
+	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
+
+	first, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	qrReq := first.GetFirst()
+
+	// The first chunk must be the headers.
+	if qrReq == nil {
+		return errors.New("First chunk was not a header chunk")
+	}
+
+	req := f.requests.get(qrReq.QueryID)
+	if req != nil && req.userID == userID {
+
+		// Read all continuations
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			con := msg.GetContinuation()
+			if con == nil {
+				break
+			}
+			qrReq.HttpResponse.Body = append(qrReq.HttpResponse.Body, con...)
+		}
+
+		select {
+		case req.response <- qrReq:
+			// Should always be possible, unless QueryResult is called multiple times with the same queryID.
+		default:
+			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)
+		}
+	}
+
+	return nil
 }
 
 // CheckReady determines if the query frontend is ready.  Function parameters/return

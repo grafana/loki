@@ -1,9 +1,10 @@
 package worker
 
 import (
+	"bytes"
 	"context"
-	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler http.Handler, log log.Logger, metrics *Metrics) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
@@ -51,7 +52,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 // Handles incoming queries from query-scheduler.
 type schedulerProcessor struct {
 	log            log.Logger
-	handler        RequestHandler
+	handler        http.Handler 
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
@@ -140,13 +141,135 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
+type nopCloser struct {
+	*bytes.Buffer
+}
+
+func (nopCloser) Close() error { return nil }
+
+// BytesBuffer returns the underlaying `bytes.buffer` used to build this io.ReadCloser.
+func (n nopCloser) BytesBuffer() *bytes.Buffer { return n.Buffer }
+
+func toHeader(hs []*httpgrpc.Header, header http.Header) {
+	for _, h := range hs {
+		header[h.Key] = h.Values
+	}
+}
+
+func fromHeader(hs http.Header) []*httpgrpc.Header {
+	result := make([]*httpgrpc.Header, 0, len(hs))
+	for k, vs := range hs {
+		result = append(result, &httpgrpc.Header{
+			Key:    k,
+			Values: vs,
+		})
+	}
+	return result
+}
+
+type responseWriter struct {
+	stats     *querier_stats.Stats
+	queryID   uint64
+	stream    frontendv2pb.FrontendForQuerier_QueryResultChunkedClient
+	recorder  *httptest.ResponseRecorder
+	body      *bytes.Buffer // TODO: should use buffered writer instead.
+	sentFirst bool
+}
+
+func newReponseWriter(stream frontendv2pb.FrontendForQuerier_QueryResultChunkedClient, stats *querier_stats.Stats, queryID uint64) *responseWriter {
+	return &responseWriter{
+		stats: stats,
+		queryID: queryID,
+		stream: stream,
+		recorder: httptest.NewRecorder(),
+		body: new(bytes.Buffer),
+		sentFirst: false,
+	}
+}
+
+func(r *responseWriter) Header() http.Header {
+	return r.recorder.Header()
+}
+
+func(r *responseWriter) Write(buf []byte) (int, error) {
+	if !r.sentFirst {
+		return r.recorder.Write(buf)
+	}
+
+	return r.body.Write(buf)
+}
+
+func(r *responseWriter) WriteHeader(statusCode int) {
+	if !r.sentFirst {
+		r.recorder.WriteHeader(statusCode)
+	}
+}
+
+func(r *responseWriter) Flush() {
+	if !r.sentFirst {
+		resp := &httpgrpc.HTTPResponse{
+			Code:    int32(r.recorder.Code),
+			Headers: fromHeader(r.recorder.Header()),
+			Body:    r.recorder.Body.Bytes(),
+		}
+		msg := &frontendv2pb.QueryResultRequestChunked{
+			Type: &frontendv2pb.QueryResultRequestChunked_First{
+				First: &frontendv2pb.QueryResultRequest{
+					QueryID:      r.queryID,
+					HttpResponse: resp,
+					Stats:        r.stats,
+				},
+			},
+		}
+		r.stream.Send(msg)
+		r.sentFirst = true
+	} else {
+		msg := &frontendv2pb.QueryResultRequestChunked{
+			Type: &frontendv2pb.QueryResultRequestChunked_Continuation{
+				Continuation: r.body.Bytes(),	
+			},
+		}
+		r.stream.Send(msg)
+		r.body.Reset() // TODO: not sure this is save here.
+	}
+}
+
+func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, r *httpgrpc.HTTPRequest) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
+	c, err := sp.frontendPool.GetClientFor(frontendAddress)
+	if err != nil {
+		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+		return
+	}
 
-	response, err := sp.handler.Handle(ctx, request)
+	stream, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResultChunked(ctx)
+	if err != nil {
+		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+		return
+	}
+
+	req, err := http.NewRequest(r.Method, r.Url, nopCloser{Buffer: bytes.NewBuffer(r.Body)})
+	if err != nil {
+		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+		return 
+	}
+
+	toHeader(r.Headers, req.Header)
+	req = req.WithContext(ctx)
+	req.RequestURI = r.Url
+	req.ContentLength = int64(len(r.Body))
+
+	writer := newReponseWriter(stream, stats, queryID)
+
+	sp.handler.ServeHTTP(writer, req)
+	writer.Flush()
+
+	_, err = stream.CloseAndRecv()
+	//httpgrpc_server.NewServer(externalHandler)
+	/*response, err := sp.handler.Handle(ctx, request)
 	if err != nil {
 		var ok bool
 		response, ok = httpgrpc.HTTPResponseFromError(err)
@@ -157,30 +280,35 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 			}
 		}
 	}
+	*/
 
-	// Ensure responses that are too big are not retried.
-	if len(response.Body) >= sp.maxMessageSize {
-		level.Error(logger).Log("msg", "response larger than max message size", "size", len(response.Body), "maxMessageSize", sp.maxMessageSize)
-
-		errMsg := fmt.Sprintf("response larger than the max message size (%d vs %d)", len(response.Body), sp.maxMessageSize)
-		response = &httpgrpc.HTTPResponse{
-			Code: http.StatusRequestEntityTooLarge,
-			Body: []byte(errMsg),
-		}
-	}
-
+	/*
 	c, err := sp.frontendPool.GetClientFor(frontendAddress)
 	if err == nil {
-		// Response is empty and uninteresting.
-		_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-			QueryID:      queryID,
-			HttpResponse: response,
-			Stats:        stats,
-		})
+		stream, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResultChunked(ctx)
+		if err != nil {
+			level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+		} else {
+			msg := &frontendv2pb.QueryResultRequestChunked{
+				Type: &frontendv2pb.QueryResultRequestChunked_First{
+					First: &frontendv2pb.QueryResultRequest{
+						QueryID:      queryID,
+						HttpResponse: response,
+						Stats:        stats,
+					},
+				},
+			}
+			err = stream.Send(msg)
+			if err != nil {
+				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+			}
+			_, err = stream.CloseAndRecv()
+		}
 	}
 	if err != nil {
 		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
 	}
+	*/
 }
 
 func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClient, error) {
@@ -188,7 +316,11 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
 		middleware.UnaryClientInstrumentInterceptor(sp.metrics.frontendClientRequestDuration),
-	}, nil)
+	}, []grpc.StreamClientInterceptor{
+		otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+		middleware.StreamClientUserHeaderInterceptor,
+		middleware.StreamClientInstrumentInterceptor(sp.metrics.frontendClientRequestDuration),
+	})
 	if err != nil {
 		return nil, err
 	}
