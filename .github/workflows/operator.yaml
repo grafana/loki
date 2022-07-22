@@ -31,7 +31,7 @@ jobs:
       with:
         version: v1.47.2
         skip-go-installation: true
-        args: --timeout=2m
+        args: --timeout=4m
         working-directory: ./operator
     - name: Check prometheus rules
       working-directory: ./operator
