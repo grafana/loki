@@ -266,7 +266,6 @@ type LokiComponentSpec struct {
 // LokiTemplateSpec defines the template of all requirements to configure
 // scheduling of all Loki components to be deployed.
 type LokiTemplateSpec struct {
-
 	// Compactor defines the compaction component spec.
 	//
 	// +optional
@@ -388,7 +387,6 @@ const (
 // ObjectStorageSchema defines the requirements needed to configure a new
 // storage schema.
 type ObjectStorageSchema struct {
-
 	// Version for writing and reading logs.
 	//
 	// +required
@@ -408,7 +406,6 @@ type ObjectStorageSchema struct {
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
-
 	// Schemas for reading and writing logs.
 	//
 	// +optional
@@ -434,7 +431,6 @@ type ObjectStorageSpec struct {
 
 // QueryLimitSpec defines the limits applies at the query path.
 type QueryLimitSpec struct {
-
 	// MaxEntriesLimitsPerQuery defines the maximum number of log entries
 	// that will be returned for a query.
 	//
@@ -462,7 +458,6 @@ type QueryLimitSpec struct {
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
 type IngestionLimitSpec struct {
-
 	// IngestionRate defines the sample size per second. Units MB.
 	//
 	// +optional
@@ -537,7 +532,6 @@ type LimitsTemplateSpec struct {
 // LimitsSpec defines the spec for limits applied at ingestion or query
 // path across the cluster or per tenant.
 type LimitsSpec struct {
-
 	// Global defines the limits applied globally across the cluster.
 	//
 	// +optional
@@ -581,7 +575,6 @@ type RulesSpec struct {
 
 // LokiStackSpec defines the desired state of LokiStack
 type LokiStackSpec struct {
-
 	// ManagementState defines if the CR should be managed by the operator or not.
 	// Default is managed.
 	//
@@ -775,7 +768,6 @@ type LokiStackComponentStatus struct {
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
-
 	// Schemas is a list of schemas which have been applied
 	// to the LokiStack.
 	//
