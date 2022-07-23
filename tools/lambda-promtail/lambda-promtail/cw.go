@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -27,6 +29,11 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	}
 
 	labels = applyExtraLabels(labels)
+
+	if randomShardSize > 0 {
+		shard := rand.Intn(randomShardSize)
+		labels.Merge(model.LabelSet{"shard": model.LabelValue(strconv.Itoa(shard))})
+	}
 
 	for _, event := range data.LogEvents {
 		timestamp := time.UnixMilli(event.Timestamp)

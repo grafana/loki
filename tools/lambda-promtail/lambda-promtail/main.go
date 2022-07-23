@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -31,6 +33,7 @@ var (
 	username, password, extraLabelsRaw, tenantID string
 	keepStream                                   bool
 	batchSize                                    int
+	randomShardSize                              int
 	s3Clients                                    map[string]*s3.Client
 	extraLabels                                  model.LabelSet
 )
@@ -75,6 +78,12 @@ func setupArguments() {
 	batchSize = 131072
 	if batch != "" {
 		batchSize, _ = strconv.Atoi(batch)
+	}
+
+	randomShard := os.Getenv("RANDOM_SHARD_SIZE")
+	if randomShard != "" {
+		randomShardSize, _ = strconv.Atoi(randomShard)
+		rand.Seed(time.Now().UnixNano())
 	}
 
 	s3Clients = make(map[string]*s3.Client)
