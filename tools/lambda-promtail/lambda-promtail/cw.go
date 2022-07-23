@@ -32,7 +32,7 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 
 	if randomShardSize > 0 {
 		shard := rand.Intn(randomShardSize)
-		labels.Merge(model.LabelSet{"shard": model.LabelValue(strconv.Itoa(shard))})
+		labels = labels.Merge(model.LabelSet{"shard": model.LabelValue(strconv.Itoa(shard))})
 	}
 
 	for _, event := range data.LogEvents {
