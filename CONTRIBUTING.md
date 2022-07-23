@@ -29,11 +29,57 @@ You can skip this step for documentation changes, build related changes and simp
   * Any other change that would require special attention or extra steps to upgrade
 Please document clearly what changed AND what needs to be done in the upgrade guide.
 
+## Setup
+
+A common problem raises in local environments when you want your module to use a locally modified dependency :
+How do you make Go understand you don't want to fetch upstream dependencies but use local ones?
+You could modify `go.mod` and use `replace` directives, but it's highly harming *Developer Experience* as you
+need to roll back your `go.mod` before committing.
+
+Things get even worse when you host multiple modules on the same repository as Go will ignore modifications
+made locally to a module B when building a dependent module A.
+Bellow are some solutions you can use if you happen to stumble on those problems.
+
+### Go 1.18 workspaces
+
+```bash
+$ git clone <FORK_URL>
+$ go work init     # Init your go.work file
+$ go work use -r . # Recursively add sub-modules in the use clause of your go.work file
+```
+
+Since Go 1.18, we are able to launch building commands in a mode called *workspace*. Conceptually,
+a workspace is an **untracked** file adding `replace` directives to your `go.mod` at runtime.
+By default, Go will use the *workspace* mode when a `go.work` file is present, but you can have
+different *workspaces* and specify which one to use with the `GOWORK` environment variable.
+
+For more info, take a look at the [Proposal](https://go.googlesource.com/proposal/+/master/design/45713-workspace.md)
+and the [Reference](https://go.dev/ref/mod#workspaces).
+
+#### Go 1.17 `vendor` folder
+
+Since Go 1.17, the `vendor` folder excludes `go.mod` file from dependencies and includes version information
+in `modules.txt`. The removal of `go.mod` files inside the folder means Go won't try to use the
+upstream version of our dependencies.
+
+### Prior to Go 1.18
+
+Prior to Go 1.18, you would need to add your fork as a remote on the original **\$GOPATH**/src/github.com/grafana/loki clone, so:
+
+```bash
+$ go get github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
+
+$ git remote add <FORK_NAME> <FORK_URL>
+```
+
+Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki` is normal.
+
 ## Contribute to helm
 
 Please follow the [Loki Helm Chart](./production/helm/loki/README.md).
 
-### Dependency management
+## Dependency management
 
 We use [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
 This requires a working Go environment with version 1.15 or greater and git installed.
