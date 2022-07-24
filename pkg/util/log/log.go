@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -43,9 +44,14 @@ type prometheusLogger struct {
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
 func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer) log.Logger {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+
+	// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
+	// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
+	buf := log.NewLineBufferedLogger(os.Stderr, 32, 100*time.Millisecond)
+
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(buf))
 	if format.String() == "json" {
-		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+		logger = log.NewJSONLogger(log.NewSyncWriter(buf))
 	}
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
