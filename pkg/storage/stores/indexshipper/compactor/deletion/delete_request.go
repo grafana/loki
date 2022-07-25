@@ -60,7 +60,7 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	return func(s string) bool {
 		result, _, skip := f(0, s)
 		if len(result) != 0 || skip {
-			d.DeletedLines += 1
+			d.DeletedLines++
 			return true
 		}
 		return false
