@@ -112,7 +112,7 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 		reader = bzip2.NewReader(f)
 	}
 
-	level.Info(logger).Log("msg", fmt.Sprintf("using %q to decompress file %q", decompressLib, f.Name()))
+	level.Debug(logger).Log("msg", fmt.Sprintf("using %q to decompress file %q", decompressLib, f.Name()))
 
 	if reader != nil {
 		return reader, nil
@@ -122,7 +122,7 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("file %q with unsupported extension", f.Name())
+	return nil, fmt.Errorf("file %q has unsupported extension", f.Name())
 }
 
 func (t *decompressor) updatePosition() {
