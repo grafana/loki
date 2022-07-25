@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -347,6 +348,35 @@ func TestReduceAndLabelFilter(t *testing.T) {
 			if got := ReduceAndLabelFilter(tt.filters); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReduceAndLabelFilter() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestStringLabelFilter(t *testing.T) {
+	tests := []struct {
+		name        string
+		filter      *StringLabelFilter
+		labels      labels.Labels
+		shouldMatch bool
+	}{
+		{
+			name:        "without-label",
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
+			labels:      labels.Labels{{"msg", "hello"}}, // no label `subqueries`
+			shouldMatch: false,
+		},
+		{
+			name:        "with-label",
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
+			labels:      labels.Labels{{"msg", "hello"}, {"subqueries", "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, tc.labels.Hash()))
+			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}
 }
