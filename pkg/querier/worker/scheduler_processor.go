@@ -196,6 +196,24 @@ func(r *responseWriter) Header() http.Header {
 
 func(r *responseWriter) Write(buf []byte) (int, error) {
 	level.Debug(r.logger).Log("msg", "writing chunk", "size", len(buf))
+
+	// Split so we use continuation.
+	for {
+		if len(buf) < 512 {
+			break
+		}
+
+		one := buf[0:512]
+		buf = buf[512:]
+
+		if !r.sentFirst {
+			r.recorder.Write(one)
+		} else {
+			r.body.Write(one)
+		}
+		r.Flush()
+	}
+
 	if !r.sentFirst {
 		return r.recorder.Write(buf)
 	}
