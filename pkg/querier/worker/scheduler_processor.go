@@ -174,9 +174,11 @@ type responseWriter struct {
 	recorder  *httptest.ResponseRecorder
 	body      *bytes.Buffer // TODO: should use buffered writer instead.
 	sentFirst bool
+
+	logger log.Logger
 }
 
-func newReponseWriter(stream frontendv2pb.FrontendForQuerier_QueryResultChunkedClient, stats *querier_stats.Stats, queryID uint64) *responseWriter {
+func newReponseWriter(stream frontendv2pb.FrontendForQuerier_QueryResultChunkedClient, stats *querier_stats.Stats, queryID uint64, logger log.Logger) *responseWriter {
 	return &responseWriter{
 		stats: stats,
 		queryID: queryID,
@@ -184,6 +186,7 @@ func newReponseWriter(stream frontendv2pb.FrontendForQuerier_QueryResultChunkedC
 		recorder: httptest.NewRecorder(),
 		body: new(bytes.Buffer),
 		sentFirst: false,
+		logger: logger,
 	}
 }
 
@@ -192,11 +195,18 @@ func(r *responseWriter) Header() http.Header {
 }
 
 func(r *responseWriter) Write(buf []byte) (int, error) {
+	level.Debug(r.logger).Log("msg", "writing chunk", "size", len(buf))
 	if !r.sentFirst {
 		return r.recorder.Write(buf)
 	}
 
-	return r.body.Write(buf)
+	n, err := r.body.Write(buf)
+
+	if r.body.Len() > 512 || r.recorder.Body.Len() > 512 {
+		r.Flush()
+	}
+
+	return n, err
 }
 
 func(r *responseWriter) WriteHeader(statusCode int) {
@@ -207,6 +217,7 @@ func(r *responseWriter) WriteHeader(statusCode int) {
 
 func(r *responseWriter) Flush() {
 	if !r.sentFirst {
+		level.Debug(r.logger).Log("msg", "flushing first chunk", "size", r.recorder.Body.Len())
 		resp := &httpgrpc.HTTPResponse{
 			Code:    int32(r.recorder.Code),
 			Headers: fromHeader(r.recorder.Header()),
@@ -224,6 +235,7 @@ func(r *responseWriter) Flush() {
 		r.stream.Send(msg)
 		r.sentFirst = true
 	} else {
+		level.Debug(r.logger).Log("msg", "flushing continuation chunk", "size", r.recorder.Body.Len())
 		msg := &frontendv2pb.QueryResultRequestChunked{
 			Type: &frontendv2pb.QueryResultRequestChunked_Continuation{
 				Continuation: r.body.Bytes(),	
@@ -262,7 +274,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	req.RequestURI = r.Url
 	req.ContentLength = int64(len(r.Body))
 
-	writer := newReponseWriter(stream, stats, queryID)
+	writer := newReponseWriter(stream, stats, queryID, logger)
 
 	sp.handler.ServeHTTP(writer, req)
 	writer.Flush()
