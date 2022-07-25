@@ -78,7 +78,7 @@ order the filtering stages left to right:
 Consider the query:
 
 ```logql
-{cluster="ops-tools1", namespace="loki-dev", job="loki-dev/query-frontend"} |= "metrics.go" !="out of order" | logfmt | duration > 30s or status_code!="200"
+{cluster="ops-tools1", namespace="loki-dev", job="loki-dev/query-frontend"} |= "metrics.go" != "out of order" | logfmt | duration > 30s or status_code != "200"
 ```
 Within this query, the stream selector is
 
