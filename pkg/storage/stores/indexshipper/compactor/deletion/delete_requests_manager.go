@@ -123,7 +123,6 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 			"delete_request_id", deleteRequest.RequestID,
 			"user", deleteRequest.UserID,
 		)
-		deleteRequest.deletedLinesTotal = d.metrics.deletedLinesTotal.WithLabelValues(deleteRequest.UserID)
 		d.deleteRequestsToProcess = append(d.deleteRequestsToProcess, deleteRequest)
 	}
 
@@ -213,12 +212,14 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 				"delete_request_id", deleteRequest.RequestID,
 				"user", deleteRequest.UserID,
 				"err", err,
+				"deleted_lines", deleteRequest.DeletedLines,
 			)
 		} else {
 			level.Info(util_log.Logger).Log(
 				"msg", "delete request for user marked as processed",
 				"delete_request_id", deleteRequest.RequestID,
 				"user", deleteRequest.UserID,
+				"deleted_lines", deleteRequest.DeletedLines,
 			)
 		}
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()

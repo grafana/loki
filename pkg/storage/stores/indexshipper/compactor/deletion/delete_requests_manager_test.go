@@ -294,7 +294,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, dr := range mgr.deleteRequestsToProcess {
-				require.Contains(t, dr.deletedLinesTotal.Desc().String(), "loki_compactor_deleted_lines")
+				require.Equal(t, 0, dr.DeletedLines)
 			}
 
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
