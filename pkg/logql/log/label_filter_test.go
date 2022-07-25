@@ -362,13 +362,13 @@ func TestStringLabelFilter(t *testing.T) {
 		{
 			name:        "without-label",
 			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
-			labels:      labels.Labels{{"msg", "hello"}}, // no label `subqueries`
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
 			shouldMatch: false,
 		},
 		{
 			name:        "with-label",
 			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
-			labels:      labels.Labels{{"msg", "hello"}, {"subqueries", "2"}}, // label `subqueries` exist
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
 			shouldMatch: true,
 		},
 	}
