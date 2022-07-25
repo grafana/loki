@@ -27,6 +27,7 @@
 * [6395](https://github.com/grafana/loki/pull/6395) **DylanGuedes**: Add encoding support
 
 ##### Fixes
+* [6766](https://github.com/grafana/loki/pull/6766) **kavirajk**: fix(logql): Make `StringLabelfilter` work as expected
 
 ##### Changes
 
