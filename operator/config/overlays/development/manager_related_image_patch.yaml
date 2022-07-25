@@ -9,10 +9,6 @@ spec:
         - name: manager
           env:
           - name: RELATED_IMAGE_LOKI
-            # Replace with next official release, e.g. v2.6.100
-            # when https://github.com/grafana/loki/pull/6659
-            # is officially released.
-            # The following tag includes just v2.6 and PR 6659:
-            value: docker.io/grafana/loki:main-2e3dfc3
+            value: docker.io/grafana/loki:2.6.1
           - name: RELATED_IMAGE_GATEWAY
             value: quay.io/observatorium/api:latest
