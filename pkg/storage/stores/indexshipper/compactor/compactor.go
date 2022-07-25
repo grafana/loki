@@ -338,8 +338,15 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 
 func (c *Compactor) loop(ctx context.Context) error {
 	if c.cfg.RunOnce {
+		runCtx := ctx
+		if c.cfg.TimeBoundedCompactions {
+			c, cancel := context.WithTimeout(runCtx, c.cfg.CompactionInterval)
+			runCtx = c
+			defer cancel()
+		}
+
 		level.Info(util_log.Logger).Log("msg", "running single compaction")
-		err := c.RunCompaction(ctx, false)
+		err := c.RunCompaction(runCtx, false)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "compaction encountered an error", "err", err)
 		}
