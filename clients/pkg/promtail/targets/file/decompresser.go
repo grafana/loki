@@ -224,10 +224,6 @@ func (t *decompressor) readLines() {
 
 		t.size = int64(unsafe.Sizeof(finalText))
 		t.position++
-
-		if err != nil {
-			break
-		}
 	}
 }
 
