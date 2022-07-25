@@ -185,7 +185,11 @@ func (t *decompressor) readLines() {
 			break
 		}
 
-		if scanner.Err() != nil {
+		if scannerErr := scanner.Err(); scannerErr != nil {
+			if scannerErr != io.EOF {
+				level.Error(t.logger).Log("msg", "error scanning", "err", scannerErr)
+			}
+
 			break
 		}
 
