@@ -12,7 +12,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/validation"
 )
 

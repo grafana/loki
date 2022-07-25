@@ -18,6 +18,8 @@
 * [6375](https://github.com/grafana/loki/pull/6375) **dannykopping**: Fix bug that prevented users from using the `json` parser after a `line_format` pipeline stage.
 ##### Changes
 * [6415](https://github.com/grafana/loki/pull/6415) **salvacorts**: Evenly spread queriers across kubernetes nodes.
+* [6726](https://github.com/grafana/loki/pull/6726) **kavirajk** upgrades go from 1.17.9 -> 1.18.4
+* [6415](https://github.com/grafana/loki/pull/6415) **salvacorts** Evenly spread queriers across kubernetes nodes.
 * [6349](https://github.com/grafana/loki/pull/6349) **simonswine**: Update the default HTTP listen port from 80 to 3100. Make sure to configure the port explicitly if you are using port 80.
 
 #### Promtail

@@ -106,7 +106,7 @@ help: ## Display this help.
 
 .PHONY: deps
 deps: go.mod go.sum
-	go mod tidy -compat=1.17
+	go mod tidy
 	go mod download
 	go mod verify
 
@@ -158,7 +158,7 @@ lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and a
 
 .PHONY: fmt
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
+	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
 
 .PHONY: oci-build
 oci-build: ## Build the image

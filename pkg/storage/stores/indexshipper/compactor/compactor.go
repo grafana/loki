@@ -23,10 +23,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -114,7 +113,7 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
-	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+	return shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
 type Compactor struct {

@@ -18,9 +18,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
