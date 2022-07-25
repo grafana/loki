@@ -16,7 +16,7 @@ type TargetManager struct {
 	targets map[string]*Target
 }
 
-func NewHerokuDrainTargetManager(
+func NewTargetManager(
 	metrics *Metrics,
 	reg prometheus.Registerer,
 	logger log.Logger,
@@ -34,7 +34,7 @@ func NewHerokuDrainTargetManager(
 			return nil, err
 		}
 
-		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuDrainConfig, cfg.RelabelConfigs)
+		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.GCPPushConfig, cfg.RelabelConfigs)
 		if err != nil {
 			return nil, err
 		}

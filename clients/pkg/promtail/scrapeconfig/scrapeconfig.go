@@ -44,6 +44,7 @@ type Config struct {
 	GelfConfig        *GelfTargetConfig          `yaml:"gelf,omitempty"`
 	CloudflareConfig  *CloudflareConfig          `yaml:"cloudflare,omitempty"`
 	HerokuDrainConfig *HerokuDrainTargetConfig   `yaml:"heroku_drain,omitempty"`
+	GCPPushConfig     *GCPPushTargetConfig       `yaml:"gcp_push,omitempty"`
 	RelabelConfigs    []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
