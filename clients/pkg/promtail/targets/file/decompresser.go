@@ -122,7 +122,8 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("file %q has unsupported extension", f.Name())
+	exts := ".gz, .tar.gz, .z, .zip, .bz2"
+	return nil, fmt.Errorf("file %q has unsupported extension, it has to be one of %q", f.Name(), exts)
 }
 
 func (t *decompressor) updatePosition() {
