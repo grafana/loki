@@ -294,7 +294,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, dr := range mgr.deleteRequestsToProcess {
-				require.Equal(t, 0, dr.DeletedLines)
+				require.EqualValues(t, 0, dr.DeletedLines)
 			}
 
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
