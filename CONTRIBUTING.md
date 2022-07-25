@@ -31,14 +31,14 @@ Please document clearly what changed AND what needs to be done in the upgrade gu
 
 ## Setup
 
-A common problem raises in local environments when you want your module to use a locally modified dependency :
+A common problem raises in local environments when you want your module to use a locally modified dependency:
 How do you make Go understand you don't want to fetch upstream dependencies but use local ones?
 You could modify `go.mod` and use `replace` directives, but it's highly harming *Developer Experience* as you
 need to roll back your `go.mod` before committing.
 
 Things get even worse when you host multiple modules on the same repository as Go will ignore modifications
 made locally to a module B when building a dependent module A.
-Bellow are some solutions you can use if you happen to stumble on those problems.
+Below are some solutions you can use if you happen to stumble on those problems.
 
 ### Go 1.18 workspaces
 
