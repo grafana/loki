@@ -30,6 +30,16 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 )
 
+func supportedCompressedFormats() map[string]struct{} {
+	return map[string]struct{}{
+		".zip":    {},
+		".gz":     {},
+		".tar.gz": {},
+		".z":      {},
+		".bz2":    {},
+	}
+}
+
 type decompressor struct {
 	metrics   *Metrics
 	logger    log.Logger
@@ -122,8 +132,11 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 		return nil, err
 	}
 
-	exts := ".gz, .tar.gz, .z, .zip, .bz2"
-	return nil, fmt.Errorf("file %q has unsupported extension, it has to be one of %q", f.Name(), exts)
+	supportedExtsList := strings.Builder{}
+	for ext := range supportedCompressedFormats() {
+		supportedExtsList.WriteString(ext)
+	}
+	return nil, fmt.Errorf("file %q has unsupported extension, it has to be one of %q", f.Name(), supportedExtsList.String())
 }
 
 func (t *decompressor) updatePosition() {

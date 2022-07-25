@@ -344,15 +344,7 @@ func (t *FileTarget) startTailing(ps []string) {
 func isCompressed(p string) bool {
 	ext := filepath.Ext(p)
 
-	supportedCompressedFormats := []string{
-		".zip",
-		".gz",
-		".tar.gz",
-		".z",
-		".bz2",
-	}
-
-	for _, format := range supportedCompressedFormats {
+	for format := range supportedCompressedFormats() {
 		if ext == format {
 			return true
 		}
