@@ -389,15 +389,15 @@ will get those labels extracted:
 
 #### syslog
 
-The **syslog** parser can be added using the `| syslog` and will extract values from [RFC5424](https://datatracker.ietf.org/doc/html/rfc5424) formatted syslog lines.
+The **syslog** parser (`| syslog`) extracts values from [RFC5424](https://datatracker.ietf.org/doc/html/rfc5424)-formatted syslog lines.
 
-For example, parsing the following log line
+Consider this syslog log line:
 
 ```
 <165>1 2003-10-11T22:14:15.003Z mymachine.example.com evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] An application event log entry
 ```
 
-will get those labels extracted:
+This example extracts these labels:
 
 ```kv
 "app_name" => "evntslog"
