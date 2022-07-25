@@ -13,6 +13,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 	"io"
+	log2 "log"
 	"net/http"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -141,6 +142,9 @@ func (h *Target) push(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	log2.Printf("received line: %s\n", entry.Line)
+
 	entries <- entry
 	h.metrics.gcpPushEntries.WithLabelValues().Inc()
 	w.WriteHeader(http.StatusNoContent)

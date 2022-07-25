@@ -23,7 +23,28 @@ import (
 
 const localhost = "127.0.0.1"
 
-const testPayload = `{"message":{"attributes":{"logging.googleapis.com/timestamp":"2022-07-25T22:19:09.903683708Z"},"data":"eyJpbnNlcnRJZCI6ImNydDBzY2ZkZ3ZmY3IiLCJsYWJlbHMiOnsiZXhlY3V0aW9uX2lkIjoiZW4ybHplaHRhdnYzIn0sImxvZ05hbWUiOiJwcm9qZWN0cy93aXJlZC1oZWlnaHQtMzUwNTE1L2xvZ3MvY2xvdWRmdW5jdGlvbnMuZ29vZ2xlYXBpcy5jb20lMkZjbG91ZC1mdW5jdGlvbnMiLCJyZWNlaXZlVGltZXN0YW1wIjoiMjAyMi0wNy0yNVQyMjoxOToxMC4wNDE4MzQxMjZaIiwicmVzb3VyY2UiOnsibGFiZWxzIjp7ImZ1bmN0aW9uX25hbWUiOiJ0ZXN0LWxvZ2dlci1mdW5jdGlvbiIsInByb2plY3RfaWQiOiJ3aXJlZC1oZWlnaHQtMzUwNTE1IiwicmVnaW9uIjoidXMtY2VudHJhbDEifSwidHlwZSI6ImNsb3VkX2Z1bmN0aW9uIn0sInNldmVyaXR5IjoiREVCVUciLCJ0ZXh0UGF5bG9hZCI6IkZ1bmN0aW9uIGV4ZWN1dGlvbiB0b29rIDExOTggbXMuIEZpbmlzaGVkIHdpdGggc3RhdHVzIGNvZGU6IDIwMCIsInRpbWVzdGFtcCI6IjIwMjItMDctMjVUMjI6MTk6MDkuOTAzNjgzNzA4WiIsInRyYWNlIjoicHJvamVjdHMvd2lyZWQtaGVpZ2h0LTM1MDUxNS90cmFjZXMvNTRhYThhMjA4NzUyNTNjNmI0N2NhYThiZDI4YWQ2NTIifQ==","messageId":"5187581549398349","message_id":"5187581549398349","publishTime":"2022-07-25T22:19:15.56Z","publish_time":"2022-07-25T22:19:15.56Z"},"subscription":"projects/wired-height-350515/subscriptions/to-heroku"}`
+/*
+message.data for the testPayload example below
+*/
+const expectedMessageData = `{
+  "severity": "DEBUG",
+  "textPayload": "Function execution took 1198 ms. Finished with status code: 200",
+  "trace": "projects/wired-height/traces/54aa8a20875253c6b47caa8bd28ad652"
+}`
+const testPayload = `
+{
+	"message": {
+		"attributes": {
+			"logging.googleapis.com/timestamp": "2022-07-25T22:19:09.903683708Z"
+		},
+		"data": "ewogICJzZXZlcml0eSI6ICJERUJVRyIsCiAgInRleHRQYXlsb2FkIjogIkZ1bmN0aW9uIGV4ZWN1dGlvbiB0b29rIDExOTggbXMuIEZpbmlzaGVkIHdpdGggc3RhdHVzIGNvZGU6IDIwMCIsCiAgInRyYWNlIjogInByb2plY3RzL3dpcmVkLWhlaWdodC90cmFjZXMvNTRhYThhMjA4NzUyNTNjNmI0N2NhYThiZDI4YWQ2NTIiCn0=",
+		"messageId": "5187581549398349",
+		"message_id": "5187581549398349",
+		"publishTime": "2022-07-25T22:19:15.56Z",
+		"publish_time": "2022-07-25T22:19:15.56Z"
+	},
+	"subscription": "projects/wired-height-350515/subscriptions/to-heroku"
+}`
 
 func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/gcp/api/v1/push", host), strings.NewReader(strings.Join(bodies, "")))
@@ -51,7 +72,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		args            args
 		expectedEntries []expectedEntry
 	}{
-		"simple cloud functions log line": {
+		"simplified cloud functions log line": {
 			args: args{
 				RequestBodies: []string{testPayload},
 				Labels: model.LabelSet{
@@ -63,7 +84,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 					labels: model.LabelSet{
 						"job": "some_job_name",
 					},
-					line: ``,
+					line: expectedMessageData,
 				},
 			},
 		},
