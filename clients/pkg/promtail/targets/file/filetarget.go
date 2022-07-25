@@ -322,12 +322,12 @@ func (t *FileTarget) startTailing(ps []string) {
 		var reader Reader
 		if isCompressed(p) {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
-			decompresser, err := newDecompresser(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
 			if err != nil {
-				level.Error(t.logger).Log("msg", "failed to start decompresser", "error", err, "filename", p)
+				level.Error(t.logger).Log("msg", "failed to start decompressor", "error", err, "filename", p)
 				continue
 			}
-			reader = decompresser
+			reader = decompressor
 		} else {
 			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
 			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)

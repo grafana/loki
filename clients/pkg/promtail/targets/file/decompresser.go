@@ -30,7 +30,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 )
 
-type decompresser struct {
+type decompressor struct {
 	metrics   *Metrics
 	logger    log.Logger
 	handler   api.EntryHandler
@@ -52,8 +52,8 @@ type decompresser struct {
 	size     int64
 }
 
-func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string) (*decompresser, error) {
-	logger = log.With(logger, "component", "decompresser")
+func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string) (*decompressor, error) {
+	logger = log.With(logger, "component", "decompressor")
 
 	pos, err := positions.Get(path)
 	if err != nil {
@@ -62,7 +62,7 @@ func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 
 	var decoder *encoding.Decoder
 	if encodingFormat != "" {
-		level.Info(logger).Log("msg", "decompresser will decode messages", "from", encodingFormat, "to", "UTF8")
+		level.Info(logger).Log("msg", "decompressor will decode messages", "from", encodingFormat, "to", "UTF8")
 		encoder, err := ianaindex.IANA.Encoding(encodingFormat)
 		if err != nil {
 			return nil, errors.Wrap(err, "error doing IANA encoding")
@@ -70,7 +70,7 @@ func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 		decoder = encoder.NewDecoder()
 	}
 
-	decompresser := &decompresser{
+	decompressor := &decompressor{
 		metrics:   metrics,
 		logger:    logger,
 		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
@@ -84,13 +84,13 @@ func newDecompresser(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 		decoder:   decoder,
 	}
 
-	go decompresser.readLines()
-	go decompresser.updatePosition()
+	go decompressor.readLines()
+	go decompressor.updatePosition()
 	metrics.filesActive.Add(1.)
-	return decompresser, nil
+	return decompressor, nil
 }
 
-// mountReader instantiate a reader ready to be used by the decompresser.
+// mountReader instantiate a reader ready to be used by the decompressor.
 //
 // The selected reader implementation is based on the extension of the given file name.
 // It'll error if the extension isn't supported.
@@ -125,7 +125,7 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 	return nil, fmt.Errorf("file %q with unsupported extension", f.Name())
 }
 
-func (t *decompresser) updatePosition() {
+func (t *decompressor) updatePosition() {
 	positionSyncPeriod := t.positions.SyncPeriod()
 	positionWait := time.NewTicker(positionSyncPeriod)
 	defer func() {
@@ -138,7 +138,7 @@ func (t *decompresser) updatePosition() {
 		select {
 		case <-positionWait.C:
 			if err := t.MarkPositionAndSize(); err != nil {
-				level.Error(t.logger).Log("msg", "position timer: error getting position and/or size, stopping decompresser", "path", t.path, "error", err)
+				level.Error(t.logger).Log("msg", "position timer: error getting position and/or size, stopping decompressor", "path", t.path, "error", err)
 				return
 			}
 		case <-t.posquit:
@@ -152,7 +152,7 @@ func (t *decompresser) updatePosition() {
 // It first decompress the file as a whole using a reader and then it will iterate
 // over its chunks, separated by '\n'.
 // During each iteration, the parsed and decoded log line is then sent to the API with the current timestamp.
-func (t *decompresser) readLines() {
+func (t *decompressor) readLines() {
 	level.Info(t.logger).Log("msg", "read lines routine: started", "path", t.path)
 	t.running.Store(true)
 
@@ -226,7 +226,7 @@ func (t *decompresser) readLines() {
 	}
 }
 
-func (t *decompresser) MarkPositionAndSize() error {
+func (t *decompressor) MarkPositionAndSize() error {
 	// Lock this update as there are 2 timers calling this routine, the sync in filetarget and the positions sync in this file.
 	t.posAndSizeMtx.Lock()
 	defer t.posAndSizeMtx.Unlock()
@@ -238,7 +238,7 @@ func (t *decompresser) MarkPositionAndSize() error {
 	return nil
 }
 
-func (t *decompresser) Stop() {
+func (t *decompressor) Stop() {
 	// stop can be called by two separate threads in filetarget, to avoid a panic closing channels more than once
 	// we wrap the stop in a sync.Once.
 	t.stopOnce.Do(func() {
@@ -248,21 +248,21 @@ func (t *decompresser) Stop() {
 
 		// Save the current position before shutting down tailer
 		if err := t.MarkPositionAndSize(); err != nil {
-			level.Error(t.logger).Log("msg", "error marking file position when stopping decompresser", "path", t.path, "error", err)
+			level.Error(t.logger).Log("msg", "error marking file position when stopping decompressor", "path", t.path, "error", err)
 		}
 
 		// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 		<-t.done
-		level.Info(t.logger).Log("msg", "stopped decompresser", "path", t.path)
+		level.Info(t.logger).Log("msg", "stopped decompressor", "path", t.path)
 		t.handler.Stop()
 	})
 }
 
-func (t *decompresser) IsRunning() bool {
+func (t *decompressor) IsRunning() bool {
 	return t.running.Load()
 }
 
-func (t *decompresser) convertToUTF8(text string) (string, error) {
+func (t *decompressor) convertToUTF8(text string) (string, error) {
 	res, _, err := transform.String(t.decoder, text)
 	if err != nil {
 		return "", errors.Wrap(err, "error decoding text")
@@ -272,7 +272,7 @@ func (t *decompresser) convertToUTF8(text string) (string, error) {
 }
 
 // cleanupMetrics removes all metrics exported by this tailer
-func (t *decompresser) cleanupMetrics() {
+func (t *decompressor) cleanupMetrics() {
 	// When we stop tailing the file, also un-export metrics related to the file
 	t.metrics.filesActive.Add(-1.)
 	t.metrics.readLines.DeleteLabelValues(t.path)
@@ -280,6 +280,6 @@ func (t *decompresser) cleanupMetrics() {
 	t.metrics.totalBytes.DeleteLabelValues(t.path)
 }
 
-func (t *decompresser) Path() string {
+func (t *decompressor) Path() string {
 	return t.path
 }
