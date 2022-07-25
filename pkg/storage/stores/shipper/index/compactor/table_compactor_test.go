@@ -303,7 +303,7 @@ func TestTable_Compaction(t *testing.T) {
 
 					tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
 						return newMockIndexSet(userID, tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
-					}, config.PeriodConfig{})
+					}, config.PeriodConfig{}, nil)
 
 					require.NoError(t, tCompactor.CompactTable())
 
@@ -432,7 +432,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 
 			tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
 				return newMockIndexSet(userID, tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
-			}, config.PeriodConfig{})
+			}, config.PeriodConfig{}, nil)
 
 			require.NoError(t, tCompactor.CompactTable())
 

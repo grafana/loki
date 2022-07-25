@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -198,6 +199,10 @@ func (c compactedIndex) Reader() (io.ReadSeeker, error) {
 		return nil, err
 	}
 	return c.indexFile, nil
+}
+
+func (c compactedIndex) SourceFiles() []storage.IndexFile {
+	return nil
 }
 
 type testIndexCompactor struct{}

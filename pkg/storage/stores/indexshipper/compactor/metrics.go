@@ -16,8 +16,6 @@ type metrics struct {
 	compactTablesOperationLastSuccess     prometheus.Gauge
 	applyRetentionLastSuccess             prometheus.Gauge
 	compactorRunning                      prometheus.Gauge
-	compactTablesFileIngestLatency        prometheus.Histogram
-	compactTablesFilesIngested            prometheus.Counter
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -47,17 +45,6 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compactor_running",
 			Help:      "Value will be 1 if compactor is currently running on this instance",
 		}),
-		compactTablesFileIngestLatency: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "compact_tables_file_ingest_latency",
-
-		}),
-		compactTablesFilesIngested: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "compact_tables_files_ingested",
-
-		}),
-
 	}
 
 	return &m

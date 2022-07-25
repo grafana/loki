@@ -80,6 +80,7 @@ type Config struct {
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
+	TimeBoundedCompactions    bool            `yaml:"timebounded_compactions,omitempty"`
 	RunOnce                   bool            `yaml:"-"`
 }
 
@@ -98,6 +99,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "disabled", fmt.Sprintf("Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
+	f.BoolVar(&cfg.TimeBoundedCompactions, "boltdb.shipper.compactor.time-bounded-compactions", false, "Try to fit compactions into the compaction period. For boltdb this will compact as much as it can in the compaction period and commit the resulting index to storage, picking up where it left off on the next run")
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -436,8 +438,13 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 			level.Info(util_log.Logger).Log("msg", "applying retention with compaction")
 			applyRetention = true
 		}
-
-		err := c.RunCompaction(ctx, applyRetention)
+		runCtx := ctx
+		if c.cfg.TimeBoundedCompactions {
+			c, cancel := context.WithTimeout(runCtx, c.cfg.CompactionInterval)
+			runCtx = c
+			defer cancel()
+		}
+		err := c.RunCompaction(runCtx, applyRetention)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}

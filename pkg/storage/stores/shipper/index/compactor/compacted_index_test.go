@@ -42,7 +42,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
 
-			compactedIndex := newCompactedIndex(tables[0].DB, tables[0].name, t.TempDir(), tt.config, util_log.Logger)
+			compactedIndex := newCompactedIndex(tables[0].DB, nil, tables[0].name, t.TempDir(), tt.config, util_log.Logger)
 
 			// remove c1, c2 chunk and index c4 with same labels as c2
 			c4 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(30*time.Minute))

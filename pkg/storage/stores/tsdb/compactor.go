@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -335,6 +336,10 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 }
 
 func (c *compactedIndex) Cleanup() {}
+
+func (c *compactedIndex) SourceFiles() []storage.IndexFile {
+	return nil
+}
 
 // ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.

@@ -48,6 +48,11 @@ type CompactedIndex interface {
 	// ToIndexFile is used to convert the CompactedIndex to an IndexFile for uploading to the object store.
 	// Once the IndexFile is uploaded using Index.Reader, the file is closed using Index.Close and removed from disk using Index.Path.
 	ToIndexFile() (index.Index, error)
+	// List of actual source files that were used to generate this compacted index.
+	// Useful in a situation where a subset of source files were
+	// actually compacted e.g. if there was an error or a timeout.
+	// Empty result indicates that the owning IndexSet is responsible for tracking this
+	SourceFiles() []storage.IndexFile
 }
 
 // indexSet helps with doing operations on a set of index files belonging to a single user or common index files shared by users.
@@ -262,9 +267,13 @@ func (is *indexSet) upload() error {
 
 // removeFilesFromStorage deletes source objects from storage.
 func (is *indexSet) removeFilesFromStorage() error {
-	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(is.sourceObjects))
+	filesToRemove := is.sourceObjects
+	if is.compactedIndex != nil && len(is.compactedIndex.SourceFiles()) > 0 {
+		filesToRemove = is.compactedIndex.SourceFiles()
+	}
+	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(filesToRemove))
 
-	for _, object := range is.sourceObjects {
+	for _, object := range filesToRemove {
 		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
 		if err != nil {
 			return err
