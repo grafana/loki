@@ -23,9 +23,6 @@ import (
 
 const localhost = "127.0.0.1"
 
-/*
-message.data for the testPayload example below
-*/
 const expectedMessageData = `{
   "severity": "DEBUG",
   "textPayload": "Function execution took 1198 ms. Finished with status code: 200",
@@ -46,15 +43,15 @@ const testPayload = `
 	"subscription": "projects/wired-height-350515/subscriptions/to-heroku"
 }`
 
-func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/gcp/api/v1/push", host), strings.NewReader(strings.Join(bodies, "")))
+func makeGCPPushRequest(host string, body string) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/gcp/api/v1/push", host), strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	return req, nil
 }
 
-func TestHerokuDrainTarget(t *testing.T) {
+func TestGCPPushTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
@@ -63,7 +60,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		line   string
 	}
 	type args struct {
-		RequestBodies  []string
+		RequestBody    string
 		RelabelConfigs []*relabel.Config
 		Labels         model.LabelSet
 	}
@@ -74,7 +71,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 	}{
 		"simplified cloud functions log line": {
 			args: args{
-				RequestBodies: []string{testPayload},
+				RequestBody: testPayload,
 				Labels: model.LabelSet{
 					"job": "some_job_name",
 				},
@@ -83,6 +80,40 @@ func TestHerokuDrainTarget(t *testing.T) {
 				{
 					labels: model.LabelSet{
 						"job": "some_job_name",
+					},
+					line: expectedMessageData,
+				},
+			},
+		},
+		"simplified cloud functions log line, with relabeling custom attribute and message id": {
+			args: args{
+				RequestBody: testPayload,
+				Labels: model.LabelSet{
+					"job": "some_job_name",
+				},
+				RelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels: model.LabelNames{"__gcp_attributes_logging_googleapis_com_timestamp"},
+						Regex:        relabel.MustNewRegexp("(.*)"),
+						Replacement:  "$1",
+						TargetLabel:  "google_timestamp",
+						Action:       relabel.Replace,
+					},
+					{
+						SourceLabels: model.LabelNames{"__gcp_message_id"},
+						Regex:        relabel.MustNewRegexp("(.*)"),
+						Replacement:  "$1",
+						TargetLabel:  "message_id",
+						Action:       relabel.Replace,
+					},
+				},
+			},
+			expectedEntries: []expectedEntry{
+				{
+					labels: model.LabelSet{
+						"job":              "some_job_name",
+						"google_timestamp": "2022-07-25T22:19:09.903683708Z",
+						"message_id":       "5187581549398349",
 					},
 					line: expectedMessageData,
 				},
@@ -117,7 +148,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			// Send some logs
 			ts := time.Now()
 
-			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.RequestBodies...)
+			req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.RequestBody)
 			require.NoError(t, err, "expected test drain request to be successfully created")
 			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -126,7 +157,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			waitForMessages(eh)
 
 			// Make sure we didn't timeout
-			require.Equal(t, len(tc.args.RequestBodies), len(eh.Received()))
+			require.Equal(t, 1, len(eh.Received()))
 
 			require.Equal(t, len(eh.Received()), len(tc.expectedEntries), "expected to receive equal amount of expected label sets")
 			for i, expectedEntry := range tc.expectedEntries {
@@ -146,6 +177,49 @@ func TestHerokuDrainTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGCPPushTarget_UseIncomingTimestamp(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	serverConfig, port, err := getServerConfigWithAvailablePort()
+	require.NoError(t, err, "error generating server config or finding open port")
+	config := &scrapeconfig.GCPPushTargetConfig{
+		Server:               serverConfig,
+		Labels:               nil,
+		UseIncomingTimestamp: true,
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	require.NoError(t, err)
+	defer func() {
+		_ = pt.Stop()
+	}()
+
+	// Clear received lines after test case is ran
+	defer eh.Clear()
+
+	req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
+	require.NoError(t, err, "expected test drain request to be successfully created")
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
+
+	waitForMessages(eh)
+
+	// Make sure we didn't timeout
+	require.Equal(t, 1, len(eh.Received()))
+
+	expectedTs, err := time.Parse(time.RFC3339Nano, "2022-07-25T22:19:15.56Z")
+	require.NoError(t, err, "expected expected timestamp to be parse correctly")
+	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overridden by received one")
 }
 
 func waitForMessages(eh *fake.Client) {

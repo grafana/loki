@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,6 +18,14 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+// Configured as a global in this file to avoid recompiling this regex everywhere.
+var labelToLokiCompatible *regexp.Regexp
+
+func init() {
+	// TODO: Maybe use a regexp negative filter and grab everything non-alphanumeric non-underscore?
+	labelToLokiCompatible = regexp.MustCompile("[.-/]")
+}
+
 // PushMessage is the POST body format sent by GCP PubSub push subscriptions.
 type PushMessage struct {
 	Message struct {
@@ -28,14 +37,17 @@ type PushMessage struct {
 	Subscription string `json:"subscription"`
 }
 
-func format(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, relabelConfigs []*relabel.Config, xScopeOrgID string) (api.Entry, error) {
+// translate converts a GCP PushMessage into a loki api.Entry. It is responsible for decoding the log line (contained in the Message.Data)
+// attribute, using the incoming timestamp if necessary, and formatting and passing down the incoming Message.Attributes
+// if relabel is configured.
+func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, relabelConfigs []*relabel.Config, xScopeOrgID string) (api.Entry, error) {
 	// mandatory label for gcplog
 	lbs := labels.NewBuilder(nil)
 	lbs.Set("__gcp_message_id", m.Message.ID)
 
 	// labels from gcp log entry. Add it as internal labels
 	for k, v := range m.Message.Attributes {
-		lbs.Set(fmt.Sprintf("__gcp_attributes_%s", util.SnakeCase(k)), v)
+		lbs.Set(fmt.Sprintf("__gcp_attributes_%s", convertToLokiCompatibleLabel(k)), v)
 	}
 
 	var processed labels.Labels
@@ -93,4 +105,13 @@ func format(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, rela
 			Line:      line,
 		},
 	}, nil
+}
+
+// convertToLokiCompatibleLabel converts an incoming GCP Push message label to a loki compatible format. There are lables
+// such as `logging.googleapis.com/timestamp`, which contain non-loki-compatible characters, which is just alphanumeric
+// and _. The approach taken is to translate every non-alphanumeric separator character to an underscore.
+func convertToLokiCompatibleLabel(label string) string {
+	// TODO: Since this is running for every incoming message, maybe it's more performant to do something
+	// like a loop over characters, and checking if it's not loki compatible, instead of a regexp.
+	return util.SnakeCase(labelToLokiCompatible.ReplaceAllString(label, "_"))
 }

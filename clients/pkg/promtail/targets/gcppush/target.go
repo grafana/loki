@@ -6,19 +6,17 @@ import (
 	"fmt"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/imdario/mergo"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 	"io"
-	log2 "log"
 	"net/http"
-
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Target struct {
@@ -135,15 +133,15 @@ func (h *Target) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := format(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
+	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
 	if err != nil {
 		h.metrics.gcpPushErrors.WithLabelValues().Inc()
-		level.Warn(h.logger).Log("msg", "failed to format gcp push request", "err", err.Error())
+		level.Warn(h.logger).Log("msg", "failed to translate gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	log2.Printf("received line: %s\n", entry.Line)
+	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
 	entries <- entry
 	h.metrics.gcpPushEntries.WithLabelValues().Inc()
