@@ -322,7 +322,7 @@ Examples:
 
 Use this function to trim just the prefix from a string.
 
-Signature: `trimPrefix(suffix string, src string) string`
+Signature: `trimPrefix(prefix string, src string) string`
 
 Examples:
 
