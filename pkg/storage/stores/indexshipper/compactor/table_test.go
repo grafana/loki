@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
@@ -202,7 +203,7 @@ func TestTable_Compaction(t *testing.T) {
 						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 					require.NoError(t, err)
 
-					require.NoError(t, table.compact(false))
+					require.NoError(t, table.compact(false, 0*time.Second))
 
 					numUserIndexSets, numCommonIndexSets := 0, 0
 					for _, is := range table.indexSets {
@@ -239,7 +240,7 @@ func TestTable_Compaction(t *testing.T) {
 						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 					require.NoError(t, err)
 
-					require.NoError(t, table.compact(false))
+					require.NoError(t, table.compact(false, 0*time.Second))
 
 					for _, is := range table.indexSets {
 						require.False(t, is.uploadCompactedDB)
@@ -382,7 +383,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					}))
 				require.NoError(t, err)
 
-				require.NoError(t, table.compact(true))
+				require.NoError(t, table.compact(true, 0*time.Second))
 				tt.assert(t, objectStoragePath, tableName)
 			})
 		}
@@ -456,7 +457,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
-	require.Error(t, table.compact(false))
+	require.Error(t, table.compact(false, 0*time.Second))
 
 	// ensure that files in storage are intact.
 	files, err := ioutil.ReadDir(tablePathInStorage)
@@ -472,7 +473,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
 		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
 	require.NoError(t, err)
-	require.NoError(t, table.compact(false))
+	require.NoError(t, table.compact(false, 0*time.Second))
 
 	// ensure that we have cleanup the local working directory after successful compaction.
 	require.NoFileExists(t, tableWorkingDirectory)

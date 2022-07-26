@@ -112,7 +112,7 @@ func (m *mockIndexSet) GetWorkingDir() string {
 	return m.workingDir
 }
 
-func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex, removeSourceFiles bool) error {
+func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex, consumedFiles []storage.IndexFile, removeSourceFiles bool) error {
 	m.compactedIndex = compactedIndex
 	m.removeSourceFiles = removeSourceFiles
 	return nil
@@ -305,7 +305,7 @@ func TestTable_Compaction(t *testing.T) {
 						return newMockIndexSet(userID, tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
 					}, config.PeriodConfig{}, nil)
 
-					require.NoError(t, tCompactor.CompactTable())
+					require.NoError(t, tCompactor.CompactTable(0*time.Second))
 
 					if len(commonIndexSet.ListSourceFiles()) > 1 || (commonDBsConfig.NumUnCompactedDBs+perUserDBsConfig.NumUnCompactedDBs) > 0 {
 						commonIndexSet := tCompactor.commonIndexSet.(*mockIndexSet)
@@ -434,7 +434,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				return newMockIndexSet(userID, tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
 			}, config.PeriodConfig{}, nil)
 
-			require.NoError(t, tCompactor.CompactTable())
+			require.NoError(t, tCompactor.CompactTable(0*time.Second))
 
 			if tt.shouldRecreateCompactedDB {
 				require.True(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex.(*CompactedIndex).compactedFileRecreated)

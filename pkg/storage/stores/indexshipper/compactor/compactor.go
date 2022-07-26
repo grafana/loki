@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,6 +83,8 @@ type Config struct {
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
 	TimeBoundedCompactions    bool            `yaml:"timebounded_compactions,omitempty"`
 	RunOnce                   bool            `yaml:"-"`
+	TablesToCompact           int             `yaml:"-"`
+	YoungestTableToCompact    int             `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -100,6 +103,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
 	f.BoolVar(&cfg.TimeBoundedCompactions, "boltdb.shipper.compactor.time-bounded-compactions", false, "Try to fit compactions into the compaction period. For boltdb this will compact as much as it can in the compaction period and commit the resulting index to storage, picking up where it left off on the next run")
+	f.IntVar(&cfg.TablesToCompact, "boltdb.shipper.compactor.tables-to-compact", 0, "The number of most recent tables to compact in a given run. Default: all")
+	f.IntVar(&cfg.YoungestTableToCompact, "boltdb.shipper.compactor.youngest-table", 0, "Compact only tables older than the n-th youngest.")
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -560,6 +565,15 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	c.indexStorageClient.RefreshIndexListCache(ctx)
 
 	tables, err := c.indexStorageClient.ListTables(ctx)
+
+	// process most recent tables first
+	sortTablesByRange(tables)
+
+	// apply passed in compaction limits
+	tables = tables[c.cfg.YoungestTableToCompact:]
+	if c.cfg.TablesToCompact > 0 {
+		tables = tables[:c.cfg.TablesToCompact]
+	}
 	if err != nil {
 		status = statusFailure
 		return err
@@ -701,6 +715,19 @@ func (c *Compactor) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Des
 
 func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.ring.ServeHTTP(w, req)
+}
+
+func sortTablesByRange(tables []string) {
+	tableRanges := make(map[string]model.Interval)
+	for _, table := range tables {
+		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
+	}
+
+	sort.Slice(tables, func(i, j int) bool {
+		// less than if start time is after produces a most recent first sort order
+		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
+	})
+
 }
 
 func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {

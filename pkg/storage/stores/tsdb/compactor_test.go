@@ -108,7 +108,7 @@ func (m *mockIndexSet) GetWorkingDir() string {
 	return m.workingDir
 }
 
-func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex, removeSourceFiles bool) error {
+func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex, consumedFiles []storage.IndexFile, removeSourceFiles bool) error {
 	m.compactedIndex = compactedIndex
 	m.removeSourceFiles = removeSourceFiles
 	return nil
@@ -565,7 +565,7 @@ func TestCompactor_Compact(t *testing.T) {
 						return idxSet, nil
 					}, config.PeriodConfig{})
 
-					require.NoError(t, tCompactor.CompactTable())
+					require.NoError(t, tCompactor.CompactTable(0*time.Second))
 
 					// verify that we have CompactedIndex for numUsers
 					require.Len(t, tCompactor.compactedIndexes, tc.expectedNumCompactedIndexes)
