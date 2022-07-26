@@ -296,13 +296,19 @@ func compactIndexes(ctx context.Context, metrics *metrics, periodConfig config.P
 
 			return writeBatch(indexFile, batch)
 		})
-		if metrics != nil && err != nil {
-			metrics.compactTablesFilesIngested.Add(1)
-			consumedIndexesMtx.Lock()
-			defer consumedIndexesMtx.Unlock()
-			consumedIndexes = append(consumedIndexes, indexes[idx])
+		if err != nil {
+			return err
 		}
-		return err
+
+		consumedIndexesMtx.Lock()
+		defer consumedIndexesMtx.Unlock()
+		consumedIndexes = append(consumedIndexes, indexes[idx])
+
+		if metrics != nil {
+			metrics.compactTablesFilesIngested.Add(1)
+		}
+
+		return nil
 	})
 	// if we encounter an error but some indexes were succesfully consumed, attempt to checkpoint results
 	if err != nil && len(consumedIndexes) == 0 {
