@@ -567,7 +567,12 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 
 	compactTablesChan := make(chan string)
 	errChan := make(chan error)
-
+	timeoutCtx := ctx
+	if c.cfg.TimeBoundedCompactions {
+		ctx, cancel := context.WithTimeout(ctx, c.cfg.CompactionInterval)
+		timeoutCtx = ctx
+		defer cancel()
+	}
 	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
 		go func() {
 			var err error
@@ -589,6 +594,8 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 					}
 					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
 				case <-ctx.Done():
+					return
+				case <-timeoutCtx.Done():
 					return
 				}
 			}

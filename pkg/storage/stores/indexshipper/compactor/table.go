@@ -3,10 +3,10 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"time"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

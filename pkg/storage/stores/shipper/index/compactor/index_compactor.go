@@ -18,7 +18,7 @@ type indexEntry struct {
 	k, v []byte
 }
 
-type indexCompactor struct{
+type indexCompactor struct {
 	metrics *metrics
 }
 
