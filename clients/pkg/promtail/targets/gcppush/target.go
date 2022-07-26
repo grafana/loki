@@ -2,15 +2,14 @@ package gcppush
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/server_utils"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/imdario/mergo"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/logging"
@@ -42,7 +41,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 		relabelConfigs: relabel,
 	}
 
-	mergedServerConfigs, err := mergeWithDefaults(config.Server)
+	mergedServerConfigs, err := server_utils.MergeWithDefaults(config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring gcp push target: %w", err)
 	}
@@ -54,26 +53,6 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 	}
 
 	return ht, nil
-}
-
-func mergeWithDefaults(config server.Config) (server.Config, error) {
-	// Bit of a chicken and egg problem trying to register the defaults and apply overrides from the loaded config.
-	// First create an empty config and set defaults.
-	mergee := server.Config{}
-	mergee.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	// Then apply any config values loaded as overrides to the defaults.
-	if err := mergo.Merge(&mergee, config, mergo.WithOverride); err != nil {
-		return server.Config{}, err
-	}
-	// The merge won't overwrite with a zero value but in the case of ports 0 value
-	// indicates the desire for a random port so reset these to zero if the incoming config val is 0
-	if config.HTTPListenPort == 0 {
-		mergee.HTTPListenPort = 0
-	}
-	if config.GRPCListenPort == 0 {
-		mergee.GRPCListenPort = 0
-	}
-	return mergee, nil
 }
 
 func (h *Target) run() error {
