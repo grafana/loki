@@ -31,7 +31,7 @@ type Target struct {
 	relabelConfigs []*relabel.Config
 }
 
-// NewTarget creates a brand new Heroku Drain target, capable of receiving logs from a Heroku application through an HTTP drain.
+// NewTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
 func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GCPPushTargetConfig, relabel []*relabel.Config) (*Target, error) {
 	wrappedLogger := log.With(logger, "component", "gcp_push")
 
@@ -63,7 +63,7 @@ func (h *Target) run() error {
 
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 
-	tentativeServerMetricNamespace := "promtail_heroku_drain_target_" + h.jobName
+	tentativeServerMetricNamespace := "promtail_gcp_push_target_" + h.jobName
 	if !model.IsValidMetricName(model.LabelValue(tentativeServerMetricNamespace)) {
 		return fmt.Errorf("invalid prometheus-compatible job name: %s", h.jobName)
 	}
@@ -75,7 +75,7 @@ func (h *Target) run() error {
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
+	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "gcp_push"))
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {
@@ -88,7 +88,7 @@ func (h *Target) run() error {
 	go func() {
 		err := srv.Run()
 		if err != nil {
-			level.Error(h.logger).Log("msg", "heroku drain target shutdown with error", "err", err)
+			level.Error(h.logger).Log("msg", "gcp push target shutdown with error", "err", err)
 		}
 	}()
 

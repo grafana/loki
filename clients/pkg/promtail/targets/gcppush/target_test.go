@@ -40,7 +40,7 @@ const testPayload = `
 		"publishTime": "2022-07-25T22:19:15.56Z",
 		"publish_time": "2022-07-25T22:19:15.56Z"
 	},
-	"subscription": "projects/wired-height-350515/subscriptions/to-heroku"
+	"subscription": "projects/wired-height-350515/subscriptions/test"
 }`
 
 func makeGCPPushRequest(host string, body string) (*http.Request, error) {

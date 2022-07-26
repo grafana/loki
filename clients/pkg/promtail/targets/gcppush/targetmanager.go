@@ -29,7 +29,7 @@ func NewTargetManager(
 	}
 
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "heroku_drain_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, reg)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "gcp_push_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +57,7 @@ func (hm *TargetManager) Ready() bool {
 func (hm *TargetManager) Stop() {
 	for name, t := range hm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("event", "failed to stop heroku drain target", "name", name, "cause", err)
+			level.Error(t.logger).Log("event", "failed to stop gcp push target", "name", name, "cause", err)
 		}
 	}
 }
