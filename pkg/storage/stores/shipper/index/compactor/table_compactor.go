@@ -264,10 +264,6 @@ func compactIndexes(ctx context.Context, metrics *metrics, periodConfig config.P
 		return nil, nil, err
 	}
 
-	if metrics != nil {
-		metrics.compactTablesFilesRemaining.Add(float64(len(indexes) - len(consumedIndexes)))
-	}
-
 	// go through each file and build index in FORMAT1 from FORMAT1 indexes and FORMAT3 from FORMAT2 indexes
 	err = concurrency.ForEachJob(ctx, len(indexes), readDBsConcurrency, func(ctx context.Context, idx int) error {
 		// respect the provided timeout:
@@ -310,7 +306,6 @@ func compactIndexes(ctx context.Context, metrics *metrics, periodConfig config.P
 
 		if metrics != nil {
 			metrics.compactTablesFilesIngested.Add(1)
-			metrics.compactTablesFilesRemaining.Add(-1)
 		}
 
 		return nil

@@ -8,7 +8,6 @@ import (
 type metrics struct {
 	compactTablesFileIngestLatencyMs prometheus.Histogram
 	compactTablesFilesIngested       prometheus.Counter
-	compactTablesFilesRemaining      prometheus.Gauge
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -20,10 +19,6 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		compactTablesFilesIngested: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "compact_tables_files_ingested",
-		}),
-		compactTablesFilesRemaining: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "compact_tables_files_remaining",
 		}),
 	}
 
