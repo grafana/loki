@@ -3,7 +3,6 @@ package gcppush
 import (
 	"encoding/base64"
 	"fmt"
-	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"

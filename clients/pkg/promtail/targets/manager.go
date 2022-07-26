@@ -2,7 +2,6 @@ package targets
 
 import (
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/gcppush"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/gcppush"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"

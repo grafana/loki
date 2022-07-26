@@ -3,19 +3,22 @@ package gcppush
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/server_utils"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
-	"io"
-	"net/http"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Target struct {
@@ -41,7 +44,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 		relabelConfigs: relabel,
 	}
 
-	mergedServerConfigs, err := server_utils.MergeWithDefaults(config.Server)
+	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring gcp push target: %w", err)
 	}

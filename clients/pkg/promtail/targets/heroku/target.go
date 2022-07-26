@@ -2,7 +2,6 @@ package heroku
 
 import (
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/server_utils"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -48,7 +48,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 		relabelConfigs: relabel,
 	}
 
-	mergedServerConfigs, err := server_utils.MergeWithDefaults(config.Server)
+	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring heroku drain target: %w", err)
 	}

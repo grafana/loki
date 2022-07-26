@@ -3,7 +3,6 @@ package lokipush
 import (
 	"bufio"
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/server_utils"
 	"io"
 	"net/http"
 	"sort"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/loghttp/push"
@@ -54,7 +54,7 @@ func NewPushTarget(logger log.Logger,
 		config:        config,
 	}
 
-	mergedServerConfigs, err := server_utils.MergeWithDefaults(config.Server)
+	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring loki push target: %w", err)
 	}
