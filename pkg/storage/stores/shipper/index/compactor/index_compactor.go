@@ -38,5 +38,5 @@ func (i indexCompactor) OpenCompactedIndexFile(_ context.Context, path, tableNam
 		return nil, err
 	}
 
-	return newCompactedIndex(boltdb, nil, tableName, workingDir, periodConfig, logger), nil
+	return newCompactedIndex(boltdb, tableName, workingDir, periodConfig, logger), nil
 }

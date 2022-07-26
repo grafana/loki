@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -30,16 +29,14 @@ type CompactedIndex struct {
 	logger                 log.Logger
 	periodConfig           config.PeriodConfig
 
-	sourceFiles            []storage.IndexFile
-
 	// used for applying retention and deletion
 	boltdbTx      *bbolt.Tx
 	chunkIndexer  *chunkIndexer
 	seriesCleaner *seriesCleaner
 }
 
-func newCompactedIndex(compactedFile *bbolt.DB, sourceFiles []storage.IndexFile, tableName, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) *CompactedIndex {
-	return &CompactedIndex{compactedFile: compactedFile, tableName: tableName, workingDir: workingDir, periodConfig: periodConfig, logger: logger, sourceFiles: sourceFiles}
+func newCompactedIndex(compactedFile *bbolt.DB, tableName, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) *CompactedIndex {
+	return &CompactedIndex{compactedFile: compactedFile, tableName: tableName, workingDir: workingDir, periodConfig: periodConfig, logger: logger}
 }
 
 func (c *CompactedIndex) isEmpty() (bool, error) {
@@ -206,10 +203,6 @@ func (c *CompactedIndex) Cleanup() {
 	if err := os.Remove(compactedFilePath); err != nil {
 		level.Error(c.logger).Log("msg", "failed to remove compacted index file", "err", err)
 	}
-}
-
-func (c *CompactedIndex) SourceFiles() []storage.IndexFile {
-	return c.sourceFiles
 }
 
 type chunkIndexer struct {

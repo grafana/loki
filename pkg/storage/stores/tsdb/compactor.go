@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -87,7 +86,7 @@ func newTableCompactor(
 	}
 }
 
-func (t *tableCompactor) CompactTable() error {
+func (t *tableCompactor) CompactTable(_ time.Duration) error {
 	multiTenantIndexes := t.commonIndexSet.ListSourceFiles()
 
 	var multiTenantIndices []Index
@@ -157,7 +156,7 @@ func (t *tableCompactor) CompactTable() error {
 		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder)
 		t.compactedIndexes[userID] = compactedIndex
 
-		if err := existingUserIndexSet.SetCompactedIndex(compactedIndex, true); err != nil {
+		if err := existingUserIndexSet.SetCompactedIndex(compactedIndex, nil, true); err != nil {
 			return err
 		}
 	}
@@ -176,13 +175,13 @@ func (t *tableCompactor) CompactTable() error {
 
 		compactedIndex := newCompactedIndex(t.ctx, srcIdxSet.GetTableName(), userID, srcIdxSet.GetWorkingDir(), t.periodConfig, builder)
 		t.compactedIndexes[userID] = compactedIndex
-		if err := srcIdxSet.SetCompactedIndex(compactedIndex, true); err != nil {
+		if err := srcIdxSet.SetCompactedIndex(compactedIndex, nil, true); err != nil {
 			return err
 		}
 	}
 
 	if len(multiTenantIndices) > 0 {
-		if err := t.commonIndexSet.SetCompactedIndex(nil, true); err != nil {
+		if err := t.commonIndexSet.SetCompactedIndex(nil, nil, true); err != nil {
 			return err
 		}
 	}
@@ -336,10 +335,6 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 }
 
 func (c *compactedIndex) Cleanup() {}
-
-func (c *compactedIndex) SourceFiles() []storage.IndexFile {
-	return nil
-}
 
 // ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.

@@ -233,7 +233,7 @@ func newTestTableCompactor(ctx context.Context, commonIndexSet IndexSet, existin
 	}
 }
 
-func (t tableCompactor) CompactTable() error {
+func (t tableCompactor) CompactTable(_ time.Duration) error {
 	sourceFiles := t.commonIndexSet.ListSourceFiles()
 	perUserIndexes := map[string]CompactedIndex{}
 
@@ -316,7 +316,7 @@ func (t tableCompactor) CompactTable() error {
 			}
 		}
 
-		if err := t.commonIndexSet.SetCompactedIndex(commonCompactedIndex, true); err != nil {
+		if err := t.commonIndexSet.SetCompactedIndex(commonCompactedIndex, nil, true); err != nil {
 			return err
 		}
 	}
@@ -340,7 +340,7 @@ func (t tableCompactor) CompactTable() error {
 	}
 
 	for userID, userIndex := range perUserIndexes {
-		if err := t.existingUserIndexSet[userID].SetCompactedIndex(userIndex, true); err != nil {
+		if err := t.existingUserIndexSet[userID].SetCompactedIndex(userIndex, nil, true); err != nil {
 			return err
 		}
 	}

@@ -338,15 +338,8 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 
 func (c *Compactor) loop(ctx context.Context) error {
 	if c.cfg.RunOnce {
-		runCtx := ctx
-		if c.cfg.TimeBoundedCompactions {
-			c, cancel := context.WithTimeout(runCtx, c.cfg.CompactionInterval)
-			runCtx = c
-			defer cancel()
-		}
-
 		level.Info(util_log.Logger).Log("msg", "running single compaction")
-		err := c.RunCompaction(runCtx, false)
+		err := c.RunCompaction(ctx, false)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "compaction encountered an error", "err", err)
 		}
@@ -445,13 +438,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 			level.Info(util_log.Logger).Log("msg", "applying retention with compaction")
 			applyRetention = true
 		}
-		runCtx := ctx
-		if c.cfg.TimeBoundedCompactions {
-			c, cancel := context.WithTimeout(runCtx, c.cfg.CompactionInterval)
-			runCtx = c
-			defer cancel()
-		}
-		err := c.RunCompaction(runCtx, applyRetention)
+		err := c.RunCompaction(ctx, applyRetention)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
@@ -522,7 +509,11 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
-	err = table.compact(intervalMayHaveExpiredChunks)
+	var desiredDuration time.Duration
+	if c.cfg.TimeBoundedCompactions {
+		desiredDuration = c.cfg.CompactionInterval
+	}
+	err = table.compact(intervalMayHaveExpiredChunks, desiredDuration)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err

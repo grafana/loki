@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"time"
 	"os"
 	"path/filepath"
 	"sync"
@@ -63,7 +64,7 @@ type IndexCompactor interface {
 type TableCompactor interface {
 	// CompactTable compacts the table.
 	// After compaction is done successfully, it should set the new/updated CompactedIndex for relevant IndexSets.
-	CompactTable() (err error)
+	CompactTable(desiredDuration time.Duration) (err error)
 }
 
 type MakeEmptyUserIndexSetFunc func(userID string) (IndexSet, error)
@@ -113,7 +114,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 	return &table, nil
 }
 
-func (t *table) compact(applyRetention bool) error {
+func (t *table) compact(applyRetention bool, desiredDuration time.Duration) error {
 	indexFiles, usersWithPerUserIndex, err := t.indexStorageClient.ListFiles(t.ctx, t.name, false)
 	if err != nil {
 		return err
@@ -166,7 +167,7 @@ func (t *table) compact(applyRetention bool) error {
 		return t.indexSets[userID], err
 	}, t.periodConfig)
 
-	err = tableCompactor.CompactTable()
+	err = tableCompactor.CompactTable(desiredDuration)
 	if err != nil {
 		return err
 	}
@@ -258,7 +259,7 @@ func (t *table) openCompactedIndexForRetention(idxSet *indexSet) error {
 		return err
 	}
 
-	idxSet.setCompactedIndex(compactedIndexFile, false, false)
+	idxSet.setCompactedIndex(compactedIndexFile, nil, false, false)
 
 	return nil
 }

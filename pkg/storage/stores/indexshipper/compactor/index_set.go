@@ -31,7 +31,8 @@ type IndexSet interface {
 	// It would return an error if the CompactedIndex is nil and removeSourceFiles is true in case of user index set since
 	// compaction should either create new files or can be a noop if there is nothing to compact.
 	// There is no need to call SetCompactedIndex if no changes were made to the index for this IndexSet.
-	SetCompactedIndex(compactedIndex CompactedIndex, removeSourceFiles bool) error
+	// If the index set was partially compacted, consumedFiles indicates which files were actually used to generate the compacted index. These should be the only files removed during cleanup/done.
+	SetCompactedIndex(compactedIndex CompactedIndex, consumedFiles []storage.IndexFile, removeSourceFiles bool) error
 }
 
 // CompactedIndex is built by TableCompactor for IndexSet after compaction.
@@ -48,11 +49,6 @@ type CompactedIndex interface {
 	// ToIndexFile is used to convert the CompactedIndex to an IndexFile for uploading to the object store.
 	// Once the IndexFile is uploaded using Index.Reader, the file is closed using Index.Close and removed from disk using Index.Path.
 	ToIndexFile() (index.Index, error)
-	// List of actual source files that were used to generate this compacted index.
-	// Useful in a situation where a subset of source files were
-	// actually compacted e.g. if there was an error or a timeout.
-	// Empty result indicates that the owning IndexSet is responsible for tracking this
-	SourceFiles() []storage.IndexFile
 }
 
 // indexSet helps with doing operations on a set of index files belonging to a single user or common index files shared by users.
@@ -67,6 +63,7 @@ type indexSet struct {
 
 	compactedIndex CompactedIndex
 	sourceObjects  []storage.IndexFile
+	consumedFiles  []storage.IndexFile
 	logger         log.Logger
 }
 
@@ -146,16 +143,17 @@ func (is *indexSet) GetLogger() log.Logger {
 	return is.logger
 }
 
-func (is *indexSet) SetCompactedIndex(compactedIndex CompactedIndex, removeSourceFiles bool) error {
+func (is *indexSet) SetCompactedIndex(compactedIndex CompactedIndex, consumedFiles []storage.IndexFile, removeSourceFiles bool) error {
 	if compactedIndex == nil && removeSourceFiles && is.userID != "" {
 		return errors.New("compacted index can't be nil when remove source files is true for user index set")
 	}
 
-	is.setCompactedIndex(compactedIndex, compactedIndex != nil, removeSourceFiles)
+	is.setCompactedIndex(compactedIndex, consumedFiles, compactedIndex != nil, removeSourceFiles)
 	return nil
 }
 
-func (is *indexSet) setCompactedIndex(compactedIndex CompactedIndex, uploadCompactedDB, removeSourceObjects bool) {
+func (is *indexSet) setCompactedIndex(compactedIndex CompactedIndex, consumedFiles []storage.IndexFile, uploadCompactedDB, removeSourceObjects bool) {
+	is.consumedFiles = consumedFiles
 	is.compactedIndex = compactedIndex
 	is.uploadCompactedDB = uploadCompactedDB
 	is.removeSourceObjects = removeSourceObjects
@@ -268,8 +266,8 @@ func (is *indexSet) upload() error {
 // removeFilesFromStorage deletes source objects from storage.
 func (is *indexSet) removeFilesFromStorage() error {
 	filesToRemove := is.sourceObjects
-	if is.compactedIndex != nil && len(is.compactedIndex.SourceFiles()) > 0 {
-		filesToRemove = is.compactedIndex.SourceFiles()
+	if len(is.consumedFiles) > 0 {
+		filesToRemove = is.consumedFiles
 	}
 	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(filesToRemove))
 
