@@ -92,7 +92,7 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 		}
 	}
 
-	// If the incoming request carries the tenant id, inject it as the reserved label so it's used by the
+	// If the incoming request carries the tenant id, inject it as the reserved label, so it's used by the
 	// remote write client.
 	if xScopeOrgID != "" {
 		labels[lokiClient.ReservedLabelTenantID] = model.LabelValue(xScopeOrgID)

@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 
+	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
@@ -220,6 +221,48 @@ func TestGCPPushTarget_UseIncomingTimestamp(t *testing.T) {
 	expectedTs, err := time.Parse(time.RFC3339Nano, "2022-07-25T22:19:15.56Z")
 	require.NoError(t, err, "expected expected timestamp to be parse correctly")
 	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overridden by received one")
+}
+
+func TestGCPPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	serverConfig, port, err := getServerConfigWithAvailablePort()
+	require.NoError(t, err, "error generating server config or finding open port")
+	config := &scrapeconfig.GCPPushTargetConfig{
+		Server:               serverConfig,
+		Labels:               nil,
+		UseIncomingTimestamp: true,
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	require.NoError(t, err)
+	defer func() {
+		_ = pt.Stop()
+	}()
+
+	// Clear received lines after test case is ran
+	defer eh.Clear()
+
+	req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
+	require.NoError(t, err, "expected test drain request to be successfully created")
+	req.Header.Set("X-Scope-OrgID", "42")
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
+
+	waitForMessages(eh)
+
+	// Make sure we didn't timeout
+	require.Equal(t, 1, len(eh.Received()))
+
+	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels[lokiClient.ReservedLabelTenantID])
 }
 
 func waitForMessages(eh *fake.Client) {
