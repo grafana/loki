@@ -94,6 +94,9 @@ the query results
 include only those log lines that contain the string "metrics.go"
 and do not contain the string "out of order".
 
+The `logfmt` parser produces the `duration` and `status_code` labels,
+such that they can be used by a label filter.
+
 The label filter 
 `| duration > 30s or status_code!="200"`
 further filters out log lines.
