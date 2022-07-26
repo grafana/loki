@@ -72,14 +72,14 @@ spec:
           path: HOST_PATH
       - name: promtail-config
         configMap:
-          name: promtail-configmap
+          name: promtail-config
       containers:
       - name: promtail-container
         image: grafana/promtail
         args:
         - -config.file=/etc/promtail/promtail.yaml
         env: 
-        - name: 'HOSTNAME', # needed when using kubernetes_sd_configs
+        - name: 'HOSTNAME' # needed when using kubernetes_sd_configs
           valueFrom:
             fieldRef:
               fieldPath: 'spec.nodeName'
@@ -163,7 +163,7 @@ spec:
           path: HOST_PATH
       - name: promtail-config
         configMap:
-          name: promtail-configmap
+          name: promtail-config
       containers:
       - name: promtail-container
         image: grafana/promtail
