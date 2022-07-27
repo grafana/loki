@@ -354,7 +354,7 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 	//```
 
 	// Now when quering like `{...}|logfmt|subqueries=""` should consider lines 3 and 4.
-	// But when doing queries like `{...}|logfmt|subqueries!="0"` (also with !~), then line 3 should be considered.
+	// But when doing queries like `{...}|logfmt|subqueries!="0"` (also with !~), then line 3 shouldn't be considered.
 	// https://github.com/grafana/loki/pull/6766
 	// https://github.com/grafana/loki/issues/6713
 	if !ok && (s.Type == labels.MatchNotEqual || s.Type == labels.MatchNotRegexp) {
