@@ -353,6 +353,8 @@ func TestReduceAndLabelFilter(t *testing.T) {
 }
 
 func TestStringLabelFilter(t *testing.T) {
+	// NOTE: https://github.com/grafana/loki/issues/6713
+
 	tests := []struct {
 		name        string
 		filter      *StringLabelFilter
@@ -360,15 +362,51 @@ func TestStringLabelFilter(t *testing.T) {
 		shouldMatch bool
 	}{
 		{
-			name:        "without-label",
+			name:        `logfmt|subqueries!="0" (without label)`,
 			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
 			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
 			shouldMatch: false,
 		},
 		{
-			name:        "with-label",
+			name:        `logfmt|subqueries!="0" (with label)`,
 			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
 			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries!~"0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, "subqueries", "0")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: false,
+		},
+		{
+			name:        `logfmt|subqueries!~"0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, "subqueries", "0")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries="0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries="0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries=~"0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries=~"0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
 			shouldMatch: true,
 		},
 	}
