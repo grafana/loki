@@ -243,7 +243,7 @@ func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error
 
 	var lastErr error
 	for i, key := range keys {
-		if err := c.cache.Set(ctx, key, values[i], time.Time{}, false); err != nil {
+		if err := c.cache.Set(ctx, key, values[i], time.Time{}, c.GetCacheType() != stats.ChunkCache); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
 			lastErr = err
 		}
