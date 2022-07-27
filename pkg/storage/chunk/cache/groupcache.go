@@ -64,6 +64,7 @@ type GroupCacheConfig struct {
 	Enabled    bool    `yaml:"enabled,omitempty"`
 	Ring       RingCfg `yaml:"ring,omitempty"`
 	CapacityMB int64   `yaml:"capacity_per_cache_mb,omitempty"`
+	ListenPort int     `yaml:"listen_port,omitempty"`
 
 	Cache Cache `yaml:"-"`
 }
@@ -73,6 +74,7 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
 
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
+	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
 	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
 		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
 }
@@ -94,7 +96,6 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 			},
 		},
 	)
-	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
@@ -109,6 +110,8 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 		capacity:             config.CapacityMB * 1e6, // MB => B
 	}
 
+	go cache.serveGroupcache(config.ListenPort)
+
 	go func() {
 		// Avoid starting the cache and peer discovery until
 		// a cache is being used
@@ -120,6 +123,32 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 	}()
 
 	return cache, nil
+}
+
+func (c *GroupCache) serveGroupcache(listenPort int) {
+	addr := fmt.Sprintf(":%d", listenPort)
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "unable to serve groupcache", "err", err)
+		return
+	}
+	level.Info(c.logger).Log("msg", "groupcache listening", "addr", addr)
+
+	server := http2.Server{}
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		default:
+			conn, err := l.Accept()
+			if err != nil {
+				level.Error(c.logger).Log("msg", "groupcache connection failed", "err", err)
+				continue
+			}
+
+			go server.ServeConn(conn, &http2.ServeConnOpts{Handler: c.pool})
+		}
+	}
 }
 
 func (c *GroupCache) updatePeers() {
