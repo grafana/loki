@@ -178,9 +178,11 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache)
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache)
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache)
+	hotCacheEnabled := true
+
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache, !hotCacheEnabled)
+	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache, hotCacheEnabled)
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache, hotCacheEnabled)
 
 	return t.groupcacheRingManager, nil
 }

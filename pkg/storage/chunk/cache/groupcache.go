@@ -169,15 +169,16 @@ func (c *GroupCache) Stats() *groupcache.Stats {
 }
 
 type group struct {
-	cache         *groupcache.Group
-	logger        log.Logger
-	wg            *sync.WaitGroup
-	cacheType     stats.CacheType
-	fetchDuration prometheus.Observer
-	storeDuration prometheus.Observer
+	cache           *groupcache.Group
+	logger          log.Logger
+	wg              *sync.WaitGroup
+	cacheType       stats.CacheType
+	fetchDuration   prometheus.Observer
+	storeDuration   prometheus.Observer
+	hotCacheEnabled bool
 }
 
-func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
+func (c *GroupCache) NewGroup(name string, ct stats.CacheType, hotCacheEnabled bool) Cache {
 	// Return a known error on miss to track which keys need to be inserted
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
 		return ErrGroupcacheMiss
@@ -195,12 +196,13 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, c.capacity, missGetter),
-		logger:        c.logger,
-		wg:            &c.wg,
-		cacheType:     ct,
-		fetchDuration: requestDuration.WithLabelValues("fetch"),
-		storeDuration: requestDuration.WithLabelValues("store"),
+		cache:           groupcache.NewGroup(name, c.capacity, missGetter),
+		logger:          c.logger,
+		wg:              &c.wg,
+		cacheType:       ct,
+		fetchDuration:   requestDuration.WithLabelValues("fetch"),
+		storeDuration:   requestDuration.WithLabelValues("store"),
+		hotCacheEnabled: hotCacheEnabled,
 	}
 
 	exp := groupcache_exporter.NewExporter(map[string]string{"cache_type": string(ct)}, g)
@@ -243,7 +245,7 @@ func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error
 
 	var lastErr error
 	for i, key := range keys {
-		if err := c.cache.Set(ctx, key, values[i], time.Time{}, false); err != nil {
+		if err := c.cache.Set(ctx, key, values[i], time.Time{}, c.hotCacheEnabled); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
 			lastErr = err
 		}
