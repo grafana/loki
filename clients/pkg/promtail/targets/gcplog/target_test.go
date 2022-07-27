@@ -108,7 +108,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 			got, err := NewGCPLogTarget(tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config)
 			// If the target was started, stop it after test
 			if got != nil {
-				defer got.Stop()
+				defer func() { _ = got.Stop() }()
 			}
 
 			if !tt.wantErr(t, err, fmt.Sprintf("NewGCPLogTarget(%v, %v, %v, %v, %v, %v)", tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config)) {
