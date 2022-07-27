@@ -1,4 +1,4 @@
-package gcppush
+package gcplog
 
 import (
 	"flag"
@@ -129,15 +129,16 @@ func TestGCPPushTarget(t *testing.T) {
 
 			serverConfig, port, err := getServerConfigWithAvailablePort()
 			require.NoError(t, err, "error generating server config or finding open port")
-			config := &scrapeconfig.GCPPushTargetConfig{
+			config := &scrapeconfig.GCPLogTargetConfig{
 				Server:               serverConfig,
 				Labels:               tc.args.Labels,
 				UseIncomingTimestamp: false,
+				SubscriptionType:     "push",
 			}
 
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
 			metrics := NewMetrics(prometheus.DefaultRegisterer)
-			pt, err := NewTarget(metrics, logger, eh, "test_job", config, tc.args.RelabelConfigs)
+			pt, err := newPushTarget(metrics, logger, eh, "test_job", config, tc.args.RelabelConfigs)
 			require.NoError(t, err)
 			defer func() {
 				_ = pt.Stop()
@@ -190,15 +191,16 @@ func TestGCPPushTarget_UseIncomingTimestamp(t *testing.T) {
 
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GCPPushTargetConfig{
+	config := &scrapeconfig.GCPLogTargetConfig{
 		Server:               serverConfig,
 		Labels:               nil,
 		UseIncomingTimestamp: true,
+		SubscriptionType:     "push",
 	}
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	pt, err := newPushTarget(metrics, logger, eh, "test_job", config, nil)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -233,15 +235,16 @@ func TestGCPPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GCPPushTargetConfig{
+	config := &scrapeconfig.GCPLogTargetConfig{
 		Server:               serverConfig,
 		Labels:               nil,
 		UseIncomingTimestamp: true,
+		SubscriptionType:     "push",
 	}
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	pt, err := newPushTarget(metrics, logger, eh, "test_job", config, nil)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()

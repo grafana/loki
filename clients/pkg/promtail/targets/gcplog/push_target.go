@@ -1,4 +1,4 @@
-package gcppush
+package gcplog
 
 import (
 	"encoding/json"
@@ -21,21 +21,21 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-type Target struct {
+type PushTarget struct {
 	logger         log.Logger
 	handler        api.EntryHandler
-	config         *scrapeconfig.GCPPushTargetConfig
+	config         *scrapeconfig.GCPLogTargetConfig
 	jobName        string
 	server         *server.Server
 	metrics        *Metrics
 	relabelConfigs []*relabel.Config
 }
 
-// NewTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
-func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GCPPushTargetConfig, relabel []*relabel.Config) (*Target, error) {
+// newPushTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
+func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GCPLogTargetConfig, relabel []*relabel.Config) (*PushTarget, error) {
 	wrappedLogger := log.With(logger, "component", "gcp_push")
 
-	ht := &Target{
+	ht := &PushTarget{
 		metrics:        metrics,
 		logger:         wrappedLogger,
 		handler:        handler,
@@ -58,7 +58,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 	return ht, nil
 }
 
-func (h *Target) run() error {
+func (h *PushTarget) run() error {
 	level.Info(h.logger).Log("msg", "starting gcp push target", "job", h.jobName)
 
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
@@ -95,7 +95,7 @@ func (h *Target) run() error {
 	return nil
 }
 
-func (h *Target) push(w http.ResponseWriter, r *http.Request) {
+func (h *PushTarget) push(w http.ResponseWriter, r *http.Request) {
 	entries := h.handler.Chan()
 	defer r.Body.Close()
 
@@ -130,27 +130,27 @@ func (h *Target) push(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Target) Type() target.TargetType {
+func (h *PushTarget) Type() target.TargetType {
 	return target.GCPPushTargetType
 }
 
-func (h *Target) DiscoveredLabels() model.LabelSet {
+func (h *PushTarget) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
-func (h *Target) Labels() model.LabelSet {
+func (h *PushTarget) Labels() model.LabelSet {
 	return h.config.Labels
 }
 
-func (h *Target) Ready() bool {
+func (h *PushTarget) Ready() bool {
 	return true
 }
 
-func (h *Target) Details() interface{} {
+func (h *PushTarget) Details() interface{} {
 	return map[string]string{}
 }
 
-func (h *Target) Stop() error {
+func (h *PushTarget) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping gcp push target", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()

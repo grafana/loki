@@ -1,4 +1,4 @@
-package gcppush
+package gcplog
 
 import (
 	"testing"

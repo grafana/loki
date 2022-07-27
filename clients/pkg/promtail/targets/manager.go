@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/gcppush"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
@@ -40,7 +39,6 @@ const (
 	DockerConfigs        = "dockerConfigs"
 	DockerSDConfigs      = "dockerSDConfigs"
 	HerokuDrainConfigs   = "herokuDrainConfigs"
-	GCPPushConfigs       = "gcpPushConfigs"
 )
 
 type targetManager interface {
@@ -130,7 +128,6 @@ func NewTargetManagers(
 		dockerMetrics      *docker.Metrics
 		journalMetrics     *journal.Metrics
 		herokuDrainMetrics *heroku.Metrics
-		gcpPushMetrics     *gcppush.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -155,9 +152,6 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[HerokuDrainConfigs]) > 0 {
 		herokuDrainMetrics = heroku.NewMetrics(reg)
-	}
-	if len(targetScrapeConfigs[GCPPushConfigs]) > 0 {
-		gcpPushMetrics = gcppush.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -234,12 +228,6 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Heroku drain target manager")
 			}
 			targetManagers = append(targetManagers, herokuDrainTargetManager)
-		case GCPPushConfigs:
-			gcpPushTargetManager, err := gcppush.NewTargetManager(gcpPushMetrics, reg, logger, client, scrapeConfigs)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to make Heroku drain target manager")
-			}
-			targetManagers = append(targetManagers, gcpPushTargetManager)
 		case WindowsEventsConfigs:
 			windowsTargetManager, err := windows.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
