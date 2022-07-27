@@ -11,11 +11,14 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
+// Target is a common interface implemented by both GCPLog targets.
 type Target interface {
 	target.Target
 	Stop() error
 }
 
+// NewGCPLogTarget creates a GCPLog target either with the push or pull implementation, depending on the configured
+// subscription type.
 func NewGCPLogTarget(
 	metrics *Metrics,
 	logger log.Logger,
@@ -24,11 +27,12 @@ func NewGCPLogTarget(
 	jobName string,
 	config *scrapeconfig.GCPLogTargetConfig,
 ) (Target, error) {
-	if config.SubscriptionType == "pull" || config.SubscriptionType == "" {
+	switch config.SubscriptionType {
+	case "pull", "":
 		return newPullTarget(metrics, logger, handler, relabel, jobName, config)
-	} else if config.SubscriptionType == "push" {
+	case "push":
 		return newPushTarget(metrics, logger, handler, jobName, config, relabel)
-	} else {
+	default:
 		return nil, fmt.Errorf("invalid subscription type %s", config.SubscriptionType)
 	}
 }
