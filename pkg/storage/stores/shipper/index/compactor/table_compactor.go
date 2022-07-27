@@ -70,12 +70,14 @@ const (
 type compactedIndexSet struct {
 	compactor.IndexSet
 	compactedIndex *CompactedIndex
+	needsUpload bool
 }
 
-func newCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex) *compactedIndexSet {
+func newCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex, needsUpload bool) *compactedIndexSet {
 	return &compactedIndexSet{
 		IndexSet:       indexSet,
 		compactedIndex: compactedIndex,
+		needsUpload:    needsUpload,
 	}
 }
 
@@ -109,6 +111,11 @@ func newTableCompactor(
 
 func (t *tableCompactor) CompactTable() error {
 	commonIndexes := t.commonIndexSet.ListSourceFiles()
+	// prefetch existing user compacted index files to avoid serializing batches of records being re-written
+	err := t.prefetchUserIndexFiles()
+	if err != nil {
+		return err
+	}
 
 	// we need to perform compaction if we have more than 1 files in the storage or the only file we have is not a compaction file.
 	// if the files are already compacted we need to see if we need to recreate the compacted DB to reduce its space.
@@ -150,32 +157,24 @@ func (t *tableCompactor) CompactTable() error {
 		}
 	}
 
-	for userID, indexSet := range t.existingUserIndexSet {
-		if _, ok := t.userCompactedIndexSet[userID]; ok {
-			continue
-		}
-
+	for _, userCompactedIndexSet := range t.userCompactedIndexSet {
+		indexSet := userCompactedIndexSet.IndexSet
 		// We did not have any updates for this indexSet during compaction.
 		// Now see if it has more than one files to compact it down to a single file or if it requires recreation to save space.
 		sourceFiles := indexSet.ListSourceFiles()
-		if len(sourceFiles) > 1 || mustRecreateCompactedDB(sourceFiles) {
-			userCompactedIndexSet, err := t.getOrCreateUserCompactedIndexSet(userID)
-			if err != nil {
+		if mustRecreateCompactedDB(sourceFiles) {
+			if err := userCompactedIndexSet.compactedIndex.recreateCompactedDB(); err != nil {
 				return err
-			}
-			if len(sourceFiles) == 1 {
-				if err := userCompactedIndexSet.compactedIndex.recreateCompactedDB(); err != nil {
-					return err
-				}
 			}
 
-			if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, true); err != nil {
-				return err
-			}
+			userCompactedIndexSet.needsUpload = true
 		}
 	}
 
 	for _, userCompactedIndexSet := range t.userCompactedIndexSet {
+		if !userCompactedIndexSet.needsUpload {
+			continue
+		}
 		if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, true); err != nil {
 			return err
 		}
@@ -184,11 +183,71 @@ func (t *tableCompactor) CompactTable() error {
 	return nil
 }
 
+func (t *tableCompactor) prefetchUserIndexFiles() error {
+	existingUsers := make([]string, 0, len(t.existingUserIndexSet))
+	for userId, _ := range t.existingUserIndexSet {
+		existingUsers = append(existingUsers, userId)
+	}
+
+	return concurrency.ForEachJob(t.ctx, len(existingUsers), readDBsConcurrency, func (ctx context.Context, idx int) error {
+		userID := existingUsers[idx]
+		compactedIndex, err := t.fetchUserCompactedIndexSet(userID)
+		if err != nil {
+			return err
+		}
+
+		t.userCompactedIndexSetMtx.Lock()
+		defer t.userCompactedIndexSetMtx.Unlock()
+
+		t.userCompactedIndexSet[userID] = compactedIndex
+		return nil
+
+	})
+}
+
+func (t *tableCompactor) fetchUserCompactedIndexSet(userID string) (*compactedIndexSet, error) {
+	userIndexSet, ok := t.existingUserIndexSet[userID]
+	if !ok {
+		return nil, errors.New("requested non-existing compacted tenant index")
+	}
+
+	sourceFiles := userIndexSet.ListSourceFiles()
+	if len(sourceFiles) > 1 {
+		compactedIndex, err := compactIndexes(t.ctx, t.periodConfig, userIndexSet, func(userID string) (*CompactedIndex, error) {
+			return nil, errors.New("compacted user index set should not be requested while compacting user index")
+		})
+		if err != nil {
+			return nil, err
+		}
+		return newCompactedIndexSet(userIndexSet, compactedIndex, true), nil
+	} else if len(sourceFiles) == 1 {
+		indexFile, err := userIndexSet.GetSourceFile(sourceFiles[0])
+		if err != nil {
+			return nil, err
+		}
+		boltdb, err := openBoltdbFileWithNoSync(indexFile)
+		if err != nil {
+			return nil, err
+		}
+
+		return newCompactedIndexSet(userIndexSet, newCompactedIndex(boltdb, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger()), false), nil
+	}
+	return nil, errors.New("attempted to fetch empty index set")
+
+}
+
 func (t *tableCompactor) getOrCreateUserCompactedIndexSet(userID string) (*compactedIndexSet, error) {
 	t.userCompactedIndexSetMtx.RLock()
 	indexSet, ok := t.userCompactedIndexSet[userID]
+	needsUpload := ok && indexSet.needsUpload
 	t.userCompactedIndexSetMtx.RUnlock()
 	if ok {
+		if !needsUpload {
+			t.userCompactedIndexSetMtx.Lock()
+			defer t.userCompactedIndexSetMtx.Unlock()
+			indexSet.needsUpload = true
+
+		}
 		return indexSet, nil
 	}
 
@@ -213,15 +272,14 @@ func (t *tableCompactor) getOrCreateUserCompactedIndexSet(userID string) (*compa
 			return nil, err
 		}
 		compactedIndex := newCompactedIndex(compactedFile, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger())
-		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex)
+		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex, true)
 	} else {
-		compactedIndex, err := compactIndexes(t.ctx, t.periodConfig, userIndexSet, func(userID string) (*CompactedIndex, error) {
-			return nil, errors.New("compacted user index set should not be requested while compacting user index")
-		})
+		compactedIndex, err := t.fetchUserCompactedIndexSet(userID)
+		compactedIndex.needsUpload = true
 		if err != nil {
 			return nil, err
 		}
-		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex)
+		t.userCompactedIndexSet[userID] = compactedIndex
 	}
 
 	return t.userCompactedIndexSet[userID], nil
