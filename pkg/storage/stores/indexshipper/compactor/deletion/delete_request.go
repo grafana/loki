@@ -23,7 +23,8 @@ type DeleteRequest struct {
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 
-	DeletedLines int32 `json:"-"`
+	Metrics      *deleteRequestsManagerMetrics `json:"-"`
+	DeletedLines int32                         `json:"-"`
 }
 
 func (d *DeleteRequest) SetQuery(logQL string) error {
@@ -60,6 +61,7 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	return func(s string) bool {
 		result, _, skip := f(0, s)
 		if len(result) != 0 || skip {
+			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++
 			return true
 		}

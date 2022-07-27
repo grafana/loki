@@ -118,6 +118,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
+		deleteRequest.Metrics = d.metrics
 		level.Info(util_log.Logger).Log(
 			"msg", "Started processing delete request for user",
 			"delete_request_id", deleteRequest.RequestID,

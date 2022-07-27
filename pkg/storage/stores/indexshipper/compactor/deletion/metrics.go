@@ -50,6 +50,7 @@ type deleteRequestsManagerMetrics struct {
 	loadPendingRequestsAttemptsTotal     *prometheus.CounterVec
 	oldestPendingDeleteRequestAgeSeconds prometheus.Gauge
 	pendingDeleteRequestsCount           prometheus.Gauge
+	deletedLinesTotal                    *prometheus.CounterVec
 }
 
 func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsManagerMetrics {
@@ -80,6 +81,11 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 		Name:      "compactor_pending_delete_requests_count",
 		Help:      "Count of delete requests which are over their cancellation period and have not finished processing yet",
 	})
+	m.deletedLinesTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "compactor_deleted_lines",
+		Help:      "Number of deleted lines per user",
+	}, []string{"user"})
 
 	return &m
 }

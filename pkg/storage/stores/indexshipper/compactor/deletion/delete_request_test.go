@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -242,46 +244,65 @@ func mustParseLabel(input string) labels.Labels {
 }
 
 func TestDeleteRequest_FilterFunction(t *testing.T) {
-	dr := DeleteRequest{
-		Query:        `{foo="bar"} |= "some"`,
-		DeletedLines: 0,
-	}
+	t.Run("one_line_matching", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{foo="bar"} |= "some"`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+		}
 
-	lblStr := `{foo="bar"}`
-	lbls := mustParseLabel(lblStr)
+		lblStr := `{foo="bar"}`
+		lbls := mustParseLabel(lblStr)
 
-	f, err := dr.FilterFunction(lbls)
-	require.NoError(t, err)
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
 
-	require.True(t, f(`some line`))
-	require.False(t, f(""))
-	require.False(t, f("other line"))
-	require.Equal(t, int32(1), dr.DeletedLines)
+		require.True(t, f(`some line`))
+		require.False(t, f(""))
+		require.False(t, f("other line"))
+		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+	})
 
-	lblStr = `{foo2="buzz"}`
-	lbls = mustParseLabel(lblStr)
+	t.Run("labels_not_matching", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{foo="bar"} |= "some"`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			UserID:       "tenant1",
+		}
 
-	f, err = dr.FilterFunction(lbls)
-	require.NoError(t, err)
+		lblStr := `{foo2="buzz"}`
+		lbls := mustParseLabel(lblStr)
 
-	require.False(t, f(""))
-	require.False(t, f("other line"))
-	require.False(t, f("some line"))
-	require.Equal(t, int32(1), dr.DeletedLines)
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
 
-	dr = DeleteRequest{
-		Query:        `{namespace="default"}`,
-		DeletedLines: 0,
-	}
+		require.False(t, f(""))
+		require.False(t, f("other line"))
+		require.False(t, f("some line"))
+		require.Equal(t, int32(0), dr.DeletedLines)
+		// testutil.ToFloat64 panics when there are 0 metrics
+		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
+	})
 
-	lblStr = `{namespace="default"}`
-	lbls = mustParseLabel(lblStr)
+	t.Run("no_lines_matching", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{namespace="default"}`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+		}
 
-	f, err = dr.FilterFunction(lbls)
-	require.NoError(t, err)
+		lblStr := `{namespace="default"}`
+		lbls := mustParseLabel(lblStr)
 
-	require.True(t, f(`some line`))
-	require.True(t, f(""))
-	require.True(t, f("other line"))
-	require.Equal(t, int32(3), dr.DeletedLines)
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
+
+		require.True(t, f(`some line`))
+		require.True(t, f(""))
+		require.True(t, f("other line"))
+		require.Equal(t, int32(3), dr.DeletedLines)
+		require.Equal(t, float64(3), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+	})
 }
