@@ -1828,10 +1828,6 @@ to wait before saving them to the backing store.
 # The CLI flags prefix for this block config is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
-# The minimum time between a chunk update and being saved
-# to the store.
-[min_chunk_age: <duration>]
-
 # Cache index entries older than this period. Default is disabled.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration>]
