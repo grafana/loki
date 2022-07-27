@@ -16,7 +16,7 @@ func TestGroupCache(t *testing.T) {
 	gc, err := setupGroupCache()
 	require.Nil(t, err)
 
-	c := gc.NewGroup("test-group", "test", true)
+	c := gc.NewGroup("test-group", "test")
 	defer c.Stop()
 
 	keys := []string{"key1", "key2", "key3"}
