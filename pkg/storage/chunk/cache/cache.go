@@ -87,7 +87,7 @@ func IsRedisSet(cfg Config) bool {
 }
 
 func IsGroupCacheSet(cfg Config) bool {
-	return cfg.GroupCache != nil
+	return cfg.EnableGroupCache
 }
 
 // IsCacheConfigured determines if memcached, redis, or groupcache have been configured
