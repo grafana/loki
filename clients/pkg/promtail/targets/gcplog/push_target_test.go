@@ -52,7 +52,7 @@ func makeGCPPushRequest(host string, body string) (*http.Request, error) {
 	return req, nil
 }
 
-func TestGCPPushTarget(t *testing.T) {
+func TestPushTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
@@ -181,7 +181,7 @@ func TestGCPPushTarget(t *testing.T) {
 	}
 }
 
-func TestGCPPushTarget_UseIncomingTimestamp(t *testing.T) {
+func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
@@ -225,7 +225,7 @@ func TestGCPPushTarget_UseIncomingTimestamp(t *testing.T) {
 	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overridden by received one")
 }
 
-func TestGCPPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
+func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 

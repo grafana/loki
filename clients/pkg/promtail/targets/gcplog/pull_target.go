@@ -15,10 +15,10 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
-// GcplogTarget represents the target specific to GCP project.
+// PullTarget represents the target specific to GCP project, with a pull subscription type.
 // It collects logs from GCP and push it to Loki.
 // nolint:revive
-type GcplogTarget struct {
+type PullTarget struct {
 	metrics       *Metrics
 	logger        log.Logger
 	handler       api.EntryHandler
@@ -36,7 +36,7 @@ type GcplogTarget struct {
 	msgs chan *pubsub.Message
 }
 
-// NewGcplogTarget returns the new instannce of GcplogTarget for
+// newPullTarget returns the new instance of PullTarget for
 // the given `project-id`. It scraps logs from the GCP project
 // and push it Loki via given `api.EntryHandler.`
 // It starts the `run` loop to consume log entries that can be
@@ -49,7 +49,7 @@ func newPullTarget(
 	relabel []*relabel.Config,
 	jobName string,
 	config *scrapeconfig.GCPLogTargetConfig,
-) (*GcplogTarget, error) {
+) (*PullTarget, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ps, err := pubsub.NewClient(ctx, config.ProjectID)
@@ -77,8 +77,8 @@ func newGcplogTarget(
 	pubsubClient *pubsub.Client,
 	ctx context.Context,
 	cancel func(),
-) *GcplogTarget {
-	return &GcplogTarget{
+) *PullTarget {
+	return &PullTarget{
 		metrics:       metrics,
 		logger:        logger,
 		handler:       handler,
@@ -92,7 +92,7 @@ func newGcplogTarget(
 	}
 }
 
-func (t *GcplogTarget) run() error {
+func (t *PullTarget) run() error {
 	t.wg.Add(1)
 	defer t.wg.Done()
 
@@ -132,12 +132,11 @@ func (t *GcplogTarget) run() error {
 	}
 }
 
-// sent implements target.Target.
-func (t *GcplogTarget) Type() target.TargetType {
+func (t *PullTarget) Type() target.TargetType {
 	return target.GcplogTargetType
 }
 
-func (t *GcplogTarget) Ready() bool {
+func (t *PullTarget) Ready() bool {
 	// Return true just like all other targets.
 	// Rationale is gcplog scraping shouldn't stop because of some transient timeout errors.
 	// This transient failure can cause promtail readyness probe to fail which may prevent pod from starting.
@@ -145,19 +144,19 @@ func (t *GcplogTarget) Ready() bool {
 	return true
 }
 
-func (t *GcplogTarget) DiscoveredLabels() model.LabelSet {
+func (t *PullTarget) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
-func (t *GcplogTarget) Labels() model.LabelSet {
+func (t *PullTarget) Labels() model.LabelSet {
 	return t.config.Labels
 }
 
-func (t *GcplogTarget) Details() interface{} {
+func (t *PullTarget) Details() interface{} {
 	return nil
 }
 
-func (t *GcplogTarget) Stop() error {
+func (t *PullTarget) Stop() error {
 	t.cancel()
 	t.wg.Wait()
 	t.handler.Stop()

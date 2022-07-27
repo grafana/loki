@@ -22,9 +22,9 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
-func TestGcplogTarget_Run(t *testing.T) {
+func TestPullTarget_Run(t *testing.T) {
 	// Goal: Check message written to pubsub topic is received by the target.
-	tt, apiclient, pubsubClient, teardown := testGcplogTarget(t)
+	tt, apiclient, pubsubClient, teardown := testPullTarget(t)
 	defer teardown()
 
 	// seed pubsub
@@ -59,12 +59,12 @@ func TestGcplogTarget_Run(t *testing.T) {
 	assert.Equal(t, 1, len(apiclient.Received()))
 }
 
-func TestGcplogTarget_Stop(t *testing.T) {
+func TestPullTarget_Stop(t *testing.T) {
 	// Goal: To test that `run()` stops when you invoke `target.Stop()`
 
 	errs := make(chan error, 1)
 
-	tt, _, _, teardown := testGcplogTarget(t)
+	tt, _, _, teardown := testPullTarget(t)
 	defer teardown()
 
 	var wg sync.WaitGroup
@@ -88,28 +88,28 @@ func TestGcplogTarget_Stop(t *testing.T) {
 	assert.Equal(t, tt.ctx.Err(), err)
 }
 
-func TestGcplogTarget_Type(t *testing.T) {
-	tt, _, _, teardown := testGcplogTarget(t)
+func TestPullTarget_Type(t *testing.T) {
+	tt, _, _, teardown := testPullTarget(t)
 	defer teardown()
 
 	assert.Equal(t, target.TargetType("Gcplog"), tt.Type())
 }
 
-func TestGcplogTarget_Ready(t *testing.T) {
-	tt, _, _, teardown := testGcplogTarget(t)
+func TestPullTarget_Ready(t *testing.T) {
+	tt, _, _, teardown := testPullTarget(t)
 	defer teardown()
 
 	assert.Equal(t, true, tt.Ready())
 }
 
-func TestGcplogTarget_Labels(t *testing.T) {
-	tt, _, _, teardown := testGcplogTarget(t)
+func TestPullTarget_Labels(t *testing.T) {
+	tt, _, _, teardown := testPullTarget(t)
 	defer teardown()
 
 	assert.Equal(t, model.LabelSet{"job": "test-gcplogtarget"}, tt.Labels())
 }
 
-func testGcplogTarget(t *testing.T) (*GcplogTarget, *fake.Client, *pubsub.Client, func()) {
+func testPullTarget(t *testing.T) (*PullTarget, *fake.Client, *pubsub.Client, func()) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
