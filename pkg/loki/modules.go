@@ -129,16 +129,19 @@ func (t *Loki) initServer() (services.Service, error) {
 	s := NewServerService(t.Server, servicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
-	t.Server.HTTPServer.Handler = func(next http.Handler) http.Handler {
+	h := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !t.Cfg.AuthEnabled {
 				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
 				return
 			}
+
 			_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}(t.Server.HTTPServer.Handler)
+
+	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
 	return s, nil
 }
