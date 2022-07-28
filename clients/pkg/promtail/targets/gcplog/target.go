@@ -25,7 +25,7 @@ func NewGCPLogTarget(
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
 	jobName string,
-	config *scrapeconfig.GCPLogTargetConfig,
+	config *scrapeconfig.GcplogTargetConfig,
 ) (Target, error) {
 	switch config.SubscriptionType {
 	case "pull", "":

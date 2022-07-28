@@ -22,7 +22,7 @@ type pullTarget struct {
 	metrics       *Metrics
 	logger        log.Logger
 	handler       api.EntryHandler
-	config        *scrapeconfig.GCPLogTargetConfig
+	config        *scrapeconfig.GcplogTargetConfig
 	relabelConfig []*relabel.Config
 	jobName       string
 
@@ -48,7 +48,7 @@ func newPullTarget(
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
 	jobName string,
-	config *scrapeconfig.GCPLogTargetConfig,
+	config *scrapeconfig.GcplogTargetConfig,
 ) (*pullTarget, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -118,7 +118,7 @@ func (t *pullTarget) run() error {
 }
 
 func (t *pullTarget) Type() target.TargetType {
-	return target.GCPLogTargetType
+	return target.GcplogTargetType
 }
 
 func (t *pullTarget) Ready() bool {

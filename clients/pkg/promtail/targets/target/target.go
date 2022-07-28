@@ -18,8 +18,8 @@ const (
 	// SyslogTargetType is a syslog target
 	SyslogTargetType = TargetType("Syslog")
 
-	// GCPLogTargetType is a target where log entries are pulled from pubsub topic.
-	GCPLogTargetType = TargetType("GCPLog")
+	// GcplogTargetType is a target where log entries are pulled from pubsub topic.
+	GcplogTargetType = TargetType("Gcplog")
 
 	// DroppedTargetType is a target that's been dropped.
 	DroppedTargetType = TargetType("dropped")

@@ -30,7 +30,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 		handler api.EntryHandler
 		relabel []*relabel.Config
 		jobName string
-		config  *scrapeconfig.GCPLogTargetConfig
+		config  *scrapeconfig.GcplogTargetConfig
 	}
 	tests := []struct {
 		name     string
@@ -46,7 +46,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				handler: eh,
 				relabel: nil,
 				jobName: "test_job",
-				config: &scrapeconfig.GCPLogTargetConfig{
+				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "",
 				},
 			},
@@ -61,7 +61,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				handler: eh,
 				relabel: nil,
 				jobName: "test_job",
-				config: &scrapeconfig.GCPLogTargetConfig{
+				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "pull",
 				},
 			},
@@ -76,7 +76,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				handler: eh,
 				relabel: nil,
 				jobName: "test_job",
-				config: &scrapeconfig.GCPLogTargetConfig{
+				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "push",
 				},
 			},
@@ -91,7 +91,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				handler: eh,
 				relabel: nil,
 				jobName: "test_job",
-				config: &scrapeconfig.GCPLogTargetConfig{
+				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "magic",
 				},
 			},

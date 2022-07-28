@@ -130,7 +130,7 @@ func TestPushTarget(t *testing.T) {
 
 			serverConfig, port, err := getServerConfigWithAvailablePort()
 			require.NoError(t, err, "error generating server config or finding open port")
-			config := &scrapeconfig.GCPLogTargetConfig{
+			config := &scrapeconfig.GcplogTargetConfig{
 				Server:               serverConfig,
 				Labels:               tc.args.Labels,
 				UseIncomingTimestamp: false,
@@ -192,7 +192,7 @@ func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
 
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GCPLogTargetConfig{
+	config := &scrapeconfig.GcplogTargetConfig{
 		Server:               serverConfig,
 		Labels:               nil,
 		UseIncomingTimestamp: true,
@@ -236,7 +236,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GCPLogTargetConfig{
+	config := &scrapeconfig.GcplogTargetConfig{
 		Server:               serverConfig,
 		Labels:               nil,
 		UseIncomingTimestamp: true,

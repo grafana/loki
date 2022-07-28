@@ -37,7 +37,7 @@ type Config struct {
 	PipelineStages    stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
 	JournalConfig     *JournalTargetConfig       `yaml:"journal,omitempty"`
 	SyslogConfig      *SyslogTargetConfig        `yaml:"syslog,omitempty"`
-	GcplogConfig      *GCPLogTargetConfig        `yaml:"gcplog,omitempty"`
+	GcplogConfig      *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
 	PushConfig        *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
 	WindowsConfig     *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
 	KafkaConfig       *KafkaTargetConfig         `yaml:"kafka,omitempty"`
@@ -343,8 +343,8 @@ type CloudflareConfig struct {
 	FieldsType string `yaml:"fields_type"`
 }
 
-// GCPLogTargetConfig describes a scrape config to pull logs from any pubsub topic.
-type GCPLogTargetConfig struct {
+// GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
+type GcplogTargetConfig struct {
 	// ProjectID is the Cloud project id
 	ProjectID string `yaml:"project_id"`
 

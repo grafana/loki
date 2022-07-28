@@ -93,7 +93,7 @@ func TestPullTarget_Type(t *testing.T) {
 	tt, _, _, teardown := testPullTarget(t)
 	defer teardown()
 
-	assert.Equal(t, target.TargetType("GCPLog"), tt.Type())
+	assert.Equal(t, target.TargetType("Gcplog"), tt.Type())
 }
 
 func TestPullTarget_Ready(t *testing.T) {
@@ -229,7 +229,7 @@ const (
 `
 )
 
-var testConfig = &scrapeconfig.GCPLogTargetConfig{
+var testConfig = &scrapeconfig.GcplogTargetConfig{
 	ProjectID:    project,
 	Subscription: subscription,
 	Labels: model.LabelSet{

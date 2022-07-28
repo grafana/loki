@@ -24,7 +24,7 @@ import (
 type pushTarget struct {
 	logger         log.Logger
 	handler        api.EntryHandler
-	config         *scrapeconfig.GCPLogTargetConfig
+	config         *scrapeconfig.GcplogTargetConfig
 	jobName        string
 	server         *server.Server
 	metrics        *Metrics
@@ -32,7 +32,7 @@ type pushTarget struct {
 }
 
 // newPushTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
-func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GCPLogTargetConfig, relabel []*relabel.Config) (*pushTarget, error) {
+func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GcplogTargetConfig, relabel []*relabel.Config) (*pushTarget, error) {
 	wrappedLogger := log.With(logger, "component", "gcp_push")
 
 	ht := &pushTarget{
@@ -131,7 +131,7 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *pushTarget) Type() target.TargetType {
-	return target.GCPLogTargetType
+	return target.GcplogTargetType
 }
 
 func (h *pushTarget) DiscoveredLabels() model.LabelSet {
