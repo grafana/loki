@@ -101,7 +101,6 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 			},
 		},
 	)
-	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
