@@ -131,7 +131,7 @@ func (h *PushTarget) push(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PushTarget) Type() target.TargetType {
-	return target.GCPPushTargetType
+	return target.GCPLogTargetType
 }
 
 func (h *PushTarget) DiscoveredLabels() model.LabelSet {

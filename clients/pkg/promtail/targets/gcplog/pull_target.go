@@ -57,28 +57,7 @@ func newPullTarget(
 		return nil, err
 	}
 
-	target := newGcplogTarget(metrics, logger, handler, relabel, jobName, config, ps, ctx, cancel)
-
-	go func() {
-		_ = target.run()
-	}()
-
-	return target, nil
-}
-
-// nolint:revive
-func newGcplogTarget(
-	metrics *Metrics,
-	logger log.Logger,
-	handler api.EntryHandler,
-	relabel []*relabel.Config,
-	jobName string,
-	config *scrapeconfig.GCPLogTargetConfig,
-	pubsubClient *pubsub.Client,
-	ctx context.Context,
-	cancel func(),
-) *PullTarget {
-	return &PullTarget{
+	target := &PullTarget{
 		metrics:       metrics,
 		logger:        logger,
 		handler:       handler,
@@ -87,9 +66,15 @@ func newGcplogTarget(
 		jobName:       jobName,
 		ctx:           ctx,
 		cancel:        cancel,
-		ps:            pubsubClient,
+		ps:            ps,
 		msgs:          make(chan *pubsub.Message),
 	}
+
+	go func() {
+		_ = target.run()
+	}()
+
+	return target, nil
 }
 
 func (t *PullTarget) run() error {
@@ -133,7 +118,7 @@ func (t *PullTarget) run() error {
 }
 
 func (t *PullTarget) Type() target.TargetType {
-	return target.GcplogTargetType
+	return target.GCPLogTargetType
 }
 
 func (t *PullTarget) Ready() bool {

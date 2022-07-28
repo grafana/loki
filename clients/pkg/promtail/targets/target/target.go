@@ -18,8 +18,8 @@ const (
 	// SyslogTargetType is a syslog target
 	SyslogTargetType = TargetType("Syslog")
 
-	// GcplogTargetType is a target where log entries are pulled from pubsub topic.
-	GcplogTargetType = TargetType("Gcplog")
+	// GCPLogTargetType is a target where log entries are pulled from pubsub topic.
+	GCPLogTargetType = TargetType("GCPLog")
 
 	// DroppedTargetType is a target that's been dropped.
 	DroppedTargetType = TargetType("dropped")
@@ -44,9 +44,6 @@ const (
 
 	// HerokuDrainTargetType is a Heroku Logs target
 	HerokuDrainTargetType = TargetType("HerokuDrain")
-
-	// GCPPushTargetType is a GCP PubSub Push target
-	GCPPushTargetType = TargetType("GCPPush")
 )
 
 // Target is a promtail scrape target

@@ -2,6 +2,7 @@ package gcplog
 
 import (
 	"context"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"sync"
 	"testing"
 	"time"
@@ -123,17 +124,19 @@ func testPullTarget(t *testing.T) (*PullTarget, *fake.Client, *pubsub.Client, fu
 
 	fakeClient := fake.New(func() {})
 
-	target := newGcplogTarget(
-		NewMetrics(prometheus.NewRegistry()),
-		log.NewNopLogger(),
-		fakeClient,
-		nil,
-		"job-test-gcplogtarget",
-		testConfig,
-		mockpubsubClient,
-		ctx,
-		cancel,
-	)
+	var handler api.EntryHandler = fakeClient
+	target := &PullTarget{
+		metrics:       NewMetrics(prometheus.NewRegistry()),
+		logger:        log.NewNopLogger(),
+		handler:       handler,
+		relabelConfig: nil,
+		config:        testConfig,
+		jobName:       "job-test-gcplogtarget",
+		ctx:           ctx,
+		cancel:        cancel,
+		ps:            mockpubsubClient,
+		msgs:          make(chan *pubsub.Message),
+	}
 
 	// cleanup
 	return target, fakeClient, mockpubsubClient, func() {
