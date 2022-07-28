@@ -216,7 +216,50 @@ func TestIndexGatewayRingMode_when_TargetIsRead(t *testing.T) {
 		})
 
 	})
+}
 
+func TestIndexGatewayClientConfig_when_TargetIsQuerierOrRead(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("IndexGateway client is disabled when running querier target", func(t *testing.T) {
+		cfg := minimalWorkingConfig(t, dir, Querier)
+		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
+		c, err := New(cfg)
+		require.NoError(t, err)
+
+		services, err := c.ModuleManager.InitModuleServices(Querier)
+		defer func() {
+			for _, service := range services {
+				service.StopAsync()
+			}
+		}()
+
+		require.NoError(t, err)
+		assert.False(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
+		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
+	})
+
+	t.Run("IndexGateway client is endabled when running read target", func(t *testing.T) {
+		cfg := minimalWorkingConfig(t, dir, Read)
+		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
+		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
+		cfg.CompactorConfig.WorkingDirectory = dir
+		c, err := New(cfg)
+		require.NoError(t, err)
+
+		services, err := c.ModuleManager.InitModuleServices(Read)
+		defer func() {
+			for _, service := range services {
+				service.StopAsync()
+			}
+		}()
+
+		require.NoError(t, err)
+		assert.True(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
+		assert.True(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
+	})
 }
 
 func minimalWorkingConfig(t *testing.T, dir, target string) Config {
@@ -251,6 +294,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string) Config {
 				ActiveIndexDirectory: dir,
 				CacheLocation:        dir,
 				Mode:                 indexshipper.ModeWriteOnly,
+				ResyncInterval:       24 * time.Hour,
 			},
 		},
 	}

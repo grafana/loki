@@ -16,6 +16,15 @@ Labels in Loki perform a very important task: They define a stream. More specifi
 
 If you are familiar with Prometheus, the term used there is series; however, Prometheus has an additional dimension: metric name. Loki simplifies this in that there are no metric names, just labels, and we decided to use streams instead of series.
 
+## Format
+
+Loki places the same restrictions on label naming as [Prometheus](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels):
+
+> It may contain ASCII letters and digits, as well as underscores and colons. It must match the regex `[a-zA-Z_:][a-zA-Z0-9_:]*`.
+>
+> Note: The colons are reserved for user defined recording rules. They should not be used by exporters or direct instrumentation.
+
+
 ## Loki labels demo
 
 This series of examples will illustrate basic use cases and concepts for labeling in Loki.

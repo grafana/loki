@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -296,10 +296,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
+		operationStart := time.Now()
 		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}
+		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
 		usersToBeQueryReadyFor := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
@@ -309,20 +311,31 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			continue
 		}
 
+		operationStart = time.Now()
 		table, err := tm.getOrCreateTable(tableName)
 		if err != nil {
 			return err
 		}
+		createTableDuration := time.Since(operationStart)
 
 		for _, u := range usersToBeQueryReadyFor {
 			distinctUsers[u] = struct{}{}
 		}
 
-		perTableStart := time.Now()
+		operationStart = time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users_len", len(usersToBeQueryReadyFor), "duration", time.Since(perTableStart), "table", tableName)
+		ensureQueryReadinessDuration := time.Since(operationStart)
+
+		level.Info(util_log.Logger).Log(
+			"msg", "index pre-download for query readiness completed",
+			"users_len", len(usersToBeQueryReadyFor),
+			"query_readiness_duration", ensureQueryReadinessDuration,
+			"table", tableName,
+			"create_table_duration", createTableDuration,
+			"list_files_duration", listFilesDuration,
+		)
 	}
 
 	return nil

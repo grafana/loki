@@ -2,7 +2,7 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
 	"github.com/imdario/mergo"
@@ -74,7 +74,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, rulerObjs...)
 	}
 
-	if opts.Flags.EnableGateway {
+	if opts.Gates.LokiStackGateway {
 		gatewayObjects, err := BuildGateway(opts)
 		if err != nil {
 			return nil, err
@@ -87,11 +87,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = configureLokiStackObjsForMode(res, opts)
 	}
 
-	if opts.Flags.EnableServiceMonitors {
+	if opts.Gates.ServiceMonitors {
 		res = append(res, BuildServiceMonitors(opts)...)
 	}
 
-	if opts.Flags.EnablePrometheusAlerts {
+	if opts.Gates.LokiStackAlerts {
 		prometheusRuleObjs, err := BuildPrometheusRule(opts)
 		if err != nil {
 			return nil, err
@@ -104,7 +104,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 
 // DefaultLokiStackSpec returns the default configuration for a LokiStack of
 // the specified size
-func DefaultLokiStackSpec(size lokiv1beta1.LokiStackSizeType) *lokiv1beta1.LokiStackSpec {
+func DefaultLokiStackSpec(size lokiv1.LokiStackSizeType) *lokiv1.LokiStackSpec {
 	defaults := internal.StackSizeTable[size]
 	return (&defaults).DeepCopy()
 }
@@ -118,9 +118,9 @@ func ApplyDefaultSettings(opts *Options) error {
 		return kverrors.Wrap(err, "failed merging stack user options", "name", opts.Name)
 	}
 
-	strictOverrides := lokiv1beta1.LokiStackSpec{
-		Template: &lokiv1beta1.LokiTemplateSpec{
-			Compactor: &lokiv1beta1.LokiComponentSpec{
+	strictOverrides := lokiv1.LokiStackSpec{
+		Template: &lokiv1.LokiTemplateSpec{
+			Compactor: &lokiv1.LokiComponentSpec{
 				// Compactor is a singelton application.
 				// Only one replica allowed!!!
 				Replicas: 1,

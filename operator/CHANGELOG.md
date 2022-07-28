@@ -1,5 +1,20 @@
 ## Main
 
+- [6479](https://github.com/grafana/loki/pull/6749) **periklis**: Update Loki operand to v2.6.1
+- [6748](https://github.com/grafana/loki/pull/6748) **periklis**: Update go4.org/unsafe/assume-no-moving-gc to latest
+- [6741](https://github.com/grafana/loki/pull/6741) **aminesnow**: Golang version to 1.18 and k8s client to 1.24
+- [6669](https://github.com/grafana/loki/pull/6669) **xperimental**: Set minimum TLS version to 1.2 to support FIPS
+- [6663](https://github.com/grafana/loki/pull/6663) **aminesnow**: Generalize live tail fix to all clusters using TLS
+- [6443](https://github.com/grafana/loki/pull/6443) **aminesnow**: Fix live tail of logs not working on OpenShift-based clusters
+- [6646](https://github.com/grafana/loki/pull/6646) **periklis**: Update Loki operand to v2.6.0
+- [6594](https://github.com/grafana/loki/pull/6594) **xperimental**: Disable client certificate authentication on gateway
+- [6551](https://github.com/grafana/loki/pull/6561) **periklis**: Add operator docs for object storage
+- [6549](https://github.com/grafana/loki/pull/6549) **periklis**: Refactor feature gates to use custom resource definition
+- [6514](https://github.com/grafana/loki/pull/6514) **Red-GV** Update all pods and containers to be compliant with restricted Pod Security Standard
+- [6531](https://github.com/grafana/loki/pull/6531) **periklis**: Use default interface_names for lokistack clusters (IPv6 Support)
+- [6411](https://github.com/grafana/loki/pull/6478) **aminesnow**: Support TLS enabled lokistack-gateway for vanilla kubernetes deployments
+- [6504](https://github.com/grafana/loki/pull/6504) **periklis**: Disable usage report on OpenShift
+- [6474](https://github.com/grafana/loki/pull/6474) **periklis**: Bump loki.grafana.com/LokiStack from v1beta to v1
 - [6411](https://github.com/grafana/loki/pull/6411) **Red-GV**: Extend schema validation in LokiStack webhook
 - [6334](https://github.com/grafana/loki/pull/6433) **periklis**: Move operator cli flags to component config
 - [6224](https://github.com/grafana/loki/pull/6224) **periklis**: Add support for GRPC over TLS for Loki components

@@ -27,6 +27,7 @@ import (
 const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
+	notifyMsgQueueSize         = 1024        // size of buffered channels to handle memberlist messages
 )
 
 // Client implements kv.Client interface, by using memberlist.KV
@@ -139,6 +140,9 @@ type KVConfig struct {
 	AdvertiseAddr string `yaml:"advertise_addr"`
 	AdvertisePort int    `yaml:"advertise_port"`
 
+	ClusterLabel                     string `yaml:"cluster_label" category:"experimental"`
+	ClusterLabelVerificationDisabled bool   `yaml:"cluster_label_verification_disabled" category:"experimental"`
+
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
 	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff" category:"advanced"`
@@ -179,7 +183,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
 	f.IntVar(&cfg.MaxJoinRetries, prefix+"memberlist.max-join-retries", 10, "Max number of retries to join other cluster members.")
-	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", true, "If this node fails to join memberlist cluster, abort.")
+	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", cfg.AbortIfJoinFails, "If this node fails to join memberlist cluster, abort.")
 	f.DurationVar(&cfg.RejoinInterval, prefix+"memberlist.rejoin-interval", 0, "If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix the cluster split issue, and is harmless otherwise. For example when using only few components as a seed nodes (via -memberlist.join), then it's recommended to use rejoin. If -memberlist.join points to dynamic service that resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin is not needed.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
 	f.DurationVar(&cfg.LeaveTimeout, prefix+"memberlist.leave-timeout", 5*time.Second, "Timeout for leaving memberlist cluster.")
@@ -192,6 +196,8 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
 	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
+	f.StringVar(&cfg.ClusterLabel, prefix+"memberlist.cluster-label", mlDefaults.Label, "The cluster label is an optional string to include in outbound packets and gossip streams. Other members in the memberlist cluster will discard any message whose label doesn't match the configured one, unless the 'cluster-label-verification-disabled' configuration option is set to true.")
+	f.BoolVar(&cfg.ClusterLabelVerificationDisabled, prefix+"memberlist.cluster-label-verification-disabled", mlDefaults.SkipInboundLabelCheck, "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 }
@@ -251,6 +257,10 @@ type KV struct {
 	receivedMessagesSize int
 	messageCounter       int // Used to give each message in the sentMessages and receivedMessages a unique ID, for UI.
 
+	// Per-key value update workers
+	workersMu       sync.Mutex
+	workersChannels map[string]chan valueUpdate
+
 	// closed on shutdown
 	shutdown chan struct{}
 
@@ -258,6 +268,7 @@ type KV struct {
 	numberOfReceivedMessages            prometheus.Counter
 	totalSizeOfReceivedMessages         prometheus.Counter
 	numberOfInvalidReceivedMessages     prometheus.Counter
+	numberOfDroppedMessages             prometheus.Counter
 	numberOfPulls                       prometheus.Counter
 	numberOfPushes                      prometheus.Counter
 	totalSizeOfPulls                    prometheus.Counter
@@ -319,6 +330,12 @@ func (v ValueDesc) Clone() (result ValueDesc) {
 	return
 }
 
+type valueUpdate struct {
+	value       []byte
+	codec       codec.Codec
+	messageSize int
+}
+
 func (v ValueDesc) String() string {
 	return fmt.Sprintf("version: %d, codec: %s", v.Version, v.CodecID)
 }
@@ -339,17 +356,17 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
 	mlkv := &KV{
-		cfg:        cfg,
-		logger:     logger,
-		registerer: registerer,
-		provider:   dnsProvider,
-
-		store:          make(map[string]ValueDesc),
-		codecs:         make(map[string]codec.Codec),
-		watchers:       make(map[string][]chan string),
-		prefixWatchers: make(map[string][]chan string),
-		shutdown:       make(chan struct{}),
-		maxCasRetries:  maxCasRetries,
+		cfg:             cfg,
+		logger:          logger,
+		registerer:      registerer,
+		provider:        dnsProvider,
+		store:           make(map[string]ValueDesc),
+		codecs:          make(map[string]codec.Codec),
+		watchers:        make(map[string][]chan string),
+		prefixWatchers:  make(map[string][]chan string),
+		workersChannels: make(map[string]chan valueUpdate),
+		shutdown:        make(chan struct{}),
+		maxCasRetries:   maxCasRetries,
 	}
 
 	mlkv.createAndRegisterMetrics()
@@ -387,12 +404,14 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	mlCfg.AdvertiseAddr = m.cfg.AdvertiseAddr
 	mlCfg.AdvertisePort = m.cfg.AdvertisePort
 
+	mlCfg.Label = m.cfg.ClusterLabel
+	mlCfg.SkipInboundLabelCheck = m.cfg.ClusterLabelVerificationDisabled
+
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName
 	}
 	if m.cfg.RandomizeNodeName {
 		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix(m.logger)
-		level.Info(m.logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
 	}
 
 	mlCfg.LogOutput = newMemberlistLoggerAdapter(m.logger, false)
@@ -407,6 +426,8 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// the timeout compared to defaults.
 	mlCfg.ProbeInterval = 5 * time.Second // Probe a random node every this interval. This setting is also the total timeout for the direct + indirect probes.
 	mlCfg.ProbeTimeout = 2 * time.Second  // Timeout for the direct probe.
+
+	level.Info(m.logger).Log("msg", "Using memberlist cluster label %q and node name %q", mlCfg.Label, mlCfg.Name)
 
 	return mlCfg, nil
 }
@@ -429,7 +450,6 @@ func (m *KV) starting(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create memberlist: %v", err)
 	}
-
 	// Finish delegate initialization.
 	m.memberlist = list
 	m.broadcasts = &memberlist.TransmitLimitedQueue{
@@ -931,8 +951,6 @@ func (m *KV) NodeMeta(limit int) []byte {
 // NotifyMsg is method from Memberlist Delegate interface
 // Called when single message is received, i.e. what our broadcastNewValue has sent.
 func (m *KV) NotifyMsg(msg []byte) {
-	m.initWG.Wait()
-
 	m.numberOfReceivedMessages.Inc()
 	m.totalSizeOfReceivedMessages.Add(float64(len(msg)))
 
@@ -957,29 +975,67 @@ func (m *KV) NotifyMsg(msg []byte) {
 		return
 	}
 
-	// we have a ring update! Let's merge it with our version of the ring for given key
-	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
-
-	changes := []string(nil)
-	if mod != nil {
-		changes = mod.MergeContent()
+	ch := m.getKeyWorkerChannel(kvPair.Key)
+	select {
+	case ch <- valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg)}:
+	default:
+		m.numberOfDroppedMessages.Inc()
+		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key)
 	}
+}
 
-	m.addReceivedMessage(Message{
-		Time:    time.Now(),
-		Size:    len(msg),
-		Pair:    kvPair,
-		Version: version,
-		Changes: changes,
-	})
+func (m *KV) getKeyWorkerChannel(key string) chan<- valueUpdate {
+	m.workersMu.Lock()
+	defer m.workersMu.Unlock()
 
-	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
-	} else if version > 0 {
-		m.notifyWatchers(kvPair.Key)
+	ch := m.workersChannels[key]
+	if ch == nil {
+		// spawn a key associated worker goroutine to process updates in background
+		ch = make(chan valueUpdate, notifyMsgQueueSize)
+		go m.processValueUpdate(ch, key)
 
-		// Don't resend original message, but only changes.
-		m.broadcastNewValue(kvPair.Key, mod, version, codec)
+		m.workersChannels[key] = ch
+	}
+	return ch
+}
+
+func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
+	for {
+		select {
+		case update := <-workerCh:
+			// we have a value update! Let's merge it with our current version for given key
+			mod, version, err := m.mergeBytesValueForKey(key, update.value, update.codec)
+
+			changes := []string(nil)
+			if mod != nil {
+				changes = mod.MergeContent()
+			}
+
+			m.addReceivedMessage(Message{
+				Time: time.Now(),
+				Size: update.messageSize,
+				Pair: KeyValuePair{
+					Key:   key,
+					Value: update.value,
+					Codec: update.codec.CodecID(),
+				},
+				Version: version,
+				Changes: changes,
+			})
+
+			if err != nil {
+				level.Error(m.logger).Log("msg", "failed to store received value", "key", key, "err", err)
+			} else if version > 0 {
+				m.notifyWatchers(key)
+
+				// Don't resend original message, but only changes.
+				m.broadcastNewValue(key, mod, version, update.codec)
+			}
+
+		case <-m.shutdown:
+			// stop running on shutdown
+			return
+		}
 	}
 }
 

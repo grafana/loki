@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	corev1 "k8s.io/api/core/v1"
@@ -16,7 +17,7 @@ import (
 // - Return only matching rules in the stack namespace if no namespace selector given.
 // - Return only matching rules in the stack namespace and in namespaces matching the namespace selector.
 // - Return no rules if rules selector does not apply at all.
-func List(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1beta1.RulesSpec) ([]lokiv1beta1.AlertingRule, []lokiv1beta1.RecordingRule, error) {
+func List(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1.RulesSpec) ([]lokiv1beta1.AlertingRule, []lokiv1beta1.RecordingRule, error) {
 	nsl, err := selectRulesNamespaces(ctx, k, stackNs, rs)
 	if err != nil {
 		return nil, nil, err
@@ -55,7 +56,7 @@ func List(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1beta1.Rul
 	return alerts, recs, nil
 }
 
-func selectRulesNamespaces(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1beta1.RulesSpec) (corev1.NamespaceList, error) {
+func selectRulesNamespaces(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1.RulesSpec) (corev1.NamespaceList, error) {
 	var stackNamespace corev1.Namespace
 	key := client.ObjectKey{Name: stackNs}
 
@@ -88,7 +89,7 @@ func selectRulesNamespaces(ctx context.Context, k k8s.Client, stackNs string, rs
 	return nsList, nil
 }
 
-func selectAlertingRules(ctx context.Context, k k8s.Client, rs *lokiv1beta1.RulesSpec) (lokiv1beta1.AlertingRuleList, error) {
+func selectAlertingRules(ctx context.Context, k k8s.Client, rs *lokiv1.RulesSpec) (lokiv1beta1.AlertingRuleList, error) {
 	rulesSelector, err := metav1.LabelSelectorAsSelector(rs.Selector)
 	if err != nil {
 		return lokiv1beta1.AlertingRuleList{}, kverrors.Wrap(err, "failed to create AlertingRules selector", "selector", rs.Selector)
@@ -103,7 +104,7 @@ func selectAlertingRules(ctx context.Context, k k8s.Client, rs *lokiv1beta1.Rule
 	return rl, nil
 }
 
-func selectRecordingRules(ctx context.Context, k k8s.Client, rs *lokiv1beta1.RulesSpec) (lokiv1beta1.RecordingRuleList, error) {
+func selectRecordingRules(ctx context.Context, k k8s.Client, rs *lokiv1.RulesSpec) (lokiv1beta1.RecordingRuleList, error) {
 	rulesSelector, err := metav1.LabelSelectorAsSelector(rs.Selector)
 	if err != nil {
 		return lokiv1beta1.RecordingRuleList{}, kverrors.Wrap(err, "failed to create RecordingRules selector", "selector", rs.Selector)

@@ -1,10 +1,4 @@
 {
-  local memberlistConfig = {
-    'memberlist.abort-if-join-fails': false,
-    'memberlist.bind-port': gossipRingPort,
-    'memberlist.join': 'gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort],
-  },
-
   local setupGossipRing(storeOption, consulHostnameOption, multiStoreOptionsPrefix) = if $._config.multikv_migration_enabled then {
     [storeOption]: 'multi',
     [multiStoreOptionsPrefix + '.primary']: $._config.multikv_primary,
@@ -17,9 +11,19 @@
 
   _config+:: {
     gossip_member_label: 'loki_gossip_member',
+    service_ignored_labels:: [$._config.gossip_member_label],
+
     // Enables use of memberlist for all rings, instead of consul. If multikv_migration_enabled is true, consul hostname is still configured,
     // but "primary" KV depends on value of multikv_primary.
     memberlist_ring_enabled: false,
+
+    // Configures the memberlist cluster label. When verification is enabled, a memberlist member rejects any packet or stream
+    // with a mismatching cluster label.
+    // Cluster label and verification flag can be set here or directly to
+    // `_config.loki.memberlist.cluster_label` and `_config.loki.memberlist.cluster_label_verification_disabled` respectively.
+    // Retaining this config to keep it backwards compatible with 2.6.1 release.
+    memberlist_cluster_label: '',
+    memberlist_cluster_label_verification_disabled: false,
 
     // Migrating from consul to memberlist is a multi-step process:
     // 1) Enable multikv_migration_enabled, with primary=consul, secondary=memberlist, and multikv_mirror_enabled=false, restart components.
@@ -89,6 +93,9 @@
         max_join_backoff: '1m',
         max_join_retries: 10,
         min_join_backoff: '1s',
+
+        cluster_label: $._config.memberlist_cluster_label,
+        cluster_label_verification_disabled: $._config.memberlist_cluster_label_verification_disabled,
       },
     } else {},
 

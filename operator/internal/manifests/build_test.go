@@ -8,25 +8,26 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
-	allSizes := []lokiv1beta1.LokiStackSizeType{
-		lokiv1beta1.SizeOneXExtraSmall,
-		lokiv1beta1.SizeOneXSmall,
-		lokiv1beta1.SizeOneXMedium,
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
 	}
 	for _, size := range allSizes {
 		opt := Options{
 			Name:      "abcd",
 			Namespace: "efgh",
-			Stack: lokiv1beta1.LokiStackSpec{
+			Stack: lokiv1.LokiStackSpec{
 				Size: size,
-				Template: &lokiv1beta1.LokiTemplateSpec{
-					Distributor: &lokiv1beta1.LokiComponentSpec{
+				Template: &lokiv1.LokiTemplateSpec{
+					Distributor: &lokiv1.LokiComponentSpec{
 						Replicas: 42,
 					},
 				},
@@ -54,19 +55,19 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 }
 
 func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
-	allSizes := []lokiv1beta1.LokiStackSizeType{
-		lokiv1beta1.SizeOneXExtraSmall,
-		lokiv1beta1.SizeOneXSmall,
-		lokiv1beta1.SizeOneXMedium,
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
 	}
 	for _, size := range allSizes {
 		opt := Options{
 			Name:      "abcd",
 			Namespace: "efgh",
-			Stack: lokiv1beta1.LokiStackSpec{
+			Stack: lokiv1.LokiStackSpec{
 				Size: size,
-				Template: &lokiv1beta1.LokiTemplateSpec{
-					Compactor: &lokiv1beta1.LokiComponentSpec{
+				Template: &lokiv1.LokiTemplateSpec{
+					Compactor: &lokiv1.LokiComponentSpec{
 						Replicas: 2,
 					},
 				},
@@ -82,7 +83,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
+func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 	type test struct {
 		desc         string
 		MonitorCount int
@@ -96,16 +97,18 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: false,
-					EnableServiceMonitors:           false,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            false,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: false,
+					},
 				},
 			},
 		},
@@ -115,13 +118,15 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: false,
-					EnableServiceMonitors:           true,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            true,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: false,
+					},
 				},
 			},
 		},
@@ -143,7 +148,7 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T) {
+func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -155,13 +160,15 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: false,
-					EnableServiceMonitors:           false,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            false,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: false,
+					},
 				},
 			},
 		},
@@ -170,13 +177,15 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableCertificateSigningService: true,
-					EnableServiceMonitors:           false,
-					EnableTLSServiceMonitorConfig:   false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors:            false,
+					ServiceMonitorTLSEndpoints: false,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: true,
+					},
 				},
 			},
 		},
@@ -209,7 +218,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			}
 
 			for _, service := range svcs {
-				if !tst.BuildOptions.Flags.EnableCertificateSigningService {
+				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
 					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
 				} else {
 					require.NotNil(t, service.ObjectMeta.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
@@ -219,19 +228,94 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
+func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 	opts := Options{
 		Name:      "test",
 		Namespace: "test",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.SizeOneXSmall,
-			Rules: &lokiv1beta1.RulesSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXSmall,
+			Rules: &lokiv1.RulesSpec{
 				Enabled: true,
 			},
 		},
-		Flags: FeatureFlags{
-			EnableServiceMonitors:         true,
-			EnableTLSServiceMonitorConfig: true,
+		Gates: configv1.FeatureGates{
+			HTTPEncryption: true,
+		},
+	}
+
+	err := ApplyDefaultSettings(&opts)
+	require.NoError(t, err)
+	objects, buildErr := BuildAll(opts)
+	require.NoError(t, buildErr)
+
+	for _, obj := range objects {
+		var (
+			name string
+			vs   []corev1.Volume
+			vms  []corev1.VolumeMount
+			args []string
+			rps  corev1.URIScheme
+			lps  corev1.URIScheme
+		)
+
+		switch o := obj.(type) {
+		case *appsv1.Deployment:
+			name = o.Name
+			vs = o.Spec.Template.Spec.Volumes
+			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
+			args = o.Spec.Template.Spec.Containers[0].Args
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+		case *appsv1.StatefulSet:
+			name = o.Name
+			vs = o.Spec.Template.Spec.Volumes
+			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
+			args = o.Spec.Template.Spec.Containers[0].Args
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+		default:
+			continue
+		}
+
+		secretName := fmt.Sprintf("%s-http", name)
+		expVolume := corev1.Volume{
+			Name: secretName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: secretName,
+				},
+			},
+		}
+		require.Contains(t, vs, expVolume)
+
+		expVolumeMount := corev1.VolumeMount{
+			Name:      secretName,
+			ReadOnly:  false,
+			MountPath: "/var/run/tls/http",
+		}
+		require.Contains(t, vms, expVolumeMount)
+
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
+		require.Equal(t, corev1.URISchemeHTTPS, rps)
+		require.Equal(t, corev1.URISchemeHTTPS, lps)
+	}
+}
+
+func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
+	opts := Options{
+		Name:      "test",
+		Namespace: "test",
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXSmall,
+			Rules: &lokiv1.RulesSpec{
+				Enabled: true,
+			},
+		},
+		Gates: configv1.FeatureGates{
+			ServiceMonitors:            true,
+			HTTPEncryption:             true,
+			ServiceMonitorTLSEndpoints: true,
 		},
 	}
 
@@ -295,7 +379,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
+func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -307,40 +391,40 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
-					Template: &lokiv1beta1.LokiTemplateSpec{
-						Compactor: &lokiv1beta1.LokiComponentSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Distributor: &lokiv1beta1.LokiComponentSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ingester: &lokiv1beta1.LokiComponentSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Querier: &lokiv1beta1.LokiComponentSpec{
+						Querier: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1beta1.LokiComponentSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ruler: &lokiv1beta1.LokiComponentSpec{
+						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableTLSGRPCServices: false,
+				Gates: configv1.FeatureGates{
+					GRPCEncryption: false,
 				},
 			},
 		},
@@ -349,40 +433,40 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Rules: &lokiv1beta1.RulesSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
 					},
-					Template: &lokiv1beta1.LokiTemplateSpec{
-						Compactor: &lokiv1beta1.LokiComponentSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Distributor: &lokiv1beta1.LokiComponentSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ingester: &lokiv1beta1.LokiComponentSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Querier: &lokiv1beta1.LokiComponentSpec{
+						Querier: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1beta1.LokiComponentSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Ruler: &lokiv1beta1.LokiComponentSpec{
+						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableTLSGRPCServices: true,
+				Gates: configv1.FeatureGates{
+					GRPCEncryption: true,
 				},
 			},
 		},
@@ -449,7 +533,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 						},
 					}
 
-					if tst.BuildOptions.Flags.EnableTLSGRPCServices {
+					if tst.BuildOptions.Gates.GRPCEncryption {
 						require.Subset(t, spec.Containers[0].Args, args)
 						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
 						require.Contains(t, spec.Volumes, v)
@@ -464,7 +548,140 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
+func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
+	type test struct {
+		desc         string
+		BuildOptions Options
+	}
+
+	table := []test{
+		{
+			desc: "disabled default/runtime seccomp profile",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Gates: configv1.FeatureGates{
+					RuntimeSeccompProfile: false,
+				},
+			},
+		},
+		{
+			desc: "enabled default/runtime seccomp profile",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+					Template: &lokiv1.LokiTemplateSpec{
+						Compactor: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Gates: configv1.FeatureGates{
+					RuntimeSeccompProfile: true,
+				},
+			},
+		},
+	}
+
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.desc, func(t *testing.T) {
+			t.Parallel()
+
+			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+
+			objs, err := BuildAll(tst.BuildOptions)
+			require.NoError(t, err)
+
+			for _, o := range objs {
+				var (
+					name string
+					spec *corev1.PodSpec
+				)
+				switch obj := o.(type) {
+				case *appsv1.Deployment:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				case *appsv1.StatefulSet:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				default:
+					continue
+				}
+
+				t.Run(name, func(t *testing.T) {
+					if tst.BuildOptions.Gates.RuntimeSeccompProfile {
+						require.NotNil(t, spec.SecurityContext.SeccompProfile)
+						require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
+					} else {
+						require.Nil(t, spec.SecurityContext.SeccompProfile)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -475,12 +692,13 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableGateway:                 false,
-					EnableTLSServiceMonitorConfig: false,
+				Gates: configv1.FeatureGates{
+					LokiStackGateway:           false,
+					HTTPEncryption:             true,
+					ServiceMonitorTLSEndpoints: false,
 				},
 			},
 		},
@@ -489,16 +707,16 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
-					Tenants: &lokiv1beta1.TenantsSpec{
-						Mode: lokiv1beta1.Dynamic,
-						Authentication: []lokiv1beta1.AuthenticationSpec{
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+						Authentication: []lokiv1.AuthenticationSpec{
 							{
 								TenantName: "test",
 								TenantID:   "1234",
-								OIDC: &lokiv1beta1.OIDCSpec{
-									Secret: &lokiv1beta1.TenantSecretSpec{
+								OIDC: &lokiv1.OIDCSpec{
+									Secret: &lokiv1.TenantSecretSpec{
 										Name: "test",
 									},
 									IssuerURL:     "https://127.0.0.1:5556/dex",
@@ -508,16 +726,17 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 								},
 							},
 						},
-						Authorization: &lokiv1beta1.AuthorizationSpec{
-							OPA: &lokiv1beta1.OPASpec{
+						Authorization: &lokiv1.AuthorizationSpec{
+							OPA: &lokiv1.OPASpec{
 								URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
 							},
 						},
 					},
 				},
-				Flags: FeatureFlags{
-					EnableGateway:                 true,
-					EnableTLSServiceMonitorConfig: true,
+				Gates: configv1.FeatureGates{
+					LokiStackGateway:           true,
+					HTTPEncryption:             true,
+					ServiceMonitorTLSEndpoints: true,
 				},
 			},
 		},
@@ -530,7 +749,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 			require.NoError(t, err)
 			objects, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
-			if tst.BuildOptions.Flags.EnableGateway {
+			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
@@ -539,7 +758,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
+func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -550,12 +769,12 @@ func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableServiceMonitors:  false,
-					EnablePrometheusAlerts: false,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors: false,
+					LokiStackAlerts: false,
 				},
 			},
 		},
@@ -564,12 +783,12 @@ func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size: lokiv1beta1.SizeOneXSmall,
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXSmall,
 				},
-				Flags: FeatureFlags{
-					EnableServiceMonitors:  true,
-					EnablePrometheusAlerts: true,
+				Gates: configv1.FeatureGates{
+					ServiceMonitors: true,
+					LokiStackAlerts: true,
 				},
 			},
 		},
@@ -582,7 +801,7 @@ func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
 			require.NoError(t, err)
 			objects, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
-			if tst.BuildOptions.Flags.EnableGateway {
+			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))

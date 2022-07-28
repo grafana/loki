@@ -1,0 +1,7 @@
+baseURL = 'https://loki-operator.dev/'
+languageCode = 'en-us'
+title = 'Loki Operator'
+theme = 'doks'
+
+[permalinks]
+  docs = "/:sections/:filename.md"

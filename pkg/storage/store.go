@@ -154,7 +154,7 @@ func (s *store) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(cache.CollectStats(s.chunksCache), s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
+		f, err := fetcher.New(s.chunksCache, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
 		if err != nil {
 			return err
 		}
@@ -226,7 +226,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
-		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+		writer, idx, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
 			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
@@ -236,6 +236,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			func() {
 				f.Stop()
 				chunkClient.Stop()
+				stopTSDBStoreFunc()
 				objectClient.Stop()
 			}, nil
 	}
@@ -513,8 +514,8 @@ func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.C
 
 func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
 	var ranges config.TableRanges
-	for i, periodicConfig := range periodicConfigs {
-		if periodicConfig.IndexType != indexType {
+	for i := range periodicConfigs {
+		if periodicConfigs[i].IndexType != indexType {
 			continue
 		}
 
@@ -523,7 +524,7 @@ func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodC
 			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
 		}
 
-		ranges = append(ranges, periodicConfig.GetIndexTableNumberRange(periodEndTime))
+		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
 	}
 
 	return ranges

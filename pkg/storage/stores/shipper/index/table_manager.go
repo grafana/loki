@@ -45,7 +45,7 @@ type TableManager struct {
 
 type Shipper interface {
 	AddIndex(tableName, userID string, index shipper_index.Index) error
-	ForEach(ctx context.Context, tableName, userID string, callback func(index shipper_index.Index) error) error
+	ForEach(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
 }
 
 func NewTableManager(cfg Config, indexShipper Shipper, registerer prometheus.Registerer) (*TableManager, error) {

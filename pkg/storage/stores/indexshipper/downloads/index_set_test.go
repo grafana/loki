@@ -12,7 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -40,7 +40,7 @@ func TestIndexSet_Init(t *testing.T) {
 	checkIndexSet := func() {
 		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 		require.Len(t, indexSet.index, len(indexesSetup))
-		verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+		verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
 			return indexSet.ForEach(context.Background(), callbackFunc)
 		})
 		stopFunc()
@@ -85,7 +85,7 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 			if tc > 0 {
 				require.Len(t, indexSet.index, tc)
 			}
-			verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+			verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
 				return indexSet.ForEach(context.Background(), callbackFunc)
 			})
 		})
@@ -104,7 +104,7 @@ func TestIndexSet_Sync(t *testing.T) {
 
 	checkIndexSet := func() {
 		require.Len(t, indexSet.index, len(indexesSetup))
-		verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+		verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
 			return indexSet.ForEach(context.Background(), callbackFunc)
 		})
 	}

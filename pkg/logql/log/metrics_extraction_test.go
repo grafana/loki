@@ -109,6 +109,24 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			},
 			true,
 		},
+		{
+			"not convertable",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertFloat, []string{"bar", "buzz"}, false, false, nil, NoopStage,
+			)),
+			labels.Labels{
+				{Name: "foo", Value: "not_a_number"},
+				{Name: "bar", Value: "foo"},
+			},
+			0,
+			labels.Labels{
+				{Name: "__error__", Value: "SampleExtractionErr"},
+				{Name: "__error_details__", Value: "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax"},
+				{Name: "bar", Value: "foo"},
+				{Name: "foo", Value: "not_a_number"},
+			},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

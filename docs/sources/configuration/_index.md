@@ -2109,11 +2109,6 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
-# Which deletion mode to use. Supported values are: disabled,
-# whole-stream-deletion, filter-only, and filter-and-delete.
-# CLI flag: -boltdb.shipper.compactor.deletion-mode
-[deletion_mode: <string> | default = "whole-stream-deletion"]
-
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.
@@ -2121,11 +2116,11 @@ compacts index shards to more performant forms.
 [max_compaction_parallelism: <int> | default = 1]
 
 # Deletion mode.
-# Can be one of "disabled", "whole-stream-deletion", "filter-only", or "filter-and-delete".
-# When set to the default value of "whole-stream-deletion", and if
+# Can be one of "disabled", "filter-only", or "filter-and-delete".
+# When set to "filter-only" or "filter-and-delete", and if
 # retention_enabled is true, then the log entry deletion API endpoints are available.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
-[deletion_mode: <string> | default = "whole-stream-deletion"]
+[deletion_mode: <string> | default = "disabled"]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
@@ -2665,6 +2660,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
+
+# Groupcache is an in-process, distributed cache that behaves similarly to memcached but is built-in to Loki
+groupcache:
+  # Enable groupcache
+  # CLI flag: -common.groupcache.enabled
+  [enabled: <boolean>: default = false]
+  # Set the maximum available memory to use for each groupcache group
+  # NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.
+  # CLI flag: -common.groupcache.capacity-per-cache-mb
+  [capacity_per_cache_mb: <int>: default = 100]
 ```
 
 ## analytics

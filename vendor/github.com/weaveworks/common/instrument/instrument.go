@@ -68,9 +68,16 @@ func (c *HistogramCollector) After(ctx context.Context, method, statusCode strin
 // (this will always work for a HistogramVec).
 func ObserveWithExemplar(ctx context.Context, histogram prometheus.Observer, seconds float64) {
 	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
+		lbls := prometheus.Labels{"traceID": traceID}
+		if userID, err := user.ExtractUserID(ctx); err == nil {
+			lbls["user"] = userID
+		}
+		if orgID, err := user.ExtractOrgID(ctx); err == nil {
+			lbls["organization"] = orgID
+		}
 		histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
 			seconds,
-			prometheus.Labels{"traceID": traceID},
+			lbls,
 		)
 		return
 	}

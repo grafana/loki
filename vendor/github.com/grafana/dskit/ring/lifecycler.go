@@ -29,6 +29,7 @@ type LifecyclerConfig struct {
 	// Config for the ingester lifecycle control
 	NumTokens        int           `yaml:"num_tokens" category:"advanced"`
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period" category:"advanced"`
+	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout" category:"advanced"`
 	ObservePeriod    time.Duration `yaml:"observe_period" category:"advanced"`
 	JoinAfter        time.Duration `yaml:"join_after" category:"advanced"`
 	MinReadyDuration time.Duration `yaml:"min_ready_duration" category:"advanced"`
@@ -70,6 +71,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"heartbeat-timeout", 1*time.Minute, "Heartbeat timeout after which instance is assumed to be unhealthy. 0 = disabled.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 15*time.Second, "Minimum duration to wait after the internal readiness checks have passed but before succeeding the readiness endpoint. This is used to slowdown deployment controllers (eg. Kubernetes) after an instance is ready and before they proceed with a rolling update, to give the rest of the cluster instances enough time to receive ring updates.")
@@ -598,6 +600,10 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			instanceDesc.State = ACTIVE
 		}
 
+		// We're taking over this entry, update instanceDesc with our values
+		instanceDesc.Addr = i.Addr
+		instanceDesc.Zone = i.Zone
+
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
 		i.setState(instanceDesc.State)
 		tokens, _ := ringDesc.TokensFor(i.ID)
@@ -605,10 +611,9 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		level.Info(i.logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
 
-		// Update the ring if the instance has been changed and the heartbeat is disabled.
-		// We dont need to update KV here when heartbeat is enabled as this info will eventually be update on KV
-		// on the next heartbeat
-		if i.cfg.HeartbeatPeriod == 0 && !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
+		// Update the ring if the instance has been changed. We don't want to rely on heartbeat update, as heartbeat
+		// can be configured to long time, and until then lifecycler would not report this instance as ready in CheckReady.
+		if !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
 			// Update timestamp to give gossiping client a chance register ring change.
 			instanceDesc.Timestamp = time.Now().Unix()
 			ringDesc.Ingesters[i.ID] = instanceDesc
@@ -885,7 +890,7 @@ func (i *Lifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (i *Lifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(i, i.cfg.HeartbeatPeriod).handle(w, req)
+	newRingPageHandler(i, i.cfg.HeartbeatTimeout).handle(w, req)
 }
 
 // unregister removes our entry from consul.

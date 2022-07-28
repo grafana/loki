@@ -57,6 +57,11 @@ func TestFlagDefaults(t *testing.T) {
 	require.Contains(t, gotFlags, flagToCheck)
 	require.Equal(t, c.Server.GRPCServerPingWithoutStreamAllowed, true)
 	require.Contains(t, gotFlags[flagToCheck], "(default true)")
+
+	flagToCheck = "-server.http-listen-port"
+	require.Contains(t, gotFlags, flagToCheck)
+	require.Equal(t, c.Server.HTTPListenPort, 3100)
+	require.Contains(t, gotFlags[flagToCheck], "(default 3100)")
 }
 
 func TestLoki_isModuleEnabled(t1 *testing.T) {

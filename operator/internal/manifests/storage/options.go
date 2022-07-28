@@ -1,14 +1,14 @@
 package storage
 
 import (
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // Options is used to configure Loki to integrate with
 // supported object storages.
 type Options struct {
-	Schemas     []lokiv1beta1.ObjectStorageSchema
-	SharedStore lokiv1beta1.ObjectStorageSecretType
+	Schemas     []lokiv1.ObjectStorageSchema
+	SharedStore lokiv1.ObjectStorageSecretType
 
 	Azure *AzureStorageConfig
 	GCS   *GCSStorageConfig

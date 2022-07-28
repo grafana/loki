@@ -52,18 +52,20 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL().Host,
 			"-frontend.default-validity=0s",
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
 		_ = clu.AddComponent(
 			"querier",
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL().Host,
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
 	)
 
 	require.NoError(t, clu.Run())
 
-	tenantID := randStringRunes(12)
+	tenantID := randStringRunes()
 
 	now := time.Now()
 	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL().String())

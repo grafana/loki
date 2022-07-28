@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -91,7 +92,7 @@ func TestQueryIndex(t *testing.T) {
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{
-			Tenant:   "fake",
+			TS:       time.Now(),
 			From:     from,
 			Through:  through,
 			Checksum: checksum,

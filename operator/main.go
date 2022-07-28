@@ -18,9 +18,9 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	ctrlconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/metrics"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,7 +38,10 @@ func init() {
 
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
 
+	utilruntime.Must(lokiv1.AddToScheme(scheme))
+
 	utilruntime.Must(ctrlconfigv1.AddToScheme(scheme))
+
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -66,19 +69,24 @@ func main() {
 		}
 	}
 
-	if ctrlCfg.Flags.EnablePrometheusAlerts && !ctrlCfg.Flags.EnableServiceMonitors {
-		logger.Error(kverrors.New("enablePrometheusAlerts flag requires enableServiceMonitors"), "")
+	if ctrlCfg.Gates.LokiStackAlerts && !ctrlCfg.Gates.ServiceMonitors {
+		logger.Error(kverrors.New("LokiStackAlerts flag requires ServiceMonitors"), "")
 		os.Exit(1)
 	}
 
-	if ctrlCfg.Flags.EnableServiceMonitors || ctrlCfg.Flags.EnableTLSServiceMonitorConfig {
+	if ctrlCfg.Gates.ServiceMonitorTLSEndpoints && !ctrlCfg.Gates.HTTPEncryption {
+		logger.Error(kverrors.New("ServiceMonitorTLSEndpoints flag requires HTTPEncryption"), "")
+		os.Exit(1)
+	}
+
+	if ctrlCfg.Gates.ServiceMonitors || ctrlCfg.Gates.ServiceMonitorTLSEndpoints {
 		utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	}
 
-	if ctrlCfg.Flags.EnableGateway {
+	if ctrlCfg.Gates.LokiStackGateway {
 		utilruntime.Must(configv1.AddToScheme(scheme))
 
-		if ctrlCfg.Flags.EnableGatewayRoute {
+		if ctrlCfg.Gates.OpenShift.GatewayRoute {
 			utilruntime.Must(routev1.AddToScheme(scheme))
 		}
 	}
@@ -89,28 +97,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	featureFlags := manifests.FeatureFlags{
-		EnableCertificateSigningService: ctrlCfg.Flags.EnableCertificateSigningService,
-		EnableServiceMonitors:           ctrlCfg.Flags.EnableServiceMonitors,
-		EnableTLSServiceMonitorConfig:   ctrlCfg.Flags.EnableTLSServiceMonitorConfig,
-		EnableTLSGRPCServices:           ctrlCfg.Flags.EnableTLSGRPCServices,
-		EnablePrometheusAlerts:          ctrlCfg.Flags.EnablePrometheusAlerts,
-		EnableGateway:                   ctrlCfg.Flags.EnableGateway,
-		EnableGatewayRoute:              ctrlCfg.Flags.EnableGatewayRoute,
-		EnableGrafanaLabsStats:          ctrlCfg.Flags.EnableGrafanaLabsStats,
-	}
-
 	if err = (&lokictrl.LokiStackReconciler{
-		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("LokiStack"),
-		Scheme: mgr.GetScheme(),
-		Flags:  featureFlags,
+		Client:       mgr.GetClient(),
+		Log:          logger.WithName("controllers").WithName("LokiStack"),
+		Scheme:       mgr.GetScheme(),
+		FeatureGates: ctrlCfg.Gates,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)
 	}
-	if ctrlCfg.Flags.EnableLokiStackWebhook {
-		if err = (&lokiv1beta1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
+	if ctrlCfg.Gates.LokiStackWebhook {
+		if err = (&lokiv1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
 			os.Exit(1)
 		}
@@ -123,7 +120,7 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "AlertingRule")
 		os.Exit(1)
 	}
-	if ctrlCfg.Flags.EnableAlertingRuleWebhook {
+	if ctrlCfg.Gates.AlertingRuleWebhook {
 		if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
 			os.Exit(1)
@@ -137,7 +134,7 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "RecordingRule")
 		os.Exit(1)
 	}
-	if ctrlCfg.Flags.EnableRecordingRuleWebhook {
+	if ctrlCfg.Gates.RecordingRuleWebhook {
 		if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
 			os.Exit(1)

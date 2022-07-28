@@ -1,7 +1,7 @@
 package internal
 
 import (
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -28,8 +28,8 @@ type ResourceRequirements struct {
 }
 
 // ResourceRequirementsTable defines the default resource requests and limits for each size
-var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ComponentResources{
-	lokiv1beta1.SizeOneXExtraSmall: {
+var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
+	lokiv1.SizeOneXExtraSmall: {
 		Querier: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
@@ -86,7 +86,7 @@ var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ComponentResou
 			PVCSize: resource.MustParse("150Gi"),
 		},
 	},
-	lokiv1beta1.SizeOneXSmall: {
+	lokiv1.SizeOneXSmall: {
 		Querier: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("4"),
@@ -143,7 +143,7 @@ var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ComponentResou
 			PVCSize: resource.MustParse("150Gi"),
 		},
 	},
-	lokiv1beta1.SizeOneXMedium: {
+	lokiv1.SizeOneXMedium: {
 		Querier: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("6"),
@@ -203,14 +203,13 @@ var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ComponentResou
 }
 
 // StackSizeTable defines the default configurations for each size
-var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec{
-
-	lokiv1beta1.SizeOneXExtraSmall: {
-		Size:              lokiv1beta1.SizeOneXExtraSmall,
+var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
+	lokiv1.SizeOneXExtraSmall: {
+		Size:              lokiv1.SizeOneXExtraSmall,
 		ReplicationFactor: 1,
-		Limits: &lokiv1beta1.LimitsSpec{
-			Global: &lokiv1beta1.LimitsTemplateSpec{
-				IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+		Limits: &lokiv1.LimitsSpec{
+			Global: &lokiv1.LimitsTemplateSpec{
+				IngestionLimits: &lokiv1.IngestionLimitSpec{
 					// Defaults from Loki docs
 					IngestionRate:          4,
 					IngestionBurstSize:     6,
@@ -219,7 +218,7 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 				},
-				QueryLimits: &lokiv1beta1.QueryLimitSpec{
+				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
@@ -227,40 +226,40 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 				},
 			},
 		},
-		Template: &lokiv1beta1.LokiTemplateSpec{
-			Compactor: &lokiv1beta1.LokiComponentSpec{
+		Template: &lokiv1.LokiTemplateSpec{
+			Compactor: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Distributor: &lokiv1beta1.LokiComponentSpec{
+			Distributor: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Ingester: &lokiv1beta1.LokiComponentSpec{
+			Ingester: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Querier: &lokiv1beta1.LokiComponentSpec{
+			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Gateway: &lokiv1beta1.LokiComponentSpec{
+			Gateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			IndexGateway: &lokiv1beta1.LokiComponentSpec{
+			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Ruler: &lokiv1beta1.LokiComponentSpec{
+			Ruler: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
 		},
 	},
 
-	lokiv1beta1.SizeOneXSmall: {
-		Size:              lokiv1beta1.SizeOneXSmall,
+	lokiv1.SizeOneXSmall: {
+		Size:              lokiv1.SizeOneXSmall,
 		ReplicationFactor: 2,
-		Limits: &lokiv1beta1.LimitsSpec{
-			Global: &lokiv1beta1.LimitsTemplateSpec{
-				IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+		Limits: &lokiv1.LimitsSpec{
+			Global: &lokiv1.LimitsTemplateSpec{
+				IngestionLimits: &lokiv1.IngestionLimitSpec{
 					// Custom for 1x.small
 					IngestionRate:             10,
 					IngestionBurstSize:        20,
@@ -271,7 +270,7 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 				},
-				QueryLimits: &lokiv1beta1.QueryLimitSpec{
+				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
@@ -279,40 +278,40 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 				},
 			},
 		},
-		Template: &lokiv1beta1.LokiTemplateSpec{
-			Compactor: &lokiv1beta1.LokiComponentSpec{
+		Template: &lokiv1.LokiTemplateSpec{
+			Compactor: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Distributor: &lokiv1beta1.LokiComponentSpec{
+			Distributor: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Ingester: &lokiv1beta1.LokiComponentSpec{
+			Ingester: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Querier: &lokiv1beta1.LokiComponentSpec{
+			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Gateway: &lokiv1beta1.LokiComponentSpec{
+			Gateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			IndexGateway: &lokiv1beta1.LokiComponentSpec{
+			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Ruler: &lokiv1beta1.LokiComponentSpec{
+			Ruler: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
 		},
 	},
 
-	lokiv1beta1.SizeOneXMedium: {
-		Size:              lokiv1beta1.SizeOneXMedium,
+	lokiv1.SizeOneXMedium: {
+		Size:              lokiv1.SizeOneXMedium,
 		ReplicationFactor: 3,
-		Limits: &lokiv1beta1.LimitsSpec{
-			Global: &lokiv1beta1.LimitsTemplateSpec{
-				IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+		Limits: &lokiv1.LimitsSpec{
+			Global: &lokiv1.LimitsTemplateSpec{
+				IngestionLimits: &lokiv1.IngestionLimitSpec{
 					// Custom for 1x.medium
 					IngestionRate:             10,
 					IngestionBurstSize:        20,
@@ -323,7 +322,7 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 				},
-				QueryLimits: &lokiv1beta1.QueryLimitSpec{
+				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
@@ -331,29 +330,29 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 				},
 			},
 		},
-		Template: &lokiv1beta1.LokiTemplateSpec{
-			Compactor: &lokiv1beta1.LokiComponentSpec{
+		Template: &lokiv1.LokiTemplateSpec{
+			Compactor: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Distributor: &lokiv1beta1.LokiComponentSpec{
+			Distributor: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Ingester: &lokiv1beta1.LokiComponentSpec{
+			Ingester: &lokiv1.LokiComponentSpec{
 				Replicas: 3,
 			},
-			Querier: &lokiv1beta1.LokiComponentSpec{
+			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 3,
 			},
-			QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Gateway: &lokiv1beta1.LokiComponentSpec{
+			Gateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			IndexGateway: &lokiv1beta1.LokiComponentSpec{
+			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Ruler: &lokiv1beta1.LokiComponentSpec{
+			Ruler: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
 		},

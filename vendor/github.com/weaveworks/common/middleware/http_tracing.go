@@ -29,11 +29,19 @@ func (t Tracer) Wrap(next http.Handler) http.Handler {
 
 			return fmt.Sprintf("HTTP %s - %s", r.Method, op)
 		}),
-	}
-	if t.SourceIPs != nil {
-		options = append(options, nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
-			sp.SetTag("sourceIPs", t.SourceIPs.Get(r))
-		}))
+		nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
+			// add a tag with the client's user agent to the span
+			userAgent := r.Header.Get("User-Agent")
+			if userAgent != "" {
+				sp.SetTag("http.user_agent", userAgent)
+			}
+
+			// add a tag with the client's sourceIPs to the span, if a
+			// SourceIPExtractor is given.
+			if t.SourceIPs != nil {
+				sp.SetTag("sourceIPs", t.SourceIPs.Get(r))
+			}
+		}),
 	}
 
 	return nethttp.Middleware(opentracing.GlobalTracer(), next, options...)

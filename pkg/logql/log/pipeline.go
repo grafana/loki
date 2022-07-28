@@ -29,7 +29,7 @@ type StreamPipeline interface {
 // A Stage implementation should never mutate the line passed, but instead either
 // return the line unchanged or allocate a new line.
 type Stage interface {
-	Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	RequiredLabelNames() []string
 }
 
@@ -76,18 +76,18 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 
 type noopStage struct{}
 
-func (noopStage) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
 func (noopStage) RequiredLabelNames() []string { return []string{} }
 
 type StageFunc struct {
-	process        func(line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
 }
 
-func (fn StageFunc) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	return fn.process(line, lbs)
+func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	return fn.process(ts, line, lbs)
 }
 
 func (fn StageFunc) RequiredLabelNames() []string {
@@ -137,11 +137,11 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return res
 }
 
-func (p *streamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
+func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
 	for _, s := range p.stages {
-		line, ok = s.Process(line, p.builder)
+		line, ok = s.Process(ts, line, p.builder)
 		if !ok {
 			return nil, nil, false
 		}
@@ -266,10 +266,10 @@ func ReduceStages(stages []Stage) Stage {
 		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
 	}
 	return StageFunc{
-		process: func(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+		process: func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 			var ok bool
 			for _, p := range stages {
-				line, ok = p.Process(line, lbs)
+				line, ok = p.Process(ts, line, lbs)
 				if !ok {
 					return nil, false
 				}

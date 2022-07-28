@@ -52,6 +52,12 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	level.Debug(log).Log(
+		"shortcut", shortcut,
+		"from", from.Time(),
+		"through", through.Time(),
+		"err", err,
+	)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {

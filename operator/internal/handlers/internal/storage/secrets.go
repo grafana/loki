@@ -2,14 +2,14 @@ package storage
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 
 	corev1 "k8s.io/api/core/v1"
 )
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
+func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
 	var err error
 	storageOpts := storage.Options{
 		SecretName:  s.Name,
@@ -17,13 +17,13 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretT
 	}
 
 	switch secretType {
-	case lokiv1beta1.ObjectStorageSecretAzure:
+	case lokiv1.ObjectStorageSecretAzure:
 		storageOpts.Azure, err = extractAzureConfigSecret(s)
-	case lokiv1beta1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretGCS:
 		storageOpts.GCS, err = extractGCSConfigSecret(s)
-	case lokiv1beta1.ObjectStorageSecretS3:
+	case lokiv1.ObjectStorageSecretS3:
 		storageOpts.S3, err = extractS3ConfigSecret(s)
-	case lokiv1beta1.ObjectStorageSecretSwift:
+	case lokiv1.ObjectStorageSecretSwift:
 		storageOpts.Swift, err = extractSwiftConfigSecret(s)
 	default:
 		return nil, kverrors.New("unknown secret type", "type", secretType)
