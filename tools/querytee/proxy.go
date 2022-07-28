@@ -138,7 +138,7 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 	}
 
 	if cfg.CompareResponses && len(p.backends) < 2 {
-		return nil, fmt.Errorf("when enabling comparison of results number of backends should be 2 exactly")
+		return nil, fmt.Errorf("when enabling comparison of results number of backends should be at least 2")
 	}
 
 	// At least 2 backends are suggested
