@@ -21,7 +21,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-type PushTarget struct {
+type pushTarget struct {
 	logger         log.Logger
 	handler        api.EntryHandler
 	config         *scrapeconfig.GCPLogTargetConfig
@@ -32,10 +32,10 @@ type PushTarget struct {
 }
 
 // newPushTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
-func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GCPLogTargetConfig, relabel []*relabel.Config) (*PushTarget, error) {
+func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.GCPLogTargetConfig, relabel []*relabel.Config) (*pushTarget, error) {
 	wrappedLogger := log.With(logger, "component", "gcp_push")
 
-	ht := &PushTarget{
+	ht := &pushTarget{
 		metrics:        metrics,
 		logger:         wrappedLogger,
 		handler:        handler,
@@ -58,7 +58,7 @@ func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler
 	return ht, nil
 }
 
-func (h *PushTarget) run() error {
+func (h *pushTarget) run() error {
 	level.Info(h.logger).Log("msg", "starting gcp push target", "job", h.jobName)
 
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
@@ -95,7 +95,7 @@ func (h *PushTarget) run() error {
 	return nil
 }
 
-func (h *PushTarget) push(w http.ResponseWriter, r *http.Request) {
+func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 	entries := h.handler.Chan()
 	defer r.Body.Close()
 
@@ -130,27 +130,27 @@ func (h *PushTarget) push(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *PushTarget) Type() target.TargetType {
+func (h *pushTarget) Type() target.TargetType {
 	return target.GCPLogTargetType
 }
 
-func (h *PushTarget) DiscoveredLabels() model.LabelSet {
+func (h *pushTarget) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
-func (h *PushTarget) Labels() model.LabelSet {
+func (h *pushTarget) Labels() model.LabelSet {
 	return h.config.Labels
 }
 
-func (h *PushTarget) Ready() bool {
+func (h *pushTarget) Ready() bool {
 	return true
 }
 
-func (h *PushTarget) Details() interface{} {
+func (h *pushTarget) Details() interface{} {
 	return map[string]string{}
 }
 
-func (h *PushTarget) Stop() error {
+func (h *pushTarget) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping gcp push target", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()

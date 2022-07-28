@@ -1,4 +1,4 @@
-package gcplog
+package gcplog_test
 
 import (
 	"flag"
@@ -20,6 +20,7 @@ import (
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 )
 
 const localhost = "127.0.0.1"
@@ -137,8 +138,8 @@ func TestPushTarget(t *testing.T) {
 			}
 
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
-			metrics := NewMetrics(prometheus.DefaultRegisterer)
-			pt, err := newPushTarget(metrics, logger, eh, "test_job", config, tc.args.RelabelConfigs)
+			metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
+			pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tc.args.RelabelConfigs, "test_job", config)
 			require.NoError(t, err)
 			defer func() {
 				_ = pt.Stop()
@@ -199,8 +200,8 @@ func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
 	}
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := newPushTarget(metrics, logger, eh, "test_job", config, nil)
+	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -243,8 +244,8 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	}
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := newPushTarget(metrics, logger, eh, "test_job", config, nil)
+	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()

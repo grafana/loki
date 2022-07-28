@@ -15,10 +15,10 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
-// PullTarget represents the target specific to GCP project, with a pull subscription type.
+// pullTarget represents the target specific to GCP project, with a pull subscription type.
 // It collects logs from GCP and push it to Loki.
 // nolint:revive
-type PullTarget struct {
+type pullTarget struct {
 	metrics       *Metrics
 	logger        log.Logger
 	handler       api.EntryHandler
@@ -36,7 +36,7 @@ type PullTarget struct {
 	msgs chan *pubsub.Message
 }
 
-// newPullTarget returns the new instance of PullTarget for
+// newPullTarget returns the new instance of pullTarget for
 // the given `project-id`. It scraps logs from the GCP project
 // and push it Loki via given `api.EntryHandler.`
 // It starts the `run` loop to consume log entries that can be
@@ -49,7 +49,7 @@ func newPullTarget(
 	relabel []*relabel.Config,
 	jobName string,
 	config *scrapeconfig.GCPLogTargetConfig,
-) (*PullTarget, error) {
+) (*pullTarget, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ps, err := pubsub.NewClient(ctx, config.ProjectID)
@@ -57,7 +57,7 @@ func newPullTarget(
 		return nil, err
 	}
 
-	target := &PullTarget{
+	target := &pullTarget{
 		metrics:       metrics,
 		logger:        logger,
 		handler:       handler,
@@ -77,7 +77,7 @@ func newPullTarget(
 	return target, nil
 }
 
-func (t *PullTarget) run() error {
+func (t *pullTarget) run() error {
 	t.wg.Add(1)
 	defer t.wg.Done()
 
@@ -117,11 +117,11 @@ func (t *PullTarget) run() error {
 	}
 }
 
-func (t *PullTarget) Type() target.TargetType {
+func (t *pullTarget) Type() target.TargetType {
 	return target.GCPLogTargetType
 }
 
-func (t *PullTarget) Ready() bool {
+func (t *pullTarget) Ready() bool {
 	// Return true just like all other targets.
 	// Rationale is gcplog scraping shouldn't stop because of some transient timeout errors.
 	// This transient failure can cause promtail readyness probe to fail which may prevent pod from starting.
@@ -129,19 +129,19 @@ func (t *PullTarget) Ready() bool {
 	return true
 }
 
-func (t *PullTarget) DiscoveredLabels() model.LabelSet {
+func (t *pullTarget) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
-func (t *PullTarget) Labels() model.LabelSet {
+func (t *pullTarget) Labels() model.LabelSet {
 	return t.config.Labels
 }
 
-func (t *PullTarget) Details() interface{} {
+func (t *pullTarget) Details() interface{} {
 	return nil
 }
 
-func (t *PullTarget) Stop() error {
+func (t *pullTarget) Stop() error {
 	t.cancel()
 	t.wg.Wait()
 	t.handler.Stop()

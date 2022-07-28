@@ -50,7 +50,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 					SubscriptionType: "",
 				},
 			},
-			wantType: &PullTarget{},
+			wantType: &pullTarget{},
 			wantErr:  assert.NoError,
 		},
 		{
@@ -65,7 +65,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 					SubscriptionType: "pull",
 				},
 			},
-			wantType: &PullTarget{},
+			wantType: &pullTarget{},
 			wantErr:  assert.NoError,
 		},
 		{
@@ -80,7 +80,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 					SubscriptionType: "push",
 				},
 			},
-			wantType: &PushTarget{},
+			wantType: &pushTarget{},
 			wantErr:  assert.NoError,
 		},
 		{

@@ -110,7 +110,7 @@ func TestPullTarget_Labels(t *testing.T) {
 	assert.Equal(t, model.LabelSet{"job": "test-gcplogtarget"}, tt.Labels())
 }
 
-func testPullTarget(t *testing.T) (*PullTarget, *fake.Client, *pubsub.Client, func()) {
+func testPullTarget(t *testing.T) (*pullTarget, *fake.Client, *pubsub.Client, func()) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -125,7 +125,7 @@ func testPullTarget(t *testing.T) (*PullTarget, *fake.Client, *pubsub.Client, fu
 	fakeClient := fake.New(func() {})
 
 	var handler api.EntryHandler = fakeClient
-	target := &PullTarget{
+	target := &pullTarget{
 		metrics:       NewMetrics(prometheus.NewRegistry()),
 		logger:        log.NewNopLogger(),
 		handler:       handler,
