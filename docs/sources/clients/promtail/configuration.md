@@ -330,6 +330,9 @@ job_name: <string>
 # Describes how to scrape logs from the Windows event logs.
 [windows_events: <windows_events_config>]
 
+# Configuration describing how to pull/receive GCP Logs.
+[gcplog: <gcplog_config>]
+
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
 
@@ -929,6 +932,55 @@ labels:
 # When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
+
+### GCP Log
+
+The `gcplog` block configures Promtail receive GCP logs. It has two possible strategies for doing so, depending on how the 
+`subscription_type` attribute is configured:
+1. **Pull**: Using GCP PubSub [pull subscriptions](https://cloud.google.com/pubsub/docs/pull). Promtail will consume log messages directly from the configured GCP PubSub topic.
+2. **Push**: Using GCP PubSub [push subscriptions](https://cloud.google.com/pubsub/docs/push). Promtail will expose an HTTP server, to which GCP will deliver logs.
+
+When picking the `push` subscription type, keep in mind the following:
+- The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for target that requires so.
+- An endpoint at `POST /gcp/api/v1/push`, which expects requests from GCP PubSub message delivery system.
+
+```yaml
+# Type of subscription used to fetch logs from GCP. Can be either `pull` (default) or `push`.
+[subscription_type: <string> | default = "pull"]
+
+# [pull] GCP project ID
+[project_id: <string>]
+
+# [pull] GCP PubSub subscription from where Promtail will pull logs from
+[subscription: <string>]
+
+# [push] Server configuration options
+[server: <server_config>]
+
+# Whether Promtail should pass on the timestamp from the incoming GCP Log message.
+# When false, or if no timestamp is present in the syslog message, Promtail will assign the current
+# timestamp to the log when it was processed.
+[use_incoming_timestamp: <boolean> | default = false]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+### Available Labels
+
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling). This depend on the subscription type chosen.
+
+**Pull**
+
+- `__gcp_logname`
+- `__gcp_resource_type`
+- `__gcp_resource_labels_<NAME>`
+
+**Push**
+
+- `__gcp_message_id`
+- `__gcp_attributes_*`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed since it might contain unsupported characters. For example for `logging.googleapis.com/timestamp` it's converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
 
 ### kafka
 
