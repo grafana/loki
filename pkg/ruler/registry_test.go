@@ -100,7 +100,7 @@ func setupRegistry(t *testing.T) *walRegistry {
 
 	cfg := Config{
 		RemoteWrite: RemoteWriteConfig{
-			Client: config.RemoteWriteConfig{
+			Client: &config.RemoteWriteConfig{
 				URL: &promConfig.URL{URL: u},
 				QueueConfig: config.QueueConfig{
 					Capacity: defaultCapacity,
@@ -121,6 +121,32 @@ func setupRegistry(t *testing.T) *walRegistry {
 						Action:       "drop",
 						Separator:    ";",
 						Replacement:  "$1",
+					},
+				},
+			},
+			Clients: []config.RemoteWriteConfig{
+				{
+					URL: &promConfig.URL{URL: u},
+					QueueConfig: config.QueueConfig{
+						Capacity: defaultCapacity,
+					},
+					HTTPClientConfig: promConfig.HTTPClientConfig{
+						BasicAuth: &promConfig.BasicAuth{
+							Password: "bar",
+							Username: "foo",
+						},
+					},
+					Headers: map[string]string{
+						"Base": "value",
+					},
+					WriteRelabelConfigs: []*relabel.Config{
+						{
+							SourceLabels: []model.LabelName{"__name__"},
+							Regex:        relabel.MustNewRegexp("ALERTS.*"),
+							Action:       "drop",
+							Separator:    ";",
+							Replacement:  "$1",
+						},
 					},
 				},
 			},
@@ -148,9 +174,11 @@ func setupSigV4Registry(t *testing.T) *walRegistry {
 	reg := setupRegistry(t)
 
 	// Remove the basic auth config and replace with sigv4
-	reg.config.RemoteWrite.Client.HTTPClientConfig.BasicAuth = nil
-	reg.config.RemoteWrite.Client.SigV4Config = &sigv4.SigV4Config{
-		Region: sigV4GlobalRegion,
+	for i := range reg.config.RemoteWrite.Clients {
+		reg.config.RemoteWrite.Clients[i].HTTPClientConfig.BasicAuth = nil
+		reg.config.RemoteWrite.Clients[i].SigV4Config = &sigv4.SigV4Config{
+			Region: sigV4GlobalRegion,
+		}
 	}
 
 	return reg
@@ -227,8 +255,8 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 	require.NoError(t, err)
 
 	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
-	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username, "foo")
-	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password, promConfig.Secret("bar"))
+	assert.Equal(t, "foo", tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username)
+	assert.Equal(t, promConfig.Secret("bar"), tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password)
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {

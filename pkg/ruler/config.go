@@ -48,14 +48,25 @@ func (c *Config) Validate() error {
 }
 
 type RemoteWriteConfig struct {
-	Client              config.RemoteWriteConfig `yaml:"client"`
-	Enabled             bool                     `yaml:"enabled"`
-	ConfigRefreshPeriod time.Duration            `yaml:"config_refresh_period"`
+	Client              *config.RemoteWriteConfig  `yaml:"client,omitempty"`
+	Clients             []config.RemoteWriteConfig `yaml:"clients"`
+	Enabled             bool                       `yaml:"enabled"`
+	ConfigRefreshPeriod time.Duration              `yaml:"config_refresh_period"`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
-	if c.Enabled && c.Client.URL == nil {
-		return errors.New("remote-write enabled but client URL is not configured")
+	if c.Enabled {
+		if (c.Client == nil || c.Client.URL == nil) && len(c.Clients) == 0 {
+			return errors.New("remote-write enabled but no clients URL are configured")
+		}
+
+		if len(c.Clients) > 0 {
+			for _, clt := range c.Clients {
+				if clt.URL == nil {
+					return fmt.Errorf("remote-write enabled but client '%s' URL is not configured", clt.Name)
+				}
+			}
+		}
 	}
 
 	return nil
@@ -76,9 +87,16 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 	// BasicAuth.Password has a type of Secret (github.com/prometheus/common/config/config.go),
 	// so when its value is marshaled it is obfuscated as "<secret>".
 	// Here we copy the original password into the cloned config.
-	if n.Client.HTTPClientConfig.BasicAuth != nil {
+	if n.Client != nil && n.Client.HTTPClientConfig.BasicAuth != nil {
 		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
 	}
+
+	for i := range n.Clients {
+		if n.Clients[i].HTTPClientConfig.BasicAuth != nil {
+			n.Clients[i].HTTPClientConfig.BasicAuth.Password = c.Clients[i].HTTPClientConfig.BasicAuth.Password
+		}
+	}
+
 	return n, nil
 }
 

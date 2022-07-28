@@ -10,6 +10,12 @@ import (
 )
 
 func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*ruler.Ruler, error) {
+	// For backward compatibility, client and clients are defined in the remote_write config.
+	// When both are present, Clients config overrides client, otherwise one or the other is used.
+	if len(cfg.RemoteWrite.Clients) == 0 && cfg.RemoteWrite.Client != nil {
+		cfg.RemoteWrite.Clients = append(cfg.RemoteWrite.Clients, *cfg.RemoteWrite.Client)
+	}
+
 	mgr, err := ruler.NewDefaultMultiTenantManager(
 		cfg.Config,
 		MultiTenantRuleManager(cfg, engine, limits, logger, reg),
