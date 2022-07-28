@@ -286,7 +286,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 
-	t.Run("no_lines_matching", func(t *testing.T) {
+	t.Run("all_lines_matching", func(t *testing.T) {
 		dr := DeleteRequest{
 			Query:        `{namespace="default"}`,
 			DeletedLines: 0,
