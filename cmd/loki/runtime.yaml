@@ -1,5 +1,0 @@
-overrides:
-  tenant1:
-    allow_deletes: true
-  tenant2:
-    allow_deletes: false
