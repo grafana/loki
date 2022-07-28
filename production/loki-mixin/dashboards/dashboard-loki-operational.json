@@ -144,7 +144,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[5m]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
+          "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/loki_-gw\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[5m]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -239,7 +239,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
+          "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/loki_-gw\", route=~\"api_prom_push|loki_api_v1_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -713,17 +713,17 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+          "expr": "histogram_quantile(0.99, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/loki_-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
           "legendFormat": ".99",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.75, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+          "expr": "histogram_quantile(0.75, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/loki_-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
           "legendFormat": ".9",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+          "expr": "histogram_quantile(0.5, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/loki_-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
           "legendFormat": ".5",
           "refId": "C"
         }
@@ -5318,7 +5318,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+              "expr": "sum(rate(loki_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -5403,7 +5403,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+              "expr": "sum(rate(loki__dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -5488,7 +5488,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+              "expr": "sum(rate(loki__dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -5573,7 +5573,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+              "expr": "sum(rate(loki__dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -5658,17 +5658,17 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
+              "expr": "histogram_quantile(.99, sum(rate(loki__dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
               "legendFormat": ".99",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
+              "expr": "histogram_quantile(.9, sum(rate(loki__dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
               "legendFormat": ".9",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
+              "expr": "histogram_quantile(.5, sum(rate(loki__dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
               "legendFormat": ".5",
               "refId": "C"
             }
@@ -5757,19 +5757,19 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.99, sum(rate(loki__dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "intervalFactor": 1,
               "legendFormat": ".99-{{operation}}",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.9, sum(rate(loki__dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "hide": false,
               "legendFormat": ".9-{{operation}}",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.5, sum(rate(loki__dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "hide": false,
               "legendFormat": ".5-{{operation}}",
               "refId": "C"
@@ -5859,7 +5859,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
+              "expr": "sum(rate(loki__dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
               "intervalFactor": 1,
               "legendFormat": "{{status_code}}-{{operation}}",
               "refId": "A"
@@ -6378,19 +6378,19 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.99, sum(rate(loki__cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "intervalFactor": 1,
               "legendFormat": ".99-{{operation}}",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(.9, sum(rate(cortex_cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.9, sum(rate(loki__cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "hide": false,
               "legendFormat": ".9-{{operation}}",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(.5, sum(rate(cortex_cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.5, sum(rate(loki__cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "hide": false,
               "legendFormat": ".5-{{operation}}",
               "refId": "C"
@@ -6480,7 +6480,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_cassandra_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
+              "expr": "sum(rate(loki__cassandra_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
               "intervalFactor": 1,
               "legendFormat": "{{status_code}}-{{operation}}",
               "refId": "A"

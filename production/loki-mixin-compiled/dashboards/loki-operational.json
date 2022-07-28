@@ -5328,7 +5328,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(cortex_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+                        "expr": "sum(rate(loki_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                         "refId": "A"
                      }
                   ],
@@ -5414,7 +5414,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(cortex_dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+                        "expr": "sum(rate(loki_dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                         "refId": "A"
                      }
                   ],
@@ -5500,7 +5500,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(cortex_dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+                        "expr": "sum(rate(loki_dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                         "refId": "A"
                      }
                   ],
@@ -5586,7 +5586,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(cortex_dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
+                        "expr": "sum(rate(loki_dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                         "refId": "A"
                      }
                   ],
@@ -5672,17 +5672,17 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
+                        "expr": "histogram_quantile(.99, sum(rate(loki_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
                         "legendFormat": ".99",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
+                        "expr": "histogram_quantile(.9, sum(rate(loki_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
                         "legendFormat": ".9",
                         "refId": "B"
                      },
                      {
-                        "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
+                        "expr": "histogram_quantile(.5, sum(rate(loki_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
                         "legendFormat": ".5",
                         "refId": "C"
                      }
@@ -5772,19 +5772,19 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+                        "expr": "histogram_quantile(.99, sum(rate(loki_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                         "intervalFactor": 1,
                         "legendFormat": ".99-{{operation}}",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+                        "expr": "histogram_quantile(.9, sum(rate(loki_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                         "hide": false,
                         "legendFormat": ".9-{{operation}}",
                         "refId": "B"
                      },
                      {
-                        "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+                        "expr": "histogram_quantile(.5, sum(rate(loki_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                         "hide": false,
                         "legendFormat": ".5-{{operation}}",
                         "refId": "C"
@@ -5875,7 +5875,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(cortex_dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
+                        "expr": "sum(rate(loki_dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
                         "intervalFactor": 1,
                         "legendFormat": "{{status_code}}-{{operation}}",
                         "refId": "A"

@@ -1916,7 +1916,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (cortex_prometheus_rule_group_rules{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"})",
+                        "expr": "sum by(pod) (loki_prometheus_rule_group_rules{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"})",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{pod}}",
