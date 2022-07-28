@@ -10,9 +10,6 @@ import (
 	"os"
 	"time"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -138,16 +135,7 @@ func (t *Loki) initServer() (services.Service, error) {
 		})
 	}(t.Server.HTTPServer.Handler)
 
-	// Allow us to receive http/2 cleartext in addition to http/1.1. This needs to be
-	// the outermost handler so it can upgrade requests if necessary
-	t.Server.HTTPServer.Handler = http2CleartextHandler(t.Server.HTTPServer.Handler)
-
 	return s, nil
-}
-
-func http2CleartextHandler(h http.Handler) http.Handler {
-	h2s := &http2.Server{}
-	return h2c.NewHandler(h, h2s)
 }
 
 func (t *Loki) initRing() (_ services.Service, err error) {
@@ -164,10 +152,10 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, nil
 	}
 
-	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Common.GroupCacheConfig.ListenPort
 	rm, err := cache.NewGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-		return nil, gerrors.Wrap(err, "new index gateway ring manager")
+		return nil, gerrors.Wrap(err, "new groupcache ring manager")
 	}
 
 	t.groupcacheRingManager = rm
@@ -178,9 +166,20 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache", stats.ChunkCache)
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache", stats.ResultCache)
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.GroupCache = gc.NewGroup(t.Cfg.StorageConfig.IndexQueriesCacheConfig.Prefix+"groupcache", stats.IndexCache)
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(
+		t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache",
+		&t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCacheConfig,
+		stats.ChunkCache,
+	)
+	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(
+		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
+		&t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCacheConfig,
+		stats.ResultCache,
+	)
+
+	// The index cache generates too much traffic to be used. Make it a fifo cache
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache = true
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.Fifocache.MaxSizeBytes = fmt.Sprint(t.Cfg.Common.GroupCacheConfig.CapacityMB * 1e6)
 
 	return t.groupcacheRingManager, nil
 }

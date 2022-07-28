@@ -36,6 +36,9 @@ type Config struct {
 	Redis          RedisConfig           `yaml:"redis"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
 
+	// GroupcacheConfig is a local GroupCache config per cache
+	GroupCacheConfig GroupConfig `yaml:"groupcache"`
+
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
@@ -142,7 +145,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	}
 
 	if IsGroupCacheSet(cfg) {
-		caches = append(caches, CollectStats(cfg.GroupCache))
+		cacheName := cfg.Prefix + "groupcache"
+		caches = append(caches, CollectStats(Instrument(cacheName, cfg.GroupCache, reg)))
 	}
 
 	cache := NewTiered(caches)

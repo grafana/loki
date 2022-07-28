@@ -52,7 +52,7 @@ type GroupCache struct {
 	wg                   sync.WaitGroup
 	reg                  prometheus.Registerer
 	startWaitingForClose context.CancelFunc
-	capacity             int64
+	cacheBytes           int64
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -64,8 +64,14 @@ type GroupCacheConfig struct {
 	Enabled    bool    `yaml:"enabled,omitempty"`
 	Ring       RingCfg `yaml:"ring,omitempty"`
 	CapacityMB int64   `yaml:"capacity_per_cache_mb,omitempty"`
+	ListenPort int     `yaml:"listen_port,omitempty"`
 
 	Cache Cache `yaml:"-"`
+}
+
+// Groupconfig represents config per Group.
+type GroupConfig struct {
+	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -73,6 +79,7 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
 
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
+	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
 	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
 		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
 }
@@ -94,7 +101,6 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 			},
 		},
 	)
-	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
@@ -106,8 +112,10 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 		wg:                   sync.WaitGroup{},
 		startWaitingForClose: cancel,
 		reg:                  reg,
-		capacity:             config.CapacityMB * 1e6, // MB => B
+		cacheBytes:           config.CapacityMB * 1e6, // MB => B
 	}
+
+	go cache.serveGroupcache(config.ListenPort)
 
 	go func() {
 		// Avoid starting the cache and peer discovery until
@@ -120,6 +128,32 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 	}()
 
 	return cache, nil
+}
+
+func (c *GroupCache) serveGroupcache(listenPort int) {
+	addr := fmt.Sprintf(":%d", listenPort)
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "unable to serve groupcache", "err", err)
+		return
+	}
+	level.Info(c.logger).Log("msg", "groupcache listening", "addr", addr)
+
+	server := http2.Server{}
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		default:
+			conn, err := l.Accept()
+			if err != nil {
+				level.Error(c.logger).Log("msg", "groupcache connection failed", "err", err)
+				continue
+			}
+
+			go server.ServeConn(conn, &http2.ServeConnOpts{Handler: c.pool})
+		}
+	}
 }
 
 func (c *GroupCache) updatePeers() {
@@ -169,15 +203,19 @@ func (c *GroupCache) Stats() *groupcache.Stats {
 }
 
 type group struct {
-	cache         *groupcache.Group
-	logger        log.Logger
-	wg            *sync.WaitGroup
-	cacheType     stats.CacheType
+	cache     *groupcache.Group
+	logger    log.Logger
+	wg        *sync.WaitGroup
+	cacheType stats.CacheType
+
+	// cacheBytes represents maxSize (in bytes) this group can grow.
+	cacheBytes int64 // TODO(kavi): expose it as _info metrics later?
+
 	fetchDuration prometheus.Observer
 	storeDuration prometheus.Observer
 }
 
-func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
+func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType) Cache {
 	// Return a known error on miss to track which keys need to be inserted
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
 		return ErrGroupcacheMiss
@@ -185,6 +223,11 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 
 	c.wg.Add(1)
 	c.startWaitingForClose()
+
+	cap := c.cacheBytes
+	if cfg.CapacityMB != 0 {
+		cap = cfg.CapacityMB * 1e6 // MB into bytes
+	}
 
 	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "loki",
@@ -195,7 +238,8 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, c.capacity, missGetter),
+		cache:         groupcache.NewGroup(name, cap, missGetter),
+		cacheBytes:    cap,
 		logger:        c.logger,
 		wg:            &c.wg,
 		cacheType:     ct,
@@ -243,7 +287,7 @@ func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error
 
 	var lastErr error
 	for i, key := range keys {
-		if err := c.cache.Set(ctx, key, values[i], time.Time{}, false); err != nil {
+		if err := c.cache.Set(ctx, key, values[i], time.Time{}, c.GetCacheType() != stats.ChunkCache); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
 			lastErr = err
 		}
