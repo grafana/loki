@@ -13,7 +13,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
 
     // local labelsSelector = 'cluster=~"$cluster", namespace=~"$namespace"',
-    local labelsSelector = dashboard._config.per_cluster_label + '~"$cluster", namespace=~"$namespace"',
+    local labelsSelector = dashboard._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
     local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail"',
 
     'promtail.json': {
