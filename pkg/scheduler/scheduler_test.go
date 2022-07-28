@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/metadata"
@@ -14,8 +13,8 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+// TODO: it seems like this test doesn't even really break if we mess with the code in scheduler.shouldRun()
 func TestScheduler_setRunState(t *testing.T) {
-
 	// This test is a bit crude, the method is not the most directly testable but
 	// this covers us to make sure we don't accidentally change the behavior of
 	// the little bit of logic which runs/stops the scheduler and makes sure we
@@ -23,12 +22,10 @@ func TestScheduler_setRunState(t *testing.T) {
 
 	// To avoid a lot more complicated test setup of calling NewScheduler instead
 	// we make a Scheduler with the things required to avoid nil pointers
+	m := NewMetrics(prometheus.DefaultRegisterer)
 	s := Scheduler{
-		log: util_log.Logger,
-		schedulerRunning: promauto.With(prometheus.DefaultRegisterer).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_query_scheduler_running",
-			Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
-		}),
+		log:     util_log.Logger,
+		metrics: m,
 	}
 	mock := &mockSchedulerForFrontendFrontendLoopServer{}
 	s.connectedFrontends = map[string]*connectedFrontend{

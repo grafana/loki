@@ -87,13 +87,9 @@ type Scheduler struct {
 	subservicesWatcher *services.FailureWatcher
 
 	// Metrics.
-	queueLength              *prometheus.GaugeVec
-	discardedRequests        *prometheus.CounterVec
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
-	queueDuration            prometheus.Histogram
-	schedulerRunning         prometheus.Gauge
-	inflightRequests         prometheus.Summary
+	metrics                  *Metrics
 
 	// Ring used for finding schedulers
 	ringLifecycler *ring.BasicLifecycler
@@ -135,6 +131,46 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
 }
 
+type Metrics struct {
+	queueLength       *prometheus.GaugeVec
+	discardedRequests *prometheus.CounterVec
+	queueDuration     prometheus.Histogram
+	schedulerRunning  prometheus.Gauge
+	inflightRequests  prometheus.Summary
+}
+
+func NewMetrics(reg prometheus.Registerer) *Metrics {
+	s := Metrics{}
+	s.queueLength = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "loki_query_scheduler_queue_length",
+		Help: "Number of queries in the queue.",
+	}, []string{"user"})
+
+	s.discardedRequests = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "loki_query_scheduler_discarded_requests_total",
+		Help: "Total number of query requests discarded.",
+	}, []string{"user"})
+
+	s.queueDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "loki_query_scheduler_queue_duration_seconds",
+		Help:    "Time spend by requests in queue before getting picked up by a querier.",
+		Buckets: prometheus.DefBuckets,
+	})
+
+	s.schedulerRunning = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name: "loki_query_scheduler_running",
+		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
+	})
+	s.inflightRequests = promauto.With(reg).NewSummary(prometheus.SummaryOpts{
+		Name:       "loki_query_scheduler_inflight_requests",
+		Help:       "Number of inflight requests (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight requests over the last 60s.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
+		MaxAge:     time.Minute,
+		AgeBuckets: 6,
+	})
+	return &s
+}
+
 // NewScheduler creates a new Scheduler.
 func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
 	s := &Scheduler{
@@ -145,42 +181,16 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
 	}
-
-	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_queue_length",
-		Help: "Number of queries in the queue.",
-	}, []string{"user"})
-
-	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_query_scheduler_discarded_requests_total",
-		Help: "Total number of query requests discarded.",
-	}, []string{"user"})
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests)
-
-	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_query_scheduler_queue_duration_seconds",
-		Help:    "Time spend by requests in queue before getting picked up by a querier.",
-		Buckets: prometheus.DefBuckets,
-	})
+	s.metrics = NewMetrics(registerer)
+	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.metrics.queueLength, s.metrics.discardedRequests)
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_querier_clients",
+		Name: "loki_query_scheduler_connected_querier_clients",
 		Help: "Number of querier worker clients currently connected to the query-scheduler.",
 	}, s.requestQueue.GetConnectedQuerierWorkersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_frontend_clients",
+		Name: "loki_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
-	s.schedulerRunning = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_running",
-		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
-	})
-	s.inflightRequests = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-		Name:       "cortex_query_scheduler_inflight_requests",
-		Help:       "Number of inflight requests (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight requests over the last 60s.",
-		Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
-		MaxAge:     time.Minute,
-		AgeBuckets: 6,
-	})
 
 	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
@@ -215,7 +225,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		}
 
 		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
+		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
@@ -459,7 +469,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		r := req.(*schedulerRequest)
 
 		reqQueueTime := time.Since(r.queueTime)
-		s.queueDuration.Observe(reqQueueTime.Seconds())
+		s.metrics.queueDuration.Observe(reqQueueTime.Seconds())
 		r.queueSpan.Finish()
 
 		// Add HTTP header to the request containing the query queue time
@@ -670,7 +680,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 			inflight := len(s.pendingRequests)
 			s.pendingRequestsMu.Unlock()
 
-			s.inflightRequests.Observe(float64(inflight))
+			s.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
 }
@@ -680,7 +690,7 @@ func (s *Scheduler) setRunState(isInSet bool) {
 		if s.shouldRun.CAS(false, true) {
 			// Value was swapped, meaning this was a state change from stopped to running.
 			level.Info(s.log).Log("msg", "this scheduler is in the ReplicationSet, will now accept requests.")
-			s.schedulerRunning.Set(1)
+			s.metrics.schedulerRunning.Set(1)
 		}
 	} else {
 		if s.shouldRun.CAS(true, false) {
@@ -699,7 +709,7 @@ func (s *Scheduler) setRunState(isInSet bool) {
 				// or have disconnected.
 				_ = f.frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN})
 			}
-			s.schedulerRunning.Set(0)
+			s.metrics.schedulerRunning.Set(0)
 		}
 	}
 }
@@ -711,8 +721,8 @@ func (s *Scheduler) stopping(_ error) error {
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
-	s.queueLength.DeleteLabelValues(user)
-	s.discardedRequests.DeleteLabelValues(user)
+	s.metrics.queueLength.DeleteLabelValues(user)
+	s.metrics.discardedRequests.DeleteLabelValues(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

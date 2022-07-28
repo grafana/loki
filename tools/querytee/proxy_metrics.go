@@ -19,18 +19,18 @@ type ProxyMetrics struct {
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 	m := &ProxyMetrics{
 		requestDuration: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "request_duration_seconds",
 			Help:      "Time (in seconds) spent serving HTTP requests.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
 		}, []string{"backend", "method", "route", "status_code"}),
 		responsesTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "responses_total",
 			Help:      "Total number of responses sent back to the client by the selected backend.",
 		}, []string{"backend", "method", "route"}),
 		responsesComparedTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "responses_compared_total",
 			Help:      "Total number of responses compared per route and backend name by result.",
 		}, []string{"backend", "route", "result"}),

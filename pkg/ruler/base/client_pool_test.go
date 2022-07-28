@@ -54,7 +54,7 @@ func Test_newRulerClientFactory(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, metrics, 1)
-	assert.Equal(t, "cortex_ruler_client_request_duration_seconds", metrics[0].GetName())
+	assert.Equal(t, "loki_ruler_client_request_duration_seconds", metrics[0].GetName())
 	assert.Equal(t, dto.MetricType_HISTOGRAM, metrics[0].GetType())
 	assert.Len(t, metrics[0].GetMetric(), 1)
 	assert.Equal(t, uint64(2), metrics[0].GetMetric()[0].GetHistogram().GetSampleCount())

@@ -37,8 +37,8 @@ func Test_NewProxy(t *testing.T) {
 
 func Test_Proxy_RequestsForwarding(t *testing.T) {
 	const (
-		querySingleMetric1 = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"cortex_build_info"},"value":[1583320883,"1"]}]}}`
-		querySingleMetric2 = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"cortex_build_info"},"value":[1583320883,"2"]}]}}`
+		querySingleMetric1 = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"loki_build_info"},"value":[1583320883,"1"]}]}}`
+		querySingleMetric2 = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"loki_build_info"},"value":[1583320883,"2"]}]}}`
 	)
 
 	type mockedBackend struct {

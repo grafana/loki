@@ -207,17 +207,17 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 			assert.Equal(t, "Hello World", string(body))
 
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
-				# TYPE cortex_query_frontend_queue_length gauge
-				cortex_query_frontend_queue_length{user="1"} 0
-			`), "cortex_query_frontend_queue_length"))
+				# HELP loki_query_frontend_queue_length Number of queries in the queue.
+				# TYPE loki_query_frontend_queue_length gauge
+				loki_query_frontend_queue_length{user="1"} 0
+			`), "loki_query_frontend_queue_length"))
 
 			fr.cleanupInactiveUserMetrics("1")
 
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
-				# TYPE cortex_query_frontend_queue_length gauge
-			`), "cortex_query_frontend_queue_length"))
+				# HELP loki_query_frontend_queue_length Number of queries in the queue.
+				# TYPE loki_query_frontend_queue_length gauge
+			`), "loki_query_frontend_queue_length"))
 		}
 
 		testFrontend(t, defaultFrontendConfig(), handler, test, matchMaxConcurrency, reg)

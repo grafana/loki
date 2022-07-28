@@ -42,7 +42,7 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 	}
 
 	clientsCount := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ruler_clients",
+		Name: "loki_ruler_clients",
 		Help: "The current number of ruler clients in the pool.",
 	})
 
@@ -53,7 +53,7 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 
 func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_ruler_client_request_duration_seconds",
+		Name:    "loki_ruler_client_request_duration_seconds",
 		Help:    "Time spent executing requests to the ruler.",
 		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})

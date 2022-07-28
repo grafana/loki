@@ -42,7 +42,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
+	Namespace: "loki",
 	Name:      "configs_request_duration_seconds",
 	Help:      "Time spent requesting userconfig.",
 	Buckets:   prometheus.DefBuckets,

@@ -16,7 +16,7 @@ func NewOverridesExporter(tenantLimits TenantLimits) *OverridesExporter {
 	return &OverridesExporter{
 		tenantLimits: tenantLimits,
 		description: prometheus.NewDesc(
-			"cortex_overrides",
+			"loki_overrides",
 			"Resource limit overrides applied to tenants",
 			[]string{"limit_name", "user"},
 			nil,

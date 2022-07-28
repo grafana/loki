@@ -85,15 +85,15 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		log:    log,
 		limits: limits,
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_query_frontend_queue_length",
+			Name: "loki_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
 		}, []string{"user"}),
 		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_frontend_discarded_requests_total",
+			Name: "loki_query_frontend_discarded_requests_total",
 			Help: "Total number of query requests discarded.",
 		}, []string{"user"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_query_frontend_queue_duration_seconds",
+			Name:    "loki_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
 			Buckets: prometheus.DefBuckets,
 		}),
@@ -109,7 +109,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 	}
 
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_connected_clients",
+		Name: "loki_query_frontend_connected_clients",
 		Help: "Number of worker clients currently connected to the frontend.",
 	}, f.requestQueue.GetConnectedQuerierWorkersMetric)
 
