@@ -36,6 +36,9 @@ type Config struct {
 	Redis          RedisConfig           `yaml:"redis"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
 
+	// GroupcacheConfig is a local GroupCache config per cache
+	GroupCacheConfig GroupConfig `yaml:"groupcache"`
+
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
