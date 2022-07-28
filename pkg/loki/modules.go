@@ -168,12 +168,12 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 
 	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(
 		t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache",
-		&t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Groupcache,
+		&t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCacheConfig,
 		stats.ChunkCache,
 	)
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(
 		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
-		&t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Groupcache,
+		&t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCacheConfig,
 		stats.ResultCache,
 	)
 

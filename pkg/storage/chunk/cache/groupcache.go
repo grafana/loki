@@ -52,7 +52,7 @@ type GroupCache struct {
 	wg                   sync.WaitGroup
 	reg                  prometheus.Registerer
 	startWaitingForClose context.CancelFunc
-	capacity             int64
+	cacheBytes           int64
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -112,7 +112,7 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 		wg:                   sync.WaitGroup{},
 		startWaitingForClose: cancel,
 		reg:                  reg,
-		capacity:             config.CapacityMB * 1e6, // MB => B
+		cacheBytes:           config.CapacityMB * 1e6, // MB => B
 	}
 
 	go cache.serveGroupcache(config.ListenPort)
@@ -224,7 +224,7 @@ func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType)
 	c.wg.Add(1)
 	c.startWaitingForClose()
 
-	cap := c.capacity
+	cap := c.cacheBytes
 	if cfg.CapacityMB != 0 {
 		cap = cfg.CapacityMB * 1e6 // MB into bytes
 	}

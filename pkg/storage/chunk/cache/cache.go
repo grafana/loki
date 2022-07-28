@@ -35,7 +35,9 @@ type Config struct {
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
-	Groupcache     GroupConfig           `yaml:"groupcache"` // TODO(kavi): consider resolving conflict with `GroupCache` field in same struct.
+
+	// GroupcacheConfig is a local GroupCache config per cache
+	GroupCacheConfig GroupConfig `yaml:"groupcache"`
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
