@@ -9,6 +9,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/dskit/ring"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +17,7 @@ func TestGroupCache(t *testing.T) {
 	gc, err := setupGroupCache()
 	require.Nil(t, err)
 
-	c := gc.NewGroup("test-group", "test")
+	c := gc.NewGroup("test-group", &GroupConfig{}, "test")
 	defer c.Stop()
 
 	keys := []string{"key1", "key2", "key3"}
@@ -44,6 +45,19 @@ func TestGroupCache(t *testing.T) {
 	for i := 0; i < len(miss); i++ {
 		require.Equal(t, miss[i], missed[i])
 	}
+
+	// passing empty GroupConfig should use global `CapacityMB`.(which is 1MB).
+	c1 := gc.NewGroup("test-group1", &GroupConfig{}, "test1")
+	defer c.Stop()
+
+	assert.Equal(t, c1.(*group).cacheBytes, int64(1*1e6))
+
+	// pass explicity capacity per group should take preference.
+	c2 := gc.NewGroup("test-group2", &GroupConfig{CapacityMB: 6}, "test2")
+	defer c.Stop()
+
+	assert.Equal(t, c2.(*group).cacheBytes, int64(6*1e6))
+
 }
 
 func setupGroupCache() (*GroupCache, error) {

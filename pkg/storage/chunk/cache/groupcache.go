@@ -69,6 +69,11 @@ type GroupCacheConfig struct {
 	Cache Cache `yaml:"-"`
 }
 
+// GroupGconfig represents config per Group.
+type GroupConfig struct {
+	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
+}
+
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
@@ -96,6 +101,7 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Serve
 			},
 		},
 	)
+	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
@@ -198,15 +204,19 @@ func (c *GroupCache) Stats() *groupcache.Stats {
 }
 
 type group struct {
-	cache         *groupcache.Group
-	logger        log.Logger
-	wg            *sync.WaitGroup
-	cacheType     stats.CacheType
+	cache     *groupcache.Group
+	logger    log.Logger
+	wg        *sync.WaitGroup
+	cacheType stats.CacheType
+
+	// cacheBytes represents maxSize (in bytes) this group can grow.
+	cacheBytes int64 // TODO(kavi): expose it as _info metrics later?
+
 	fetchDuration prometheus.Observer
 	storeDuration prometheus.Observer
 }
 
-func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
+func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType) Cache {
 	// Return a known error on miss to track which keys need to be inserted
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
 		return ErrGroupcacheMiss
@@ -214,6 +224,11 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 
 	c.wg.Add(1)
 	c.startWaitingForClose()
+
+	cap := c.capacity
+	if cfg.CapacityMB != 0 {
+		cap = cfg.CapacityMB * 1e6 // MB into bytes
+	}
 
 	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "loki",
@@ -224,7 +239,8 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, c.capacity, missGetter),
+		cache:         groupcache.NewGroup(name, cap, missGetter),
+		cacheBytes:    cap,
 		logger:        c.logger,
 		wg:            &c.wg,
 		cacheType:     ct,
