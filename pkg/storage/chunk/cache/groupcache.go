@@ -69,7 +69,7 @@ type GroupCacheConfig struct {
 	Cache Cache `yaml:"-"`
 }
 
-// GroupGconfig represents config per Group.
+// Groupconfig represents config per Group.
 type GroupConfig struct {
 	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
 }

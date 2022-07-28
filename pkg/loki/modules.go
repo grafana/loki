@@ -173,9 +173,11 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 	)
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(
 		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
-		&t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Groupcache,
+		&t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Groupcache,
 		stats.ResultCache,
 	)
+
+	// The index cache generates too much traffic to be used. Make it a fifo cache
 	t.Cfg.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache = true
 	t.Cfg.StorageConfig.IndexQueriesCacheConfig.Fifocache.MaxSizeBytes = fmt.Sprint(t.Cfg.Common.GroupCacheConfig.CapacityMB * 1e6)
 
