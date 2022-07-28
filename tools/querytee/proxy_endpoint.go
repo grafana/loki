@@ -74,12 +74,12 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *backendResponse) {
 	var (
-		wg           = sync.WaitGroup{}
-		err          error
-		body         []byte
-		responses    = make([]*backendResponse, 0, len(p.backends))
-		responsesMtx = sync.Mutex{}
-		query        = r.URL.RawQuery
+		wg                  = sync.WaitGroup{}
+		err                 error
+		body                []byte
+		expectedResponseIdx int
+		responses           = make([]*backendResponse, len(p.backends))
+		query               = r.URL.RawQuery
 	)
 
 	if r.Body != nil {
@@ -102,7 +102,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", query)
 
 	wg.Add(len(p.backends))
-	for _, b := range p.backends {
+	for i, b := range p.backends {
+		i := i
 		b := b
 
 		go func() {
@@ -136,9 +137,10 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
-				responsesMtx.Lock()
-				responses = append(responses, res)
-				responsesMtx.Unlock()
+				if b.preferred {
+					expectedResponseIdx = i
+				}
+				responses[i] = res
 			}
 
 			resCh <- res
@@ -151,21 +153,25 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	// Compare responses.
 	if p.comparator != nil {
-		expectedResponse := responses[0]
-		actualResponse := responses[1]
-		if responses[1].backend.preferred {
-			expectedResponse, actualResponse = actualResponse, expectedResponse
-		}
+		expectedResponse := responses[expectedResponseIdx]
+		for i := range responses {
+			if i == expectedResponseIdx {
+				continue
+			}
+			actualResponse := responses[i]
 
-		result := comparisonSuccess
-		err := p.compareResponses(expectedResponse, actualResponse)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "response comparison failed", "route-name", p.routeName,
-				"query", r.URL.RawQuery, "err", err)
-			result = comparisonFailed
-		}
+			result := comparisonSuccess
+			err := p.compareResponses(expectedResponse, actualResponse)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "response comparison failed",
+					"backend-name", p.backends[i].name,
+					"route-name", p.routeName,
+					"query", r.URL.RawQuery, "err", err)
+				result = comparisonFailed
+			}
 
-		p.metrics.responsesComparedTotal.WithLabelValues(p.routeName, result).Inc()
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result).Inc()
+		}
 	}
 }
 
