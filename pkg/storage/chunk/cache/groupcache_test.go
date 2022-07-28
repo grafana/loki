@@ -52,7 +52,7 @@ func TestGroupCache(t *testing.T) {
 
 	assert.Equal(t, c1.(*group).cacheBytes, int64(1*1e6))
 
-	// pass explicity capacity per group should take preference.
+	// pass explicitly capacity per group should take preference.
 	c2 := gc.NewGroup("test-group2", &GroupConfig{CapacityMB: 6}, "test2")
 	defer c.Stop()
 
