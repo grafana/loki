@@ -33,6 +33,6 @@ func NewGCPLogTarget(
 	case "push":
 		return newPushTarget(metrics, logger, handler, jobName, config, relabel)
 	default:
-		return nil, fmt.Errorf("invalid subscription type: %s", config.SubscriptionType)
+		return nil, fmt.Errorf("invalid subscription type: %s. valid options are 'push' and 'pull'", config.SubscriptionType)
 	}
 }
