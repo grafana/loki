@@ -185,8 +185,8 @@ func (t *tableCompactor) CompactTable() error {
 
 func (t *tableCompactor) prefetchUserIndexFiles() error {
 	existingUsers := make([]string, 0, len(t.existingUserIndexSet))
-	for userId := range t.existingUserIndexSet {
-		existingUsers = append(existingUsers, userId)
+	for userID := range t.existingUserIndexSet {
+		existingUsers = append(existingUsers, userID)
 	}
 
 	return concurrency.ForEachJob(t.ctx, len(existingUsers), readDBsConcurrency, func(ctx context.Context, idx int) error {
