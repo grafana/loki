@@ -38,7 +38,10 @@ var (
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 			return net.Dial(network, addr)
 		},
-		AllowHTTP: true,
+		AllowHTTP:        true,
+		ReadIdleTimeout:  time.Second,
+		PingTimeout:      100 * time.Millisecond,
+		WriteByteTimeout: 100 * time.Millisecond,
 	}
 )
 
