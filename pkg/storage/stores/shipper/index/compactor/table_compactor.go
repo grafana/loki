@@ -274,12 +274,7 @@ func (t *tableCompactor) getOrCreateUserCompactedIndexSet(userID string) (*compa
 		compactedIndex := newCompactedIndex(compactedFile, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger())
 		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex, true)
 	} else {
-		compactedIndex, err := t.fetchUserCompactedIndexSet(userID)
-		compactedIndex.needsUpload = true
-		if err != nil {
-			return nil, err
-		}
-		t.userCompactedIndexSet[userID] = compactedIndex
+		return nil, errors.New("an existing user index was not prefetched before starting compaction")
 	}
 
 	return t.userCompactedIndexSet[userID], nil
