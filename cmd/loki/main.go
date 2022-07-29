@@ -24,13 +24,13 @@ import (
 func main() {
 	var config loki.ConfigWrapper
 
+	if config.PrintVersion || len(os.Args[1:]) == 1 && os.Args[1] == "version" {
+		fmt.Println(version.Print("loki"))
+		os.Exit(0)
+	}
 	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
-	}
-	if config.PrintVersion {
-		fmt.Println(version.Print("loki"))
-		os.Exit(0)
 	}
 
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
