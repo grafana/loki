@@ -185,7 +185,7 @@ func (t *tableCompactor) CompactTable() error {
 
 func (t *tableCompactor) prefetchUserIndexFiles() error {
 	existingUsers := make([]string, 0, len(t.existingUserIndexSet))
-	for userId, _ := range t.existingUserIndexSet {
+	for userId := range t.existingUserIndexSet {
 		existingUsers = append(existingUsers, userId)
 	}
 
