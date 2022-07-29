@@ -46,9 +46,6 @@
       },
     } else {
       store: 'memberlist',
-      consul: {
-        host: null,
-      },
     },
 
     loki+: if $._config.memberlist_ring_enabled then {
