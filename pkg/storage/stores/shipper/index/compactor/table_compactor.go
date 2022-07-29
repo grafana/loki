@@ -70,7 +70,7 @@ const (
 type compactedIndexSet struct {
 	compactor.IndexSet
 	compactedIndex *CompactedIndex
-	needsUpload bool
+	needsUpload    bool
 }
 
 func newCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex, needsUpload bool) *compactedIndexSet {
@@ -189,7 +189,7 @@ func (t *tableCompactor) prefetchUserIndexFiles() error {
 		existingUsers = append(existingUsers, userId)
 	}
 
-	return concurrency.ForEachJob(t.ctx, len(existingUsers), readDBsConcurrency, func (ctx context.Context, idx int) error {
+	return concurrency.ForEachJob(t.ctx, len(existingUsers), readDBsConcurrency, func(ctx context.Context, idx int) error {
 		userID := existingUsers[idx]
 		compactedIndex, err := t.fetchUserCompactedIndexSet(userID)
 		if err != nil {
