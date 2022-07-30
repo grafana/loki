@@ -239,7 +239,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Truncate first so subsequent steps have consistent line lengths
 		d.truncateLines(validationContext, &stream)
 
-		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+		stream.Labels, err = d.parseStreamLabels(userID, validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
 			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, userID).Add(float64(len(stream.Entries)))
@@ -431,7 +431,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {
+func (d *Distributor) parseStreamLabels(tenantID string, vContext validationContext, key string, stream *logproto.Stream) (string, error) {
 	labelVal, ok := d.labelCache.Get(key)
 	if ok {
 		return labelVal.(string), nil
@@ -444,6 +444,16 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
 		return "", err
 	}
+
+	if DefaultLabelPipeline != nil {
+		lsResult, pipelineErr := DefaultLabelPipeline.Pipeline(tenantID, ls)
+		if pipelineErr != nil {
+			return "", httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, pipelineErr)
+		}
+		ls = lsResult
+
+	}
+
 	lsVal := ls.String()
 	d.labelCache.Add(key, lsVal)
 	return lsVal, nil
