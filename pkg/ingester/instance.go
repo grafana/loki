@@ -187,6 +187,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
+		level.Debug(util_log.Logger).Log("msg", "instance Push", "userid", record.UserID, "labels", reqStream.Labels)
 		_, err = s.Push(ctx, reqStream.Entries, record, 0, false)
 		if err != nil {
 			appendErr = err
