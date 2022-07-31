@@ -305,9 +305,11 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return err
 		}
 
+		level.Debug(util_log.Logger).Log("index", j, "msg", "flushing flushChunk", "userid", userID, "labels", labelPairs)
 		if err := i.flushChunk(ctx, &ch); err != nil {
 			return err
 		}
+		level.Debug(util_log.Logger).Log("index", j, "msg", "flush Chunk", "userid", userID, "labels", labelPairs)
 
 		i.markChunkAsFlushed(cs[j], chunkMtx)
 
