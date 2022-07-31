@@ -139,12 +139,13 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		level.Debug(util_log.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
+		level.Debug(util_log.Logger).Log("index", j, "msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
 			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
+		level.Debug(util_log.Logger).Log("index", j, "msg", "flush stream success", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
 
 		// If we're exiting & we failed to flush, put the failed operation
 		// back in the queue at a later point.

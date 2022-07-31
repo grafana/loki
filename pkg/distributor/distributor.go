@@ -294,9 +294,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			validatedSamplesCount++
 		}
 		stream.Entries = stream.Entries[:n]
+		if n > 0 {
+			keys = append(keys, util.TokenFor(userID, stream.Labels))
+			streams = append(streams, streamTracker{stream: stream})
+		}
 
-		keys = append(keys, util.TokenFor(userID, stream.Labels))
-		streams = append(streams, streamTracker{stream: stream})
 	}
 
 	// Return early if none of the streams contained entries
