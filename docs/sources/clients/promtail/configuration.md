@@ -947,13 +947,13 @@ When using the `push` subscription type, keep in mind:
 # Type of subscription used to fetch logs from GCP. Can be either `pull` (default) or `push`.
 [subscription_type: <string> | default = "pull"]
 
-# [pull] GCP project ID
+# If the subscription_type is pull,  the GCP project ID
 [project_id: <string>]
 
-# [pull] GCP PubSub subscription from where Promtail will pull logs from
+# If the subscription_type is pull, GCP PubSub subscription from where Promtail will pull logs from
 [subscription: <string>]
 
-# [push] Server configuration options
+# If the subscription_type is push, the server configuration options
 [server: <server_config>]
 
 # Whether Promtail should pass on the timestamp from the incoming GCP Log message.
