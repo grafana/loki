@@ -179,7 +179,8 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 	var v float64
 	stringValue, _ := l.builder.Get(l.labelName)
 	if stringValue == "" {
-		l.builder.SetErr(errSampleExtraction)
+		// l.builder.SetErr(errSampleExtraction)
+		return 0, nil, false
 	} else {
 		var err error
 		v, err = l.conversionFn(stringValue)
