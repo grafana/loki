@@ -935,12 +935,11 @@ labels:
 
 ### GCP Log
 
-The `gcplog` block configures Promtail receive GCP logs. It has two possible strategies for doing so, depending on how the 
-`subscription_type` attribute is configured:
-1. **Pull**: Using GCP PubSub [pull subscriptions](https://cloud.google.com/pubsub/docs/pull). Promtail will consume log messages directly from the configured GCP PubSub topic.
-2. **Push**: Using GCP PubSub [push subscriptions](https://cloud.google.com/pubsub/docs/push). Promtail will expose an HTTP server, to which GCP will deliver logs.
+The `gcplog` block configures how Promtail receives GCP logs. There are two strategies, based on the configuration of `subscription_type`:
+- **Pull**: Using GCP Pub/Sub [pull subscriptions](https://cloud.google.com/pubsub/docs/pull). Promtail will consume log messages directly from the configured GCP Pub/Sub topic.
+- **Push**: Using GCP Pub/Sub [push subscriptions](https://cloud.google.com/pubsub/docs/push). Promtail will expose an HTTP server, and GCP will deliver logs to that server.
 
-When picking the `push` subscription type, keep in mind the following:
+When using the `push` subscription type, keep in mind:
 - The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for target that requires so.
 - An endpoint at `POST /gcp/api/v1/push`, which expects requests from GCP PubSub message delivery system.
 
