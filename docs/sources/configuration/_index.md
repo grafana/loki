@@ -2117,6 +2117,14 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
+# Number of upload/remove operations to execute in parallel when finalizing a compaction.
+# CLI flag: -boltdb.shipper.compactor.upload-parallelism
+#
+# NOTE: This setting is per compaction operation, which can be
+# executed in parallel. The upper bound on the number of concurrent
+# uploads is upload_parallelism * max_compaction_parallelism
+[upload_parallelism: <int> | default = 10]
+
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -boltdb.shipper.compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
@@ -2162,6 +2170,7 @@ compacts index shards to more performant forms.
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
 [compactor_ring: <ring>]
+
 ```
 
 ## limits_config
