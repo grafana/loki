@@ -118,7 +118,12 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
-		deleteRequest.deletedLinesTotal = d.metrics.deletedLinesTotal.WithLabelValues(deleteRequest.UserID)
+		deleteRequest.Metrics = d.metrics
+		level.Info(util_log.Logger).Log(
+			"msg", "Started processing delete request for user",
+			"delete_request_id", deleteRequest.RequestID,
+			"user", deleteRequest.UserID,
+		)
 		d.deleteRequestsToProcess = append(d.deleteRequestsToProcess, deleteRequest)
 	}
 
@@ -147,11 +152,6 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	})
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
-		level.Info(util_log.Logger).Log(
-			"msg", "started processing delete request",
-			"delete_request_id", deleteRequest.RequestID,
-			"user", deleteRequest.UserID,
-		)
 		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
 		for _, ivf := range d.chunkIntervalsToRetain {
 			entry := ref
@@ -176,11 +176,6 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
-		level.Info(util_log.Logger).Log(
-			"msg", "finished processing delete request",
-			"delete_request_id", deleteRequest.RequestID,
-			"user", deleteRequest.UserID,
-		)
 	}
 
 	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Interval.Start == ref.From && d.chunkIntervalsToRetain[0].Interval.End == ref.Through {
@@ -218,12 +213,14 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 				"delete_request_id", deleteRequest.RequestID,
 				"user", deleteRequest.UserID,
 				"err", err,
+				"deleted_lines", deleteRequest.DeletedLines,
 			)
 		} else {
 			level.Info(util_log.Logger).Log(
 				"msg", "delete request for user marked as processed",
 				"delete_request_id", deleteRequest.RequestID,
 				"user", deleteRequest.UserID,
+				"deleted_lines", deleteRequest.DeletedLines,
 			)
 		}
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
