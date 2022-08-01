@@ -103,6 +103,12 @@ func (dm *DeleteRequestHandler) addDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
+	level.Info(util_log.Logger).Log(
+		"msg", "delete request for user added",
+		"user", userID,
+		"query", query,
+	)
+
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
 	w.WriteHeader(http.StatusNoContent)
 }

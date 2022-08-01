@@ -244,53 +244,65 @@ func mustParseLabel(input string) labels.Labels {
 }
 
 func TestDeleteRequest_FilterFunction(t *testing.T) {
-	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "compactor_deleted_lines",
-		Help:      "Number of deleted lines per user",
-	}, []string{"user"}).WithLabelValues("userID")
-	prometheus.MustRegister(counter)
+	t.Run("one_line_matching", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{foo="bar"} |= "some"`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+		}
 
-	dr := DeleteRequest{
-		Query:             `{foo="bar"} |= "some"`,
-		deletedLinesTotal: counter,
-	}
+		lblStr := `{foo="bar"}`
+		lbls := mustParseLabel(lblStr)
 
-	lblStr := `{foo="bar"}`
-	lbls := mustParseLabel(lblStr)
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
 
-	f, err := dr.FilterFunction(lbls)
-	require.NoError(t, err)
+		require.True(t, f(`some line`))
+		require.False(t, f(""))
+		require.False(t, f("other line"))
+		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+	})
 
-	require.True(t, f(`some line`))
-	require.False(t, f(""))
-	require.False(t, f("other line"))
-	require.Equal(t, float64(1), testutil.ToFloat64(counter))
+	t.Run("labels_not_matching", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{foo="bar"} |= "some"`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			UserID:       "tenant1",
+		}
 
-	lblStr = `{foo2="buzz"}`
-	lbls = mustParseLabel(lblStr)
+		lblStr := `{foo2="buzz"}`
+		lbls := mustParseLabel(lblStr)
 
-	f, err = dr.FilterFunction(lbls)
-	require.NoError(t, err)
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
 
-	require.False(t, f(""))
-	require.False(t, f("other line"))
-	require.False(t, f("some line"))
-	require.Equal(t, float64(1), testutil.ToFloat64(counter))
+		require.False(t, f(""))
+		require.False(t, f("other line"))
+		require.False(t, f("some line"))
+		require.Equal(t, int32(0), dr.DeletedLines)
+		// testutil.ToFloat64 panics when there are 0 metrics
+		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
+	})
 
-	dr = DeleteRequest{
-		Query:             `{namespace="default"}`,
-		deletedLinesTotal: counter,
-	}
+	t.Run("all_lines_matching", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{namespace="default"}`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+		}
 
-	lblStr = `{namespace="default"}`
-	lbls = mustParseLabel(lblStr)
+		lblStr := `{namespace="default"}`
+		lbls := mustParseLabel(lblStr)
 
-	f, err = dr.FilterFunction(lbls)
-	require.NoError(t, err)
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
 
-	require.True(t, f(`some line`))
-	require.True(t, f(""))
-	require.True(t, f("other line"))
-	require.Equal(t, float64(4), testutil.ToFloat64(counter))
+		require.True(t, f(`some line`))
+		require.True(t, f(""))
+		require.True(t, f("other line"))
+		require.Equal(t, int32(3), dr.DeletedLines)
+		require.Equal(t, float64(3), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+	})
 }
