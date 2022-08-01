@@ -229,7 +229,7 @@
           ring: {
             heartbeat_timeout: '1m',
             replication_factor: $._config.replication_factor,
-            kvstore: {
+            kvstore: if $._config.memberlist_ring_enabled then {} else {
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -335,7 +335,7 @@
       distributor: {
         // Creates a ring between distributors, required by the ingestion rate global limit.
         ring: {
-          kvstore: {
+          kvstore: if $._config.memberlist_ring_enabled then {} else {
             store: 'consul',
             consul: {
               host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -355,7 +355,7 @@
         enable_sharding: true,
         enable_alertmanager_v2: true,
         ring: {
-          kvstore: {
+          kvstore: if $._config.memberlist_ring_enabled then {} else {
             store: 'consul',
             consul: {
               host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
