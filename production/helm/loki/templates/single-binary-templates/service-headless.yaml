@@ -1,0 +1,28 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- if $isSingleBinary }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "loki.fullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+    {{- with .Values.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    variant: headless
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ .Values.service.port }}
+      protocol: TCP
+      name: http-metrics
+      targetPort: {{ .Values.service.targetPort }}
+{{- if .Values.extraPorts }}
+{{ toYaml .Values.extraPorts | indent 4}}
+{{- end }}
+  selector:
+    app: {{ template "loki.name" . }}
+    release: {{ .Release.Name }}
+{{- end }}

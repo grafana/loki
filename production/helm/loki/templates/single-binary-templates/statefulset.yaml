@@ -1,0 +1,169 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- if $isSingleBinary }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "loki.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.annotations | nindent 4 }}
+spec:
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ template "loki.name" . }}
+      release: {{ .Release.Name }}
+  serviceName: {{ template "loki.fullname" . }}-headless
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "loki.name" . }}
+        name: {{ template "loki.fullname" . }}
+        release: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+      {{- if not .Values.loki.existingSecretForConfig }}
+        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ template "loki.serviceAccountName" . }}
+    {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+    {{- end }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      initContainers:
+        {{- toYaml .Values.initContainers | nindent 8 }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end}}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "-config.file=/etc/loki/loki.yaml"
+          {{- range $key, $value := .Values.extraArgs }}
+            - "-{{ $key }}={{ $value }}"
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.extraVolumeMounts }}
+              {{ toYaml .Values.extraVolumeMounts | nindent 12}}
+            {{- end }}
+            - name: config
+              mountPath: /etc/loki
+            - name: storage
+              mountPath: "/data"
+              subPath: {{ .Values.persistence.subPath }}
+            {{- if or (.Values.useExistingAlertingGroup.enabled) (gt (len .Values.alerting_groups) 0) }}
+            - name: rules
+              mountPath: /rules/fake
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: {{ .Values.config.server.http_listen_port | default 3100 }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.config.server.grpc_listen_port | default 9095 }}
+              protocol: TCP
+            {{- if .Values.config.memberlist }}
+            - name: memberlist-port
+              containerPort: {{ .Values.config.memberlist.bind_port | default 7946 }}
+              protocol: TCP
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            {{- if .Values.env }}
+              {{- toYaml .Values.env | nindent 12 }}
+            {{- end }}
+            {{- if .Values.tracing.jaegerAgentHost }}
+            - name: JAEGER_AGENT_HOST
+              value: "{{ .Values.tracing.jaegerAgentHost }}"
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- if .Values.extraContainers }}
+{{ toYaml .Values.extraContainers | indent 8}}
+{{- end }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if or (.Values.useExistingAlertingGroup.enabled) (gt (len .Values.alerting_groups) 0) }}
+        - name: rules
+          configMap:
+            {{- if .Values.useExistingAlertingGroup.enabled }}
+            name: {{ .Values.useExistingAlertingGroup.configmapName }}
+            {{- else }}
+            name: {{ template "loki.fullname" . }}-alerting-rules
+            {{- end }}
+        {{- end }}
+        - name: config
+          secret:
+          {{- if .Values.loki.existingSecretForConfig }}
+            secretName: {{ .Values.loki.existingSecretForConfig }}
+          {{- else }}
+            secretName: {{ template "loki.fullname" . }}
+          {{- end }}
+{{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumes | indent 8}}
+{{- end }}
+  {{- if not .Values.persistence.enabled }}
+        - name: storage
+          emptyDir: {}
+  {{- else if .Values.persistence.existingClaim }}
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+  {{- else }}
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+      labels:
+        {{- toYaml .Values.persistence.labels | nindent 8 }}
+      annotations:
+        {{- toYaml .Values.persistence.annotations | nindent 8 }}
+    spec:
+      accessModes:
+        {{- toYaml .Values.persistence.accessModes | nindent 8 }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.size | quote }}
+      storageClassName: {{ .Values.persistence.storageClassName }}
+      {{- if .Values.persistence.selector }}
+      selector:
+        {{- toYaml .Values.persistence.selector | nindent 8 }}
+      {{- end }}
+  {{- end }}
+{{- end }}
