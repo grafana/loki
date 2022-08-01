@@ -1,13 +1,13 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- if $isSingleBinary }}
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ template "loki.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki.labels" . | nindent 4 }}
   annotations:
     {{- toYaml .Values.annotations | nindent 4 }}
 spec:
@@ -24,13 +24,15 @@ spec:
     metadata:
       labels:
         app: {{ template "loki.name" . }}
-        name: {{ template "loki.name" . }}
+        name: {{ template "loki.fullname" . }}
         release: {{ .Release.Name }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      {{- if not .Values.loki.existingSecretForConfig }}
+        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -59,6 +61,8 @@ spec:
             - "-{{ $key }}={{ $value }}"
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             {{- if .Values.extraVolumeMounts }}
               {{ toYaml .Values.extraVolumeMounts | nindent 12}}
             {{- end }}
@@ -67,16 +71,22 @@ spec:
             - name: storage
               mountPath: "/data"
               subPath: {{ .Values.persistence.subPath }}
-            {{- if gt (len .Values.alerting_groups) 0 }}
-            - name: scratch
-              mountPath: /tmp/scratch
+            {{- if or (.Values.useExistingAlertingGroup.enabled) (gt (len .Values.alerting_groups) 0) }}
             - name: rules
-              mountPath: /rules
+              mountPath: /rules/fake
             {{- end }}
           ports:
             - name: http-metrics
-              containerPort: {{ .Values.config.server.http_listen_port }}
+              containerPort: {{ .Values.config.server.http_listen_port | default 3100 }}
               protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.config.server.grpc_listen_port | default 9095 }}
+              protocol: TCP
+            {{- if .Values.config.memberlist }}
+            - name: memberlist-port
+              containerPort: {{ .Values.config.memberlist.bind_port | default 7946 }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
@@ -84,7 +94,7 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
-            readOnlyRootFilesystem: true
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           env:
             {{- if .Values.env }}
               {{- toYaml .Values.env | nindent 12 }}
@@ -93,6 +103,10 @@ spec:
             - name: JAEGER_AGENT_HOST
               value: "{{ .Values.tracing.jaegerAgentHost }}"
             {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 {{- if .Values.extraContainers }}
 {{ toYaml .Values.extraContainers | indent 8}}
 {{- end }}
@@ -104,16 +118,24 @@ spec:
         {{- toYaml .Values.tolerations | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       volumes:
-        {{- if gt (len .Values.alerting_groups) 0 }}
-        - name: scratch
+        - name: tmp
           emptyDir: {}
+        {{- if or (.Values.useExistingAlertingGroup.enabled) (gt (len .Values.alerting_groups) 0) }}
         - name: rules
           configMap:
+            {{- if .Values.useExistingAlertingGroup.enabled }}
+            name: {{ .Values.useExistingAlertingGroup.configmapName }}
+            {{- else }}
             name: {{ template "loki.fullname" . }}-alerting-rules
+            {{- end }}
         {{- end }}
         - name: config
           secret:
+          {{- if .Values.loki.existingSecretForConfig }}
+            secretName: {{ .Values.loki.existingSecretForConfig }}
+          {{- else }}
             secretName: {{ template "loki.fullname" . }}
+          {{- end }}
 {{- if .Values.extraVolumes }}
 {{ toYaml .Values.extraVolumes | indent 8}}
 {{- end }}
@@ -128,6 +150,8 @@ spec:
   volumeClaimTemplates:
   - metadata:
       name: storage
+      labels:
+        {{- toYaml .Values.persistence.labels | nindent 8 }}
       annotations:
         {{- toYaml .Values.persistence.annotations | nindent 8 }}
     spec:
@@ -142,3 +166,4 @@ spec:
         {{- toYaml .Values.persistence.selector | nindent 8 }}
       {{- end }}
   {{- end }}
+{{- end }}

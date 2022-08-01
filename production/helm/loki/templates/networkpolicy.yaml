@@ -1,26 +1,198 @@
 {{- if .Values.networkPolicy.enabled }}
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ template "loki.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "loki.name" . }}-namespace-only
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki.labels" . | nindent 4 }}
 spec:
-  podSelector:
-    matchLabels:
-      name: {{ template "loki.fullname" . }}
-      app: {{ template "loki.name" . }}
-      release: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
   ingress:
     - from:
-      - podSelector:
-          matchLabels:
-            app: {{ template "client.name" . }}
-            release: {{ .Release.Name }}
+        - podSelector: {}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-dns
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  policyTypes:
+    - Egress
+  podSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  egress:
     - ports:
-      - port: {{ .Values.service.port }}
+        - port: 53
+          protocol: UDP
+      to:
+        - namespaceSelector: {}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-ingress
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  policyTypes:
+    - Ingress
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+        {{- if .Values.gateway.enabled }}
+          - gateway
+        {{- else }}
+          - read
+          - write
+        {{- end }}
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+  {{- if .Values.networkPolicy.ingress.namespaceSelector }}
+      from:
+        - namespaceSelector:
+          {{- toYaml .Values.networkPolicy.ingress.namespaceSelector | nindent 12 }}
+          {{- if .Values.networkPolicy.ingress.podSelector }}
+          podSelector:
+          {{- toYaml .Values.networkPolicy.ingress.podSelector | nindent 12 }}
+          {{- end }}
+  {{- end }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-ingress-metrics
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  policyTypes:
+    - Ingress
+  podSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  ingress:
+    - ports:
+        - port: http-metrics
+          protocol: TCP
+    {{- if .Values.networkPolicy.metrics.cidrs }}
+      from:
+      {{- range $cidr := .Values.networkPolicy.metrics.cidrs }}
+        - ipBlock:
+            cidr: {{ $cidr }}
+      {{- end }}
+      {{- if .Values.networkPolicy.metrics.namespaceSelector }}
+        - namespaceSelector:
+          {{- toYaml .Values.networkPolicy.metrics.namespaceSelector | nindent 12 }}
+          {{- if .Values.networkPolicy.metrics.podSelector }}
+          podSelector:
+          {{- toYaml .Values.networkPolicy.metrics.podSelector | nindent 12 }}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+
+{{- if .Values.ruler.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-alertmanager
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  policyTypes:
+    - Egress
+  podSelector:
+    matchLabels:
+      {{- include "loki.rulerSelectorLabels" . | nindent 6 }}
+  egress:
+    - ports:
+        - port: {{ .Values.networkPolicy.alertmanager.port }}
+          protocol: TCP
+  {{- if .Values.networkPolicy.alertmanager.namespaceSelector }}
+      to:
+        - namespaceSelector:
+          {{- toYaml .Values.networkPolicy.alertmanager.namespaceSelector | nindent 12 }}
+          {{- if .Values.networkPolicy.alertmanager.podSelector }}
+          podSelector:
+          {{- toYaml .Values.networkPolicy.alertmanager.podSelector | nindent 12 }}
+          {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.networkPolicy.externalStorage.ports }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-external-storage
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  policyTypes:
+    - Egress
+  podSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  egress:
+    - ports:
+      {{- range $port := .Values.networkPolicy.externalStorage.ports }}
+        - port: {{ $port }}
+          protocol: TCP
+      {{- end }}
+  {{- if .Values.networkPolicy.externalStorage.cidrs }}
+      to:
+      {{- range $cidr := .Values.networkPolicy.externalStorage.cidrs }}
+        - ipBlock:
+            cidr: {{ $cidr }}
+      {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- end }}
+
+{{- if .Values.networkPolicy.discovery.port }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-discovery
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  policyTypes:
+    - Egress
+  podSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  egress:
+    - ports:
+        - port: {{ .Values.networkPolicy.discovery.port }}
+          protocol: TCP
+  {{- if .Values.networkPolicy.discovery.namespaceSelector }}
+      to:
+        - namespaceSelector:
+          {{- toYaml .Values.networkPolicy.discovery.namespaceSelector | nindent 12 }}
+          {{- if .Values.networkPolicy.discovery.podSelector }}
+          podSelector:
+          {{- toYaml .Values.networkPolicy.discovery.podSelector | nindent 12 }}
+          {{- end }}
+  {{- end }}
 {{- end }}

@@ -1,13 +1,16 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- if $isSingleBinary }}
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ template "loki.fullname" . }}-headless
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki.labels" . | nindent 4 }}
+    {{- with .Values.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
     variant: headless
 spec:
   clusterIP: None
@@ -22,3 +25,4 @@ spec:
   selector:
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}
+{{- end }}
