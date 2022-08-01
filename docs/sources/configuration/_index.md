@@ -2467,7 +2467,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Split queries by a time interval and execute in parallel, a value of 0 disables splitting by time.
+# Split queries by a time interval and execute in parallel. The value 0 disables splitting by time.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
