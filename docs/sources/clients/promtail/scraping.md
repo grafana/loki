@@ -192,8 +192,8 @@ see the [configuration](https://grafana.com/docs/loki/latest/clients/promtail/co
 
 ## GCP Log scraping
 
-Promtail supports scraping cloud resource logs (say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
-Configs are set in `gcplog` section in `scrape_config`.
+Promtail supports scraping cloud resource logs such as GCS bucket logs, load balancer logs, and Kubernetes cluster logs from GCP.
+Configuration is specified in the `gcplog` section, within `scrape_config`.
 
 There are two kind of scraping strategies: `pull` and `push`.
 
