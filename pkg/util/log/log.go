@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -38,6 +39,7 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
 type prometheusLogger struct {
 	logger      log.Logger
 	logMessages *prometheus.CounterVec
+	timeSpent   prometheus.Counter
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
@@ -56,6 +58,11 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 			Name:      "log_messages_total",
 			Help:      "Total number of log messages.",
 		}, []string{"level"}),
+		timeSpent: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "log_messages_time_spent_total",
+			Help:      "Total time blocking while writing logs to output file.",
+		}),
 	}
 	// Initialise counters for all supported levels:
 	supportedLevels := []level.Value{
@@ -74,7 +81,10 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 
 // Log increments the appropriate Prometheus counter depending on the log level.
 func (pl *prometheusLogger) Log(kv ...interface{}) error {
+	start := time.Now()
 	pl.logger.Log(kv...)
+	pl.timeSpent.Add(time.Since(start).Seconds())
+
 	l := "unknown"
 	for i := 1; i < len(kv); i += 2 {
 		if v, ok := kv[i].(level.Value); ok {
