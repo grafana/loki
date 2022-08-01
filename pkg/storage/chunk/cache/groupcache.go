@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,7 +20,6 @@ import (
 	"github.com/mailgun/groupcache/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/server"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -74,22 +72,22 @@ type GroupConfig struct {
 	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
 }
 
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
-	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
+// // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+// func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
+// 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
 
-	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
-	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
-	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
-		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
-}
+// 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
+// 	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
+// 	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
+// 		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
+// }
 
 type ringManager interface {
 	Addr() string
 	Ring() ring.ReadRing
 }
 
-func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
+func NewGroupCache(rm ringManager, config GroupCacheConfig, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 

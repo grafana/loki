@@ -46,10 +46,10 @@ type Config struct {
 	// CompactorAddress is the http address of the compactor in the form http://host:port
 	CompactorAddress string `yaml:"compactor_address"`
 
-	// GroupCacheConfig is the configuration to use when groupcache is enabled.
+	// MemorycacheConfig is the configuration to use when in-memory cache is enabled.
 	//
 	// This is a common config because, when enabled, it is used across all caches
-	GroupCacheConfig cache.GroupCacheConfig `yaml:"groupcache"`
+	Memorycache cache.MemorycacheConfig `yaml:"memorycache"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -64,7 +64,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
 
 	// flags that only live in common
-	c.GroupCacheConfig.RegisterFlagsWithPrefix("common.groupcache", "", f)
+	c.Memorycache.RegisterFlagsWithPrefix("common.memorycache", "", f)
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 }

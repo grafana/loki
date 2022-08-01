@@ -148,12 +148,19 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initGroupcache() (_ services.Service, err error) {
-	if !t.Cfg.Common.GroupCacheConfig.Enabled {
+	if !t.Cfg.Common.Memorycache.Enabled ||
+		!t.Cfg.Common.Memorycache.Distributed {
 		return nil, nil
 	}
 
-	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Common.GroupCacheConfig.ListenPort
-	rm, err := cache.NewGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	groupConfig := cache.GroupCacheConfig{
+		Enabled:    true,
+		Ring:       t.Cfg.Common.Memorycache.Ring,
+		CapacityMB: t.Cfg.Common.Memorycache.MaxSizeMB,
+		ListenPort: t.Cfg.Common.Memorycache.ListenPort,
+	}
+
+	rm, err := cache.NewGroupcacheRingManager(groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new groupcache ring manager")
 	}
@@ -161,7 +168,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 	t.groupcacheRingManager = rm
 	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
 
-	gc, err := cache.NewGroupCache(rm, t.Cfg.Common.GroupCacheConfig, t.Server, util_log.Logger, prometheus.DefaultRegisterer)
+	gc, err := cache.NewGroupCache(rm, groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +186,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 
 	// The index cache generates too much traffic to be used. Make it a fifo cache
 	t.Cfg.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache = true
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.Fifocache.MaxSizeBytes = fmt.Sprint(t.Cfg.Common.GroupCacheConfig.CapacityMB * 1e6)
+	t.Cfg.StorageConfig.IndexQueriesCacheConfig.Fifocache.MaxSizeBytes = fmt.Sprint(t.Cfg.Common.Memorycache.MaxSizeMB * 1e6)
 
 	return t.groupcacheRingManager, nil
 }
@@ -901,7 +908,9 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Common.GroupCacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	if t.Cfg.Common.Memorycache.Distributed {
+		t.Cfg.Common.Memorycache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	}
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

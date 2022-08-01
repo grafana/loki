@@ -34,10 +34,11 @@ type Config struct {
 	Memcache       MemcachedConfig       `yaml:"memcached"`
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
-	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
+	Memorycache    MemorycacheConfig     `yaml:"memorycache"`
+	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // depreciated
 
 	// GroupcacheConfig is a local GroupCache config per cache
-	GroupCacheConfig GroupConfig `yaml:"groupcache"`
+	GroupCacheConfig GroupConfig `yaml:"groupcache"` // depreicated
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
