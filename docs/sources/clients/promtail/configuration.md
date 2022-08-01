@@ -976,7 +976,7 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
 
-**Push**
+**Internal labels available for push**
 
 - `__gcp_message_id`
 - `__gcp_attributes_*`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed since it might contain unsupported characters. For example for `logging.googleapis.com/timestamp` it's converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
