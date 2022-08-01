@@ -39,7 +39,7 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
 type prometheusLogger struct {
 	logger      log.Logger
 	logMessages *prometheus.CounterVec
-	timeSpent   prometheus.Counter
+	timeSpent   prometheus.Histogram
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
@@ -58,10 +58,20 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 			Name:      "log_messages_total",
 			Help:      "Total number of log messages.",
 		}, []string{"level"}),
-		timeSpent: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		timeSpent: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
-			Name:      "log_messages_time_spent_total",
+			Name:      "log_messages_time_spent",
 			Help:      "Total time blocking while writing logs to output file.",
+			Buckets: []float64{
+				(100 * time.Nanosecond).Seconds(),
+				(1 * time.Microsecond).Seconds(),
+				(10 * time.Microsecond).Seconds(),
+				(100 * time.Microsecond).Seconds(),
+				(1 * time.Millisecond).Seconds(),
+				(10 * time.Millisecond).Seconds(),
+				(100 * time.Millisecond).Seconds(),
+				(time.Second).Seconds(),
+			},
 		}),
 	}
 	// Initialise counters for all supported levels:
@@ -83,7 +93,7 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 func (pl *prometheusLogger) Log(kv ...interface{}) error {
 	start := time.Now()
 	pl.logger.Log(kv...)
-	pl.timeSpent.Add(time.Since(start).Seconds())
+	pl.timeSpent.Observe(time.Since(start).Seconds())
 
 	l := "unknown"
 	for i := 1; i < len(kv); i += 2 {
