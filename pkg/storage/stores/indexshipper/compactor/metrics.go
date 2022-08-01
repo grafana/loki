@@ -16,6 +16,7 @@ type metrics struct {
 	compactTablesOperationLastSuccess     prometheus.Gauge
 	applyRetentionLastSuccess             prometheus.Gauge
 	compactorRunning                      prometheus.Gauge
+	indexFilesToCompactForLastCompaction  *prometheus.GaugeVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -45,6 +46,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compactor_running",
 			Help:      "Value will be 1 if compactor is currently running on this instance",
 		}),
+		indexFilesToCompactForLastCompaction: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "compact_tables_operation_index_files_in_last_compaction",
+			Help:      "The number of index files observed by last compaction",
+		}, []string{"table"}),
 	}
 
 	return &m

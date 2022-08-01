@@ -496,7 +496,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, indexCompactor,
-		schemaCfg, c.tableMarker, c.expirationChecker)
+		schemaCfg, c.tableMarker, c.expirationChecker, c.metrics)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err

@@ -84,11 +84,14 @@ type table struct {
 	logger                log.Logger
 
 	ctx context.Context
+
+	metrics *metrics
 }
 
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
 	indexCompactor IndexCompactor, periodConfig config.PeriodConfig,
 	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
+	metrics *metrics,
 ) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
@@ -107,6 +110,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		indexSets:          map[string]*indexSet{},
 		baseUserIndexSet:   storage.NewIndexSet(indexStorageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(indexStorageClient, false),
+		metrics:            metrics,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -127,7 +131,9 @@ func (t *table) compact(applyRetention bool) error {
 	t.usersWithPerUserIndex = usersWithPerUserIndex
 
 	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
-
+	if t.metrics != nil {
+		t.metrics.indexFilesToCompactForLastCompaction.WithLabelValues(t.name).Set(float64(len(indexFiles)))
+	}
 	defer func() {
 		for _, is := range t.indexSets {
 			is.cleanup()
@@ -138,7 +144,7 @@ func (t *table) compact(applyRetention bool) error {
 		}
 	}()
 
-	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger)
+	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger, t.metrics)
 	if err != nil {
 		return err
 	}
@@ -148,7 +154,7 @@ func (t *table) compact(applyRetention bool) error {
 
 	for _, userID := range t.usersWithPerUserIndex {
 		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger, t.metrics)
 		if err != nil {
 			return err
 		}
@@ -162,7 +168,7 @@ func (t *table) compact(applyRetention bool) error {
 		defer indexSetsMtx.Unlock()
 
 		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger, t.metrics)
 		return t.indexSets[userID], err
 	}, t.periodConfig)
 
