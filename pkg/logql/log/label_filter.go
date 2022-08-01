@@ -342,24 +342,8 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 	if s.Name == logqlmodel.ErrorLabel {
 		return line, s.Matches(lbs.GetErr())
 	}
+
 	v, _ := lbs.Get(s.Name)
-
-	// // NOTE(kavi): whether the `label` exists in logline matters when doing `!=` or `!~`.
-	// // Because, consider following long lines
-	// // ```
-	// // 1.msg="hello" subqueries=5
-	// // 2.msg="hello" subqueries=0
-	// // 3.msg="hello"
-	// // 4.msg="hello" subqueries=""
-	// //```
-
-	// // Now when quering like `{...}|logfmt|subqueries=""` should consider lines 3 and 4.
-	// // But when doing queries like `{...}|logfmt|subqueries!="0"` (also with !~), then line 3 shouldn't be considered.
-	// // https://github.com/grafana/loki/pull/6766
-	// // https://github.com/grafana/loki/issues/6713
-	// if !ok && (s.Type == labels.MatchNotEqual || s.Type == labels.MatchNotRegexp) {
-	// 	return line, false
-	// }
 	return line, s.Matches(v)
 }
 
