@@ -36,6 +36,9 @@ type Config struct {
 	Redis          RedisConfig           `yaml:"redis"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
 
+	// GroupcacheConfig is a local GroupCache config per cache
+	GroupCacheConfig GroupConfig `yaml:"groupcache"`
+
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
@@ -87,12 +90,12 @@ func IsRedisSet(cfg Config) bool {
 }
 
 func IsGroupCacheSet(cfg Config) bool {
-	return cfg.EnableGroupCache
+	return cfg.GroupCache != nil
 }
 
 // IsCacheConfigured determines if memcached, redis, or groupcache have been configured
 func IsCacheConfigured(cfg Config) bool {
-	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsGroupCacheSet(cfg)
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || cfg.EnableGroupCache
 }
 
 // New creates a new Cache using Config.
