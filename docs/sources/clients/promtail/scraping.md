@@ -248,10 +248,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
         target_label: 'incoming_ts'
 ```
 
-When configuring the GCP Log push target, Promtail will start a HTTP server listening in port `8080` as configured in the `server`
-section. This server will expose just one endpoint `POST /gcp/api/v1/push` responsible for receiving logs from GCP.
+When configuring the GCP Log push target, Promtail will start an HTTP server listening on port `8080`, as configured in the `server`
+section. This server exposes the single endpoint `POST /gcp/api/v1/push`, responsible for receiving logs from GCP.
 
-It also supports `relabeling` and `pipeline` stages just like other targets.
+It also supports `relabeling` and `pipeline` stages.
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
 - `__gcp_message_id`
