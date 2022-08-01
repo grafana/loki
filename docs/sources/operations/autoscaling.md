@@ -30,7 +30,7 @@ The Query Scheduler exposes the `cortex_query_scheduler_inflight_requests` metri
 It tracks the number of queued queries plus the number of queries currently running in the querier workers.
 The following query is useful to scale queriers based on the inflight requests.
 
-```
+```promql
 sum(
   max_over_time(
     cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="<Q>"}[<R>]
@@ -61,7 +61,7 @@ For the minimum number of replicas, we recommend running at least one queriers a
 of inflight requests 75% of the time in the last seven days, targeting a 75% utilization of our queriers.
 So if we use 6 workers per querier, we should use the following query:
 
-```
+```promql
 clamp_min(ceil(
     avg(
         avg_over_time(cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.75"}[7d])
@@ -74,7 +74,7 @@ to process all the inflight requests you had 50% of the time during the last sev
 As for the previous example, if each querier runs 6 workers, we divide the inflight requests by 6.
 The resulting query looks as follows.
 
-```
+```promql
 ceil(
     max(
         max_over_time(cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.5"}[7d])
