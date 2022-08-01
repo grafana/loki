@@ -970,7 +970,7 @@ labels:
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling). This depend on the subscription type chosen.
 
-**Pull**
+**Internal labels available for pull**
 
 - `__gcp_logname`
 - `__gcp_resource_type`
