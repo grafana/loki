@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/gorilla/mux"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/assert"
@@ -64,7 +62,7 @@ func setupGroupCache() (*GroupCache, error) {
 	return NewGroupCache(&mockRingManager{}, GroupCacheConfig{
 		Enabled:    true,
 		CapacityMB: 1,
-	}, &server.Server{HTTP: mux.NewRouter()}, log.NewNopLogger(), nil)
+	}, log.NewNopLogger(), nil)
 }
 
 type mockRingManager struct{}
