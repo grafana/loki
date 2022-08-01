@@ -330,7 +330,7 @@ job_name: <string>
 # Describes how to scrape logs from the Windows event logs.
 [windows_events: <windows_events_config>]
 
-# Configuration describing how to pull/receive GCP Logs.
+# Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
 [gcplog: <gcplog_config>]
 
 # Describes how to fetch logs from Kafka via a Consumer group.
