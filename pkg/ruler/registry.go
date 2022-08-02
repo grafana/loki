@@ -191,22 +191,25 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 	// TODO(dannyk): implement multiple RW configs
 	conf.RemoteWrite = []*config.RemoteWriteConfig{}
 	if rwCfg.Enabled {
-		for i := range r.config.RemoteWrite.Clients {
-			if rwCfg.Clients[i].Headers == nil {
-				rwCfg.Clients[i].Headers = make(map[string]string)
+		for id := range r.config.RemoteWrite.Clients {
+			clt := rwCfg.Clients[id]
+			if rwCfg.Clients[id].Headers == nil {
+				clt.Headers = make(map[string]string)
 			}
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
-			for k := range rwCfg.Clients[i].Headers {
+			for k := range clt.Headers {
 				if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(strings.TrimSpace(k)) {
-					delete(rwCfg.Clients[i].Headers, k)
+					delete(clt.Headers, k)
 				}
 			}
 
 			// always inject the X-Scope-OrgId header for multi-tenant metrics backends
-			rwCfg.Clients[i].Headers[user.OrgIDHeaderName] = tenant
+			clt.Headers[user.OrgIDHeaderName] = tenant
 
-			conf.RemoteWrite = append(conf.RemoteWrite, &rwCfg.Clients[i])
+			rwCfg.Clients[id] = clt
+
+			conf.RemoteWrite = append(conf.RemoteWrite, &clt)
 		}
 	} else {
 		// reset if remote-write is disabled at runtime
@@ -226,27 +229,37 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		overrides.Enabled = false
 	}
 
-	for i := range overrides.Clients {
-		overrides.Clients[i].Name = fmt.Sprintf("%s-rw-%d", tenant, i)
-		overrides.Clients[i].SendExemplars = false
+	for id, clt := range overrides.Clients {
+		clt.Name = fmt.Sprintf("%s-rw-%s", tenant, id)
+		clt.SendExemplars = false
 		// TODO(dannyk): configure HTTP client overrides
 		// metadata is only used by prometheus scrape configs
-		overrides.Clients[i].MetadataConfig = config.MetadataConfig{Send: false}
+		clt.MetadataConfig = config.MetadataConfig{Send: false}
 
+		// Keeping this block for backward compatibility
 		if v := r.overrides.RulerRemoteWriteURL(tenant); v != "" {
 			u, err := url.Parse(v)
 			if err != nil {
 				return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
 			}
-			overrides.Clients[i].URL = &promConfig.URL{u}
+			clt.URL = &promConfig.URL{u}
+		}
+		if m := r.overrides.RulerRemoteWriteURLs(tenant); len(m) > 0 {
+			if v, ok := m[id]; ok {
+				u, err := url.Parse(v)
+				if err != nil {
+					return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
+				}
+				clt.URL = &promConfig.URL{u}
+			}
 		}
 		if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
-			overrides.Clients[i].RemoteTimeout = model.Duration(v)
+			clt.RemoteTimeout = model.Duration(v)
 		}
 
 		// overwrite, do not merge
 		if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
-			overrides.Clients[i].Headers = v
+			clt.Headers = v
 		}
 
 		relabelConfigs, err := r.createRelabelConfigs(tenant)
@@ -258,44 +271,46 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		// even if an empty list is configured; however if this value is not overridden for a tenant,
 		// it should retain the base value
 		if relabelConfigs != nil {
-			overrides.Clients[i].WriteRelabelConfigs = relabelConfigs
+			clt.WriteRelabelConfigs = relabelConfigs
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueCapacity(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.Capacity = v
+			clt.QueueConfig.Capacity = v
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueMinShards(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.MinShards = v
+			clt.QueueConfig.MinShards = v
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueMaxShards(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.MaxShards = v
+			clt.QueueConfig.MaxShards = v
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.MaxSamplesPerSend = v
+			clt.QueueConfig.MaxSamplesPerSend = v
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueMinBackoff(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.MinBackoff = model.Duration(v)
+			clt.QueueConfig.MinBackoff = model.Duration(v)
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.MaxBackoff = model.Duration(v)
+			clt.QueueConfig.MaxBackoff = model.Duration(v)
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant); v > 0 {
-			overrides.Clients[i].QueueConfig.BatchSendDeadline = model.Duration(v)
+			clt.QueueConfig.BatchSendDeadline = model.Duration(v)
 		}
 
 		if v := r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant); v {
-			overrides.Clients[i].QueueConfig.RetryOnRateLimit = v
+			clt.QueueConfig.RetryOnRateLimit = v
 		}
 
 		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
-			overrides.Clients[i].SigV4Config = v
+			clt.SigV4Config = v
 		}
+
+		overrides.Clients[id] = clt
 	}
 
 	return overrides, nil

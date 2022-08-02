@@ -48,10 +48,10 @@ func (c *Config) Validate() error {
 }
 
 type RemoteWriteConfig struct {
-	Client              *config.RemoteWriteConfig  `yaml:"client,omitempty"`
-	Clients             []config.RemoteWriteConfig `yaml:"clients"`
-	Enabled             bool                       `yaml:"enabled"`
-	ConfigRefreshPeriod time.Duration              `yaml:"config_refresh_period"`
+	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty"`
+	Clients             map[string]config.RemoteWriteConfig `yaml:"clients"`
+	Enabled             bool                                `yaml:"enabled"`
+	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
@@ -64,9 +64,9 @@ func (c *RemoteWriteConfig) Validate() error {
 	}
 
 	if len(c.Clients) > 0 {
-		for _, clt := range c.Clients {
+		for id, clt := range c.Clients {
 			if clt.URL == nil {
-				return fmt.Errorf("remote-write enabled but client '%s' URL is not configured", clt.Name)
+				return fmt.Errorf("remote-write enabled but client '%s' URL for tenant %s is not configured", clt.Name, id)
 			}
 		}
 	}
@@ -93,9 +93,9 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
 	}
 
-	for i := range n.Clients {
-		if n.Clients[i].HTTPClientConfig.BasicAuth != nil {
-			n.Clients[i].HTTPClientConfig.BasicAuth.Password = c.Clients[i].HTTPClientConfig.BasicAuth.Password
+	for id := range n.Clients {
+		if n.Clients[id].HTTPClientConfig.BasicAuth != nil {
+			n.Clients[id].HTTPClientConfig.BasicAuth.Password = c.Clients[id].HTTPClientConfig.BasicAuth.Password
 		}
 	}
 

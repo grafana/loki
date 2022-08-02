@@ -124,8 +124,8 @@ func setupRegistry(t *testing.T) *walRegistry {
 					},
 				},
 			},
-			Clients: []config.RemoteWriteConfig{
-				{
+			Clients: map[string]config.RemoteWriteConfig{
+				"test": {
 					URL: &promConfig.URL{URL: u},
 					QueueConfig: config.QueueConfig{
 						Capacity: defaultCapacity,
@@ -174,11 +174,12 @@ func setupSigV4Registry(t *testing.T) *walRegistry {
 	reg := setupRegistry(t)
 
 	// Remove the basic auth config and replace with sigv4
-	for i := range reg.config.RemoteWrite.Clients {
-		reg.config.RemoteWrite.Clients[i].HTTPClientConfig.BasicAuth = nil
-		reg.config.RemoteWrite.Clients[i].SigV4Config = &sigv4.SigV4Config{
+	for id, clt := range reg.config.RemoteWrite.Clients {
+		clt.HTTPClientConfig.BasicAuth = nil
+		clt.SigV4Config = &sigv4.SigV4Config{
 			Region: sigV4GlobalRegion,
 		}
+		reg.config.RemoteWrite.Clients[id] = clt
 	}
 
 	return reg

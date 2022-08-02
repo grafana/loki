@@ -103,6 +103,7 @@ type Limits struct {
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
 	RulerRemoteWriteDisabled               bool                         `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
 	RulerRemoteWriteURL                    string                       `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
+	RulerRemoteWriteURLs                   map[string]string            `yaml:"ruler_remote_write_urls,omitempty" json:"ruler_remote_write_urls,omitempty"`
 	RulerRemoteWriteTimeout                time.Duration                `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
 	RulerRemoteWriteHeaders                OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
 	RulerRemoteWriteRelabelConfigs         []*util.RelabelConfig        `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty"`
@@ -488,6 +489,11 @@ func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 // RulerRemoteWriteURL returns the remote-write URL to use for a given user.
 func (o *Overrides) RulerRemoteWriteURL(userID string) string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteURL
+}
+
+// RulerRemoteWriteURLs returns the remote-write URLs to use for a given user.
+func (o *Overrides) RulerRemoteWriteURLs(userID string) map[string]string {
+	return o.getOverridesForUser(userID).RulerRemoteWriteURLs
 }
 
 // RulerRemoteWriteTimeout returns the duration after which to timeout a remote-write request for a given user.

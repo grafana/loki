@@ -39,6 +39,7 @@ type RulesLimits interface {
 
 	RulerRemoteWriteDisabled(userID string) bool
 	RulerRemoteWriteURL(userID string) string
+	RulerRemoteWriteURLs(userID string) map[string]string
 	RulerRemoteWriteTimeout(userID string) time.Duration
 	RulerRemoteWriteHeaders(userID string) map[string]string
 	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
