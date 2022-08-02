@@ -21,7 +21,6 @@ import (
 	"github.com/mailgun/groupcache/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/server"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -92,7 +91,7 @@ type ringManager interface {
 	Ring() ring.ReadRing
 }
 
-func NewGroupCache(rm ringManager, config GroupCacheConfig, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
+func NewGroupCache(rm ringManager, config GroupCacheConfig, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
