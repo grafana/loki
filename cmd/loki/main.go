@@ -24,7 +24,7 @@ import (
 func main() {
 	var config loki.ConfigWrapper
 
-	if len(os.Args) >= 1 && os.Args[1] == "-version" {
+	if loki.PrintVersion(os.Args[1:]) {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
