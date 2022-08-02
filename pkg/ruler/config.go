@@ -55,16 +55,18 @@ type RemoteWriteConfig struct {
 }
 
 func (c *RemoteWriteConfig) Validate() error {
-	if c.Enabled {
-		if (c.Client == nil || c.Client.URL == nil) && len(c.Clients) == 0 {
-			return errors.New("remote-write enabled but no clients URL are configured")
-		}
+	if !c.Enabled {
+		return nil
+	}
 
-		if len(c.Clients) > 0 {
-			for _, clt := range c.Clients {
-				if clt.URL == nil {
-					return fmt.Errorf("remote-write enabled but client '%s' URL is not configured", clt.Name)
-				}
+	if (c.Client == nil || c.Client.URL == nil) && len(c.Clients) == 0 {
+		return errors.New("remote-write enabled but no clients URL are configured")
+	}
+
+	if len(c.Clients) > 0 {
+		for _, clt := range c.Clients {
+			if clt.URL == nil {
+				return fmt.Errorf("remote-write enabled but client '%s' URL is not configured", clt.Name)
 			}
 		}
 	}
