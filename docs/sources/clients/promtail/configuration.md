@@ -968,7 +968,7 @@ labels:
 
 ### Available Labels
 
-When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling). This depend on the subscription type chosen.
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling). This depends on the subscription type chosen.
 
 **Internal labels available for pull**
 
