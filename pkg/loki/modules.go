@@ -159,6 +159,8 @@ func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
 		ListenPort: t.Cfg.QueryRange.CacheConfig.Embeddedcache.ListenPort,
 	}
 
+	groupConfig.Ring.ListenPort = groupConfig.ListenPort
+
 	rm, err := cache.NewGroupcacheRingManager(groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new embedded-cache ring manager")

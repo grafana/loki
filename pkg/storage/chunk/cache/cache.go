@@ -40,9 +40,6 @@ type Config struct {
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
-	// // GroupCache is configured/initialized as part of modules and injected here
-	// GroupCache Cache `yaml:"-"`
-
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
 
