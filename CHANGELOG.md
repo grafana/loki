@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [6821](https://github.com/grafana/loki/pull/6821) **kavirajk**: Introduce new cache type `embedded-cache` which is a in-process cache system that runs loki without any dependencies of external cache (like memcached, redis, etc). It can be run in two mode `distributed: false` (default and same as old `fifocache`) and `distributed: true` which runs cache is distributed fashing sharing keys between peers if Loki is run in microservices or SSD mode.
 * [6691](https://github.com/grafana/loki/pull/6691) **dannykopping**: Update production-ready Loki cluster in docker-compose
 * [6317](https://github.com/grafana/loki/pull/6317) **dannykoping**: General: add cache usage statistics
 * [6444](https://github.com/grafana/loki/pull/6444) **aminesnow** Add TLS config to query frontend.
