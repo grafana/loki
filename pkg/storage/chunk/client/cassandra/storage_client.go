@@ -6,6 +6,8 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -614,6 +616,23 @@ func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]ch
 
 func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	result, err := s.getChunkExec(ctx, decodeContext, input)
+	if err == gocql.ErrNotFound {
+		const chunkLen = 13 * 3600 // in seconds
+		userID := "1"
+		ts := model.TimeFromUnix(int64(0 * chunkLen))
+		promChunk := chunk.New()
+		emptyChunk := chunk.NewChunk(
+			userID,
+			model.Fingerprint(1),
+			labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+			},
+			promChunk,
+			ts,
+			ts.Add(chunkLen))
+		return emptyChunk, nil
+	}
 	//
 	if err == gocql.ErrNoConnections {
 		connectErr := s.reconnectReadSession()
