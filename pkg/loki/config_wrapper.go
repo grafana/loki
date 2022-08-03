@@ -20,13 +20,15 @@ import (
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
+const versionFlag = "version"
+
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
 // for interacting with the config file or the application directly.
 // ConfigWrapper implements cfg.DynamicCloneable, allowing configuration to be dynamically set based
 // on the logic in ApplyDynamicConfig, which receives values set in config file
 type ConfigWrapper struct {
 	Config          `yaml:",inline"`
-	PrintVersion    bool
+	printVersion    bool
 	VerifyConfig    bool
 	PrintConfig     bool
 	ListTargets     bool
@@ -35,8 +37,17 @@ type ConfigWrapper struct {
 	ConfigExpandEnv bool
 }
 
+func PrintVersion(args []string) bool {
+	for _, a := range args {
+		if a == "-"+versionFlag {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.PrintVersion, "version", false, "Print this builds version information")
+	f.BoolVar(&c.printVersion, versionFlag, false, "Print this builds version information")
 	f.BoolVar(&c.VerifyConfig, "verify-config", false, "Verify config file and exits")
 	f.BoolVar(&c.PrintConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
 	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
