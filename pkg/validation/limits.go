@@ -81,6 +81,7 @@ type Limits struct {
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
+	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -163,6 +164,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
+	_ = l.QueryTimeout.Set("1m")
+	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
@@ -421,6 +424,10 @@ func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
 func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
+}
+
+func (o *Overrides) QueryTimeout(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
 }
 
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {

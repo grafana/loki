@@ -67,6 +67,7 @@ ruler_remote_write_sigv4_config:
   region: us-east-1
 per_tenant_override_config: ""
 per_tenant_override_period: 230s
+query_timeout: 5m
 `
 	inputJSON := `
  {
@@ -102,7 +103,8 @@ per_tenant_override_period: 230s
     "region": "us-east-1"
   },
   "per_tenant_override_config": "",
-  "per_tenant_override_period": "230s"
+  "per_tenant_override_period": "230s",
+  "query_timeout": "5m"
  }
 `
 
@@ -226,6 +228,24 @@ reject_old_samples: true
 				RejectOldSamples: true,
 
 				// Rest from new defaults
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+			},
+		},
+		{
+			desc: "per tenant query timeout",
+			yaml: `
+query_timeout: 5m
+`,
+			exp: Limits{
+				QueryTimeout: model.Duration(5 * time.Minute),
+
+				// Rest from new defaults.
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				StreamRetention: []StreamRetention{
 					{

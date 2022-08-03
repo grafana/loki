@@ -44,7 +44,6 @@ type interval struct {
 
 // Config for a querier.
 type Config struct {
-	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
 	TailMaxDuration               time.Duration    `yaml:"tail_max_duration"`
 	ExtraQueryDelay               time.Duration    `yaml:"extra_query_delay,omitempty"`
 	QueryIngestersWithin          time.Duration    `yaml:"query_ingesters_within,omitempty"`
@@ -60,7 +59,6 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
-	f.DurationVar(&cfg.QueryTimeout, "querier.query-timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
@@ -355,7 +353,8 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -439,7 +438,12 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 	// Enforce the query timeout except when tailing, otherwise the tailing
 	// will be terminated once the query timeout is reached
 	tailCtx := ctx
-	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	tenantID, err := tenant.TenantID(tailCtx)
+	if err != nil {
+		level.Error(spanlogger.FromContext(tailCtx)).Log("msg", "failed to load tenant", "err", err)
+	}
+	queryTimeout := q.limits.QueryTimeout(tenantID)
+	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancelQuery()
 
 	tailClients, err := q.ingesterQuerier.Tail(tailCtx, req)
@@ -482,7 +486,8 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 	}
 
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
@@ -703,7 +708,8 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	}
 
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	return q.store.Stats(

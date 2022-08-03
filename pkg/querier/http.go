@@ -64,8 +64,16 @@ func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides, lo
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "query.RangeQuery")
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+	}
+
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	request, err := loghttp.ParseRangeQuery(r)
@@ -103,8 +111,16 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "query.InstantQuery")
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+	}
+
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	request, err := loghttp.ParseInstantQuery(r)
@@ -143,8 +159,15 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 
 // LogQueryHandler is a http.HandlerFunc for log only queries.
 func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "query.LogQuery")
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+	}
+
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	request, err := loghttp.ParseRangeQuery(r)
@@ -201,13 +224,22 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
 func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "query.Label")
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
+
 	req, err := loghttp.ParseLabelQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
-
-	log, ctx := spanlogger.New(r.Context(), "query.Label")
 
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
 	defer timer.ObserveDuration()
@@ -376,13 +408,22 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "query.Series")
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
+
 	req, err := loghttp.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
-
-	log, ctx := spanlogger.New(r.Context(), "query.Series")
 
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
 	defer timer.ObserveDuration()
@@ -422,14 +463,22 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 
 // IndexStatsHandler queries the index for the data statistics related to a query
 func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "query.IndexStats")
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
 
 	req, err := loghttp.ParseIndexStatsQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
-
-	_, ctx := spanlogger.New(r.Context(), "query.IndexStats")
 
 	// TODO(owen-d): log metadata, record stats?
 	resp, err := q.querier.IndexStats(ctx, req)
