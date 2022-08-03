@@ -404,7 +404,10 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, c
 func (s *StorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	err := s.queryExec(ctx, query, callback)
 	//
-	if err == gocql.ErrNoConnections {
+	if errors.Cause(err) == gocql.ErrNotFound {
+		return nil
+	}
+	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := s.reconnectReadSession()
 		if connectErr != nil {
 			return errors.Wrap(err, "StorageClient query reconnect fail")
@@ -412,7 +415,7 @@ func (s *StorageClient) query(ctx context.Context, query index.Query, callback i
 		// retry after reconnect
 		err = s.queryExec(ctx, query, callback)
 	}
-	return err
+	return errors.Wrap(err, "query index fail")
 }
 
 func (s *StorageClient) queryExec(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
@@ -616,7 +619,7 @@ func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]ch
 
 func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	result, err := s.getChunkExec(ctx, decodeContext, input)
-	if err == gocql.ErrNotFound {
+	if errors.Cause(err) == gocql.ErrNotFound {
 		const chunkLen = 13 * 3600 // in seconds
 		userID := "1"
 		ts := model.TimeFromUnix(int64(0 * chunkLen))
@@ -634,7 +637,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 		return emptyChunk, nil
 	}
 	//
-	if err == gocql.ErrNoConnections {
+	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := s.reconnectReadSession()
 		if connectErr != nil {
 			return input, errors.Wrap(err, "ObjectClient getChunk reconnect fail")
@@ -642,7 +645,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 		// retry after reconnect
 		result, err = s.getChunkExec(ctx, decodeContext, input)
 	}
-	return result, err
+	return result, errors.Wrap(err, "get chunk fail")
 }
 
 func (s *ObjectClient) getChunkExec(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
