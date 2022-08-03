@@ -219,12 +219,13 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
+	queryTimeout := time.Minute * 2
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't fetch tenantID: %w", err)
+		level.Warn(q.logger).Log("msg", "couldn't fetch tenantID to evaluate query timeout, using default value of 2m", "err", err)
+	} else {
+		queryTimeout = q.limits.QueryTimeout(userID)
 	}
-
-	queryTimeout := q.limits.QueryTimeout(userID)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
