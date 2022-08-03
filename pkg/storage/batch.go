@@ -758,6 +758,9 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 			}
 			if postFetcherChunkFilterer != nil && len(chunkKeys) > 0 {
 				for i, chk := range chks {
+					if chk.UserID == "-1" {
+						continue
+					}
 					key := chunkKeys[i]
 					index[key].Chunk = chk
 				}
@@ -766,6 +769,9 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 			}
 			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
 			for _, chk := range chks {
+				if chk.UserID == "-1" {
+					continue
+				}
 				index[s.ExternalKey(chk.ChunkRef)].Chunk = chk
 			}
 

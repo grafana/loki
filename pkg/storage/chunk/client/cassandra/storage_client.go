@@ -629,7 +629,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 	result, err := s.getChunkExec(ctx, decodeContext, input)
 	if errors.Cause(err) == gocql.ErrNotFound {
 		const chunkLen = 13 * 3600 // in seconds
-		userID := "1"
+		userID := "-1"
 		ts := model.TimeFromUnix(int64(0 * chunkLen))
 		promChunk := chunk.New()
 		emptyChunk := chunk.NewChunk(
