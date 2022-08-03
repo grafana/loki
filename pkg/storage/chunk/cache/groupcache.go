@@ -67,11 +67,6 @@ type GroupCacheConfig struct {
 	Cache Cache `yaml:"-"`
 }
 
-// Groupconfig represents config per Group.
-type GroupConfig struct {
-	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
-}
-
 type ringManager interface {
 	Addr() string
 	Ring() ring.ReadRing
@@ -203,7 +198,7 @@ type group struct {
 	storeDuration prometheus.Observer
 }
 
-func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType) Cache {
+func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	// Return a known error on miss to track which keys need to be inserted
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
 		return ErrGroupcacheMiss
@@ -211,11 +206,6 @@ func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType)
 
 	c.wg.Add(1)
 	c.startWaitingForClose()
-
-	cap := c.cacheBytes
-	if cfg.CapacityMB != 0 {
-		cap = cfg.CapacityMB * 1e6 // MB into bytes
-	}
 
 	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "loki",
@@ -226,8 +216,8 @@ func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType)
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, cap, missGetter),
-		cacheBytes:    cap,
+		cache:         groupcache.NewGroup(name, c.cacheBytes, missGetter),
+		cacheBytes:    c.cacheBytes,
 		logger:        c.logger,
 		wg:            &c.wg,
 		cacheType:     ct,

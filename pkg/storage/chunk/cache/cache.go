@@ -36,9 +36,6 @@ type Config struct {
 	Embeddedcache  EmbeddedcacheConfig   `yaml:"embedded_cache"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // depreciated
 
-	// GroupcacheConfig is a local GroupCache config per cache
-	GroupCacheConfig GroupConfig `yaml:"groupcache"` // depreicated
-
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
@@ -104,12 +101,32 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	}
 
 	var caches []Cache
-	if cfg.EnableFifoCache {
-		if cfg.Fifocache.TTL == 0 && cfg.DefaultValidity != 0 {
-			cfg.Fifocache.TTL = cfg.DefaultValidity
+
+	// Currently fifocache can be enabled in two ways.
+	// 1. cfg.EnableFifocache (old deprecated way)
+	// 2. cfg.Embeddedcache.Enabled=true and cfg.Embeddedcache.Distributed=false (new way)
+	// if cfg.EnableFifoCache || (cfg.Embeddedcache.IsEnabledWithoutDistributed()) {
+	if IsEmbeddedCacheSet(cfg) && !cfg.Embeddedcache.Distributed {
+		var fifocfg FifoCacheConfig
+
+		if cfg.EnableFifoCache {
+			fifocfg = cfg.Fifocache
 		}
 
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger, cacheType); cache != nil {
+		if cfg.Embeddedcache.IsEnabledWithoutDistributed() {
+			fifocfg = FifoCacheConfig{
+				MaxSizeBytes:  fmt.Sprint(cfg.Embeddedcache.MaxSizeMB * 1e6),
+				MaxSizeItems:  cfg.Embeddedcache.MaxItems,
+				TTL:           cfg.Embeddedcache.TTL,
+				PurgeInterval: cfg.Embeddedcache.PurgeInterval,
+			}
+		}
+
+		if fifocfg.TTL == 0 && cfg.DefaultValidity != 0 {
+			fifocfg.TTL = cfg.DefaultValidity
+		}
+
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", fifocfg, reg, logger, cacheType); cache != nil {
 			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
 		}
 	}
@@ -143,8 +160,9 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
-	if IsEmbeddedCacheSet(cfg) {
-		cacheName := cfg.Prefix + "embedded-cache"
+	if IsEmbeddedCacheSet(cfg) && cfg.Embeddedcache.Distributed {
+		cacheName := cfg.Prefix + "groupcache"
+
 		caches = append(caches, CollectStats(Instrument(cacheName, cfg.Cache, reg)))
 	}
 

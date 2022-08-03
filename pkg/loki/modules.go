@@ -71,7 +71,7 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
-	GroupCache               string = "groupcache"
+	Embededcache             string = "embedded-cache"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -147,8 +147,7 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 	return t.ring, nil
 }
 
-func (t *Loki) initGroupcache() (_ services.Service, err error) {
-	// Currently groupcache can only be enabled for results cache.
+func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
 	if !t.Cfg.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() {
 		return nil, nil
 	}
@@ -162,24 +161,24 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 
 	rm, err := cache.NewGroupcacheRingManager(groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-		return nil, gerrors.Wrap(err, "new groupcache ring manager")
+		return nil, gerrors.Wrap(err, "new embedded-cache ring manager")
 	}
 
-	t.groupcacheRingManager = rm
-	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
+	t.embeddedcacheRingManager = rm
+	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.embeddedcacheRingManager)
 
 	gc, err := cache.NewGroupCache(rm, groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
+	// We support distributed embedded cache only for results currently.
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Cache = gc.NewGroup(
 		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
-		&t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCacheConfig,
 		stats.ResultCache,
 	)
 
-	return t.groupcacheRingManager, nil
+	return t.embeddedcacheRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
