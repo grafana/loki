@@ -230,8 +230,9 @@ func (s *stream) Push(
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind})
+		cutoff := s.highestTs.Add(-s.cfg.MaxChunkAge / 2)
+		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
