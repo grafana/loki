@@ -21,7 +21,7 @@ type EmbeddedcacheConfig struct {
 
 	// PurgeInterval tell how often should we remove keys that are expired.
 	// by default it takes `DefaultPurgeInterval`
-	PurgeInterval time.Duration
+	PurgeInterval time.Duration `yaml:"-"`
 
 	// distributed cache configs. Have no meaning if `Distributed=false`.
 	Ring       RingCfg `yaml:"ring,omitempty"`
@@ -29,11 +29,13 @@ type EmbeddedcacheConfig struct {
 }
 
 func (cfg *EmbeddedcacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.MaxSizeMB, prefix+".max-size-mb", 100, description+"Maximum memory size of the cache in MB.")
-	f.IntVar(&cfg.MaxItems, prefix+".max-items", 0, description+"Maximum number of entries in the cache.")
-	f.DurationVar(&cfg.TTL, prefix+".ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
+	f.BoolVar(&cfg.Enabled, prefix+"embedded-cache.enabled", false, description+"Whether embedded cache is enabled.")
+	f.BoolVar(&cfg.Distributed, prefix+"embedded-cache.distributed", false, description+"Whether embedded cache is enabled with distributed mode.")
+	f.Int64Var(&cfg.MaxSizeMB, prefix+"embedded-cache.max-size-mb", 100, description+"Maximum memory size of the cache in MB.")
+	f.IntVar(&cfg.MaxItems, prefix+"embedded-cache.max-items", 0, description+"Maximum number of entries in the cache.")
+	f.DurationVar(&cfg.TTL, prefix+"embedded-cache.ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
-	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
+	f.IntVar(&cfg.ListenPort, prefix+"embedded-cache.listen_port", 4100, "The port to use for groupcache communication")
 }
 
 func (em EmbeddedcacheConfig) IsEnabledWithDistributed() bool {
