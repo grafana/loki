@@ -50,7 +50,7 @@ func Test_BuildReport(t *testing.T) {
 	require.Equal(t, r.Edition, "OSS")
 	require.Equal(t, r.Target, "compactor")
 	require.Equal(t, r.Metrics["num_cpu"], runtime.NumCPU())
-	require.Equal(t, r.Metrics["num_goroutine"], runtime.NumGoroutine())
+	// Don't check num_goroutine because it could have changed since the report was created.
 	require.Equal(t, r.Metrics["compression"], "lz4")
 	require.Equal(t, r.Metrics["compression_ratio"], int64(100))
 	require.Equal(t, r.Metrics["size_mb"], 200.1)

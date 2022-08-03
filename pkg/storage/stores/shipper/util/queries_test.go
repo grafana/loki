@@ -8,15 +8,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 type mockTableQuerier struct {
 	sync.Mutex
-	queries map[string]chunk.IndexQuery
+	queries map[string]index.Query
 }
 
-func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -32,7 +32,7 @@ func (m *mockTableQuerier) hasQueries(t *testing.T, count int) {
 	for i := 0; i < count; i++ {
 		idx := strconv.Itoa(i)
 
-		require.Equal(t, m.queries[idx], chunk.IndexQuery{
+		require.Equal(t, m.queries[idx], index.Query{
 			HashValue:  idx,
 			ValueEqual: []byte(idx),
 		})
@@ -46,25 +46,25 @@ func TestDoParallelQueries(t *testing.T) {
 	}{
 		{
 			name:       "queries < maxQueriesPerGoroutine",
-			queryCount: maxQueriesPerGoroutine / 2,
+			queryCount: maxQueriesBatch / 2,
 		},
 		{
 			name:       "queries = maxQueriesPerGoroutine",
-			queryCount: maxQueriesPerGoroutine,
+			queryCount: maxQueriesBatch,
 		},
 		{
 			name:       "queries > maxQueriesPerGoroutine",
-			queryCount: maxQueriesPerGoroutine * 2,
+			queryCount: maxQueriesBatch * 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			queries := buildQueries(tc.queryCount)
 
 			tableQuerier := mockTableQuerier{
-				queries: map[string]chunk.IndexQuery{},
+				queries: map[string]index.Query{},
 			}
 
-			err := DoParallelQueries(context.Background(), &tableQuerier, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 				return false
 			})
 			require.NoError(t, err)
@@ -74,11 +74,11 @@ func TestDoParallelQueries(t *testing.T) {
 	}
 }
 
-func buildQueries(n int) []chunk.IndexQuery {
-	queries := make([]chunk.IndexQuery, 0, n)
+func buildQueries(n int) []index.Query {
+	queries := make([]index.Query, 0, n)
 	for i := 0; i < n; i++ {
 		idx := strconv.Itoa(i)
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			HashValue:  idx,
 			ValueEqual: []byte(idx),
 		})
@@ -157,20 +157,39 @@ func TestIndexDeduper(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			actualValues := map[string][][]byte{}
-			deduper := NewIndexDeduper(func(query chunk.IndexQuery, readBatch chunk.ReadBatch) bool {
-				itr := readBatch.Iterator()
-				for itr.Next() {
-					actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+			t.Run("sync", func(t *testing.T) {
+				actualValues := map[string][][]byte{}
+				deduper := NewSyncCallbackDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
+					itr := readBatch.Iterator()
+					for itr.Next() {
+						actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+					}
+					return true
+				}, 0)
+
+				for _, batch := range tc.batches {
+					deduper(index.Query{HashValue: batch.hashValue}, batch)
 				}
-				return true
+
+				require.Equal(t, tc.expectedValues, actualValues)
 			})
 
-			for _, batch := range tc.batches {
-				deduper.Callback(chunk.IndexQuery{HashValue: batch.hashValue}, batch)
-			}
+			t.Run("nosync", func(t *testing.T) {
+				actualValues := map[string][][]byte{}
+				deduper := NewCallbackDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
+					itr := readBatch.Iterator()
+					for itr.Next() {
+						actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+					}
+					return true
+				}, 0)
 
-			require.Equal(t, tc.expectedValues, actualValues)
+				for _, batch := range tc.batches {
+					deduper(index.Query{HashValue: batch.hashValue}, batch)
+				}
+
+				require.Equal(t, tc.expectedValues, actualValues)
+			})
 		})
 	}
 }
@@ -180,7 +199,7 @@ type batch struct {
 	rangeValues [][]byte
 }
 
-func (b batch) Iterator() chunk.ReadBatchIterator {
+func (b batch) Iterator() index.ReadBatchIterator {
 	return &batchIterator{
 		rangeValues: b.rangeValues,
 	}
@@ -206,4 +225,82 @@ func (b batchIterator) RangeValue() []byte {
 
 func (b batchIterator) Value() []byte {
 	panic("implement me")
+}
+
+func Benchmark_DedupeCallback(b *testing.B) {
+	deduper := NewCallbackDeduper(func(_ index.Query, readBatch index.ReadBatchResult) bool {
+		itr := readBatch.Iterator()
+		for itr.Next() {
+			_ = itr.RangeValue()
+		}
+		return true
+	}, 1)
+	q := index.Query{HashValue: "1"}
+	batch1 := batch{
+		hashValue:   "1",
+		rangeValues: [][]byte{[]byte("a"), []byte("b"), []byte("c")},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		deduper(q, batch1)
+	}
+}
+
+type TableQuerierFunc func(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
+
+func (f TableQuerierFunc) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	return f(ctx, queries, callback)
+}
+
+func Benchmark_MultiQueries(b *testing.B) {
+	benchmarkMultiQueries(b, 50)
+	benchmarkMultiQueries(b, 100)
+	benchmarkMultiQueries(b, 1000)
+	benchmarkMultiQueries(b, 10000)
+	benchmarkMultiQueries(b, 50000)
+}
+
+func benchmarkMultiQueries(b *testing.B, n int) {
+	b.Run(strconv.Itoa(n), func(b *testing.B) {
+		callback := index.QueryPagesCallback(func(_ index.Query, readBatch index.ReadBatchResult) bool {
+			itr := readBatch.Iterator()
+			for itr.Next() {
+				_ = itr.RangeValue()
+			}
+			return true
+		})
+		queries := make([]index.Query, n)
+		for i := range queries {
+			queries[i] = index.Query{HashValue: strconv.Itoa(i)}
+		}
+		ranges := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
+		ctx := context.Background()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = DoParallelQueries(ctx, func(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+				for _, query := range queries {
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+				}
+				return nil
+			}, queries, callback)
+		}
+	})
 }

@@ -3,8 +3,8 @@ package status
 import (
 	"context"
 
-	"github.com/ViaQ/logerr/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 
@@ -16,7 +16,7 @@ import (
 
 // SetComponentsStatus updates the pod status map component
 func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1beta1.LokiStack
+	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -25,7 +25,7 @@ func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) er
 	}
 
 	var err error
-	s.Status.Components = lokiv1beta1.LokiStackComponentStatus{}
+	s.Status.Components = lokiv1.LokiStackComponentStatus{}
 	s.Status.Components.Compactor, err = appendPodStatus(ctx, k, manifests.LabelCompactorComponent, s.Name, s.Namespace)
 	if err != nil {
 		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelCompactorComponent)
@@ -60,11 +60,17 @@ func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) er
 	if err != nil {
 		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelGatewayComponent)
 	}
+
+	s.Status.Components.Ruler, err = appendPodStatus(ctx, k, manifests.LabelRulerComponent, s.Name, s.Namespace)
+	if err != nil {
+		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelRulerComponent)
+	}
+
 	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
 }
 
-func appendPodStatus(ctx context.Context, k k8s.Client, component, stack, ns string) (lokiv1beta1.PodStatusMap, error) {
-	psm := lokiv1beta1.PodStatusMap{}
+func appendPodStatus(ctx context.Context, k k8s.Client, component, stack, ns string) (lokiv1.PodStatusMap, error) {
+	psm := lokiv1.PodStatusMap{}
 	pods := &corev1.PodList{}
 	opts := []client.ListOption{
 		client.MatchingLabels(manifests.ComponentLabels(component, stack)),

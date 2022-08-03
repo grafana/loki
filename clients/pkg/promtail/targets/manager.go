@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
@@ -37,6 +38,7 @@ const (
 	CloudflareConfigs    = "cloudflareConfigs"
 	DockerConfigs        = "dockerConfigs"
 	DockerSDConfigs      = "dockerSDConfigs"
+	HerokuDrainConfigs   = "herokuDrainConfigs"
 )
 
 type targetManager interface {
@@ -96,6 +98,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
+		case cfg.HerokuDrainConfig != nil:
+			targetScrapeConfigs[HerokuDrainConfigs] = append(targetScrapeConfigs[HerokuDrainConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -116,12 +120,14 @@ func NewTargetManagers(
 	}
 
 	var (
-		fileMetrics       *file.Metrics
-		syslogMetrics     *syslog.Metrics
-		gcplogMetrics     *gcplog.Metrics
-		gelfMetrics       *gelf.Metrics
-		cloudflareMetrics *cloudflare.Metrics
-		dockerMetrics     *docker.Metrics
+		fileMetrics        *file.Metrics
+		syslogMetrics      *syslog.Metrics
+		gcplogMetrics      *gcplog.Metrics
+		gelfMetrics        *gelf.Metrics
+		cloudflareMetrics  *cloudflare.Metrics
+		dockerMetrics      *docker.Metrics
+		journalMetrics     *journal.Metrics
+		herokuDrainMetrics *heroku.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -140,6 +146,12 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0 {
 		dockerMetrics = docker.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[JournalScrapeConfigs]) > 0 {
+		journalMetrics = journal.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[HerokuDrainConfigs]) > 0 {
+		herokuDrainMetrics = heroku.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -167,7 +179,7 @@ func NewTargetManagers(
 				return nil, err
 			}
 			journalTargetManager, err := journal.NewJournalTargetManager(
-				reg,
+				journalMetrics,
 				logger,
 				pos,
 				client,
@@ -210,6 +222,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
+		case HerokuDrainConfigs:
+			herokuDrainTargetManager, err := heroku.NewHerokuDrainTargetManager(herokuDrainMetrics, reg, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Heroku drain target manager")
+			}
+			targetManagers = append(targetManagers, herokuDrainTargetManager)
 		case WindowsEventsConfigs:
 			windowsTargetManager, err := windows.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {

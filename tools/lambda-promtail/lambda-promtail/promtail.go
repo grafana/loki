@@ -45,8 +45,9 @@ func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
 	}
 
 	for _, entry := range entries {
-		err := b.add(ctx, entry)
-		return b, err
+		if err := b.add(ctx, entry); err != nil {
+			return nil, err
+		}
 	}
 
 	return b, nil
@@ -168,6 +169,10 @@ func send(ctx context.Context, buf []byte) (int, error) {
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", userAgent)
+
+	if tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", tenantID)
+	}
 
 	if username != "" && password != "" {
 		req.SetBasicAuth(username, password)

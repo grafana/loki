@@ -39,6 +39,20 @@ Examples:
 `{{ __line__ }}`
 ```
 
+## __timestamp__
+
+This function returns the current log lines timestamp.
+
+Signature:
+
+`timestamp() time.Time`
+
+```template
+"{{ __timestamp__ }}"
+`{{ __timestamp__ | date "2006-01-02T15:04:05.00Z-07:00" }}`
+`{{ __timestamp__ | unixEpoch }}`
+
+See the blog: [Parsing and formatting date/time in Go](https://www.pauladamsmith.com/blog/2011/05/go_time.html) for more information.
 
 ## ToLower and ToUpper
 
@@ -220,7 +234,7 @@ Get a substring from a string.
 
 Signature:
 
-`trunc(start int,end int,value string) string`
+`substr(start int,end int,value string) string`
 
 If start is < 0, this calls value[:end].
 If start is >= 0 and end < 0 or end bigger than s length, this calls value[start:]
@@ -308,7 +322,7 @@ Examples:
 
 Use this function to trim just the prefix from a string.
 
-Signature: `trimPrefix(suffix string, src string) string`
+Signature: `trimPrefix(prefix string, src string) string`
 
 Examples:
 
@@ -627,7 +641,7 @@ fromJson "{\"foo\": 55}"
 Example of a query to print a newline per queries stored as a json array in the log line:
 
 ```logql
-{job="cortex/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
 ```
 
 ## now
@@ -662,7 +676,25 @@ Example of a query to print a newline per queries stored as a json array in the 
 { unixEpoch now }}
 ```
 
-Example of a query to filter cortex querier jobs which create time is 1 day before:
+Example of a query to filter Loki querier jobs which create time is 1 day before:
 ```logql
-{job="cortex/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
+{job="loki/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
+```
+
+## default
+
+`default` checks whether the string(`src`) is set, and returns default(`d`) if not set.
+
+Signature: `default(d string, src string) string`
+
+Examples:
+
+```template
+{{ default "-" "" }} // output: -
+{{ default "-" "foo" }} // output: foo
+```
+
+Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
+```logql
+{job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
 ```

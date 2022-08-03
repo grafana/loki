@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +32,9 @@ const customRelabelsTenant = "custom-relabels"
 const badRelabelsTenant = "bad-relabels"
 const nilRelabelsTenant = "nil-relabels"
 const emptySliceRelabelsTenant = "empty-slice-relabels"
+const sigV4ConfigTenant = "sigv4"
+const sigV4GlobalRegion = "us-east-1"
+const sigV4TenantRegion = "us-east-2"
 
 const defaultCapacity = 1000
 
@@ -81,11 +84,18 @@ func newFakeLimits() fakeLimits {
 					},
 				},
 			},
+			sigV4ConfigTenant: {
+				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
+					Region: sigV4TenantRegion,
+				},
+			},
 		},
 	}
 }
 
-func setupRegistry(t *testing.T, dir string) *walRegistry {
+func setupRegistry(t *testing.T) *walRegistry {
+	// TempDir adds RemoveAll to c.Cleanup
+	walDir := t.TempDir()
 	u, _ := url.Parse("http://remote-write")
 
 	cfg := Config{
@@ -118,7 +128,7 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 			ConfigRefreshPeriod: 5 * time.Second,
 		},
 		WAL: instance.Config{
-			Dir: dir,
+			Dir: walDir,
 		},
 	}
 
@@ -128,12 +138,26 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 	reg := newWALRegistry(log.NewNopLogger(), nil, cfg, overrides)
 	require.NoError(t, err)
 
+	//stops the registry before the directory is cleaned up
+	t.Cleanup(reg.stop)
 	return reg.(*walRegistry)
 }
 
+func setupSigV4Registry(t *testing.T) *walRegistry {
+	// Get the global config and override it
+	reg := setupRegistry(t)
+
+	// Remove the basic auth config and replace with sigv4
+	reg.config.RemoteWrite.Client.HTTPClientConfig.BasicAuth = nil
+	reg.config.RemoteWrite.Client.SigV4Config = &sigv4.SigV4Config{
+		Region: sigV4GlobalRegion,
+	}
+
+	return reg
+}
+
 func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -145,8 +169,7 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	// this tenant has no overrides, so will get defaults
 	tenantCfg, err := reg.getTenantConfig("unknown")
@@ -158,9 +181,37 @@ func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, defaultCapacity)
 }
 
+func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
+	reg := setupSigV4Registry(t)
+
+	tenantCfg, err := reg.getTenantConfig(sigV4ConfigTenant)
+	require.NoError(t, err)
+
+	// tenant has not disable remote-write so will inherit the global one
+	assert.Len(t, tenantCfg.RemoteWrite, 1)
+	// ensure sigv4 config is not nil and overwritten
+	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
+		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4TenantRegion)
+	}
+}
+
+func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
+	reg := setupSigV4Registry(t)
+
+	// this tenant has no overrides, so will get defaults
+	tenantCfg, err := reg.getTenantConfig("unknown")
+	require.NoError(t, err)
+
+	// tenant has not disable remote-write so will inherit the global one
+	assert.Len(t, tenantCfg.RemoteWrite, 1)
+	// ensure sigv4 config is not nil and the global value
+	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
+		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
+	}
+}
+
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(disabledRWTenant)
 	require.NoError(t, err)
@@ -170,9 +221,7 @@ func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -183,8 +232,7 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
@@ -205,8 +253,7 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(noHeadersRWTenant)
 	require.NoError(t, err)
@@ -219,8 +266,7 @@ func TestTenantRemoteWriteHeadersReset(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -233,8 +279,7 @@ func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(customRelabelsTenant)
 	require.NoError(t, err)
@@ -244,8 +289,7 @@ func TestRelabelConfigOverrides(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
 	require.NoError(t, err)
@@ -255,8 +299,7 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
 	require.NoError(t, err)
@@ -266,8 +309,7 @@ func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesWithErrors(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	_, err := reg.getTenantConfig(badRelabelsTenant)
 
@@ -300,8 +342,7 @@ func TestWALRegistryCreation(t *testing.T) {
 }
 
 func TestStorageSetup(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage
@@ -316,8 +357,7 @@ func TestStorageSetup(t *testing.T) {
 }
 
 func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
-	walDir := t.TempDir()
-	reg := setupRegistry(t, walDir)
+	reg := setupRegistry(t)
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage

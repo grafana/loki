@@ -27,8 +27,9 @@ func Test_calcSyncRanges(t *testing.T) {
 			},
 			want: []*syncRange{
 				{
-					from: 0,
-					to:   10,
+					from:   0,
+					to:     10,
+					number: 0,
 				},
 			},
 		},
@@ -41,12 +42,14 @@ func Test_calcSyncRanges(t *testing.T) {
 			},
 			want: []*syncRange{
 				{
-					from: 0,
-					to:   10,
+					from:   0,
+					to:     10,
+					number: 0,
 				},
 				{
-					from: 11,
-					to:   20,
+					from:   11,
+					to:     20,
+					number: 1,
 				},
 			},
 		},
@@ -59,20 +62,24 @@ func Test_calcSyncRanges(t *testing.T) {
 			},
 			want: []*syncRange{
 				{
-					from: 0,
-					to:   6,
+					from:   0,
+					to:     6,
+					number: 0,
 				},
 				{
-					from: 7,
-					to:   12,
+					from:   7,
+					to:     12,
+					number: 1,
 				},
 				{
-					from: 13,
-					to:   18,
+					from:   13,
+					to:     18,
+					number: 2,
 				},
 				{
-					from: 19,
-					to:   20,
+					from:   19,
+					to:     20,
+					number: 3,
 				},
 			},
 		},
@@ -85,20 +92,24 @@ func Test_calcSyncRanges(t *testing.T) {
 			},
 			want: []*syncRange{
 				{
-					from: 1583798400000000000,
-					to:   1583820000000000000,
+					from:   1583798400000000000,
+					to:     1583820000000000000,
+					number: 0,
 				},
 				{
-					from: 1583820000000000001,
-					to:   1583841600000000000,
+					from:   1583820000000000001,
+					to:     1583841600000000000,
+					number: 1,
 				},
 				{
-					from: 1583841600000000001,
-					to:   1583863200000000000,
+					from:   1583841600000000001,
+					to:     1583863200000000000,
+					number: 2,
 				},
 				{
-					from: 1583863200000000001,
-					to:   1583884800000000000,
+					from:   1583863200000000001,
+					to:     1583884800000000000,
+					number: 3,
 				},
 			},
 		},

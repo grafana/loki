@@ -1,14 +1,19 @@
 package gelf
 
 import (
+	"crypto/rand"
+	"fmt"
+	"io"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/go-gelf/v2/gelf"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -16,12 +21,11 @@ import (
 
 func Test_Gelf(t *testing.T) {
 	client := fake.New(func() {})
-
 	tm, err := NewTargetManager(NewMetrics(nil), log.NewNopLogger(), client, []scrapeconfig.Config{
 		{
 			JobName: "gelf",
 			GelfConfig: &scrapeconfig.GelfTargetConfig{
-				ListenAddress:        ":12201",
+				ListenAddress:        ":0",
 				UseIncomingTimestamp: true,
 				Labels:               model.LabelSet{"cfg": "true"},
 			},
@@ -51,9 +55,14 @@ func Test_Gelf(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-
-	w, err := gelf.NewUDPWriter(":12201")
+	defer tm.Stop()
+	target := tm.targets["gelf"]
+	require.NotNil(t, target)
+	w, err := gelf.NewUDPWriter(target.gelfReader.Addr())
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, w.Close())
+	}()
 	baseTs := float64(time.Unix(10, 0).Unix()) + 0.250
 	ts := baseTs
 
@@ -75,7 +84,7 @@ func Test_Gelf(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return len(client.Received()) == 10
-	}, 200*time.Millisecond, 20*time.Millisecond)
+	}, 1*time.Second, 20*time.Millisecond)
 
 	for i, actual := range client.Received() {
 		require.Equal(t, "error", string(actual.Labels["level"]))
@@ -98,10 +107,95 @@ func Test_Gelf(t *testing.T) {
 		require.Equal(t, "gelftest", gelfMsg.Facility)
 
 	}
-
-	tm.Stop()
 }
 
 func TestConvertTime(t *testing.T) {
 	require.Equal(t, time.Unix(0, int64(time.Second+(time.Duration(250)*time.Millisecond))), secondsToUnixTimestamp(float64(time.Unix(1, 0).Unix())+0.250))
+}
+
+func Test_GelfChunksUnordered(t *testing.T) {
+	client := fake.New(func() {})
+
+	tm, err := NewTargetManager(NewMetrics(nil), log.NewNopLogger(), client, []scrapeconfig.Config{
+		{
+			JobName: "gelf",
+			GelfConfig: &scrapeconfig.GelfTargetConfig{
+				ListenAddress: ":0",
+			},
+		},
+	})
+	require.NoError(t, err)
+	defer tm.Stop()
+
+	target := tm.targets["gelf"]
+	require.NotNil(t, target)
+	connection, err := net.Dial("udp", target.gelfReader.Addr())
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, connection.Close())
+	}()
+
+	chunksA := createChunks(t, "a")
+	chunksB := createChunks(t, "b")
+	// send messages(a, b) chunks in order: chunk-0a, chunk-0b, chunk-1a, chunk-1b
+	for i := 0; i < len(chunksB); i++ {
+		writeA, err := connection.Write(chunksA[i])
+		require.NoError(t, err)
+		require.Equal(t, len(chunksA[i]), writeA)
+
+		writeB, err := connection.Write(chunksB[i])
+		require.NoError(t, err)
+		require.Equal(t, len(chunksB[i]), writeB)
+	}
+
+	require.Eventually(t, func() bool {
+		return len(client.Received()) == 2
+	}, 2*time.Second, 100*time.Millisecond, "expected 2 messages to be received")
+}
+
+func createChunks(t *testing.T, char string) [][]byte {
+	chunksA, err := splitToChunks([]byte(fmt.Sprintf("{\"short_message\":\"%v\"}", strings.Repeat(char, gelf.ChunkSize*2))))
+	require.NoError(t, err)
+	return chunksA
+}
+
+// static value that indicated that GELF message is chunked
+var magicChunked = []byte{0x1e, 0x0f}
+
+const (
+	chunkedHeaderLen = 12
+	chunkedDataLen   = gelf.ChunkSize - chunkedHeaderLen
+)
+
+func splitToChunks(messageBytes []byte) ([][]byte, error) {
+	chunksCount := uint8(len(messageBytes)/chunkedDataLen + 1)
+	messageID := make([]byte, 8)
+	n, err := io.ReadFull(rand.Reader, messageID)
+	if err != nil || n != 8 {
+		return nil, fmt.Errorf("rand.Reader: %d/%s", n, err)
+	}
+	chunks := make([][]byte, 0, chunksCount)
+	bytesLeft := len(messageBytes)
+	for i := uint8(0); i < chunksCount; i++ {
+		buf := make([]byte, 0, gelf.ChunkSize)
+		buf = append(buf, magicChunked...)
+		buf = append(buf, messageID...)
+		buf = append(buf, i)
+		buf = append(buf, chunksCount)
+		chunkLen := chunkedDataLen
+		if chunkLen > bytesLeft {
+			chunkLen = bytesLeft
+		}
+		off := int(i) * chunkedDataLen
+		chunkData := messageBytes[off : off+chunkLen]
+		buf = append(buf, chunkData...)
+
+		chunks = append(chunks, buf)
+		bytesLeft -= chunkLen
+	}
+
+	if bytesLeft != 0 {
+		return nil, fmt.Errorf("error: %d bytes left after splitting", bytesLeft)
+	}
+	return chunks, nil
 }

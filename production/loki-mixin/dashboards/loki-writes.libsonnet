@@ -3,12 +3,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
+    local showBigTable = false,
 
     'loki-writes.json': {
                           local cfg = self,
 
                           showMultiCluster:: true,
-                          clusterLabel:: 'cluster',
+                          clusterLabel:: $._config.per_cluster_label,
                           clusterMatchers::
                             if cfg.showMultiCluster then
                               [utils.selector.re(cfg.clusterLabel, '$cluster')]
@@ -17,8 +18,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                           matchers:: {
                             cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                            distributor: [utils.selector.re('job', '($namespace)/distributor')],
-                            ingester: [utils.selector.re('job', '($namespace)/ingester')],
+                            distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                           },
 
                           local selector(matcherId) =
@@ -35,7 +36,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addCluster()
                         .addNamespace()
                         .addTag()
-                        .addRow(
+                        .addRowIf(
+                          $._config.internal_components,
                           $.row('Frontend (cortex_gw)')
                           .addPanel(
                             $.panel('QPS') +
@@ -51,10 +53,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRow(
-                          $.row('Distributor')
+                          $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor')
                           .addPanel(
                             $.panel('QPS') +
-                            $.qpsPanel('loki_request_duration_seconds_count{%s}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
+                            $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
                           )
                           .addPanel(
                             $.panel('Latency') +
@@ -65,7 +67,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                        .addRow(
+                        .addRowIf(
+                          !$._config.ssd.enabled,
                           $.row('Ingester')
                           .addPanel(
                             $.panel('QPS') +
@@ -80,7 +83,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                        .addRow(
+                        .addRowIf(
+                          showBigTable,
                           $.row('BigTable')
                           .addPanel(
                             $.panel('QPS') +

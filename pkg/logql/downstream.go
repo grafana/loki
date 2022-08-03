@@ -43,31 +43,31 @@ operand expression can take advantage of the parallel execution model:
 // querying the underlying backend shards individually and re-aggregating them.
 type DownstreamEngine struct {
 	logger         log.Logger
-	timeout        time.Duration
+	opts           EngineOpts
 	downstreamable Downstreamable
 	limits         Limits
-	metrics        *ShardingMetrics
 }
 
 // NewDownstreamEngine constructs a *DownstreamEngine
-func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *DownstreamEngine {
+func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, limits Limits, logger log.Logger) *DownstreamEngine {
 	opts.applyDefault()
 	return &DownstreamEngine{
 		logger:         logger,
-		timeout:        opts.Timeout,
+		opts:           opts,
 		downstreamable: downstreamable,
-		metrics:        metrics,
 		limits:         limits,
 	}
 }
 
+func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
+
 // Query constructs a Query
-func (ng *DownstreamEngine) Query(p Params, mapped syntax.Expr) Query {
+func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.Expr) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.timeout,
+		timeout:   ng.opts.Timeout,
 		params:    p,
-		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
+		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
@@ -160,7 +160,7 @@ func ParseShards(strs []string) (Shards, error) {
 }
 
 type Downstreamable interface {
-	Downstreamer() Downstreamer
+	Downstreamer(context.Context) Downstreamer
 }
 
 type DownstreamQuery struct {

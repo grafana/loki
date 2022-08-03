@@ -31,6 +31,7 @@ import (
 
 const (
 	pathLabel              = "__path__"
+	pathExcludeLabel       = "__path_exclude__"
 	hostLabel              = "__host__"
 	kubernetesPodNodeField = "spec.nodeName"
 )
@@ -129,6 +130,7 @@ func NewFileTargetManager(
 			entryHandler:      pipeline.Wrap(client),
 			targetConfig:      targetConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
+			encoding:          cfg.Encoding,
 		}
 		tm.syncers[cfg.JobName] = s
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
@@ -259,6 +261,8 @@ type targetSyncer struct {
 
 	relabelConfig []*relabel.Config
 	targetConfig  *Config
+
+	encoding string
 }
 
 // sync synchronize target based on received target groups received by service discovery
@@ -310,6 +314,8 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				continue
 			}
 
+			pathExclude := labels[pathExcludeLabel]
+
 			for k := range labels {
 				if strings.HasPrefix(string(k), "__") {
 					delete(labels, k)
@@ -317,6 +323,10 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			}
 
 			key := fmt.Sprintf("%s:%s", path, labels.String())
+			if pathExclude != "" {
+				key = fmt.Sprintf("%s:%s", key, pathExclude)
+			}
+
 			targets[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
 				dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
@@ -333,7 +343,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				watcher = make(chan fsnotify.Event)
 				s.fileEventWatchers[wkey] = watcher
 			}
-			t, err := s.newTarget(wkey, labels, discoveredLabels, watcher, targetEventHandler)
+			t, err := s.newTarget(wkey, string(pathExclude), labels, discoveredLabels, watcher, targetEventHandler)
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
@@ -387,8 +397,8 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 	}
 }
 
-func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
+func (s *targetSyncer) newTarget(path, pathExclude string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

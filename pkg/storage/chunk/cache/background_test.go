@@ -3,8 +3,8 @@ package cache_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func TestBackground(t *testing.T) {
@@ -13,10 +13,10 @@ func TestBackground(t *testing.T) {
 		WriteBackBuffer:     100,
 	}, cache.NewMockCache(), nil)
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},

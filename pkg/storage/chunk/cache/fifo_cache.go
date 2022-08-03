@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"flag"
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -70,6 +72,8 @@ func parsebytes(s string) (uint64, error) {
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 type FifoCache struct {
+	cacheType stats.CacheType
+
 	lock          sync.RWMutex
 	maxSizeItems  int
 	maxSizeBytes  uint64
@@ -82,13 +86,19 @@ type FifoCache struct {
 
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
-	entriesEvicted  prometheus.Counter
+	entriesEvicted  *prometheus.CounterVec
 	entriesCurrent  prometheus.Gauge
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
 	staleGets       prometheus.Counter
 	memoryBytes     prometheus.Gauge
 }
+
+const (
+	expiredReason string = "expired" //nolint:staticcheck
+	fullReason           = "full"
+	tooBigReason         = "object too big"
+)
 
 type cacheEntry struct {
 	updated time.Time
@@ -97,8 +107,8 @@ type cacheEntry struct {
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
-func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
-	util_log.WarnExperimentalUse("In-memory (FIFO) cache", logger)
+func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *FifoCache {
+	util_log.WarnExperimentalUse(fmt.Sprintf("In-memory (FIFO) cache - %s", name), logger)
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
@@ -126,6 +136,8 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 	}
 
 	cache := &FifoCache{
+		cacheType: cacheType,
+
 		maxSizeItems: cfg.MaxSizeItems,
 		maxSizeBytes: maxSizeBytes,
 		entries:      make(map[string]*list.Element),
@@ -149,13 +161,13 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
-		entriesEvicted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace:   "querier",
 			Subsystem:   "cache",
 			Name:        "evicted_total",
 			Help:        "The total number of evicted entries",
 			ConstLabels: prometheus.Labels{"cache": name},
-		}),
+		}, []string{"reason"}),
 
 		entriesCurrent: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace:   "querier",
@@ -231,7 +243,7 @@ func (c *FifoCache) pruneExpiredItems(ttl time.Duration) {
 			delete(c.entries, k)
 			c.currSizeBytes -= sizeOf(entry)
 			c.entriesCurrent.Dec()
-			c.entriesEvicted.Inc()
+			c.entriesEvicted.WithLabelValues(expiredReason).Inc()
 		}
 	}
 }
@@ -272,14 +284,16 @@ func (c *FifoCache) Stop() {
 
 	close(c.done)
 
-	c.entriesEvicted.Add(float64(c.lru.Len()))
-
 	c.entries = make(map[string]*list.Element)
 	c.lru.Init()
 	c.currSizeBytes = 0
 
 	c.entriesCurrent.Set(float64(0))
 	c.memoryBytes.Set(float64(0))
+}
+
+func (c *FifoCache) GetCacheType() stats.CacheType {
+	return c.cacheType
 }
 
 func (c *FifoCache) put(key string, value []byte) {
@@ -304,7 +318,7 @@ func (c *FifoCache) put(key string, value []byte) {
 		// Cannot keep this item in the cache.
 		if ok {
 			// We do not replace this item.
-			c.entriesEvicted.Inc()
+			c.entriesEvicted.WithLabelValues(tooBigReason).Inc()
 		}
 		c.memoryBytes.Set(float64(c.currSizeBytes))
 		return
@@ -320,7 +334,7 @@ func (c *FifoCache) put(key string, value []byte) {
 		delete(c.entries, evicted.key)
 		c.currSizeBytes -= sizeOf(evicted)
 		c.entriesCurrent.Dec()
-		c.entriesEvicted.Inc()
+		c.entriesEvicted.WithLabelValues(fullReason).Inc()
 	}
 
 	// Finally, we have space to add the item.

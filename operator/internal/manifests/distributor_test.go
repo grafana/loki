@@ -3,7 +3,7 @@ package manifests_test
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 )
@@ -12,9 +12,9 @@ func TestNewDistributorDeployment_SelectorMatchesLabels(t *testing.T) {
 	dpl := manifests.NewDistributorDeployment(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -33,9 +33,9 @@ func TestNewDistributorDeployme_HasTemplateConfigHashAnnotation(t *testing.T) {
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},

@@ -12,15 +12,17 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -36,6 +38,21 @@ func defaultConfig() *Config {
 	return &cfg
 }
 
+func MustParseDayTime(s string) config.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return config.DayTime{Time: model.TimeFromUnix(t.Unix())}
+}
+
+var defaultPeriodConfigs = []config.PeriodConfig{
+	{
+		From:      MustParseDayTime("1900-01-01"),
+		IndexType: config.StorageTypeBigTable,
+	},
+}
+
 var NilMetrics = newIngesterMetrics(nil)
 
 func TestLabelsCollisions(t *testing.T) {
@@ -43,7 +60,8 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, nil, &OnceSwitch{}, nil)
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	require.Nil(t, err)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -70,7 +88,8 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	require.Nil(t, err)
 
 	const (
 		concurrent          = 10
@@ -128,7 +147,9 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	require.Nil(t, err)
+
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
@@ -171,7 +192,8 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	cfg.SyncMinUtilization = 0.20
 	cfg.IndexShards = indexShards
 
-	instance := newInstance(cfg, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	require.Nil(t, err)
 
 	currentTime := time.Now()
 
@@ -376,7 +398,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{IndexShards: 1}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -420,7 +442,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	ctx := context.Background()
 
-	inst := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
@@ -466,45 +488,16 @@ func Benchmark_OnceSwitch(b *testing.B) {
 }
 
 func Test_Iterator(t *testing.T) {
-	ingesterConfig := defaultIngesterTestConfig(t)
-	defaultLimits := defaultLimitsTestConfig()
-	overrides, err := validation.NewOverrides(defaultLimits, nil)
-	require.NoError(t, err)
-	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
-	ctx := context.TODO()
-	direction := logproto.BACKWARD
-	limit := uint32(2)
+	instance := defaultInstance(t)
 
-	// insert data.
-	for i := 0; i < 10; i++ {
-		// nolint
-		stream := "dispatcher"
-		if i%2 == 0 {
-			stream = "worker"
-		}
-		require.NoError(t,
-			instance.Push(ctx, &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{
-						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
-						Entries: []logproto.Entry{
-							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
-						},
-					},
-				},
-			}),
-		)
-	}
-
-	// prepare iterators.
-	it, err := instance.Query(ctx,
+	it, err := instance.Query(context.TODO(),
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"} | logfmt`,
-				Limit:     limit,
+				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: direction,
+				Direction: logproto.BACKWARD,
 			},
 		},
 	)
@@ -513,14 +506,14 @@ func Test_Iterator(t *testing.T) {
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
 	require.NoError(t,
-		sendBatches(ctx, it,
+		sendBatches(context.TODO(), it,
 			fakeQueryServer(
 				func(qr *logproto.QueryResponse) error {
 					res = qr
 					return nil
 				},
 			),
-			limit),
+			int32(2)),
 	)
 	require.Equal(t, 2, len(res.Streams))
 	// each entry translated into a unique stream
@@ -537,7 +530,7 @@ func Test_Iterator(t *testing.T) {
 
 type testFilter struct{}
 
-func (t *testFilter) ForRequest(ctx context.Context) storage.ChunkFilterer {
+func (t *testFilter) ForRequest(ctx context.Context) chunk.Filterer {
 	return t
 }
 
@@ -546,45 +539,17 @@ func (t *testFilter) ShouldFilter(lbs labels.Labels) bool {
 }
 
 func Test_ChunkFilter(t *testing.T) {
-	ingesterConfig := defaultIngesterTestConfig(t)
-	defaultLimits := defaultLimitsTestConfig()
-	overrides, err := validation.NewOverrides(defaultLimits, nil)
-	require.NoError(t, err)
-	instance := newInstance(
-		&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, &testFilter{})
-	ctx := context.TODO()
-	direction := logproto.BACKWARD
-	limit := uint32(2)
+	instance := defaultInstance(t)
+	instance.chunkFilter = &testFilter{}
 
-	// insert data.
-	for i := 0; i < 10; i++ {
-		stream := "dispatcher"
-		if i%2 == 0 {
-			stream = "worker"
-		}
-		require.NoError(t,
-			instance.Push(ctx, &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{
-						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
-						Entries: []logproto.Entry{
-							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
-						},
-					},
-				},
-			}),
-		)
-	}
-
-	// prepare iterators.
-	it, err := instance.Query(ctx,
+	it, err := instance.Query(context.TODO(),
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"}`,
-				Limit:     limit,
+				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: direction,
+				Direction: logproto.BACKWARD,
 			},
 		},
 	)
@@ -596,6 +561,132 @@ func Test_ChunkFilter(t *testing.T) {
 		lbs, err := syntax.ParseLabels(it.Labels())
 		require.NoError(t, err)
 		require.NotEqual(t, "dispatcher", lbs.Get("log_stream"))
+	}
+}
+
+func Test_QueryWithDelete(t *testing.T) {
+	instance := defaultInstance(t)
+
+	it, err := instance.Query(context.TODO(),
+		logql.SelectLogParams{
+			QueryRequest: &logproto.QueryRequest{
+				Selector:  `{job="3"}`,
+				Limit:     uint32(2),
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, 100000000),
+				Direction: logproto.BACKWARD,
+				Deletes: []*logproto.Delete{
+					{
+						Selector: `{log_stream="worker"}`,
+						Start:    0,
+						End:      10,
+					},
+					{
+						Selector: `{log_stream="dispatcher"}`,
+						Start:    0,
+						End:      5,
+					},
+					{
+						Selector: `{log_stream="dispatcher"} |= "9"`,
+						Start:    0,
+						End:      10,
+					},
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	defer it.Close()
+
+	var logs []string
+	for it.Next() {
+		logs = append(logs, it.Entry().Line)
+	}
+
+	require.Equal(t, logs, []string{`msg="dispatcher_7"`})
+}
+
+func Test_QuerySampleWithDelete(t *testing.T) {
+	instance := defaultInstance(t)
+
+	it, err := instance.QuerySample(context.TODO(),
+		logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: `count_over_time({job="3"}[5m])`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, 100000000),
+				Deletes: []*logproto.Delete{
+					{
+						Selector: `{log_stream="worker"}`,
+						Start:    0,
+						End:      10,
+					},
+					{
+						Selector: `{log_stream="dispatcher"}`,
+						Start:    0,
+						End:      5,
+					},
+					{
+						Selector: `{log_stream="dispatcher"} |= "9"`,
+						Start:    0,
+						End:      10,
+					},
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	defer it.Close()
+
+	var samples []float64
+	for it.Next() {
+		samples = append(samples, it.Sample().Value)
+	}
+
+	require.Equal(t, samples, []float64{1.})
+}
+
+func defaultInstance(t *testing.T) *instance {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	defaultLimits := defaultLimitsTestConfig()
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+	instance, err := newInstance(
+		&ingesterConfig,
+		defaultPeriodConfigs,
+		"fake",
+		NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1),
+		loki_runtime.DefaultTenantConfigs(),
+		noopWAL{},
+		NilMetrics,
+		nil,
+		nil,
+	)
+	require.Nil(t, err)
+	insertData(t, instance)
+
+	return instance
+}
+
+func insertData(t *testing.T, instance *instance) {
+	for i := 0; i < 10; i++ {
+		// nolint
+		stream := "dispatcher"
+		if i%2 == 0 {
+			stream = "worker"
+		}
+		require.NoError(t,
+			instance.Push(context.TODO(), &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+						},
+					},
+				},
+			}),
+		)
 	}
 }
 

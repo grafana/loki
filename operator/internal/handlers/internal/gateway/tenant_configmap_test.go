@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests"
 
-	"github.com/ViaQ/logerr/log"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,8 +35,6 @@ tenants:
     serviceAccount: lokistack-dev-gateway
     cookieSecret: test789
 `)
-
-var logger = log.DefaultLogger()
 
 func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
@@ -61,18 +60,25 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 		return nil
 	}
 
-	ts := GetTenantConfigMapData(context.TODO(), logger, k, r)
+	ts, err := GetTenantConfigMapData(context.TODO(), k, r)
 	require.NotNil(t, ts)
+	require.NoError(t, err)
 
-	expected := map[string]openshift.TenantData{
+	expected := map[string]manifests.TenantConfig{
 		"application": {
-			CookieSecret: "test123",
+			OpenShift: &manifests.TenantOpenShiftSpec{
+				CookieSecret: "test123",
+			},
 		},
 		"infrastructure": {
-			CookieSecret: "test456",
+			OpenShift: &manifests.TenantOpenShiftSpec{
+				CookieSecret: "test456",
+			},
 		},
 		"audit": {
-			CookieSecret: "test789",
+			OpenShift: &manifests.TenantOpenShiftSpec{
+				CookieSecret: "test789",
+			},
 		},
 	}
 	require.Equal(t, expected, ts)
@@ -88,9 +94,10 @@ func TestGetTenantConfigMapData_ConfigMapNotExist(t *testing.T) {
 	}
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
-		return nil
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	ts := GetTenantConfigMapData(context.TODO(), logger, k, r)
+	ts, err := GetTenantConfigMapData(context.TODO(), k, r)
 	require.Nil(t, ts)
+	require.Error(t, err)
 }

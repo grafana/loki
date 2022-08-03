@@ -33,24 +33,65 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
-#### `querier.split-queries-by-interval` flag migrated yaml path and default value.
+#### Evenly spread queriers across kubernetes nodes
 
-The CLI flag `querier.split-queries-by-interval` has changed it's corresponding yaml equivalent from
+We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
+If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
+
+#### Default value for `server.http-listen-port` changed
+
+This value now defaults to 3100, so the Loki process doesn't require special privileges. Previously, it had been set to port 80, which is a privileged port. If you need Loki to listen on port 80, you can set it back to the previous default using `-server.http-listen-port=80`.
+
+#### docker-compose setup has been updated
+
+The docker-compose [setup](https://github.com/grafana/loki/blob/main/production/docker) has been updated to **v2.6.0** and includes many improvements.
+
+Notable changes include:
+- authentication (multi-tenancy) is **enabled** by default; you can disable it in `production/docker/config/loki.yaml` by setting `auth_enabled: false`
+- storage is now using Minio instead of local filesystem
+  - move your current storage into `.data/minio` and it should work transparently
+- log-generator was added - if you don't need it, simply remove the service from `docker-compose.yaml` or don't start the service
+
+## 2.6.0
+
+### Loki
+
+#### Implementation of unwrapped `rate` aggregation changed
+
+The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).
+This means that the rate per second is calculated based on the sum of the extracted values, instead of the average increase over time.
+
+If you want the extracted values to be treated as [Counter](https://prometheus.io/docs/concepts/metric_types/#counter) metric, you should use the new `rate_counter()` aggregation function, which calculates the per-second average rate of increase of the vector.
+
+#### Default value for `azure.container-name` changed
+
+This value now defaults to `loki`, it was previously set to `cortex`. If you are relying on this container name for your chunks or ruler storage, you will have to manually specify `-azure.container-name=cortex` or `-ruler.storage.azure.container-name=cortex` respectively.
+
+## 2.5.0
+
+### Loki
+
+#### `split_queries_by_interval` yaml configuration has moved.
+
+It was previously possible to define this value in two places
+
 ```yaml
 query_range:
   split_queries_by_interval: 10m
 ```
-->
+
+and/or
+
 ```
 limits_config:
   split_queries_by_interval: 10m
-
 ```
+
+In 2.5.0 it can only be defined in the `limits_config` section, **Loki will fail to start if you do not remove the `split_queries_by_interval` config from the `query_range` section.** 
 
 Additionally, it has a new default value of `30m` rather than `0`.
 
-This is part of it's migration path from a global configuration to a per-tenant one (still subject to default tenant limits in the `limits_config`).
-It keeps it's CLI flag as `querier.split-queries-by-interval`.
+The CLI flag is not changed and remains `querier.split-queries-by-interval`.
 
 #### Dropped support for old Prometheus rules configuration format
 
@@ -92,6 +133,7 @@ Meanwhile, the legacy format is a string in the following format:
 * `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters. 
 * `max_concurrent` under the `querier` config now defaults to `10` instead of `20`.
 * `match_max_concurrent` under the `frontend_worker` config now defaults to true, this supersedes the `parallelism` setting which can now be removed from your config. Controlling query parallelism of a single process can now be done with the `querier` `max_concurrent` setting.
+* `flush_op_timeout` under the `ingester` configuration block now defaults to `10m`, increased from `10s`. This can help when replaying a large WAL on Loki startup, and avoid `msg="failed to flush" ... context deadline exceeded` errors.
 
 ### Promtail
 
@@ -200,9 +242,9 @@ present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_
 
 | config | new default | old default|
 | --- | --- | --- |
-| chunk_retain_period | 30s | 0s |
-| chunk_idle_period | 1h | 30m |
-| chunk_target_size | 1048576 | 1572864 |
+| chunk_retain_period | 0s | 30s |
+| chunk_idle_period | 30m | 1h |
+| chunk_target_size | 1572864 | 1048576 |
 
 * chunk_retain_period is necessary when using an index queries cache which is not enabled by default. If you have configured an index_queries_cache_config section make sure that you set chunk_retain_period larger than your cache TTL
 * chunk_idle_period is how long before a chunk which receives no logs is flushed.

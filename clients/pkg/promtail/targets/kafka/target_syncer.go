@@ -148,7 +148,7 @@ func withSSLAuthentication(cfg sarama.Config, authCfg scrapeconfig.KafkaAuthenti
 func withSASLAuthentication(cfg sarama.Config, authCfg scrapeconfig.KafkaAuthentication) (*sarama.Config, error) {
 	cfg.Net.SASL.Enable = true
 	cfg.Net.SASL.User = authCfg.SASLConfig.User
-	cfg.Net.SASL.Password = authCfg.SASLConfig.Password.Value
+	cfg.Net.SASL.Password = authCfg.SASLConfig.Password.String()
 	cfg.Net.SASL.Mechanism = authCfg.SASLConfig.Mechanism
 	if cfg.Net.SASL.Mechanism == "" {
 		cfg.Net.SASL.Mechanism = sarama.SASLTypePlaintext

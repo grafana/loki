@@ -24,14 +24,20 @@ variable "lambda_promtail_image" {
 
 variable "username" {
   type        = string
-  description = "The basic auth username, necessarry if writing directly to Grafana Cloud Loki."
+  description = "The basic auth username, necessary if writing directly to Grafana Cloud Loki."
   default     = ""
 }
 
 variable "password" {
   type        = string
-  description = "The basic auth password, necessarry if writing directly to Grafana Cloud Loki."
+  description = "The basic auth password, necessary if writing directly to Grafana Cloud Loki."
   sensitive   = true
+  default     = ""
+}
+
+variable "tenant_id" {
+  type        = string
+  description = "Tenant ID to be added when writing logs from lambda-promtail."
   default     = ""
 }
 
@@ -41,9 +47,9 @@ variable "keep_stream" {
   default     = "false"
 }
 
-variable "extra_labels"{
+variable "extra_labels" {
   type = string
-  description = "Comma seperated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by Lambda-Promtail."
+  description = "Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail."
   default = ""
 }
 
@@ -56,11 +62,11 @@ variable "batch_size" {
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."
-  default     = [""]
+  default     = []
 }
 
 variable "lambda_vpc_security_groups" {
   type        = list(string)
   description = "List of security group IDs associated with the Lambda function."
-  default     = [""]
+  default     = []
 }

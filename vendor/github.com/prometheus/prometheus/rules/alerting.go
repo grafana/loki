@@ -16,7 +16,6 @@ package rules
 import (
 	"context"
 	"fmt"
-	html_template "html/template"
 	"net/url"
 	"strings"
 	"sync"
@@ -33,8 +32,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/template"
-	"github.com/prometheus/prometheus/util/strutil"
 )
 
 const (
@@ -43,8 +42,6 @@ const (
 	// AlertForStateMetricName is the metric name for 'for' state of alert.
 	alertForStateMetricName = "ALERTS_FOR_STATE"
 
-	// AlertNameLabel is the label name indicating the name of an alert.
-	alertNameLabel = "alertname"
 	// AlertStateLabel is the label name indicating the state of an alert.
 	alertStateLabel = "alertstate"
 )
@@ -256,6 +253,33 @@ func (r *AlertingRule) forStateSample(alert *Alert, ts time.Time, v float64) pro
 		Point:  promql.Point{T: timestamp.FromTime(ts), V: v},
 	}
 	return s
+}
+
+// QueryforStateSeries returns the series for ALERTS_FOR_STATE.
+func (r *AlertingRule) QueryforStateSeries(alert *Alert, q storage.Querier) (storage.Series, error) {
+	smpl := r.forStateSample(alert, time.Now(), 0)
+	var matchers []*labels.Matcher
+	for _, l := range smpl.Metric {
+		mt, err := labels.NewMatcher(labels.MatchEqual, l.Name, l.Value)
+		if err != nil {
+			panic(err)
+		}
+		matchers = append(matchers, mt)
+	}
+	sset := q.Select(false, nil, matchers...)
+
+	var s storage.Series
+	for sset.Next() {
+		// Query assures that smpl.Metric is included in sset.At().Labels(),
+		// hence just checking the length would act like equality.
+		// (This is faster than calling labels.Compare again as we already have some info).
+		if len(sset.At().Labels()) == len(matchers) {
+			s = sset.At()
+			break
+		}
+	}
+
+	return s, sset.Err()
 }
 
 // SetEvaluationDuration updates evaluationDuration to the duration it took to evaluate the rule on its last evaluation.
@@ -519,38 +543,4 @@ func (r *AlertingRule) String() string {
 	}
 
 	return string(byt)
-}
-
-// HTMLSnippet returns an HTML snippet representing this alerting rule. The
-// resulting snippet is expected to be presented in a <pre> element, so that
-// line breaks and other returned whitespace is respected.
-func (r *AlertingRule) HTMLSnippet(pathPrefix string) html_template.HTML {
-	alertMetric := model.Metric{
-		model.MetricNameLabel: alertMetricName,
-		alertNameLabel:        model.LabelValue(r.name),
-	}
-
-	labelsMap := make(map[string]string, len(r.labels))
-	for _, l := range r.labels {
-		labelsMap[l.Name] = html_template.HTMLEscapeString(l.Value)
-	}
-
-	annotationsMap := make(map[string]string, len(r.annotations))
-	for _, l := range r.annotations {
-		annotationsMap[l.Name] = html_template.HTMLEscapeString(l.Value)
-	}
-
-	ar := rulefmt.Rule{
-		Alert:       fmt.Sprintf("<a href=%q>%s</a>", pathPrefix+strutil.TableLinkForExpression(alertMetric.String()), r.name),
-		Expr:        fmt.Sprintf("<a href=%q>%s</a>", pathPrefix+strutil.TableLinkForExpression(r.vector.String()), html_template.HTMLEscapeString(r.vector.String())),
-		For:         model.Duration(r.holdDuration),
-		Labels:      labelsMap,
-		Annotations: annotationsMap,
-	}
-
-	byt, err := yaml.Marshal(ar)
-	if err != nil {
-		return html_template.HTML(fmt.Sprintf("error marshaling alerting rule: %q", html_template.HTMLEscapeString(err.Error())))
-	}
-	return html_template.HTML(byt)
 }

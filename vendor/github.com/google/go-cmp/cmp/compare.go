@@ -40,6 +40,8 @@ import (
 	"github.com/google/go-cmp/cmp/internal/value"
 )
 
+// TODO(≥go1.18): Use any instead of interface{}.
+
 // Equal reports whether x and y are equal by recursively applying the
 // following rules in the given order to x and y and all of their sub-values:
 //

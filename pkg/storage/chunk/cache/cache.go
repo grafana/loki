@@ -2,31 +2,31 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 // Cache byte arrays by key.
-//
-// NB we intentionally do not return errors in this interface - caching is best
-// effort by definition.  We found that when these methods did return errors,
-// the caller would just log them - so its easier for implementation to do that.
-// Whatsmore, we found partially successful Fetchs were often treated as failed
-// when they returned an error.
 type Cache interface {
 	Store(ctx context.Context, key []string, buf [][]byte) error
 	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
 	Stop()
+	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
+	GetCacheType() stats.CacheType
 }
 
 // Config for building Caches.
 type Config struct {
-	EnableFifoCache bool `yaml:"enable_fifocache"`
+	EnableFifoCache  bool `yaml:"enable_fifocache"`
+	EnableGroupCache bool `yaml:"enable_groupcache"`
 
 	DefaultValidity time.Duration `yaml:"default_validity"`
 
@@ -36,8 +36,14 @@ type Config struct {
 	Redis          RedisConfig           `yaml:"redis"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
 
+	// GroupcacheConfig is a local GroupCache config per cache
+	GroupCacheConfig GroupConfig `yaml:"groupcache"`
+
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
+
+	// GroupCache is configured/initialized as part of modules and injected here
+	GroupCache Cache `yaml:"-"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -59,6 +65,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
+	f.BoolVar(&cfg.EnableGroupCache, prefix+"cache.enable-groupcache", false, description+"Enable distributed in-memory cache.")
 
 	cfg.Prefix = prefix
 }
@@ -82,21 +89,29 @@ func IsRedisSet(cfg Config) bool {
 	return cfg.Redis.Endpoint != ""
 }
 
+func IsGroupCacheSet(cfg Config) bool {
+	return cfg.GroupCache != nil
+}
+
+// IsCacheConfigured determines if memcached, redis, or groupcache have been configured
+func IsCacheConfigured(cfg Config) bool {
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || cfg.EnableGroupCache
+}
+
 // New creates a new Cache using Config.
-func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error) {
+func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (Cache, error) {
 	if cfg.Cache != nil {
 		return cfg.Cache, nil
 	}
 
-	caches := []Cache{}
-
+	var caches []Cache
 	if cfg.EnableFifoCache {
 		if cfg.Fifocache.TTL == 0 && cfg.DefaultValidity != 0 {
 			cfg.Fifocache.TTL = cfg.DefaultValidity
 		}
 
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger, cacheType); cache != nil {
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
 		}
 	}
 
@@ -110,10 +125,10 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		}
 
 		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
-		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger)
+		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
 
 		cacheName := cfg.Prefix + "memcache"
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
 	if IsRedisSet(cfg) {
@@ -125,8 +140,13 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		if err != nil {
 			return nil, fmt.Errorf("redis client setup failed: %w", err)
 		}
-		cache := NewRedisCache(cacheName, client, logger)
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		cache := NewRedisCache(cacheName, client, logger, cacheType)
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+	}
+
+	if IsGroupCacheSet(cfg) {
+		cacheName := cfg.Prefix + "groupcache"
+		caches = append(caches, CollectStats(Instrument(cacheName, cfg.GroupCache, reg)))
 	}
 
 	cache := NewTiered(caches)

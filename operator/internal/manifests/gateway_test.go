@@ -5,7 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	"github.com/google/uuid"
@@ -21,21 +22,21 @@ func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 	ss := NewGatewayDeployment(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
@@ -53,32 +54,32 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 		Name:      uuid.New().String(),
 		Namespace: uuid.New().String(),
 		Image:     uuid.New().String(),
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.Dynamic,
-				Authentication: []lokiv1beta1.AuthenticationSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Dynamic,
+				Authentication: []lokiv1.AuthenticationSpec{
 					{
 						TenantName: "test",
 						TenantID:   "1234",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							Secret: &lokiv1beta1.TenantSecretSpec{
+						OIDC: &lokiv1.OIDCSpec{
+							Secret: &lokiv1.TenantSecretSpec{
 								Name: "test",
 							},
 							IssuerURL:     "https://127.0.0.1:5556/dex",
@@ -88,19 +89,21 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 						},
 					},
 				},
-				Authorization: &lokiv1beta1.AuthorizationSpec{
-					OPA: &lokiv1beta1.OPASpec{
+				Authorization: &lokiv1.AuthorizationSpec{
+					OPA: &lokiv1.OPASpec{
 						URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
 					},
 				},
 			},
 		},
-		TenantSecrets: []*TenantSecrets{
-			{
-				TenantName:   "test",
-				ClientID:     "test",
-				ClientSecret: "test",
-				IssuerCAPath: "/tmp/test",
+		Tenants: Tenants{
+			Secrets: []*TenantSecrets{
+				{
+					TenantName:   "test",
+					ClientID:     "test",
+					ClientSecret: "test",
+					IssuerCAPath: "/tmp/test",
+				},
 			},
 		},
 	}
@@ -114,17 +117,17 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 	})
@@ -140,8 +143,8 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -150,28 +153,28 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 				LokiStackNamespace: "efgh",
 			},
 		},
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 	})
 
 	require.NoError(t, err)
-	require.Len(t, objs, 7)
+	require.Len(t, objs, 9)
 }
 
 func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -182,14 +185,14 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 				LokiStackNamespace:   "efgh",
 			},
 		},
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 	})
@@ -207,8 +210,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -219,14 +222,14 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 				LokiStackNamespace:   "efgh",
 			},
 		},
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 	})
@@ -242,8 +245,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Flags: FeatureFlags{
-			EnableGateway: true,
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -254,14 +257,14 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 				LokiStackNamespace:   "efgh",
 			},
 		},
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Gateway: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.OpenshiftLogging,
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 	})

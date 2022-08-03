@@ -101,8 +101,10 @@ type managedProcess struct {
 }
 
 func (p managedProcess) Stop() {
-	if err := p.inst.Stop(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "error while stopping instance", "user", p.inst.Tenant(), "err", err)
+	if p.inst.Ready() { // Only stop initialized instances to avoid panic
+		if err := p.inst.Stop(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "error while stopping instance", "user", p.inst.Tenant(), "err", err)
+		}
 	}
 
 	p.cancel()

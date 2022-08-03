@@ -86,6 +86,7 @@ resource "aws_lambda_function" "lambda_promtail" {
       KEEP_STREAM   = var.keep_stream
       BATCH_SIZE    = var.batch_size
       EXTRA_LABELS  = var.extra_labels
+      TENANT_ID     = var.tenant_id
     }
   }
 

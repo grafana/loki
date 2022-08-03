@@ -3,14 +3,17 @@ package common
 import (
 	"flag"
 
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
-	"github.com/grafana/loki/pkg/storage/chunk/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/util"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -39,9 +42,17 @@ type Config struct {
 	// You can check this during Loki execution under ring status pages (ex: `/ring` will output the address of the different ingester
 	// instances).
 	InstanceAddr string `yaml:"instance_addr"`
+
+	// CompactorAddress is the http address of the compactor in the form http://host:port
+	CompactorAddress string `yaml:"compactor_address"`
+
+	// GroupCacheConfig is the configuration to use when groupcache is enabled.
+	//
+	// This is a common config because, when enabled, it is used across all caches
+	GroupCacheConfig cache.GroupCacheConfig `yaml:"groupcache"`
 }
 
-func (c *Config) RegisterFlags(_ *flag.FlagSet) {
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
 	throwaway.IntVar(&c.ReplicationFactor, "common.replication-factor", 3, "How many ingesters incoming data should be replicated to.")
 	c.Storage.RegisterFlagsWithPrefix("common.storage", throwaway)
@@ -51,15 +62,21 @@ func (c *Config) RegisterFlags(_ *flag.FlagSet) {
 	c.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
 	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "", "Default advertised address to be used by Loki components.")
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
+
+	// flags that only live in common
+	c.GroupCacheConfig.RegisterFlagsWithPrefix("common.groupcache", "", f)
+
+	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 }
 
 type Storage struct {
-	S3       aws.S3Config            `yaml:"s3"`
-	GCS      gcp.GCSConfig           `yaml:"gcs"`
-	Azure    azure.BlobStorageConfig `yaml:"azure"`
-	Swift    openstack.SwiftConfig   `yaml:"swift"`
-	FSConfig FilesystemConfig        `yaml:"filesystem"`
-	Hedging  hedging.Config          `yaml:"hedging"`
+	S3       aws.S3Config              `yaml:"s3"`
+	GCS      gcp.GCSConfig             `yaml:"gcs"`
+	Azure    azure.BlobStorageConfig   `yaml:"azure"`
+	BOS      baidubce.BOSStorageConfig `yaml:"bos"`
+	Swift    openstack.SwiftConfig     `yaml:"swift"`
+	FSConfig FilesystemConfig          `yaml:"filesystem"`
+	Hedging  hedging.Config            `yaml:"hedging"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -67,6 +84,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.GCS.RegisterFlagsWithPrefix(prefix+".gcs", f)
 	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
 	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
+	s.BOS.RegisterFlagsWithPrefix(prefix+".bos", f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 }

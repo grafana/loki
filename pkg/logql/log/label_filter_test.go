@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func TestBinary_Filter(t *testing.T) {
-
 	tests := []struct {
 		f   LabelFilterer
 		lbs labels.Labels
@@ -149,16 +149,52 @@ func TestBinary_Filter(t *testing.T) {
 				{Name: "method", Value: "POST"},
 			},
 		},
+		{
+			NewDurationLabelFilter(LabelFilterGreaterThan, "duration", 3*time.Second),
+			labels.Labels{
+				{Name: "duration", Value: "2weeeeee"},
+			},
+			true,
+			labels.Labels{
+				{Name: "duration", Value: "2weeeeee"},
+				{Name: "__error__", Value: "LabelFilterErr"},
+				{Name: "__error_details__", Value: "time: unknown unit \"weeeeee\" in duration \"2weeeeee\""},
+			},
+		},
+		{
+			NewBytesLabelFilter(LabelFilterGreaterThan, "bytes", 100),
+			labels.Labels{
+				{Name: "bytes", Value: "2qb"},
+			},
+			true,
+			labels.Labels{
+				{Name: "bytes", Value: "2qb"},
+				{Name: "__error__", Value: "LabelFilterErr"},
+				{Name: "__error_details__", Value: "unhandled size name: qb"},
+			},
+		},
+		{
+			NewNumericLabelFilter(LabelFilterGreaterThan, "number", 100),
+			labels.Labels{
+				{Name: "number", Value: "not_a_number"},
+			},
+			true,
+			labels.Labels{
+				{Name: "number", Value: "not_a_number"},
+				{Name: "__error__", Value: "LabelFilterErr"},
+				{Name: "__error_details__", Value: "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			sort.Sort(tt.lbs)
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			_, got := tt.f.Process(nil, b)
+			_, got := tt.f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)
-			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -189,10 +225,10 @@ func TestBytes_Filter(t *testing.T) {
 		t.Run(f.String(), func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 			b.Reset()
-			_, got := f.Process(nil, b)
+			_, got := f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
 			wantLbs := labels.Labels{{Name: "bar", Value: tt.wantLabel}}
-			require.Equal(t, wantLbs, b.Labels())
+			require.Equal(t, wantLbs, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -221,7 +257,6 @@ func TestErrorFiltering(t *testing.T) {
 			},
 		},
 		{
-
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -236,7 +271,6 @@ func TestErrorFiltering(t *testing.T) {
 			},
 		},
 		{
-
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -250,7 +284,6 @@ func TestErrorFiltering(t *testing.T) {
 			},
 		},
 		{
-
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -270,10 +303,10 @@ func TestErrorFiltering(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			b.SetErr(tt.err)
-			_, got := tt.f.Process(nil, b)
+			_, got := tt.f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)
-			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -286,14 +319,16 @@ func TestReduceAndLabelFilter(t *testing.T) {
 	}{
 		{"empty", nil, NoopLabelFilter},
 		{"1", []LabelFilterer{NewBytesLabelFilter(LabelFilterEqual, "foo", 5)}, NewBytesLabelFilter(LabelFilterEqual, "foo", 5)},
-		{"2",
+		{
+			"2",
 			[]LabelFilterer{
 				NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
 				NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
 			},
 			NewAndLabelFilter(NewBytesLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6)),
 		},
-		{"3",
+		{
+			"3",
 			[]LabelFilterer{
 				NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
 				NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
@@ -313,6 +348,75 @@ func TestReduceAndLabelFilter(t *testing.T) {
 			if got := ReduceAndLabelFilter(tt.filters); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReduceAndLabelFilter() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestStringLabelFilter(t *testing.T) {
+	// NOTE: https://github.com/grafana/loki/issues/6713
+
+	tests := []struct {
+		name        string
+		filter      *StringLabelFilter
+		labels      labels.Labels
+		shouldMatch bool
+	}{
+		{
+			name:   `logfmt|subqueries!="0" (without label)`,
+			filter: NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
+			labels: labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			// without `subqueries` label, the value is assumed to be empty `subqueries=""` is matches the label filter `subqueries!="0"`.
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries!="0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:   `logfmt|subqueries!~"0" (without label)`,
+			filter: NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, "subqueries", "0")),
+			labels: labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			// without `subqueries` label, the value is assumed to be empty `subqueries=""` is matches the label filter `subqueries!="0"`.
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries!~"0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, "subqueries", "0")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries="0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries="0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries=~"0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries=~"0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, tc.labels.Hash()))
+			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}
 }

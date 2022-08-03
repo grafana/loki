@@ -225,16 +225,16 @@ This means that all the following expressions are equivalent:
 
 ```
 
-By default the precedence of multiple predicates is right to left. You can wrap predicates with parenthesis to force a different precedence left to right.
+The precedence for evaluation of multiple predicates is left to right. You can wrap predicates with parenthesis to force a different precedence.
 
-For example the following are equivalent.
+These examples are equivalent:
 
 ```logql
 | duration >= 20ms or method="GET" and size <= 20KB
 | ((duration >= 20ms or method="GET") and size <= 20KB)
 ```
 
-It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `method="GET" and size <= 20KB`, make sure to use proper parenthesis as shown below.
+To evaluate the logical `and` first, use parenthesis, as in this example:
 
 ```logql
 | duration >= 20ms or (method="GET" and size <= 20KB)
@@ -313,7 +313,7 @@ The **json** parser operates in two modes:
    "request_size" => "55"
    "response_status" => "401"
    "response_size" => "228"
-   "response_size" => "228"
+   "response_latency_seconds" => "6.031"
    ```
 
 2. **with** parameters:
@@ -364,6 +364,18 @@ The **json** parser operates in two modes:
    "server_list" => `["129.0.1.1","10.2.1.3"]`
    "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
    ```
+ 
+   If the label to be extracted is same as the original JSON field, expression can be written as just `| json <label>`
+
+   For example, to extract `servers` fields as label, expression can be written as following
+    
+   `| json servers` will extract:
+
+    ```kv
+   "servers" => `["129.0.1.1","10.2.1.3"]`
+   ```
+
+   Note that `| json servers` is same as `| json servers="servers"`
 
 #### logfmt
 
@@ -422,7 +434,7 @@ If a capture is not matched, the pattern parser will stop.
 
 Literals can be any sequence of UTF-8 characters, including whitespace characters.
 
-By default, a pattern expression is anchored at the start of the log line. If the expression start with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression to anchor the expression at the start.
+By default, a pattern expression is anchored at the start of the log line. If the expression starts with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression if you don't want to anchor the expression at the start.
 
 Consider the log line
 
@@ -464,7 +476,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels in the [`pack`](../clients/promtail/stages/pack/) stage.
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../clients/promtail/stages/pack.md" >}}).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:
@@ -514,65 +526,10 @@ The `| label_format` expression can rename, modify or add labels. It takes as pa
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
-The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of functions.
+The right side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of functions.
 
 In both cases, if the destination label doesn't exist, then a new one is created.
 
 The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
-
-## Log queries examples
-
-### Multiple filtering
-
-Filtering should be done first using label matchers, then line filters (when possible) and finally using label filters. The following query demonstrate this.
-
-```logql
-{cluster="ops-tools1", namespace="loki-dev", job="loki-dev/query-frontend"} |= "metrics.go" !="out of order" | logfmt | duration > 30s or status_code!="200"
-```
-
-### Multiple parsers
-
-To extract the method and the path of the following logfmt log line:
-
-```log
-level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"
-```
-
-You can use multiple parsers (logfmt and regexp) like this.
-
-```logql
-{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
-```
-
-This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
-
-### Formatting
-
-The following query shows how you can reformat a log line to make it easier to read on screen.
-
-```logql
-{cluster="ops-tools1", name="querier", namespace="loki-dev"}
-  |= "metrics.go" != "loki-canary"
-  | logfmt
-  | query != ""
-  | label_format query="{{ Replace .query \"\\n\" \"\" -1 }}"
-  | line_format "{{ .ts}}\t{{.duration}}\ttraceID = {{.traceID}}\t{{ printf \"%-100.100s\" .query }} "
-```
-
-Label formatting is used to sanitize the query while the line format reduce the amount of information and creates a tabular output.
-
-For these given log lines:
-
-```log
-level=info ts=2020-10-23T20:32:18.094668233Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=650.22401ms status=200 throughput_mb=1.529717 total_bytes_mb=0.994659
-level=info ts=2020-10-23T20:32:18.068866235Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=624.008132ms status=200 throughput_mb=0.693449 total_bytes_mb=0.432718
-```
-
-The result would be:
-
-```log
-2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
-2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
-```

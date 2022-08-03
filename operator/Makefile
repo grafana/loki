@@ -2,6 +2,9 @@
 # referenced here as make variables. For example: $(GOLANGCI_LINT)
 include .bingo/Variables.mk
 
+WEBSITE_DIR ?= website
+WEBSITE_BASE_URL ?= https://loki-operator.dev
+
 # set the default target here, because the include above will automatically set
 # it to the first defined target
 .DEFAULT_GOAL := default
@@ -24,8 +27,8 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.0.1
-CHANNELS ?= "candidate"
-DEFAULT_CHANNEL ?= "candidate"
+CHANNELS ?= "stable"
+DEFAULT_CHANNEL ?= "stable"
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -130,7 +133,7 @@ generate: $(CONTROLLER_GEN) ## Generate controller and crd code
 
 .PHONY: manifests
 manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=lokistack-manager crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: test
 test: deps generate go-generate lint lint-prometheus manifests ## Run tests
@@ -155,7 +158,7 @@ lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and a
 
 .PHONY: fmt
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
+	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
 
 .PHONY: oci-build
 oci-build: ## Build the image
@@ -181,6 +184,19 @@ bundle-build: ## Build the bundle image.
 ifndef ignore-not-found
   ignore-not-found = false
 endif
+
+.PHONY: quickstart
+ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
+quickstart: $(KIND) ## Quickstart full dev environment on local kind cluster
+	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
+else
+quickstart: oci-build oci-push $(KIND)
+	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
+endif
+
+.PHONY: quickstart-cleanup
+quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up
+	$(KIND) delete cluster
 
 .PHONY: run
 run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
@@ -221,6 +237,15 @@ olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
 endif
 
+.PHONY: olm-upgrade
+ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
+olm-upgrade:  ## Upgrade the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
+	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+else
+olm-upgrade: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
+	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(BUNDLE_IMG)
+endif
+
 .PHONY: olm-undeploy
 olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
 	$(OPERATOR_SDK) cleanup -n $(LOKI_OPERATOR_NS) loki-operator
@@ -248,3 +273,29 @@ oci-build-calculator: ## Build the calculator image
 .PHONY: oci-push-calculator
 oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
+
+##@ Website
+TYPES_V1BETA1_TARGET := $(shell find apis/loki -type f -iname "*_types.go")
+docs/operator/api.md: $(TYPES_V1BETA1_TARGET)
+	po-docgen api $(TYPES_V1BETA1_TARGET) > $@
+	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
+
+FEATURE_GATES_TARGET := $(shell find apis/config -type f -iname "*_types.go")
+docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET)
+	po-docgen api $(FEATURE_GATES_TARGET) > $@
+	sed -i 's/title: "API"/title: "Feature Gates"/' $@
+	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
+
+.PHONY: web-pre
+web-pre: docs/operator/api.md docs/operator/feature-gates.md
+	@echo ">> preprocessing docs for website"
+	@git submodule update --init --recursive
+	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
+
+.PHONY: web
+web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
+	cd $(WEBSITE_DIR) && $(HUGO) -b $(WEBSITE_BASE_URL)
+
+.PHONY: web-serve
+web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
+	@cd $(WEBSITE_DIR) && $(HUGO) serve

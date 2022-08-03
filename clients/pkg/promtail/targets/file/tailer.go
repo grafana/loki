@@ -1,6 +1,7 @@
 package file
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -8,8 +9,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/hpcloud/tail"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
@@ -34,9 +39,11 @@ type tailer struct {
 	posquit chan struct{}
 	posdone chan struct{}
 	done    chan struct{}
+
+	decoder *encoding.Decoder
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -79,6 +86,16 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 		posquit:   make(chan struct{}),
 		posdone:   make(chan struct{}),
 		done:      make(chan struct{}),
+	}
+
+	if encoding != "" {
+		level.Info(tailer.logger).Log("msg", "Will decode messages", "from", encoding, "to", "UTF8")
+		encoder, err := ianaindex.IANA.Encoding(encoding)
+		if err != nil {
+			return nil, errors.Wrap(err, "error doing IANA encoding")
+		}
+		decoder := encoder.NewDecoder()
+		tailer.decoder = decoder
 	}
 
 	go tailer.readLines()
@@ -149,15 +166,27 @@ func (t *tailer) readLines() {
 			continue
 		}
 
+		var text string
+		if t.decoder != nil {
+			var err error
+			text, err = t.convertToUTF8(line.Text)
+			if err != nil {
+				level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
+				t.metrics.encodingFailures.WithLabelValues(t.path).Inc()
+				text = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
+			}
+		} else {
+			text = line.Text
+		}
+
 		t.metrics.readLines.WithLabelValues(t.path).Inc()
 		entries <- api.Entry{
 			Labels: model.LabelSet{},
 			Entry: logproto.Entry{
 				Timestamp: line.Time,
-				Line:      line.Text,
+				Line:      text,
 			},
 		}
-
 	}
 }
 
@@ -215,6 +244,15 @@ func (t *tailer) stop() {
 
 func (t *tailer) isRunning() bool {
 	return t.running.Load()
+}
+
+func (t *tailer) convertToUTF8(text string) (string, error) {
+	res, _, err := transform.String(t.decoder, text)
+	if err != nil {
+		return "", errors.Wrap(err, "error decoding text")
+	}
+
+	return res, nil
 }
 
 // cleanupMetrics removes all metrics exported by this tailer

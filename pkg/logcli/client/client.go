@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	queryPath       = "/loki/api/v1/query"
-	queryRangePath  = "/loki/api/v1/query_range"
-	labelsPath      = "/loki/api/v1/labels"
-	labelValuesPath = "/loki/api/v1/label/%s/values"
-	seriesPath      = "/loki/api/v1/series"
-	tailPath        = "/loki/api/v1/tail"
+	queryPath         = "/loki/api/v1/query"
+	queryRangePath    = "/loki/api/v1/query_range"
+	labelsPath        = "/loki/api/v1/labels"
+	labelValuesPath   = "/loki/api/v1/label/%s/values"
+	seriesPath        = "/loki/api/v1/series"
+	tailPath          = "/loki/api/v1/tail"
+	defaultAuthHeader = "Authorization"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -58,6 +59,8 @@ type DefaultClient struct {
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
+	AuthHeader      string
+	ProxyURL        string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -189,6 +192,14 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
+	if c.ProxyURL != "" {
+		prox, err := url.Parse(c.ProxyURL)
+		if err != nil {
+			return err
+		}
+		clientConfig.ProxyURL = config.URL{URL: prox}
+	}
+
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return err
@@ -236,8 +247,11 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h := make(http.Header)
 
 	if c.Username != "" && c.Password != "" {
+		if c.AuthHeader == "" {
+			c.AuthHeader = defaultAuthHeader
+		}
 		h.Set(
-			"Authorization",
+			c.AuthHeader,
 			"Basic "+base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)),
 		)
 	}
@@ -261,7 +275,11 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	}
 
 	if c.BearerToken != "" {
-		h.Set("Authorization", "Bearer "+c.BearerToken)
+		if c.AuthHeader == "" {
+			c.AuthHeader = defaultAuthHeader
+		}
+
+		h.Set(c.AuthHeader, "Bearer "+c.BearerToken)
 	}
 
 	if c.BearerTokenFile != "" {
@@ -270,7 +288,10 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
 		}
 		bearerToken := strings.TrimSpace(string(b))
-		h.Set("Authorization", "Bearer "+bearerToken)
+		if c.AuthHeader == "" {
+			c.AuthHeader = defaultAuthHeader
+		}
+		h.Set(c.AuthHeader, "Bearer "+bearerToken)
 	}
 	return h, nil
 }
@@ -301,6 +322,12 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
+	}
+
+	if c.ProxyURL != "" {
+		ws.Proxy = func(req *http.Request) (*url.URL, error) {
+			return url.Parse(c.ProxyURL)
+		}
 	}
 
 	conn, resp, err := ws.Dial(us, h)

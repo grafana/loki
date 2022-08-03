@@ -1,7 +1,9 @@
 package manifests
 
 import (
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -17,26 +19,27 @@ type Options struct {
 	GatewayBaseDomain string
 	ConfigSHA1        string
 
-	Flags FeatureFlags
-
-	Stack                lokiv1beta1.LokiStackSpec
+	Gates                configv1.FeatureGates
+	Stack                lokiv1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
+
+	AlertingRules  []lokiv1beta1.AlertingRule
+	RecordingRules []lokiv1beta1.RecordingRule
+	Ruler          Ruler
 
 	ObjectStorage storage.Options
 
 	OpenShiftOptions openshift.Options
-	TenantSecrets    []*TenantSecrets
-	TenantConfigMap  map[string]openshift.TenantData
+
+	Tenants Tenants
 }
 
-// FeatureFlags contains flags that activate various features
-type FeatureFlags struct {
-	EnableCertificateSigningService bool
-	EnableServiceMonitors           bool
-	EnableTLSServiceMonitorConfig   bool
-	EnablePrometheusAlerts          bool
-	EnableGateway                   bool
-	EnableGatewayRoute              bool
+// Tenants contains the configuration per tenant and secrets for authn/authz.
+// Secrets are required only for modes static and dynamic to reconcile the OIDC provider.
+// Configs are required only for all modes to reconcile rules and gateway configuration.
+type Tenants struct {
+	Secrets []*TenantSecrets
+	Configs map[string]TenantConfig
 }
 
 // TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.
@@ -45,4 +48,39 @@ type TenantSecrets struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
+}
+
+// TenantConfig for tenant authorizationconfig
+type TenantConfig struct {
+	OIDC      *TenantOIDCSpec
+	OPA       *TenantOPASpec
+	OpenShift *TenantOpenShiftSpec
+	RuleFiles []string
+}
+
+// TenantOIDCSpec stub config for OIDC configuration options (e.g. used in static or dynamic mode)
+type TenantOIDCSpec struct{}
+
+// TenantOPASpec stub config for OPA configuration options (e.g. used in dynamic mode)
+type TenantOPASpec struct{}
+
+// TenantOpenShiftSpec config for OpenShift authentication options (e.g. used in openshift-logging mode)
+type TenantOpenShiftSpec struct {
+	CookieSecret string
+}
+
+// Ruler configuration for manifests generation.
+type Ruler struct {
+	Spec   *lokiv1beta1.RulerConfigSpec
+	Secret *RulerSecret
+}
+
+// RulerSecret defines the ruler secret for remote write client auth
+type RulerSecret struct {
+	// Username for basic authentication only.
+	Username string
+	// Password for basic authentication only.
+	Password string
+	// BearerToken contains the token used for bearer authentication.
+	BearerToken string
 }

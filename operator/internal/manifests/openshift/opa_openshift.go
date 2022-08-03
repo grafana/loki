@@ -19,7 +19,7 @@ const (
 	opaDefaultLabelMatcher = "kubernetes_namespace_name"
 )
 
-func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile string, withTLS bool) corev1.Container {
+func newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile string, withTLS bool) corev1.Container {
 	var (
 		image        string
 		args         []string
@@ -35,6 +35,7 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 	uriScheme = corev1.URISchemeHTTP
 	args = []string{
 		"--log.level=warn",
+		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
 		fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatcher),
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
@@ -55,7 +56,7 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 
 		volumeMounts = []corev1.VolumeMount{
 			{
-				Name:      sercretVolumeName,
+				Name:      secretVolumeName,
 				ReadOnly:  true,
 				MountPath: tlsDir,
 			},

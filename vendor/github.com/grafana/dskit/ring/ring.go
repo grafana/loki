@@ -167,6 +167,10 @@ type Ring struct {
 	ringTokens       []uint32
 	ringTokensByZone map[string][]uint32
 
+	// Oldest value of RegisteredTimestamp from all instances. If any instance had RegisteredTimestamp == 0,
+	// then this value will be 0.
+	oldestRegisteredTimestamp int64
+
 	// Maps a token with the information of the instance holding it. This map is immutable and
 	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
 	// change it is to create a new one and replace it).
@@ -183,12 +187,9 @@ type Ring struct {
 	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*Ring
 
-	memberOwnershipGaugeVec *prometheus.GaugeVec
 	numMembersGaugeVec      *prometheus.GaugeVec
 	totalTokensGauge        prometheus.Gauge
-	numTokensGaugeVec       *prometheus.GaugeVec
 	oldestTimestampGaugeVec *prometheus.GaugeVec
-	reportedOwners          map[string]struct{}
 
 	logger log.Logger
 }
@@ -227,11 +228,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		strategy:             strategy,
 		ringDesc:             &Desc{},
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
-		memberOwnershipGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name:        "ring_member_ownership_percent",
-			Help:        "The percent ownership of the ring by member",
-			ConstLabels: map[string]string{"name": name}},
-			[]string{"member"}),
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
@@ -241,11 +237,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
 			ConstLabels: map[string]string{"name": name}}),
-		numTokensGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name:        "ring_tokens_owned",
-			Help:        "The number of tokens in the ring owned by the member",
-			ConstLabels: map[string]string{"name": name}},
-			[]string{"member"}),
 		oldestTimestampGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_oldest_member_timestamp",
 			Help:        "Timestamp of the oldest member in the ring.",
@@ -323,6 +314,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	ringTokensByZone := ringDesc.getTokensByZone()
 	ringInstanceByToken := ringDesc.getTokensInfo()
 	ringZones := getZones(ringTokensByZone)
+	oldestRegisteredTimestamp := ringDesc.getOldestRegisteredTimestamp()
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -331,6 +323,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
 	r.ringZones = ringZones
+	r.oldestRegisteredTimestamp = oldestRegisteredTimestamp
 	r.lastTopologyChange = now
 	if r.shuffledSubringCache != nil {
 		// Invalidate all cached subrings.
@@ -514,12 +507,10 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}, nil
 }
 
-// countTokens returns the number of tokens and tokens within the range for each instance.
-func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
+// countTokens returns the number tokens within the range for each instance.
+func (r *Desc) countTokens() map[string]uint32 {
 	var (
-		owned     = map[string]uint32{}
-		numTokens = map[string]uint32{}
-
+		owned               = map[string]uint32{}
 		ringTokens          = r.GetTokens()
 		ringInstanceByToken = r.getTokensInfo()
 	)
@@ -535,7 +526,6 @@ func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
 		}
 
 		info := ringInstanceByToken[token]
-		numTokens[info.InstanceID] = numTokens[info.InstanceID] + 1
 		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
 
@@ -543,11 +533,10 @@ func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
 	for id := range r.Ingesters {
 		if _, ok := owned[id]; !ok {
 			owned[id] = 0
-			numTokens[id] = 0
 		}
 	}
 
-	return numTokens, owned
+	return owned
 }
 
 // updateRingMetrics updates ring metrics. Caller must be holding the Write lock!
@@ -587,21 +576,6 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		return
 	}
 
-	prevOwners := r.reportedOwners
-	r.reportedOwners = make(map[string]struct{})
-	numTokens, ownedRange := r.ringDesc.countTokens()
-	for id, totalOwned := range ownedRange {
-		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32))
-		r.numTokensGaugeVec.WithLabelValues(id).Set(float64(numTokens[id]))
-		delete(prevOwners, id)
-		r.reportedOwners[id] = struct{}{}
-	}
-
-	for k := range prevOwners {
-		r.memberOwnershipGaugeVec.DeleteLabelValues(k)
-		r.numTokensGaugeVec.DeleteLabelValues(k)
-	}
-
 	r.totalTokensGauge.Set(float64(len(r.ringTokens)))
 }
 
@@ -635,8 +609,11 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	}
 
 	result := r.shuffleShard(identifier, size, 0, time.Now())
-
-	r.setCachedShuffledSubring(identifier, size, result)
+	// Only cache subring if it is different from this ring, to avoid deadlocks in getCachedShuffledSubring,
+	// when we update the cached ring.
+	if result != r {
+		r.setCachedShuffledSubring(identifier, size, result)
+	}
 	return result
 }
 
@@ -661,6 +638,16 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
+
+	// If all instances have RegisteredTimestamp within the lookback period,
+	// then all instances would be included in the resulting ring, so we can
+	// simply return this ring.
+	//
+	// If any instance had RegisteredTimestamp equal to 0 (it would not cause additional lookup of next instance),
+	// then r.oldestRegisteredTimestamp is zero too, and we skip this optimization.
+	if lookbackPeriod > 0 && r.oldestRegisteredTimestamp > 0 && r.oldestRegisteredTimestamp >= lookbackUntil {
+		return r
+	}
 
 	var numInstancesPerZone int
 	var actualZones []string
@@ -753,6 +740,8 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		ringTokensByZone: shardTokensByZone,
 		ringZones:        getZones(shardTokensByZone),
 
+		oldestRegisteredTimestamp: shardDesc.getOldestRegisteredTimestamp(),
+
 		// We reference the original map as is in order to avoid copying. It's safe to do
 		// because this map is immutable by design and it's a superset of the actual instances
 		// with the subring.
@@ -800,6 +789,11 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
 	if cached == nil {
 		return nil
+	}
+
+	// No need to update cached subring, if it is the original ring itself.
+	if r == cached {
+		return cached
 	}
 
 	cached.mtx.Lock()

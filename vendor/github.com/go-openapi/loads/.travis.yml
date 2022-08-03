@@ -1,11 +1,14 @@
 after_success:
 - bash <(curl -s https://codecov.io/bash)
 go:
-- 1.14.x
+- 1.16.x
 - 1.x
 install:
 - go get gotest.tools/gotestsum
 language: go
+arch:
+- amd64
+- ppc64le
 jobs:
   include:
   # include linting job, but only for latest go version and amd64 arch

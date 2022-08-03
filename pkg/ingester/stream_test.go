@@ -242,7 +242,7 @@ func TestUnorderedPush(t *testing.T) {
 			entries: []logproto.Entry{
 				{Timestamp: time.Unix(2, 0), Line: "x"},
 				{Timestamp: time.Unix(1, 0), Line: "x"},
-				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(10, 0), Line: "x"},
 			},
@@ -285,8 +285,6 @@ func TestUnorderedPush(t *testing.T) {
 
 	exp := []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "x"},
-		{Timestamp: time.Unix(2, 0), Line: "x"},
-		// duplicate was allowed here b/c it wasnt written sequentially
 		{Timestamp: time.Unix(2, 0), Line: "x"},
 		{Timestamp: time.Unix(7, 0), Line: "x"},
 		{Timestamp: time.Unix(8, 0), Line: "x"},

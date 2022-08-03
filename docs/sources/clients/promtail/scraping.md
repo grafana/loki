@@ -53,6 +53,12 @@ There are different types of labels present in Promtail:
 - The `__path__` label is a special label which Promtail uses after discovery to
   figure out where the file to read is located. Wildcards are allowed, for example `/var/log/*.log` to get all files with a `log` extension in the specified directory, and `/var/log/**/*.log` for matching files and directories recursively. For a full list of options check out the docs for the [library](https://github.com/bmatcuk/doublestar) Promtail uses.
 
+- The `__path_exclude__` label is another special label Promtail uses after 
+  discovery, to exclude a subset of the files discovered using `__path__` from 
+  being read in the current scrape_config block. It uses the same 
+  [library](https://github.com/bmatcuk/doublestar) to enable usage of
+  wildcards and glob patterns.
+
 - The label `filename` is added for every file found in `__path__` to ensure the
   uniqueness of the streams. It is set to the absolute path of the file the line
   was read from.
@@ -184,13 +190,19 @@ resuming the target without skipping logs.
 
 see the [configuration](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#windows_events) section for more information.
 
-## Gcplog scraping
-Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
-Configs are set in `gcplog` section in `scrape_config`
+## GCP Log scraping
+
+Promtail supports scraping cloud resource logs such as GCS bucket logs, load balancer logs, and Kubernetes cluster logs from GCP.
+Configuration is specified in the `gcplog` section, within `scrape_config`.
+
+There are two kind of scraping strategies: `pull` and `push`.
+
+### Pull
 
 ```yaml
   - job_name: gcplog
     gcplog:
+      subscription_type: "pull" # If the `subscription_type` field is empty, defaults to `pull`
       project_id: "my-gcp-project"
       subscription: "my-pubsub-subscription"
       use_incoming_timestamp: false # default rewrite timestamps.
@@ -217,10 +229,42 @@ When Promtail receives GCP logs, various internal labels are made available for 
   - `__gcp_resource_labels_<NAME>`
     In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
 
+### Push
+
+```yaml
+  - job_name: gcplog
+    gcplog:
+      subscription_type: "push"
+      use_incoming_timestamp: false
+      labels:
+        job: "gcplog-push"
+      server:
+        http_listen_address: 0.0.0.0
+        http_listen_port: 8080
+    relabel_configs:
+      - source_labels: ['__gcp_message_id']
+        target_label: 'message_id'
+      - source_labels: ['__gcp_attributes_logging_googleapis_com_timestamp']
+        target_label: 'incoming_ts'
+```
+
+When configuring the GCP Log push target, Promtail will start an HTTP server listening on port `8080`, as configured in the `server`
+section. This server exposes the single endpoint `POST /gcp/api/v1/push`, responsible for receiving logs from GCP.
+
+It also supports `relabeling` and `pipeline` stages.
+
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
+- `__gcp_message_id`
+- `__gcp_attributes_<NAME>`
+
+In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are 
+transformed to `message_id` and `incoming_ts` through `relabel_configs`. All other internal labels, for example some other attribute,
+will be dropped by the target if not transformed.
+
 ## Syslog Receiver
 
 Promtail supports receiving [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
-messages from a tcp stream. Receiving syslog messages is defined in a `syslog`
+messages from a TCP or UDP stream. Receiving syslog messages is defined in a `syslog`
 stanza:
 
 ```yaml
@@ -228,6 +272,7 @@ scrape_configs:
   - job_name: syslog
     syslog:
       listen_address: 0.0.0.0:1514
+      listen_protocol: tcp
       idle_timeout: 60s
       label_structured_data: yes
       labels:
@@ -238,8 +283,11 @@ scrape_configs:
 ```
 
 The only required field in the syslog section is the `listen_address` field,
-where a valid network address should be provided. The `idle_timeout` can help
-with cleaning up stale syslog connections. If `label_structured_data` is set,
+where a valid network address must be provided. The default protocol for
+receiving messages is TCP. To change the protocol, the `listen_protocol` field
+can be changed to `udp`. Note, that UDP does not support TLS.
+The `idle_timeout` can help with cleaning up stale syslog connections.
+If `label_structured_data` is set,
 [structured data](https://tools.ietf.org/html/rfc5424#section-6.3) in the
 syslog header will be translated to internal labels in the form of
 `__syslog_message_sd_<ID>_<KEY>`.
@@ -269,10 +317,17 @@ destination d_loki {
 
 ### Rsyslog Output Configuration
 
+For sending messages via TCP:
+
 ```
-action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
+*.* action(type="omfwd" protocol="tcp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted" KeepAlive="on")
 ```
 
+For sending messages via UDP:
+
+```
+*.* action(type="omfwd" protocol="udp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format")
+```
 
 ## Kafka
 
@@ -361,6 +416,52 @@ scrape_configs:
 
 Only `api_token` and `zone_id` are required.
 Refer to the [Cloudfare](../configuration/#cloudflare) configuration section for details.
+
+## Heroku Drain
+Promtail supports receiving logs from a Heroku application by using a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
+Configuration is specified in a`heroku_drain` block within the Promtail `scrape_config` configuration.
+
+```yaml
+- job_name: heroku_drain
+    heroku_drain:
+      server:
+        http_listen_address: 0.0.0.0
+        http_listen_port: 8080
+      labels:
+        job: heroku_drain_docs
+      use_incoming_timestamp: true
+    relabel_configs:
+      - source_labels: ['__heroku_drain_host']
+        target_label: 'host'
+      - source_labels: ['__heroku_drain_app']
+        target_label: 'app'
+      - source_labels: ['__heroku_drain_proc']
+        target_label: 'proc'
+      - source_labels: ['__heroku_drain_log_id']
+        target_label: 'log_id'
+```
+Within the `scrape_configs` configuration for a Heroku Drain target, the `job_name` must be a Prometheus-compatible [metric name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels).
+
+The [server](../configuration.md#server) section configures the HTTP server created for receiving logs.
+`labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
+the timestamp received from Heroku.
+
+Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening. 
+Follow the steps in [Heroku HTTPS Drain docs](https://devcenter.heroku.com/articles/log-drains#https-drains) for using the Heroku CLI
+with a command like the following:
+
+```
+heroku drains:add [http|https]://HOSTNAME:8080/heroku/api/v1/drain -a HEROKU_APP_NAME
+```
+
+It also supports `relabeling` and `pipeline` stages just like other targets.
+
+When Promtail receives Heroku Drain logs, various internal labels are made available for [relabeling](#relabeling):
+- `__heroku_drain_host`
+- `__heroku_drain_app`
+- `__heroku_drain_proc`
+- `__heroku_drain_log_id`
+In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
 
 ## Relabeling
 

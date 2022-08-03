@@ -16,12 +16,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const userID = "1"
 
-func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
+func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
@@ -30,7 +31,7 @@ func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]stri
 	chunks := []chunk.Chunk{}
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk := prom_chunk.New()
+		promChunk := chunk.New()
 		nc, err := promChunk.Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(i),
@@ -66,12 +67,11 @@ func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]stri
 				Through:     c.Through,
 				Checksum:    c.Checksum,
 			},
-			ChecksumSet: c.ChecksumSet,
 		}
 		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
 		require.NoError(t, err)
 
-		keys = append(keys, scfg.ExternalKey(c))
+		keys = append(keys, scfg.ExternalKey(c.ChunkRef))
 		bufs = append(bufs, buf)
 		chunks = append(chunks, cleanChunk)
 	}
@@ -118,17 +118,17 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 }
 
 func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
 		},
 	}
 
-	fetcher, err := chunk.NewChunkFetcher(c, false, s, nil, 10, 100)
+	fetcher, err := fetcher.New(c, false, s, nil, 10, 100)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
@@ -141,13 +141,13 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk
 
 type byExternalKey struct {
 	chunks []chunk.Chunk
-	scfg   chunk.SchemaConfig
+	scfg   config.SchemaConfig
 }
 
 func (a byExternalKey) Len() int      { return len(a.chunks) }
 func (a byExternalKey) Swap(i, j int) { a.chunks[i], a.chunks[j] = a.chunks[j], a.chunks[i] }
 func (a byExternalKey) Less(i, j int) bool {
-	return a.scfg.ExternalKey(a.chunks[i]) < a.scfg.ExternalKey(a.chunks[j])
+	return a.scfg.ExternalKey(a.chunks[i].ChunkRef) < a.scfg.ExternalKey(a.chunks[j].ChunkRef)
 }
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
@@ -161,10 +161,10 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 }
 
 func testCache(t *testing.T, cache cache.Cache) {
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -188,7 +188,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 func TestMemcache(t *testing.T) {
 	t.Run("Unbatched", func(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache(),
-			"test", nil, log.NewNopLogger())
+			"test", nil, log.NewNopLogger(), "test")
 		testCache(t, cache)
 	})
 
@@ -196,14 +196,14 @@ func TestMemcache(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 3,
-		}, newMockMemcache(), "test", nil, log.NewNopLogger())
+		}, newMockMemcache(), "test", nil, log.NewNopLogger(), "test")
 		testCache(t, cache)
 	})
 }
 
 func TestFifoCache(t *testing.T) {
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 1e3, TTL: 1 * time.Hour},
-		nil, log.NewNopLogger())
+		nil, log.NewNopLogger(), "test")
 	testCache(t, cache)
 }
 

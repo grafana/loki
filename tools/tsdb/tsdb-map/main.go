@@ -7,21 +7,24 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var (
 	source = flag.String("source", "", "the source boltdb file")
-	dest   = flag.String("dest", "", "the dest tsdb file")
+	dest   = flag.String("dest", "", "the dest tsdb dir")
 	// Hardcode a periodconfig for convenience as the boltdb iterator needs one
 	// NB: must match the index file you're reading from
-	periodConfig = func() chunk.PeriodConfig {
+	periodConfig = func() config.PeriodConfig {
 		input := `
 from: "2022-01-01"
 index:
@@ -31,7 +34,7 @@ object_store: gcs
 schema: v13
 store: boltdb-shipper
 `
-		var cfg chunk.PeriodConfig
+		var cfg config.PeriodConfig
 		if err := yaml.Unmarshal([]byte(input), &cfg); err != nil {
 			panic(err)
 		}
@@ -64,38 +67,30 @@ func main() {
 		panic(err)
 	}
 
-	builder := index.NewBuilder()
+	builder := tsdb.NewBuilder()
 
 	log.Println("Loading index into memory")
 
 	// loads everything into memory.
 	if err := db.View(func(t *bbolt.Tx) error {
-		it, err := retention.NewChunkIndexIterator(t.Bucket([]byte("index")), periodConfig)
-		if err != nil {
-			return err
-		}
-
-		for it.Next() {
-			if it.Err() != nil {
-				return it.Err()
-			}
-			entry := it.Entry()
-			builder.AddSeries(entry.Labels, []index.ChunkMeta{{
+		return compactor.ForEachChunk(t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
+			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),
 				MaxTime:  int64(entry.Through),
 				KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
 				Entries:  10000,                  // guess: 10k entries
 			}})
-		}
-
-		return nil
+			return false, nil
+		})
 	}); err != nil {
 		panic(err)
 	}
 
 	log.Println("writing index")
-	if err := builder.Build(context.Background(), *dest); err != nil {
+	if _, err := builder.Build(context.Background(), *dest, func(from, through model.Time, checksum uint32) tsdb.Identifier {
+		panic("todo")
+	}); err != nil {
 		panic(err)
 	}
 }

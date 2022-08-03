@@ -23,7 +23,7 @@ const (
 	dockerLabel                = model.MetaLabelPrefix + "docker_"
 	dockerLabelContainerPrefix = dockerLabel + "container_"
 	dockerLabelContainerID     = dockerLabelContainerPrefix + "id"
-	dockerLabelLogStream       = dockerLabelContainerPrefix + "_log_stream"
+	dockerLabelLogStream       = dockerLabelContainerPrefix + "log_stream"
 )
 
 type TargetManager struct {

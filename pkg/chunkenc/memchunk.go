@@ -22,7 +22,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -713,7 +714,7 @@ func (c *MemChunk) reorder() error {
 
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
-	newC, err := c.Rebound(from, to)
+	newC, err := c.Rebound(from, to, nil)
 	if err != nil {
 		return err
 	}
@@ -910,7 +911,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 }
 
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
-func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
+func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
 	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
@@ -931,13 +932,16 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 
 	for itr.Next() {
 		entry := itr.Entry()
+		if filter != nil && filter(entry.Line) {
+			continue
+		}
 		if err := newChunk.Append(&entry); err != nil {
 			return nil, err
 		}
 	}
 
 	if newChunk.Size() == 0 {
-		return nil, encoding.ErrSliceNoDataInRange
+		return nil, chunk.ErrSliceNoDataInRange
 	}
 
 	if err := newChunk.Close(); err != nil {
@@ -1006,12 +1010,13 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, ok := pipeline.ProcessString(e.s)
-		if !ok {
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
+		if !matches {
 			return
 		}
 		var stream *logproto.Stream
 		labels := parsedLbs.Labels().String()
+		var ok bool
 		if stream, ok = streams[labels]; !ok {
 			stream = &logproto.Stream{
 				Labels: labels,
@@ -1056,7 +1061,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.s)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
 		if !ok {
 			continue
 		}
@@ -1263,8 +1268,8 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, ok := e.pipeline.Process(e.currLine)
-		if !ok {
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
+		if !matches {
 			continue
 		}
 		e.cur.Timestamp = time.Unix(0, e.currTs)
@@ -1294,7 +1299,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currLine)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
 		}

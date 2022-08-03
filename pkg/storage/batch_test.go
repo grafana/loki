@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -42,10 +42,10 @@ func Test_batchIterSafeStart(t *testing.T) {
 		newLazyChunk(stream),
 	}
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -951,10 +951,10 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 	}
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -1200,7 +1200,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
-
 						{
 							Timestamp: time.Unix(2, 0),
 							Line:      "2",
@@ -1264,7 +1263,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
-
 						{
 							Timestamp: time.Unix(1, 0),
 							Line:      "2",
@@ -1359,10 +1357,10 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 	}
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -1589,7 +1587,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
 			}
-			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil)
+			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)
 			streams, _, err := iter.ReadBatch(it, req.Limit)
 			_ = it.Close()
 			if err != nil {
@@ -1608,7 +1606,7 @@ func Test_IsInvalidChunkError(t *testing.T) {
 	}{
 		{
 			"invalid chunk cheksum error from cortex",
-			promql.ErrStorage{Err: chunk.ErrInvalidChecksum},
+			promql.ErrStorage{Err: chunkenc.ErrInvalidChecksum},
 			true,
 		},
 		{
@@ -1655,10 +1653,10 @@ func TestBatchCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -1706,7 +1704,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	r := statsCtx.Result(time.Since(start), 0)
+	r := statsCtx.Result(time.Since(start), 0, 0)
 	b.Log("Total chunks:" + fmt.Sprintf("%d", r.TotalChunksRef()))
 	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.TotalDecompressedBytes()))
 }

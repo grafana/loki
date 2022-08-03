@@ -13,7 +13,8 @@ import (
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
-	MaxRetries: 20,
+	ContainerName: "loki",
+	MaxRetries:    20,
 	Config: http.Config{
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 2 * time.Minute,
@@ -58,7 +59,7 @@ http:
 `,
 			expectedConfig: Config{
 				StorageAccountName: "test-account-name",
-				StorageAccountKey:  flagext.Secret{Value: "test-account-key"},
+				StorageAccountKey:  flagext.SecretWithValue("test-account-key"),
 				ContainerName:      "test-container-name",
 				Endpoint:           "test-endpoint-suffix",
 				MaxRetries:         1,

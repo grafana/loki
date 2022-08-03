@@ -38,7 +38,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		Endpoint:  cfg.Endpoint,
 		Region:    cfg.Region,
 		AccessKey: cfg.AccessKeyID,
-		SecretKey: cfg.SecretAccessKey.Value,
+		SecretKey: cfg.SecretAccessKey.String(),
 		Insecure:  cfg.Insecure,
 		SSEConfig: sseCfg,
 		HTTPConfig: s3.HTTPConfig{

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/drone/envsubst"
 	"github.com/pkg/errors"
@@ -65,7 +66,7 @@ func dYAML(y []byte) Source {
 	}
 }
 
-func YAMLFlag(args []string, name string) Source {
+func ConfigFileLoader(args []string, name string) Source {
 
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
@@ -92,13 +93,18 @@ func YAMLFlag(args []string, name string) Source {
 		if f == nil || f.Value.String() == "" {
 			return nil
 		}
-		expandEnv := false
-		expandEnvFlag := freshFlags.Lookup("config.expand-env")
-		if expandEnvFlag != nil {
-			expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
+
+		for _, val := range strings.Split(f.Value.String(), ",") {
+			val := strings.TrimSpace(val)
+			expandEnv := false
+			expandEnvFlag := freshFlags.Lookup("config.expand-env")
+			if expandEnvFlag != nil {
+				expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
+			}
+			if _, err := os.Stat(val); err == nil {
+				return YAML(val, expandEnv)(dst)
+			}
 		}
-
-		return YAML(f.Value.String(), expandEnv)(dst)
-
+		return fmt.Errorf("%s does not exist, set %s for custom config path", f.Value.String(), name)
 	}
 }

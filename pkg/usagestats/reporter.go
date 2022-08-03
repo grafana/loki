@@ -3,6 +3,7 @@ package usagestats
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"math"
@@ -17,7 +18,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/util/build"
 )
 
@@ -50,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Reporter struct {
 	logger       log.Logger
-	objectClient chunk.ObjectClient
+	objectClient client.ObjectClient
 	reg          prometheus.Registerer
 
 	services.Service
@@ -61,7 +62,7 @@ type Reporter struct {
 	lastReport time.Time
 }
 
-func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
+func NewReporter(config Config, kvConfig kv.Config, objectClient client.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
 	if !config.Enabled {
 		return nil, nil
 	}
@@ -254,7 +255,10 @@ func (rep *Reporter) running(ctx context.Context) error {
 
 	if rep.cluster == nil {
 		<-ctx.Done()
-		return ctx.Err()
+		if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+			return err
+		}
+		return nil
 	}
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
@@ -281,7 +285,10 @@ func (rep *Reporter) running(ctx context.Context) error {
 			rep.lastReport = next
 			next = next.Add(reportInterval)
 		case <-ctx.Done():
-			return ctx.Err()
+			if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+				return err
+			}
+			return nil
 		}
 	}
 }

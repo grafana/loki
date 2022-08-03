@@ -49,6 +49,7 @@ type BasicLifecyclerConfig struct {
 	Zone string
 
 	HeartbeatPeriod     time.Duration
+	HeartbeatTimeout    time.Duration
 	TokensObservePeriod time.Duration
 	NumTokens           int
 
@@ -405,8 +406,13 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc,
 		// This could happen if the backend store restarted (and content deleted)
 		// or the instance has been forgotten. In this case, we do re-insert it.
 		if !ok {
-			level.Warn(l.logger).Log("msg", "instance missing in the ring, adding it back", "ring", l.ringName)
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), l.GetRegisteredAt())
+			level.Warn(l.logger).Log("msg", "instance is missing in the ring (e.g. the ring backend storage has been reset), registering the instance with an updated registration timestamp", "ring", l.ringName)
+
+			// Due to how shuffle sharding work, the missing instance for some period of time could have cause
+			// a resharding of tenants among instances: to guarantee query correctness we need to update the
+			// registration timestamp to current time.
+			registeredAt := time.Now()
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt)
 		}
 
 		prevTimestamp := instanceDesc.Timestamp
@@ -507,5 +513,5 @@ func (l *BasicLifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (l *BasicLifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(l, l.cfg.HeartbeatPeriod).handle(w, req)
+	newRingPageHandler(l, l.cfg.HeartbeatTimeout).handle(w, req)
 }

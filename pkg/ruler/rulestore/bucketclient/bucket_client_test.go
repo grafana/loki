@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 )
 
 type testGroup struct {
@@ -232,7 +232,7 @@ func TestDelete(t *testing.T) {
 }
 
 func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient interface{})) {
-	legacyClient := chunk.NewMockStorage()
+	legacyClient := testutils.NewMockStorage()
 	legacyStore := objectclient.NewRuleStore(legacyClient, 5, log.NewNopLogger())
 
 	bucketClient := objstore.NewInMemBucket()
@@ -248,13 +248,14 @@ func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore
 
 	for name, data := range stores {
 		t.Run(name, func(t *testing.T) {
+			testutils.ResetMockStorage()
 			testFn(t, data.store, data.client)
 		})
 	}
 }
 
 func getSortedObjectKeys(bucketClient interface{}) []string {
-	if typed, ok := bucketClient.(*chunk.MockStorage); ok {
+	if typed, ok := bucketClient.(*testutils.MockStorage); ok {
 		return typed.GetSortedObjectKeys()
 	}
 

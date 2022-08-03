@@ -18,8 +18,6 @@ import (
 	errs "github.com/weaveworks/common/errors"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/prom1/storage/metric"
-	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 const (
@@ -42,20 +40,17 @@ type Chunk struct {
 
 	Metric labels.Labels `json:"metric"`
 
-	// For old chunks, ChecksumSet will be false.
-	ChecksumSet bool `json:"-"`
-
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
-	Encoding prom_chunk.Encoding `json:"encoding"`
-	Data     prom_chunk.Chunk    `json:"-"`
+	Encoding Encoding `json:"encoding"`
+	Data     Data     `json:"-"`
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
 }
 
 // NewChunk creates a new chunk
-func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_chunk.Chunk, from, through model.Time) Chunk {
+func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c Data, from, through model.Time) Chunk {
 	return Chunk{
 		ChunkRef: logproto.ChunkRef{
 			Fingerprint: uint64(fp),
@@ -86,41 +81,10 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // v12+, fingerprint is now a prefix to support better read and write request parallelization:
 // `<user>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
-	if !strings.Contains(externalKey, "/") { // pre-checksum
-		return parseLegacyChunkID(userID, externalKey)
-	} else if strings.Count(externalKey, "/") == 2 { // v12+
+	if strings.Count(externalKey, "/") == 2 { // v12+
 		return parseNewerExternalKey(userID, externalKey)
-	} else { // post-checksum
-		return parseNewExternalKey(userID, externalKey)
 	}
-}
-
-// pre-checksum
-func parseLegacyChunkID(userID, key string) (Chunk, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 3 {
-		return Chunk{}, errInvalidChunkID(key)
-	}
-	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return Chunk{}, err
-	}
-	from, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return Chunk{}, err
-	}
-	through, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return Chunk{}, err
-	}
-	return Chunk{
-		ChunkRef: logproto.ChunkRef{
-			UserID:      userID,
-			Fingerprint: fingerprint,
-			From:        model.Time(from),
-			Through:     model.Time(through),
-		},
-	}, nil
+	return parseNewExternalKey(userID, externalKey)
 }
 
 // post-checksum
@@ -172,7 +136,6 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 			Through:     model.Time(through),
 			Checksum:    uint32(checksum),
 		},
-		ChecksumSet: true,
 	}, nil
 }
 
@@ -231,7 +194,6 @@ func parseNewerExternalKey(userID, key string) (Chunk, error) {
 			Through:     model.Time(through),
 			Checksum:    uint32(checksum),
 		},
-		ChecksumSet: true,
 	}, nil
 }
 
@@ -311,7 +273,6 @@ func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
 
 	// Now work out the checksum
 	c.encoded = buf.Bytes()
-	c.ChecksumSet = true
 	c.Checksum = crc32.Checksum(c.encoded, castagnoliTable)
 	return nil
 }
@@ -343,7 +304,7 @@ func NewDecodeContext() *DecodeContext {
 func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
-	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {
+	if c.Checksum != crc32.Checksum(input, castagnoliTable) {
 		return errors.WithStack(ErrInvalidChecksum)
 	}
 
@@ -369,22 +330,16 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// Next, confirm the chunks matches what we expected.  Easiest way to do this
 	// is to compare what the decoded data thinks its external ID would be, but
 	// we don't write the checksum to s3, so we have to copy the checksum in.
-	if c.ChecksumSet {
-		tempMetadata.Checksum, tempMetadata.ChecksumSet = c.Checksum, c.ChecksumSet
-		if !equalByKey(*c, tempMetadata) {
-			return errors.WithStack(ErrWrongMetadata)
-		}
+
+	tempMetadata.Checksum = c.Checksum
+	if !equalByKey(*c, tempMetadata) {
+		return errors.WithStack(ErrWrongMetadata)
 	}
+
 	*c = tempMetadata
 
-	// Older chunks always used DoubleDelta and did not write Encoding
-	// to JSON, so override if it has the zero value (Delta)
-	if c.Encoding == prom_chunk.Delta {
-		c.Encoding = prom_chunk.DoubleDelta
-	}
-
 	// Finally, unmarshal the actual chunk data.
-	c.Data, err = prom_chunk.NewForEncoding(c.Encoding)
+	c.Data, err = NewForEncoding(c.Encoding)
 	if err != nil {
 		return errors.Wrap(err, "when creating new chunk")
 	}
@@ -406,27 +361,4 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 func equalByKey(a, b Chunk) bool {
 	return a.UserID == b.UserID && a.Fingerprint == b.Fingerprint &&
 		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
-}
-
-// Samples returns all SamplePairs for the chunk.
-func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
-	it := c.Data.NewIterator(nil)
-	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
-	return prom_chunk.RangeValues(it, interval)
-}
-
-// Slice builds a new smaller chunk with data only from given time range (inclusive)
-func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
-	// there should be atleast some overlap between chunk interval and slice interval
-	if from > c.Through || through < c.From {
-		return nil, ErrSliceOutOfRange
-	}
-
-	pc, err := c.Data.Rebound(from, through)
-	if err != nil {
-		return nil, err
-	}
-
-	nc := NewChunk(c.UserID, c.FingerprintModel(), c.Metric, pc, from, through)
-	return &nc, nil
 }

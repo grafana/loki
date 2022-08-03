@@ -4,21 +4,48 @@ package stats;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
+option go_package = "github.com/grafana/loki/pkg/logqlmodel/stats";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
-option go_package = "github.com/grafana/loki/pkg/logqlmodel/stats";
-
 
 // Result contains LogQL query statistics.
 message Result {
-  Summary summary = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "summary"];
-  Querier querier = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "querier"];
-  Ingester ingester = 3 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "ingester"];
+  Summary summary = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "summary"
+  ];
+  Querier querier = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "querier"
+  ];
+  Ingester ingester = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "ingester"
+  ];
+  Caches caches = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "cache"
+  ];
+}
+
+message Caches {
+  Cache chunk = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "chunk"
+  ];
+  Cache index = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "index"
+  ];
+  Cache result = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result"
+  ];
 }
 
 // Summary is the summary of a query statistics.
 message Summary {
-   // Total bytes processed per second.
+  // Total bytes processed per second.
   int64 bytesProcessedPerSecond = 1 [(gogoproto.jsontag) = "bytesProcessedPerSecond"];
   // Total lines processed per second.
   int64 linesProcessedPerSecond = 2 [(gogoproto.jsontag) = "linesProcessedPerSecond"];
@@ -36,10 +63,15 @@ message Summary {
   double queueTime = 6 [(gogoproto.jsontag) = "queueTime"];
   // Total of subqueries created to fulfill this query.
   int64 subqueries = 7 [(gogoproto.jsontag) = "subqueries"];
+  // Total number of result entries returned
+  int64 totalEntriesReturned = 8 [(gogoproto.jsontag) = "totalEntriesReturned"];
 }
 
 message Querier {
-  Store store = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "store"];
+  Store store = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "store"
+  ];
 }
 
 message Ingester {
@@ -52,19 +84,24 @@ message Ingester {
   // Total lines sent by ingesters.
   int64 totalLinesSent = 4 [(gogoproto.jsontag) = "totalLinesSent"];
 
-  Store store = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "store"];
-
+  Store store = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "store"
+  ];
 }
 
 message Store {
-    // The total of chunk reference fetched from index.
-    int64 totalChunksRef = 1 [(gogoproto.jsontag) = "totalChunksRef"];
-    // Total number of chunks fetched.
-    int64 totalChunksDownloaded  = 2 [(gogoproto.jsontag) = "totalChunksDownloaded"];
-    // Time spent fetching chunks in nanoseconds.
-    int64 chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
+  // The total of chunk reference fetched from index.
+  int64 totalChunksRef = 1 [(gogoproto.jsontag) = "totalChunksRef"];
+  // Total number of chunks fetched.
+  int64 totalChunksDownloaded = 2 [(gogoproto.jsontag) = "totalChunksDownloaded"];
+  // Time spent fetching chunks in nanoseconds.
+  int64 chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
 
-    Chunk chunk = 4 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "chunk"];
+  Chunk chunk = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "chunk"
+  ];
 }
 
 message Chunk {
@@ -80,4 +117,13 @@ message Chunk {
   int64 compressedBytes = 8 [(gogoproto.jsontag) = "compressedBytes"];
   // Total duplicates found while processing.
   int64 totalDuplicates = 9 [(gogoproto.jsontag) = "totalDuplicates"];
+}
+
+message Cache {
+  int32 entriesFound = 1 [(gogoproto.jsontag) = "entriesFound"];
+  int32 entriesRequested = 2 [(gogoproto.jsontag) = "entriesRequested"];
+  int32 entriesStored = 3 [(gogoproto.jsontag) = "entriesStored"];
+  int64 bytesReceived = 4 [(gogoproto.jsontag) = "bytesReceived"];
+  int64 bytesSent = 5 [(gogoproto.jsontag) = "bytesSent"];
+  int32 requests = 6 [(gogoproto.jsontag) = "requests"];
 }

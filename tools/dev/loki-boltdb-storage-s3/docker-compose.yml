@@ -17,12 +17,13 @@ services:
       <<: *logging
     image: minio/minio:RELEASE.2022-03-11T23-57-45Z
     entrypoint: sh
-    command: -c 'mkdir -p /data/loki && /opt/bin/minio server /data'
+    command: -c 'mkdir -p /data/loki && /opt/bin/minio server --console-address :9001 /data'
     environment:
       - MINIO_ACCESS_KEY=loki
       - MINIO_SECRET_KEY=supersecret
     ports:
       - 9000:9000
+      - 9001:9001
     volumes:
       - .data-minio:/data:delegated
 
@@ -240,6 +241,8 @@ services:
       - querier
     environment:
       - GF_PATHS_PROVISIONING=/etc/config/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     ports:
       - 3000:3000
     volumes:

@@ -9,9 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-var (
-	errNoMetricNameLabel = fmt.Errorf("No metric name label")
-)
+var errNoMetricNameLabel = fmt.Errorf("No metric name label")
 
 // MetricNameMatcherFromMatchers extracts the metric name from a set of matchers
 func MetricNameMatcherFromMatchers(matchers []*labels.Matcher) (*labels.Matcher, []*labels.Matcher, bool) {

@@ -1,7 +1,9 @@
 package syntax
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -178,6 +180,49 @@ func Test_SampleExpr_String(t *testing.T) {
 	}
 }
 
+func TestMatcherGroups(t *testing.T) {
+	for i, tc := range []struct {
+		query string
+		exp   []MatcherRange
+	}{
+		{
+			query: `{job="foo"}`,
+			exp: []MatcherRange{
+				{
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
+			},
+		},
+		{
+			query: `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m] offset 10m)`,
+			exp: []MatcherRange{
+				{
+					Interval: 5 * time.Minute,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
+				{
+					Interval: 5 * time.Minute,
+					Offset:   10 * time.Minute,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "bar"),
+					},
+				},
+			},
+		},
+	} {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			expr, err := ParseExpr(tc.query)
+			require.Nil(t, err)
+			out := MatcherGroups(expr)
+			require.Equal(t, tc.exp, out)
+		})
+	}
+}
+
 func Test_NilFilterDoesntPanic(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []string{
@@ -193,9 +238,9 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 
 			p, err := expr.Pipeline()
 			require.Nil(t, err)
-			_, _, ok := p.ForStream(labelBar).Process([]byte("bleepbloop"))
+			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"))
 
-			require.True(t, ok)
+			require.True(t, matches)
 		})
 	}
 }
@@ -287,8 +332,8 @@ func Test_FilterMatcher(t *testing.T) {
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
-					_, _, ok := sp.Process([]byte(lc.l))
-					assert.Equalf(t, lc.e, ok, "query for line '%s' was %v and not %v", lc.l, ok, lc.e)
+					_, _, matches := sp.Process(0, []byte(lc.l))
+					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
 		})
@@ -392,7 +437,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 			sp := p.ForStream(labelBar)
 			for i := 0; i < b.N; i++ {
 				for _, line := range lines {
-					sp.Process(line)
+					sp.Process(0, line)
 				}
 			}
 		})

@@ -19,12 +19,20 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series"
 )
 
 const DefaultIndexShards = 32
 
 var ErrInvalidShardQuery = errors.New("incompatible index shard query")
+
+type Interface interface {
+	Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels
+	Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error)
+	LabelNames(shard *astmapper.ShardAnnotation) ([]string, error)
+	LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error)
+	Delete(labels labels.Labels, fp model.Fingerprint)
+}
 
 // InvertedIndex implements a in-memory inverted index from label pairs to fingerprints.
 // It is sharded to reduce lock contention on writes.
@@ -63,12 +71,12 @@ func (ii *InvertedIndex) getShards(shard *astmapper.ShardAnnotation) []*indexSha
 	return result
 }
 
-func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
+func (ii *InvertedIndex) validateShard(shard *astmapper.ShardAnnotation) error {
 	if shard == nil {
 		return nil
 	}
-	if int(totalShards)%shard.Of != 0 || uint32(shard.Of) > totalShards {
-		return fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, totalShards, shard)
+	if int(ii.totalShards)%shard.Of != 0 || uint32(shard.Of) > ii.totalShards {
+		return fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, ii.totalShards, shard)
 	}
 	return nil
 }
@@ -143,7 +151,7 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 
 // Lookup all fingerprints for the provided matchers.
 func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
-	if err := validateShard(ii.totalShards, shard); err != nil {
+	if err := ii.validateShard(shard); err != nil {
 		return nil, err
 	}
 
@@ -168,13 +176,13 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.Sha
 
 // LabelNames returns all label names.
 func (ii *InvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string, error) {
-	if err := validateShard(ii.totalShards, shard); err != nil {
+	if err := ii.validateShard(shard); err != nil {
 		return nil, err
 	}
 	shards := ii.getShards(shard)
 	results := make([][]string, 0, len(shards))
 	for i := range shards {
-		shardResult := shards[i].labelNames()
+		shardResult := shards[i].labelNames(nil)
 		results = append(results, shardResult)
 	}
 
@@ -183,14 +191,14 @@ func (ii *InvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string,
 
 // LabelValues returns the values for the given label.
 func (ii *InvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error) {
-	if err := validateShard(ii.totalShards, shard); err != nil {
+	if err := ii.validateShard(shard); err != nil {
 		return nil, err
 	}
 	shards := ii.getShards(shard)
 	results := make([][]string, 0, len(shards))
 
 	for i := range shards {
-		shardResult := shards[i].labelValues(name)
+		shardResult := shards[i].labelValues(name, nil)
 		results = append(results, shardResult)
 	}
 
@@ -219,6 +227,8 @@ type unlockIndex map[string]indexEntry
 // This is the prevalent value for Intel and AMD CPUs as-at 2018.
 const cacheLineSize = 64
 
+// Roughly
+// map[labelName] => map[labelValue] => []fingerprint
 type indexShard struct {
 	shard uint32
 	mtx   sync.RWMutex
@@ -288,9 +298,9 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		if matcher.Type == labels.MatchEqual {
 			fps := values.fps[matcher.Value]
 			toIntersect = append(toIntersect, fps.fps...) // deliberate copy
-		} else if matcher.Type == labels.MatchRegexp && len(chunk.FindSetMatches(matcher.Value)) > 0 {
+		} else if matcher.Type == labels.MatchRegexp && len(series.FindSetMatches(matcher.Value)) > 0 {
 			// The lookup is of the form `=~"a|b|c|d"`
-			set := chunk.FindSetMatches(matcher.Value)
+			set := series.FindSetMatches(matcher.Value)
 			for _, value := range set {
 				toIntersect = append(toIntersect, values.fps[value].fps...)
 			}
@@ -329,7 +339,7 @@ func (shard *indexShard) allFPs() model.Fingerprints {
 	}
 
 	var result model.Fingerprints
-	var m = map[model.Fingerprint]struct{}{}
+	m := map[model.Fingerprint]struct{}{}
 	for _, fp := range fps {
 		if _, ok := m[fp]; !ok {
 			m[fp] = struct{}{}
@@ -339,20 +349,27 @@ func (shard *indexShard) allFPs() model.Fingerprints {
 	return result
 }
 
-func (shard *indexShard) labelNames() []string {
+func (shard *indexShard) labelNames(extractor func(unlockIndex) []string) []string {
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
 	results := make([]string, 0, len(shard.idx))
-	for name := range shard.idx {
-		results = append(results, name)
+	if extractor != nil {
+		results = append(results, extractor(shard.idx)...)
+	} else {
+		for name := range shard.idx {
+			results = append(results, name)
+		}
 	}
 
 	sort.Strings(results)
 	return results
 }
 
-func (shard *indexShard) labelValues(name string) []string {
+func (shard *indexShard) labelValues(
+	name string,
+	extractor func(indexEntry) []string,
+) []string {
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
@@ -361,13 +378,16 @@ func (shard *indexShard) labelValues(name string) []string {
 		return nil
 	}
 
-	results := make([]string, 0, len(values.fps))
-	for val := range values.fps {
-		results = append(results, val)
+	if extractor == nil {
+		results := make([]string, 0, len(values.fps))
+		for val := range values.fps {
+			results = append(results, val)
+		}
+		sort.Strings(results)
+		return results
 	}
 
-	sort.Strings(results)
-	return results
+	return extractor(values)
 }
 
 func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {

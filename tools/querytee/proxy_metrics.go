@@ -32,8 +32,8 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 		responsesComparedTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex_querytee",
 			Name:      "responses_compared_total",
-			Help:      "Total number of responses compared per route name by result.",
-		}, []string{"route", "result"}),
+			Help:      "Total number of responses compared per route and backend name by result.",
+		}, []string{"backend", "route", "result"}),
 	}
 
 	return m

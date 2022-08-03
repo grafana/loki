@@ -7,62 +7,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/util"
 )
-
-// StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.
-func StreamsToMatrix(from, through model.Time, responses []*client.QueryStreamResponse) (model.Matrix, error) {
-	result := model.Matrix{}
-	for _, response := range responses {
-		series, err := SeriesChunksToMatrix(from, through, response.Chunkseries)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, series...)
-	}
-	return result, nil
-}
-
-// SeriesChunksToMatrix converts slice of []client.TimeSeriesChunk to a model.Matrix.
-func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeriesChunk) (model.Matrix, error) {
-	if serieses == nil {
-		return nil, nil
-	}
-
-	result := model.Matrix{}
-	for _, series := range serieses {
-		metric := logproto.FromLabelAdaptersToMetric(series.Labels)
-		chunks, err := FromChunks("", logproto.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
-		if err != nil {
-			return nil, err
-		}
-
-		samples := []model.SamplePair{}
-		for _, chunk := range chunks {
-			ss, err := chunk.Samples(from, through)
-			if err != nil {
-				return nil, err
-			}
-			samples = util.MergeSampleSets(samples, ss)
-		}
-
-		result = append(result, &model.SampleStream{
-			Metric: metric,
-			Values: samples,
-		})
-	}
-	return result, nil
-}
 
 // FromChunks converts []client.Chunk to []chunk.Chunk.
 func FromChunks(userID string, metric labels.Labels, in []client.Chunk) ([]chunk.Chunk, error) {
 	out := make([]chunk.Chunk, 0, len(in))
 	for _, i := range in {
-		o, err := prom_chunk.NewForEncoding(prom_chunk.Encoding(byte(i.Encoding)))
+		o, err := chunk.NewForEncoding(chunk.Encoding(byte(i.Encoding)))
 		if err != nil {
 			return nil, err
 		}
@@ -89,7 +41,7 @@ func ToChunks(in []chunk.Chunk) ([]client.Chunk, error) {
 			Encoding:         int32(i.Data.Encoding()),
 		}
 
-		buf := bytes.NewBuffer(make([]byte, 0, prom_chunk.ChunkLen))
+		buf := bytes.NewBuffer(make([]byte, 0, 1024))
 		if err := i.Data.Marshal(buf); err != nil {
 			return nil, err
 		}

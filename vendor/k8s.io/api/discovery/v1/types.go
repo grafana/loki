@@ -55,6 +55,7 @@ type EndpointSlice struct {
 }
 
 // AddressType represents the type of address referred to by an endpoint.
+// +enum
 type AddressType string
 
 const (
@@ -153,6 +154,7 @@ type ForZone struct {
 }
 
 // EndpointPort represents a Port used by an EndpointSlice
+// +structType=atomic
 type EndpointPort struct {
 	// The name of this port. All ports in an EndpointSlice must have a unique
 	// name. If the EndpointSlice is dervied from a Kubernetes service, this
