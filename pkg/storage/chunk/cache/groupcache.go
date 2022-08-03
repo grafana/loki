@@ -60,17 +60,15 @@ type RingCfg struct {
 }
 
 type GroupCacheConfig struct {
-	Enabled    bool    `yaml:"enabled,omitempty"`
-	Ring       RingCfg `yaml:"ring,omitempty"`
-	CapacityMB int64   `yaml:"capacity_per_cache_mb,omitempty"`
-	ListenPort int     `yaml:"listen_port,omitempty"`
+	Enabled           bool          `yaml:"enabled,omitempty"`
+	Ring              RingCfg       `yaml:"ring,omitempty"`
+	CapacityMB        int64         `yaml:"capacity_per_cache_mb,omitempty"`
+	ListenPort        int           `yaml:"listen_port,omitempty"`
+	HeartbeatInterval time.Duration `yaml:"heartbeat_interval,omitempty"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	WriteByteTimeout  time.Duration `yaml:"write_timeout,omitempty"`
 
 	Cache Cache `yaml:"-"`
-}
-
-// Groupconfig represents config per Group.
-type GroupConfig struct {
-	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -81,6 +79,9 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
 	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
 		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
+	f.DurationVar(&cfg.HeartbeatInterval, "prefix.heartbeat-interval", time.Second, "If the connection is idle, the interval the cache will send heartbeats")
+	f.DurationVar(&cfg.HeartbeatTimeout, "prefix.heartbeat-timeout", time.Second, "Timeout for heartbeat responses")
+	f.DurationVar(&cfg.WriteByteTimeout, "prefix.write-timeout", time.Second, "Maximum time for the cache to try writing")
 }
 
 type ringManager interface {
@@ -91,6 +92,10 @@ type ringManager interface {
 func NewGroupCache(rm ringManager, config GroupCacheConfig, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
+
+	http2Transport.ReadIdleTimeout = config.HeartbeatInterval
+	http2Transport.PingTimeout = config.HeartbeatTimeout
+	http2Transport.WriteByteTimeout = config.WriteByteTimeout
 
 	pool := groupcache.NewHTTPPoolOpts(
 		addr,
@@ -199,6 +204,11 @@ func (c *GroupCache) Stats() *groupcache.Stats {
 	}
 
 	return &c.cache.Stats
+}
+
+// Groupconfig represents config per Group.
+type GroupConfig struct {
+	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
 }
 
 type group struct {
