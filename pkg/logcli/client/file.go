@@ -183,11 +183,16 @@ func (f *FileClient) GetOrgID() string {
 }
 
 type limiter struct {
-	n int
+	n       int
+	timeout time.Duration
 }
 
 func (l *limiter) MaxQuerySeries(userID string) int {
 	return l.n
+}
+
+func (l *limiter) QueryTimeout(userID string) time.Duration {
+	return l.timeout
 }
 
 type querier struct {

@@ -96,22 +96,19 @@ type Querier interface {
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
-	// Timeout for queries execution
-	Timeout time.Duration `yaml:"timeout"`
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution.")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
 func (opts *EngineOpts) applyDefault() {
-	if opts.Timeout == 0 {
-		opts.Timeout = 5 * time.Minute
-	}
+	// if opts.Timeout == 0 {
+	// 	opts.Timeout = 5 * time.Minute
+	// }
 	if opts.MaxLookBackPeriod == 0 {
 		opts.MaxLookBackPeriod = 30 * time.Second
 	}
@@ -120,7 +117,6 @@ func (opts *EngineOpts) applyDefault() {
 // Engine is the LogQL engine.
 type Engine struct {
 	logger    log.Logger
-	timeout   time.Duration
 	evaluator Evaluator
 	limits    Limits
 }
@@ -133,7 +129,6 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 	}
 	return &Engine{
 		logger:    logger,
-		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
 	}
@@ -143,7 +138,6 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
@@ -162,7 +156,6 @@ type Query interface {
 
 type query struct {
 	logger    log.Logger
-	timeout   time.Duration
 	params    Params
 	parse     func(context.Context, string) (syntax.Expr, error)
 	limits    Limits
@@ -226,7 +219,13 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	ctx, cancel := context.WithTimeout(ctx, q.timeout)
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't fetch tenantID: %w", err)
+	}
+
+	queryTimeout := q.limits.QueryTimeout(userID)
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
 	expr, err := q.parse(ctx, q.params.Query())
