@@ -27,6 +27,7 @@
 * [6395](https://github.com/grafana/loki/pull/6395) **DylanGuedes**: Add encoding support
 
 ##### Fixes
+* [6766](https://github.com/grafana/loki/pull/6766) **kavirajk**: fix(logql): Make `LabelSampleExtractor` ignore processing the line if it doesn't contain that specific label. Fixes unwrap behavior explained in the issue https://github.com/grafana/loki/issues/6713
 
 ##### Changes
 
