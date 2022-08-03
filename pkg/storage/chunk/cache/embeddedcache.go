@@ -38,10 +38,10 @@ func (cfg *EmbeddedcacheConfig) RegisterFlagsWithPrefix(prefix, description stri
 	f.IntVar(&cfg.ListenPort, prefix+"embedded-cache.listen_port", 4100, "The port to use for groupcache communication")
 }
 
-func (em EmbeddedcacheConfig) IsEnabledWithDistributed() bool {
-	return em.Enabled && em.Distributed
+func (cfg *EmbeddedcacheConfig) IsEnabledWithDistributed() bool {
+	return cfg.Enabled && cfg.Distributed
 }
 
-func (em EmbeddedcacheConfig) IsEnabledWithoutDistributed() bool {
-	return em.Enabled && !em.Distributed
+func (cfg *EmbeddedcacheConfig) IsEnabledWithoutDistributed() bool {
+	return cfg.Enabled && !cfg.Distributed
 }
