@@ -821,23 +821,24 @@ ingester:
 		})
 	})
 
-	t.Run("common groupcache setting is applied to chunk, index, and result caches", func(t *testing.T) {
+	t.Run("embedded-cache setting is applied to result caches", func(t *testing.T) {
 		// ensure they are all false by default
 		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-		assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache)
-		assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableGroupCache)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableGroupCache)
+		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Enabled)
+		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Distributed)
 
 		configFileString := `---
-common:
-  groupcache:
-    enabled: true`
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        distributed: true`
 
 		config, _ = testContext(configFileString, nil)
 
-		assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache)
-		assert.True(t, config.StorageConfig.IndexQueriesCacheConfig.EnableGroupCache)
-		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableGroupCache)
+		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Enabled)
+		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Distributed)
 	})
 }
 
@@ -867,16 +868,18 @@ chunk_store_config:
 			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
 		})
 
-		t.Run("no FIFO cache enabled by default if GroupCache is set", func(t *testing.T) {
+		t.Run("if distributed cache is set for results cache, FIFO cache should be disabled.", func(t *testing.T) {
 			configFileString := `---
-common:
-  groupcache:
-    enabled: true`
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        distributed: true`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
-			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
-			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableGroupCache)
+			assert.True(t, config.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed())
+			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {

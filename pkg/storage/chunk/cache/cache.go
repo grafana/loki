@@ -25,8 +25,7 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableFifoCache  bool `yaml:"enable_fifocache"`
-	EnableGroupCache bool `yaml:"enable_groupcache"`
+	EnableFifoCache bool `yaml:"enable_fifocache"`
 
 	DefaultValidity time.Duration `yaml:"default_validity"`
 
@@ -34,7 +33,7 @@ type Config struct {
 	Memcache       MemcachedConfig       `yaml:"memcached"`
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
-	Memorycache    MemorycacheConfig     `yaml:"memorycache"`
+	Embeddedcache  EmbeddedcacheConfig   `yaml:"embedded_cache"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // depreciated
 
 	// GroupcacheConfig is a local GroupCache config per cache
@@ -43,8 +42,8 @@ type Config struct {
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
-	// GroupCache is configured/initialized as part of modules and injected here
-	GroupCache Cache `yaml:"-"`
+	// // GroupCache is configured/initialized as part of modules and injected here
+	// GroupCache Cache `yaml:"-"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -66,7 +65,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
-	f.BoolVar(&cfg.EnableGroupCache, prefix+"cache.enable-groupcache", false, description+"Enable distributed in-memory cache.")
 
 	cfg.Prefix = prefix
 }
@@ -90,13 +88,13 @@ func IsRedisSet(cfg Config) bool {
 	return cfg.Redis.Endpoint != ""
 }
 
-func IsGroupCacheSet(cfg Config) bool {
-	return cfg.GroupCache != nil
+func IsEmbeddedCacheSet(cfg Config) bool {
+	return cfg.Embeddedcache.Enabled
 }
 
-// IsCacheConfigured determines if memcached, redis, or groupcache have been configured
+// IsCacheConfigured determines if memcached, redis, or embedded-cache have been configured
 func IsCacheConfigured(cfg Config) bool {
-	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || cfg.EnableGroupCache
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg)
 }
 
 // New creates a new Cache using Config.
@@ -145,9 +143,9 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
-	if IsGroupCacheSet(cfg) {
-		cacheName := cfg.Prefix + "groupcache"
-		caches = append(caches, CollectStats(Instrument(cacheName, cfg.GroupCache, reg)))
+	if IsEmbeddedCacheSet(cfg) {
+		cacheName := cfg.Prefix + "embedded-cache"
+		caches = append(caches, CollectStats(Instrument(cacheName, cfg.Cache, reg)))
 	}
 
 	cache := NewTiered(caches)

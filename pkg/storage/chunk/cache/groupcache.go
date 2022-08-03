@@ -72,16 +72,6 @@ type GroupConfig struct {
 	CapacityMB int64 `yaml:"capacity_mb,omitempty"`
 }
 
-// // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-// func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
-// 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
-
-// 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
-// 	f.IntVar(&cfg.ListenPort, prefix+".listen_port", 4100, "The port to use for groupcache communication")
-// 	f.Int64Var(&cfg.CapacityMB, prefix+".capacity-per-cache-mb", 100, "Capacity of each groupcache group in MB (default: 100). "+
-// 		"NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.")
-// }
-
 type ringManager interface {
 	Addr() string
 	Ring() ring.ReadRing

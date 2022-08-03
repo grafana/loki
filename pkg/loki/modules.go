@@ -148,16 +148,16 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initGroupcache() (_ services.Service, err error) {
-	if !t.Cfg.Common.Memorycache.Enabled ||
-		!t.Cfg.Common.Memorycache.Distributed {
+	// Currently groupcache can only be enabled for results cache.
+	if !t.Cfg.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() {
 		return nil, nil
 	}
 
 	groupConfig := cache.GroupCacheConfig{
 		Enabled:    true,
-		Ring:       t.Cfg.Common.Memorycache.Ring,
-		CapacityMB: t.Cfg.Common.Memorycache.MaxSizeMB,
-		ListenPort: t.Cfg.Common.Memorycache.ListenPort,
+		Ring:       t.Cfg.QueryRange.CacheConfig.Embeddedcache.Ring,
+		CapacityMB: t.Cfg.QueryRange.CacheConfig.Embeddedcache.MaxSizeMB,
+		ListenPort: t.Cfg.QueryRange.CacheConfig.Embeddedcache.ListenPort,
 	}
 
 	rm, err := cache.NewGroupcacheRingManager(groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
@@ -173,20 +173,11 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache = gc.NewGroup(
-		t.Cfg.ChunkStoreConfig.ChunkCacheConfig.Prefix+"groupcache",
-		&t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCacheConfig,
-		stats.ChunkCache,
-	)
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc.NewGroup(
+	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Cache = gc.NewGroup(
 		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
 		&t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCacheConfig,
 		stats.ResultCache,
 	)
-
-	// The index cache generates too much traffic to be used. Make it a fifo cache
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache = true
-	t.Cfg.StorageConfig.IndexQueriesCacheConfig.Fifocache.MaxSizeBytes = fmt.Sprint(t.Cfg.Common.Memorycache.MaxSizeMB * 1e6)
 
 	return t.groupcacheRingManager, nil
 }
@@ -908,8 +899,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	if t.Cfg.Common.Memorycache.Distributed {
-		t.Cfg.Common.Memorycache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	if t.Cfg.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() {
+		t.Cfg.QueryRange.CacheConfig.Embeddedcache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	}
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
