@@ -398,7 +398,11 @@ func (s *StorageClient) batchWrite(ctx context.Context, batch index.WriteBatch) 
 
 // QueryPages implement chunk.IndexClient.
 func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	return util.DoParallelQueries(ctx, s.query, queries, callback)
+	err := util.DoParallelQueries(ctx, s.query, queries, callback)
+	if err != nil {
+		return errors.New("StorageClient QueryPages fail,err:" + err.Error())
+	}
+	return nil
 }
 
 func (s *StorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
@@ -614,7 +618,11 @@ func (s *ObjectClient) putChunks(ctx context.Context, chunks []chunk.Chunk) erro
 
 // GetChunks implements chunk.ObjectClient.
 func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, s.maxGetParallel, input, s.getChunk)
+	chunks, err := util.GetParallelChunks(ctx, s.maxGetParallel, input, s.getChunk)
+	if err != nil {
+		return nil, errors.New("util.GetParallelChunks fail," + err.Error())
+	}
+	return chunks, nil
 }
 
 func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
