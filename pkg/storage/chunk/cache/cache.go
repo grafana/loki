@@ -105,8 +105,9 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	// Currently fifocache can be enabled in two ways.
 	// 1. cfg.EnableFifocache (old deprecated way)
 	// 2. cfg.Embeddedcache.Enabled=true and cfg.Embeddedcache.Distributed=false (new way)
+
 	// if cfg.EnableFifoCache || (cfg.Embeddedcache.IsEnabledWithoutDistributed()) {
-	if IsEmbeddedCacheSet(cfg) && !cfg.Embeddedcache.Distributed {
+	if cfg.EnableFifoCache || (IsEmbeddedCacheSet(cfg) && !cfg.Embeddedcache.Distributed) {
 		var fifocfg FifoCacheConfig
 
 		if cfg.EnableFifoCache {
