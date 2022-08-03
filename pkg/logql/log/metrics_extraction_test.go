@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -152,6 +153,69 @@ func Test_Extract_ExpectedLabels(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, (20 * time.Millisecond).Seconds(), f)
 	require.Equal(t, labels.Labels{{Name: "foo", Value: "json"}}, lbs.Labels())
+
+}
+func TestLabelExtractorWithStages(t *testing.T) {
+
+	// A helper type to check if particular logline should be skipped
+	// during `ProcessLine` or got correct sample value extracted.
+	type checkLine struct {
+		logLine string
+		skip    bool
+		sample  float64
+	}
+
+	tests := []struct {
+		name       string
+		extractor  SampleExtractor
+		checkLines []checkLine
+		shouldFail bool
+	}{
+		{
+			name: "with just logfmt and stringlabelfilter",
+			// {foo="bar"} | logfmt | subqueries != "0" (note: "0", a stringlabelfilter)
+			extractor: mustSampleExtractor(
+				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0"))}, NoopStage),
+			),
+			checkLines: []checkLine{
+				{logLine: "msg=hello subqueries=5", skip: false, sample: 5},
+				{logLine: "msg=hello subqueries=0", skip: true},
+				{logLine: "msg=hello ", skip: true}, // log lines doesn't contain the `subqueries` label
+			},
+		},
+		{
+			name: "with just logfmt and numeric labelfilter",
+			// {foo="bar"} | logfmt | subqueries != 0 (note: "0", a numericLabelFilter)
+			extractor: mustSampleExtractor(
+				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewNumericLabelFilter(LabelFilterNotEqual, "subqueries", 0)}, NoopStage),
+			),
+			checkLines: []checkLine{
+				{logLine: "msg=hello subqueries=5", skip: false, sample: 5},
+				{logLine: "msg=hello subqueries=0", skip: true},
+				{logLine: "msg=hello ", skip: true}, // log lines doesn't contain the `subqueries` label
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, line := range tc.checkLines {
+				v, lbs, ok := tc.extractor.ForStream(labels.Labels{{Name: "bar", Value: "foo"}}).ProcessString(0, line.logLine)
+				skipped := !ok
+				assert.Equal(t, line.skip, skipped, "line", line.logLine)
+				if !skipped {
+					assert.Equal(t, line.sample, v)
+
+					// lbs shouldn't have __error__ = SampleExtractionError
+					assert.Empty(t, lbs.Labels())
+					return
+				}
+
+				// if line is skipped, `lbs` will be nil.
+				assert.Nil(t, lbs, "line", line.logLine)
+			}
+		})
+	}
 }
 
 func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {

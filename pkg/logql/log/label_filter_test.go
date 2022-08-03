@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -347,6 +348,75 @@ func TestReduceAndLabelFilter(t *testing.T) {
 			if got := ReduceAndLabelFilter(tt.filters); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReduceAndLabelFilter() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestStringLabelFilter(t *testing.T) {
+	// NOTE: https://github.com/grafana/loki/issues/6713
+
+	tests := []struct {
+		name        string
+		filter      *StringLabelFilter
+		labels      labels.Labels
+		shouldMatch bool
+	}{
+		{
+			name:   `logfmt|subqueries!="0" (without label)`,
+			filter: NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
+			labels: labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			// without `subqueries` label, the value is assumed to be empty `subqueries=""` is matches the label filter `subqueries!="0"`.
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries!="0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:   `logfmt|subqueries!~"0" (without label)`,
+			filter: NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, "subqueries", "0")),
+			labels: labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			// without `subqueries` label, the value is assumed to be empty `subqueries=""` is matches the label filter `subqueries!="0"`.
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries!~"0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, "subqueries", "0")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: "2"}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries="0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries="0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries=~"0" (without label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}}, // no label `subqueries`
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|subqueries=~"0" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "subqueries", "")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
+			shouldMatch: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, tc.labels.Hash()))
+			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}
 }
