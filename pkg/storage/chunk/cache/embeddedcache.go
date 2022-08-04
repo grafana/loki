@@ -22,8 +22,6 @@ type EmbeddedCacheConfig struct {
 	// PurgeInterval tell how often should we remove keys that are expired.
 	// by default it takes `DefaultPurgeInterval`
 	PurgeInterval time.Duration `yaml:"-"`
-
-	globalConfig EmbeddedCacheSingletonConfig `yaml:"-"`
 }
 
 func (cfg *EmbeddedCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
