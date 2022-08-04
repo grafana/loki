@@ -3,11 +3,10 @@ package gatewayclient
 import (
 	"io"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 )
 
 // IndexGatewayGRPCPool represents a pool of gRPC connections to different index gateway instances.
@@ -15,7 +14,7 @@ import (
 // Only used when Index Gateway is configured to run in ring mode.
 type IndexGatewayGRPCPool struct {
 	grpc_health_v1.HealthClient
-	indexgatewaypb.IndexGatewayClient
+	logproto.IndexGatewayClient
 	io.Closer
 }
 
@@ -31,6 +30,6 @@ func NewIndexGatewayGRPCPool(address string, opts []grpc.DialOption) (*IndexGate
 	return &IndexGatewayGRPCPool{
 		Closer:             conn,
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
-		IndexGatewayClient: indexgatewaypb.NewIndexGatewayClient(conn),
+		IndexGatewayClient: logproto.NewIndexGatewayClient(conn),
 	}, nil
 }

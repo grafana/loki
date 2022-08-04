@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/logproto"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -267,7 +267,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
-		return &indexgatewaypb.IndexStatsRequest{
+		return &logproto.IndexStatsRequest{
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
@@ -379,7 +379,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		return req.WithContext(ctx), nil
-	case *indexgatewaypb.IndexStatsRequest:
+	case *logproto.IndexStatsRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
@@ -455,8 +455,8 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Data:    resp.Data,
 			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
-	case *indexgatewaypb.IndexStatsRequest:
-		var resp indexgatewaypb.IndexStatsResponse
+	case *logproto.IndexStatsRequest:
+		var resp logproto.IndexStatsResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}

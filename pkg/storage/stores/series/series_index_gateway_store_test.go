@@ -13,22 +13,22 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 )
 
 type fakeClient struct {
-	indexgatewaypb.IndexGatewayClient
+	logproto.IndexGatewayClient
 }
 
-func (fakeClient) GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRefRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetChunkRefResponse, error) {
-	return &indexgatewaypb.GetChunkRefResponse{}, nil
+func (fakeClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
+	return &logproto.GetChunkRefResponse{}, nil
 }
 
-func (fakeClient) GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetSeriesResponse, error) {
-	return &indexgatewaypb.GetSeriesResponse{}, nil
+func (fakeClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest, opts ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
+	return &logproto.GetSeriesResponse{}, nil
 }
 
 func Test_IndexGatewayClient(t *testing.T) {
@@ -49,8 +49,8 @@ func Test_IndexGatewayClient_Fallback(t *testing.T) {
 
 	// register fake grpc service with missing methods
 	desc := grpc.ServiceDesc{
-		ServiceName: "indexgatewaypb.IndexGateway",
-		HandlerType: (*indexgatewaypb.IndexGatewayServer)(nil),
+		ServiceName: "logproto.IndexGateway",
+		HandlerType: (*logproto.IndexGatewayServer)(nil),
 		Streams: []grpc.StreamDesc{
 			{
 				StreamName:    "QueryIndex",
@@ -58,7 +58,7 @@ func Test_IndexGatewayClient_Fallback(t *testing.T) {
 				ServerStreams: true,
 			},
 		},
-		Metadata: "pkg/storage/stores/shipper/indexgateway/indexgatewaypb/gateway.proto",
+		Metadata: "pkg/storage/stores/shipper/indexgateway/logproto/gateway.proto",
 	}
 	s.RegisterService(&desc, nil)
 
@@ -94,7 +94,7 @@ func Test_IndexGatewayClient_Fallback(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tm.SyncTables(context.Background()))
 	idx := NewIndexGatewayClientStore(
-		indexgatewaypb.NewIndexGatewayClient(conn),
+		logproto.NewIndexGatewayClient(conn),
 		&indexStore{
 			chunkBatchSize: 1,
 			schema:         schema,
