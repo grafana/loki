@@ -95,7 +95,10 @@ func IsCacheConfigured(cfg Config) bool {
 
 // New creates a new Cache using Config.
 func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (Cache, error) {
-	if cfg.Cache != nil {
+
+	// Have additional check for embeddedcache with distributed mode, because those cache will already be initialized in modules
+	// but still need stats collector wrapper for it.
+	if cfg.Cache != nil && !cfg.EmbeddedCache.IsEnabledWithDistributed() {
 		return cfg.Cache, nil
 	}
 
@@ -162,7 +165,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 
 	if IsEmbeddedCacheSet(cfg) && cfg.EmbeddedCache.Distributed {
 		cacheName := cfg.Prefix + "embedded-cache"
-
 		caches = append(caches, CollectStats(Instrument(cacheName, cfg.Cache, reg)))
 	}
 
