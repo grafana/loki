@@ -303,6 +303,19 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		}
 
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
+			// overwrite, do not merge
+			if v.Headers != nil {
+				clt.Headers = v.Headers
+			}
+
+			// if any relabel configs are defined for a tenant, override all base relabel configs,
+			// even if an empty list is configured; however if this value is not overridden for a tenant,
+			// it should retain the base value
+			if v.WriteRelabelConfigs != nil {
+				clt.WriteRelabelConfigs = v.WriteRelabelConfigs
+			}
+
+			// merge with override
 			if err := mergo.Merge(&clt, *v, mergo.WithOverride); err != nil {
 				return nil, fmt.Errorf("failed to apply remote write clients configs: %w", err)
 			}

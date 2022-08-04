@@ -40,6 +40,9 @@ const sigV4TenantRegion = "us-east-2"
 const defaultCapacity = 1000
 const capacity = 1500
 
+const remote1 = "remote-1"
+const remote2 = "remote-2"
+
 var remoteURL, _ = url.Parse("http://remote-write")
 var backCompatCfg = Config{
 	RemoteWrite: RemoteWriteConfig{
@@ -102,7 +105,7 @@ var remoteURL2, _ = url.Parse("http://remote-write2")
 var cfg = Config{
 	RemoteWrite: RemoteWriteConfig{
 		Clients: map[string]config.RemoteWriteConfig{
-			"remote-1": {
+			remote1: {
 				URL: &promConfig.URL{URL: remoteURL},
 				QueueConfig: config.QueueConfig{
 					Capacity: defaultCapacity,
@@ -126,7 +129,7 @@ var cfg = Config{
 					},
 				},
 			},
-			"remote-2": {
+			remote2: {
 				URL: &promConfig.URL{URL: remoteURL2},
 				QueueConfig: config.QueueConfig{
 					Capacity: capacity,
@@ -218,7 +221,7 @@ func newFakeLimits() fakeLimits {
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
+					remote1: {
 						QueueConfig: config.QueueConfig{Capacity: 987},
 					},
 				},
@@ -228,7 +231,7 @@ func newFakeLimits() fakeLimits {
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
+					remote1: {
 						Headers: map[string]string{
 							user.OrgIDHeaderName:                         "overridden",
 							fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
@@ -241,14 +244,14 @@ func newFakeLimits() fakeLimits {
 			},
 			noHeadersRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
+					remote1: {
 						Headers: map[string]string{},
 					},
 				},
 			},
 			customRelabelsTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
+					remote1: {
 						WriteRelabelConfigs: []*relabel.Config{
 							{
 								Regex:        regex,
@@ -266,26 +269,14 @@ func newFakeLimits() fakeLimits {
 			nilRelabelsTenant: {},
 			emptySliceRelabelsTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
+					remote1: {
 						WriteRelabelConfigs: []*relabel.Config{},
-					},
-				},
-			},
-			badRelabelsTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
-						WriteRelabelConfigs: []*relabel.Config{
-							{
-								SourceLabels: model.LabelNames{"__cluster__"},
-								Action:       "labeldrop",
-							},
-						},
 					},
 				},
 			},
 			sigV4ConfigTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					"remote-1": {
+					remote1: {
 						SigV4Config: &sigv4.SigV4Config{
 							Region: sigV4TenantRegion,
 						},
@@ -431,6 +422,22 @@ func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
 	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
 		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
 	}
+
+	reg = setupSigV4Registry(t, cfg, newFakeLimits())
+
+	// this tenant has no overrides, so will get defaults
+	tenantCfg, err = reg.getTenantConfig("unknown")
+	require.NoError(t, err)
+
+	// tenant has not disable remote-write so will inherit the global one
+	assert.Len(t, tenantCfg.RemoteWrite, 2)
+	// ensure sigv4 config is not nil and the global value
+	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
+		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
+	}
+	if assert.NotNil(t, tenantCfg.RemoteWrite[1].SigV4Config) {
+		assert.Equal(t, tenantCfg.RemoteWrite[1].SigV4Config.Region, sigV4GlobalRegion)
+	}
 }
 
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
@@ -469,6 +476,8 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
 	assert.Equal(t, "foo", tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username)
 	assert.Equal(t, promConfig.Secret("bar"), tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password)
+	assert.Equal(t, "foo2", tenantCfg.RemoteWrite[1].HTTPClientConfig.BasicAuth.Username)
+	assert.Equal(t, promConfig.Secret("bar2"), tenantCfg.RemoteWrite[1].HTTPClientConfig.BasicAuth.Password)
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
@@ -490,6 +499,32 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 
 	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
+	assert.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, additionalHeadersRWTenant, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName])
+	assert.Equal(t, additionalHeadersRWTenant, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName])
+	// but that the additional header defined is set
+	assert.Equal(t, "Header", tenantCfg.RemoteWrite[0].Headers["Additional"])
+	// no overrides for the second client
+	assert.Equal(t, "", tenantCfg.RemoteWrite[1].Headers["Additional"])
+	// the original header must be removed
+	assert.Equal(t, "", tenantCfg.RemoteWrite[0].Headers["Base"])
+	// no overrides for the second client
+	assert.Equal(t, "value2", tenantCfg.RemoteWrite[1].Headers["Base"])
+
+	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
 }
 
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {
@@ -503,6 +538,25 @@ func TestTenantRemoteWriteHeadersReset(t *testing.T) {
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
 	// the original header must be removed
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
+
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(noHeadersRWTenant)
+	require.NoError(t, err)
+
+	// first client
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
+	// the original header must be removed
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
+
+	// second client
+	assert.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
+	// the original header remains
+	assert.Equal(t, "value2", tenantCfg.RemoteWrite[1].Headers["Base"])
 }
 
 func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
@@ -516,6 +570,25 @@ func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
 	// the original header must be present
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
+
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	// first client
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+	// the original header must be present
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
+
+	// second client
+	assert.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
+	// the original header must be present
+	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers["Base"], "value2")
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
@@ -526,6 +599,16 @@ func TestRelabelConfigOverrides(t *testing.T) {
 
 	// it should also override the default label configs
 	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
+
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(customRelabelsTenant)
+	require.NoError(t, err)
+
+	// it should also override the default label configs for the first client only
+	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
+	assert.Len(t, tenantCfg.RemoteWrite[1].WriteRelabelConfigs, 1)
+	assert.Equal(t, "__name2__", tenantCfg.RemoteWrite[1].WriteRelabelConfigs[0].SourceLabels.String())
 }
 
 func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
@@ -536,6 +619,15 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 
 	// if there are no relabel configs defined for the tenant, it should not override
 	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, reg.config.RemoteWrite.Client.WriteRelabelConfigs)
+
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(nilRelabelsTenant)
+	require.NoError(t, err)
+
+	// if there are no relabel configs defined for the tenant, it should not override
+	assert.EqualValues(t, reg.config.RemoteWrite.Clients[remote1].WriteRelabelConfigs, tenantCfg.RemoteWrite[0].WriteRelabelConfigs)
+	assert.EqualValues(t, reg.config.RemoteWrite.Clients[remote2].WriteRelabelConfigs, tenantCfg.RemoteWrite[1].WriteRelabelConfigs)
 }
 
 func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
@@ -546,6 +638,16 @@ func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
 
 	// if there is an empty slice of relabel configs, it should clear existing relabel configs
 	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
+
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(emptySliceRelabelsTenant)
+	require.NoError(t, err)
+
+	// if there is an empty slice of relabel configs, it should clear existing relabel configs
+	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
+	// if there are no relabel configs defined for the tenant, it should not override
+	assert.Len(t, tenantCfg.RemoteWrite[1].WriteRelabelConfigs, 1)
 }
 
 func TestRelabelConfigOverridesWithErrors(t *testing.T) {
@@ -606,6 +708,14 @@ func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
 	// if remote-write is disabled, we use a discardingAppender to not write to the WAL
 	app := reg.Appender(user.InjectOrgID(context.Background(), disabledRWTenant))
 	_, ok := app.(discardingAppender)
+	assert.Truef(t, ok, "instance is not of expected type")
+
+	// same test with regular config
+	reg = setupRegistry(t, cfg, newFakeLimits())
+	reg.configureTenantStorage(disabledRWTenant)
+
+	app = reg.Appender(user.InjectOrgID(context.Background(), disabledRWTenant))
+	_, ok = app.(discardingAppender)
 	assert.Truef(t, ok, "instance is not of expected type")
 }
 
