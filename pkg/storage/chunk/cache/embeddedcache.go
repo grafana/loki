@@ -23,7 +23,6 @@ type EmbeddedCacheConfig struct {
 	// by default it takes `DefaultPurgeInterval`
 	PurgeInterval time.Duration `yaml:"-"`
 
-	// singleton configs(irrespective of what caches uses it). Mainly useful for distributed caches.
 	globalConfig EmbeddedCacheSingletonConfig `yaml:"-"`
 }
 
@@ -44,6 +43,7 @@ func (cfg *EmbeddedCacheConfig) IsEnabledWithoutDistributed() bool {
 	return cfg.Enabled && !cfg.Distributed
 }
 
+// EmbeddedCacheSingletonConfig defines global singleton needed by Embedded cache(particularly used in distributed fashion)
 type EmbeddedCacheSingletonConfig struct {
 	// distributed cache configs. Have no meaning if `Distributed=false`.
 	ListenPort int     `yaml:"listen_port,omitempty"`
