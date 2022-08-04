@@ -46,7 +46,7 @@ type Config struct {
 	CompactorAddress string `yaml:"compactor_address"`
 
 	// Global groupcache config. Independent of what type of cache uses the groupcache, we need some singleton configs like Ring configuration. Shouldn't be exposed to user config
-	EmbeddedcacheConfig cache.EmbeddedcacheSingletonConfig `yaml:"embedded_cache"`
+	EmbeddedCacheConfig cache.EmbeddedCacheSingletonConfig `yaml:"embedded_cache"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -62,7 +62,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 
-	c.EmbeddedcacheConfig.RegisterFlagsWithPrefix("common.embedded-cache", "", f)
+	c.EmbeddedCacheConfig.RegisterFlagsWithPrefix("common.embedded-cache", "", f)
 }
 
 type Storage struct {

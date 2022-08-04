@@ -824,8 +824,8 @@ ingester:
 	t.Run("embedded-cache setting is applied to result caches", func(t *testing.T) {
 		// ensure they are all false by default
 		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Enabled)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Distributed)
+		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 
 		configFileString := `---
 query_range:
@@ -837,8 +837,8 @@ query_range:
 
 		config, _ = testContext(configFileString, nil)
 
-		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Enabled)
-		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Embeddedcache.Distributed)
+		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 	})
 }
 
@@ -878,7 +878,7 @@ query_range:
         distributed: true`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.True(t, config.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed())
+			assert.True(t, config.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed())
 			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
 		})
 

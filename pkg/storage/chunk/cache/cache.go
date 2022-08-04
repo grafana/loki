@@ -34,8 +34,8 @@ type Config struct {
 	Memcache       MemcachedConfig       `yaml:"memcached"`
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
-	Embeddedcache  EmbeddedcacheConfig   `yaml:"embedded_cache"`
-	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // depreciated
+	EmbeddedCache  EmbeddedCacheConfig   `yaml:"embedded_cache"`
+	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // deprecated
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
@@ -56,11 +56,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
-	cfg.Embeddedcache.RegisterFlagsWithPrefix(prefix, description, f)
+	cfg.EmbeddedCache.RegisterFlagsWithPrefix(prefix, description, f)
 	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"(deprecated use embedded-cache instead) Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
+	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"(deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 
 	cfg.Prefix = prefix
 }
@@ -85,7 +85,7 @@ func IsRedisSet(cfg Config) bool {
 }
 
 func IsEmbeddedCacheSet(cfg Config) bool {
-	return cfg.Embeddedcache.Enabled
+	return cfg.EmbeddedCache.Enabled
 }
 
 // IsCacheConfigured determines if memcached, redis, or embedded-cache have been configured
@@ -103,10 +103,9 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 
 	// Currently fifocache can be enabled in two ways.
 	// 1. cfg.EnableFifocache (old deprecated way)
-	// 2. cfg.Embeddedcache.Enabled=true and cfg.Embeddedcache.Distributed=false (new way)
+	// 2. cfg.EmbeddedCache.Enabled=true and cfg.EmbeddedCache.Distributed=false (new way)
 
-	// if cfg.EnableFifoCache || (cfg.Embeddedcache.IsEnabledWithoutDistributed()) {
-	if cfg.EnableFifoCache || (IsEmbeddedCacheSet(cfg) && !cfg.Embeddedcache.Distributed) {
+	if cfg.EnableFifoCache || (IsEmbeddedCacheSet(cfg) && !cfg.EmbeddedCache.Distributed) {
 		var fifocfg FifoCacheConfig
 
 		if cfg.EnableFifoCache {
@@ -114,12 +113,12 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			fifocfg = cfg.Fifocache
 		}
 
-		if cfg.Embeddedcache.IsEnabledWithoutDistributed() {
+		if cfg.EmbeddedCache.IsEnabledWithoutDistributed() {
 			fifocfg = FifoCacheConfig{
-				MaxSizeBytes:  fmt.Sprint(cfg.Embeddedcache.MaxSizeMB * 1e6),
-				MaxSizeItems:  cfg.Embeddedcache.MaxItems,
-				TTL:           cfg.Embeddedcache.TTL,
-				PurgeInterval: cfg.Embeddedcache.PurgeInterval,
+				MaxSizeBytes:  fmt.Sprint(cfg.EmbeddedCache.MaxSizeMB * 1e6),
+				MaxSizeItems:  cfg.EmbeddedCache.MaxItems,
+				TTL:           cfg.EmbeddedCache.TTL,
+				PurgeInterval: cfg.EmbeddedCache.PurgeInterval,
 			}
 		}
 
@@ -127,8 +126,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			fifocfg.TTL = cfg.DefaultValidity
 		}
 
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", fifocfg, reg, logger, cacheType); cache != nil {
-			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
+		if cache := NewFifoCache(cfg.Prefix+"embedded-cache", fifocfg, reg, logger, cacheType); cache != nil {
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
 		}
 	}
 
@@ -161,8 +160,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
-	if IsEmbeddedCacheSet(cfg) && cfg.Embeddedcache.Distributed {
-		cacheName := cfg.Prefix + "groupcache"
+	if IsEmbeddedCacheSet(cfg) && cfg.EmbeddedCache.Distributed {
+		cacheName := cfg.Prefix + "embedded-cache"
 
 		caches = append(caches, CollectStats(Instrument(cacheName, cfg.Cache, reg)))
 	}
