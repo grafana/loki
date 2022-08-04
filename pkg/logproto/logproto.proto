@@ -346,7 +346,7 @@ message GetSeriesRequest {
 }
 
 message GetSeriesResponse {
-  repeated Series series = 1 [(gogoproto.nullable) = false];
+  repeated IndexSeries series = 1 [(gogoproto.nullable) = false];
 }
 
 // Series calls to the TSDB Index
