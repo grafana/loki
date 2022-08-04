@@ -59,10 +59,13 @@ type RingCfg struct {
 }
 
 type GroupCacheConfig struct {
-	Enabled    bool    `yaml:"enabled,omitempty"`
-	Ring       RingCfg `yaml:"ring,omitempty"`
-	MaxSizeMB  int64   `yaml:"max_size_mb,omitempty"`
-	ListenPort int     `yaml:"listen_port,omitempty"`
+	Enabled           bool          `yaml:"enabled,omitempty"`
+	Ring              RingCfg       `yaml:"ring,omitempty"`
+	MaxSizeMB         int64         `yaml:"max_size_mb,omitempty"`
+	ListenPort        int           `yaml:"listen_port,omitempty"`
+	HeartbeatInterval time.Duration `yaml:"heartbeat_interval,omitempty"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	WriteByteTimeout  time.Duration `yaml:"write_timeout,omitempty"`
 
 	Cache Cache `yaml:"-"`
 }
@@ -75,6 +78,10 @@ type ringManager interface {
 func NewGroupCache(rm ringManager, config GroupCacheConfig, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
+
+	http2Transport.ReadIdleTimeout = config.HeartbeatInterval
+	http2Transport.PingTimeout = config.HeartbeatTimeout
+	http2Transport.WriteByteTimeout = config.WriteByteTimeout
 
 	pool := groupcache.NewHTTPPoolOpts(
 		addr,
