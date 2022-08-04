@@ -13,12 +13,12 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/logproto"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 

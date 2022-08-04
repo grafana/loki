@@ -58,7 +58,8 @@ message LokiResponse {
     (gogoproto.jsontag) = "statistics"
   ];
   repeated definitions.PrometheusResponseHeader Headers = 9 [
-    (gogoproto.jsontag) = "-"
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
 }
 
@@ -84,7 +85,8 @@ message LokiSeriesResponse {
   ];
   uint32 version = 3;
   repeated definitions.PrometheusResponseHeader Headers = 4 [
-    (gogoproto.jsontag) = "-"
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
   stats.Result statistics = 5 [
     (gogoproto.nullable) = false,
@@ -109,7 +111,8 @@ message LokiLabelNamesResponse {
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
   repeated definitions.PrometheusResponseHeader Headers = 4 [
-    (gogoproto.jsontag) = "-"
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
   stats.Result statistics = 5 [
     (gogoproto.nullable) = false,
@@ -135,6 +138,7 @@ message LokiPromResponse {
 message IndexStatsResponse {
   logproto.IndexStatsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.IndexStatsResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
-    (gogoproto.jsontag) = "-"
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
 }

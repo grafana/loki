@@ -185,10 +185,10 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 	}
 
 	resp := &logproto.GetSeriesResponse{
-		Series: make([]logproto.Series, len(series)),
+		Series: make([]logproto.IndexSeries, len(series)),
 	}
 	for i := range series {
-		resp.Series[i] = logproto.Series{
+		resp.Series[i] = logproto.IndexSeries{
 			Labels: logproto.FromLabelsToLabelAdapters(series[i]),
 		}
 	}
