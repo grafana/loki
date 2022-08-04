@@ -294,7 +294,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
-				for _, dr := range deleteRequests {
+				for _, dr := range deleteRequests.requests {
 					require.EqualValues(t, 0, dr.DeletedLines)
 				}
 			}
@@ -316,12 +316,12 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 		hasChunks               bool
 		user                    string
 	}{
-		{[]DeleteRequest{{Query: `0`, UserID: "test-user", StartTime: 0, EndTime: 100}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `0`, UserID: "test-user", StartTime: 0, EndTime: 100}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `1`, UserID: "test-user", StartTime: 200, EndTime: 400}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `2`, UserID: "test-user", StartTime: 400, EndTime: 500}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `3`, UserID: "test-user", StartTime: 500, EndTime: 700}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `3`, UserID: "other-user", StartTime: 500, EndTime: 700}}, false, "test-user"},
-		{[]DeleteRequest{{Query: `4`, UserID: "test-user", StartTime: 700, EndTime: 900}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `4`, UserID: "test-user", StartTime: 700, EndTime: 900}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `4`, UserID: "", StartTime: 700, EndTime: 900}}, true, ""},
 		{[]DeleteRequest{}, false, ""},
 	}
