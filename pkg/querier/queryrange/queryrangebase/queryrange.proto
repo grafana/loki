@@ -26,7 +26,6 @@ message PrometheusRequest {
   repeated definitions.PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
 }
 
-
 message PrometheusResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   PrometheusData Data = 2 [
