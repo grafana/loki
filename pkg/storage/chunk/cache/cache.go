@@ -119,7 +119,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		if cfg.EmbeddedCache.IsEnabledWithoutDistributed() {
 			fifocfg = FifoCacheConfig{
 				MaxSizeBytes:  fmt.Sprint(cfg.EmbeddedCache.MaxSizeMB * 1e6),
-				MaxSizeItems:  cfg.EmbeddedCache.MaxItems,
 				TTL:           cfg.EmbeddedCache.TTL,
 				PurgeInterval: cfg.EmbeddedCache.PurgeInterval,
 			}

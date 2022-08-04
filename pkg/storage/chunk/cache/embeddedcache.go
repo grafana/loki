@@ -16,7 +16,6 @@ type EmbeddedCacheConfig struct {
 	Distributed bool          `yaml:"distributed,omitempty"`
 	Enabled     bool          `yaml:"enabled,omitempty"`
 	MaxSizeMB   int64         `yaml:"max_size_mb"`
-	MaxItems    int           `yaml:"max_items"` // TODO(kavi): should we stop supporting it?
 	TTL         time.Duration `yaml:"ttl"`
 
 	// PurgeInterval tell how often should we remove keys that are expired.
@@ -28,7 +27,6 @@ func (cfg *EmbeddedCacheConfig) RegisterFlagsWithPrefix(prefix, description stri
 	f.BoolVar(&cfg.Enabled, prefix+"embedded-cache.enabled", false, description+"Whether embedded cache is enabled.")
 	f.BoolVar(&cfg.Distributed, prefix+"embedded-cache.distributed", false, description+"Whether embedded cache is enabled with distributed mode.")
 	f.Int64Var(&cfg.MaxSizeMB, prefix+"embedded-cache.max-size-mb", 100, description+"Maximum memory size of the cache in MB.")
-	f.IntVar(&cfg.MaxItems, prefix+"embedded-cache.max-items", 0, description+"Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.TTL, prefix+"embedded-cache.ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
 
 }
