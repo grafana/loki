@@ -77,8 +77,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
 					time.Unix(int64(i), 0).String(),
+					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
