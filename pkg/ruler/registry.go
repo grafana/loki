@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -10,6 +9,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/imdario/mergo"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -236,22 +237,13 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		// metadata is only used by prometheus scrape configs
 		clt.MetadataConfig = config.MetadataConfig{Send: false}
 
-		// Keeping this block for backward compatibility
+		// Keeping these blocks for backward compatibility
 		if v := r.overrides.RulerRemoteWriteURL(tenant); v != "" {
 			u, err := url.Parse(v)
 			if err != nil {
 				return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
 			}
 			clt.URL = &promConfig.URL{u}
-		}
-		if m := r.overrides.RulerRemoteWriteURLs(tenant); len(m) > 0 {
-			if v, ok := m[id]; ok {
-				u, err := url.Parse(v)
-				if err != nil {
-					return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
-				}
-				clt.URL = &promConfig.URL{u}
-			}
 		}
 		if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
 			clt.RemoteTimeout = model.Duration(v)
@@ -308,6 +300,12 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 
 		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
 			clt.SigV4Config = v
+		}
+
+		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
+			if err := mergo.Merge(&clt, *v, mergo.WithOverride); err != nil {
+				return nil, fmt.Errorf("failed to apply remote write clients configs: %w", err)
+			}
 		}
 
 		overrides.Clients[id] = clt
