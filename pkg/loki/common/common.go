@@ -45,7 +45,7 @@ type Config struct {
 	// CompactorAddress is the http address of the compactor in the form http://host:port
 	CompactorAddress string `yaml:"compactor_address"`
 
-	// Global groupcache config. Independent of what type of cache uses the groupcache, we need some singleton configs like Ring configuration. Shouldn't be exposed to user config
+	// Global embedded-cache config. Independent of what type of cache, we need some singleton configs like Ring configuration when running in distributed fashion.
 	EmbeddedCacheConfig cache.EmbeddedCacheSingletonConfig `yaml:"embedded_cache"`
 }
 
