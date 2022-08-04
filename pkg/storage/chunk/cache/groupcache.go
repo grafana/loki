@@ -61,7 +61,7 @@ type RingCfg struct {
 type GroupCacheConfig struct {
 	Enabled    bool    `yaml:"enabled,omitempty"`
 	Ring       RingCfg `yaml:"ring,omitempty"`
-	CapacityMB int64   `yaml:"capacity_per_cache_mb,omitempty"`
+	MaxSizeMB  int64   `yaml:"max_size_mb,omitempty"`
 	ListenPort int     `yaml:"listen_port,omitempty"`
 
 	Cache Cache `yaml:"-"`
@@ -95,7 +95,7 @@ func NewGroupCache(rm ringManager, config GroupCacheConfig, logger log.Logger, r
 		wg:                   sync.WaitGroup{},
 		startWaitingForClose: cancel,
 		reg:                  reg,
-		cacheBytes:           config.CapacityMB * 1e6, // MB => B
+		cacheBytes:           config.MaxSizeMB * 1e6, // MB => B
 	}
 
 	go cache.serveGroupcache(config.ListenPort)
@@ -185,6 +185,11 @@ func (c *GroupCache) Stats() *groupcache.Stats {
 	return &c.cache.Stats
 }
 
+// Groupconfig represents config per Group.
+type GroupConfig struct {
+	MaxSizeMB int64 `yaml:"max_size_mb,omitempty"`
+}
+
 type group struct {
 	cache     *groupcache.Group
 	logger    log.Logger
@@ -198,7 +203,7 @@ type group struct {
 	storeDuration prometheus.Observer
 }
 
-func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
+func (c *GroupCache) NewGroup(name string, cfg *GroupConfig, ct stats.CacheType) Cache {
 	// Return a known error on miss to track which keys need to be inserted
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
 		return ErrGroupcacheMiss
@@ -206,6 +211,11 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 
 	c.wg.Add(1)
 	c.startWaitingForClose()
+
+	cap := c.cacheBytes
+	if cfg.MaxSizeMB != 0 {
+		cap = cfg.MaxSizeMB * 1e6 // MB into bytes
+	}
 
 	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "loki",
@@ -216,8 +226,8 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, c.cacheBytes, missGetter),
-		cacheBytes:    c.cacheBytes,
+		cache:         groupcache.NewGroup(name, cap, missGetter),
+		cacheBytes:    cap,
 		logger:        c.logger,
 		wg:            &c.wg,
 		cacheType:     ct,

@@ -152,16 +152,16 @@ func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
 		return nil, nil
 	}
 
-	groupConfig := cache.GroupCacheConfig{
+	groupCacheConfig := cache.GroupCacheConfig{
 		Enabled:    true,
-		Ring:       t.Cfg.QueryRange.CacheConfig.Embeddedcache.Ring,
-		CapacityMB: t.Cfg.QueryRange.CacheConfig.Embeddedcache.MaxSizeMB,
-		ListenPort: t.Cfg.QueryRange.CacheConfig.Embeddedcache.ListenPort,
+		Ring:       t.Cfg.Common.EmbeddedcacheConfig.Ring,
+		MaxSizeMB:  t.Cfg.Common.EmbeddedcacheConfig.MaxSizeMB,
+		ListenPort: t.Cfg.Common.EmbeddedcacheConfig.ListenPort,
 	}
 
-	groupConfig.Ring.ListenPort = groupConfig.ListenPort
+	groupCacheConfig.Ring.ListenPort = groupCacheConfig.ListenPort
 
-	rm, err := cache.NewGroupcacheRingManager(groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := cache.NewGroupcacheRingManager(groupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new embedded-cache ring manager")
 	}
@@ -169,14 +169,19 @@ func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
 	t.embeddedcacheRingManager = rm
 	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.embeddedcacheRingManager)
 
-	gc, err := cache.NewGroupCache(rm, groupConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	gc, err := cache.NewGroupCache(rm, groupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
+	}
+
+	groupConfig := cache.GroupConfig{
+		MaxSizeMB: t.Cfg.QueryRange.CacheConfig.Embeddedcache.MaxSizeMB,
 	}
 
 	// We support distributed embedded cache only for results currently.
 	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Cache = gc.NewGroup(
 		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
+		&groupConfig,
 		stats.ResultCache,
 	)
 
@@ -901,7 +906,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	if t.Cfg.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() {
-		t.Cfg.QueryRange.CacheConfig.Embeddedcache.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+		t.Cfg.Common.EmbeddedcacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	}
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)

@@ -165,7 +165,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 		if r.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() {
-			r.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceAddr = r.Common.InstanceAddr
+			r.Common.EmbeddedcacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
 		}
 	}
 
@@ -176,7 +176,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		if r.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() {
-			r.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+			r.Common.EmbeddedcacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		}
 	}
 }
@@ -308,16 +308,16 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 
 	// EmbeddedCache distributed ring.
 	if r.QueryRange.CacheConfig.Embeddedcache.IsEnabledWithDistributed() &&
-		(mergeWithExisting || reflect.DeepEqual(r.QueryRange.CacheConfig.Embeddedcache.Ring, defaults.QueryRange.CacheConfig.Embeddedcache.Ring)) {
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.InstancePort = rc.InstancePort
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceAddr = rc.InstanceAddr
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceID = rc.InstanceID
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceZone = rc.InstanceZone
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.QueryRange.CacheConfig.Embeddedcache.Ring.KVStore = rc.KVStore
+		(mergeWithExisting || reflect.DeepEqual(r.Common.EmbeddedcacheConfig.Ring, defaults.Common.EmbeddedcacheConfig.Ring)) {
+		r.Common.EmbeddedcacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Common.EmbeddedcacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Common.EmbeddedcacheConfig.Ring.InstancePort = rc.InstancePort
+		r.Common.EmbeddedcacheConfig.Ring.InstanceAddr = rc.InstanceAddr
+		r.Common.EmbeddedcacheConfig.Ring.InstanceID = rc.InstanceID
+		r.Common.EmbeddedcacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Common.EmbeddedcacheConfig.Ring.InstanceZone = rc.InstanceZone
+		r.Common.EmbeddedcacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Common.EmbeddedcacheConfig.Ring.KVStore = rc.KVStore
 	}
 }
 
@@ -353,7 +353,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	if err != nil {
 		return err
 	}
-	cfg.QueryRange.CacheConfig.Embeddedcache.Ring.TokensFilePath = f
+	cfg.Common.EmbeddedcacheConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -432,8 +432,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceInterfaceNames, defaults.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceInterfaceNames) {
-		cfg.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceInterfaceNames = append(cfg.QueryRange.CacheConfig.Embeddedcache.Ring.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.Common.EmbeddedcacheConfig.Ring.InstanceInterfaceNames, defaults.Common.EmbeddedcacheConfig.Ring.InstanceInterfaceNames) {
+		cfg.Common.EmbeddedcacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.EmbeddedcacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -448,7 +448,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.QueryRange.CacheConfig.Embeddedcache.Ring.KVStore.Store = memberlistStr
+	r.Common.EmbeddedcacheConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
