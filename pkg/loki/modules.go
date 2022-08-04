@@ -153,10 +153,13 @@ func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
 	}
 
 	groupCacheConfig := cache.GroupCacheConfig{
-		Enabled:    true,
-		Ring:       t.Cfg.Common.EmbeddedCacheConfig.Ring,
-		MaxSizeMB:  t.Cfg.Common.EmbeddedCacheConfig.MaxSizeMB,
-		ListenPort: t.Cfg.Common.EmbeddedCacheConfig.ListenPort,
+		Enabled:           true,
+		Ring:              t.Cfg.Common.EmbeddedCacheConfig.Ring,
+		MaxSizeMB:         t.Cfg.Common.EmbeddedCacheConfig.MaxSizeMB,
+		ListenPort:        t.Cfg.Common.EmbeddedCacheConfig.ListenPort,
+		HeartbeatInterval: t.Cfg.Common.EmbeddedCacheConfig.HeartbeatInterval,
+		HeartbeatTimeout:  t.Cfg.Common.EmbeddedCacheConfig.HeartbeatTimeout,
+		WriteByteTimeout:  t.Cfg.Common.EmbeddedCacheConfig.WriteByteTimeout,
 	}
 
 	groupCacheConfig.Ring.ListenPort = groupCacheConfig.ListenPort

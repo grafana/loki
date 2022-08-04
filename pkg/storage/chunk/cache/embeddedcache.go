@@ -51,10 +51,18 @@ type EmbeddedCacheSingletonConfig struct {
 
 	// Default capacity if none provided while creating each "Group".
 	MaxSizeMB int64 `yaml:"max_size__mb,omitempty"`
+
+	// Different timeouts
+	HeartbeatInterval time.Duration `yaml:"heartbeat_interval,omitempty"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	WriteByteTimeout  time.Duration `yaml:"write_timeout,omitempty"`
 }
 
 func (cfg *EmbeddedCacheSingletonConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.IntVar(&cfg.ListenPort, prefix+"embedded-cache.listen_port", 4100, "The port to use for groupcache communication")
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
-	f.Int64Var(&cfg.MaxSizeMB, prefix+".max-size-mb", 100, "Maximum memory size of the cache in MB.")
+	f.Int64Var(&cfg.MaxSizeMB, prefix+"embedded-cache.max-size-mb", 100, "Maximum memory size of the cache in MB.")
+	f.DurationVar(&cfg.HeartbeatInterval, prefix+"embedded-cache.heartbeat-interval", time.Second, "If the connection is idle, the interval the cache will send heartbeats")
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"embedded-cache.heartbeat-timeout", time.Second, "Timeout for heartbeat responses")
+	f.DurationVar(&cfg.WriteByteTimeout, prefix+"embeddec-cache.write-timeout", time.Second, "Maximum time for the cache to try writing")
 }
