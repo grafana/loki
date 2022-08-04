@@ -263,7 +263,7 @@ func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, u
 
 	// We can't do the overlap check between the passed interval and delete requests interval from a user because
 	// if a request is issued just for today and there are chunks spanning today and yesterday then
-	// the overlap check would skip processing yesterdays index which would result in index pointing to deleted chunks.
+	// the overlap check would skip processing yesterdays index which would result in the index pointing to deleted chunks.
 	if userID != "" {
 		return d.deleteRequestsToProcess[userID] != nil
 	}
