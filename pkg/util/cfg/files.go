@@ -62,7 +62,7 @@ func YAML(f string, expandEnvVars bool) Source {
 // dYAML returns a YAML source and allows dependency injection
 func dYAML(y []byte) Source {
 	return func(dst Cloneable) error {
-		return yaml.UnmarshalStrict(y, dst)
+		return yaml.Unmarshal(y, dst)
 	}
 }
 

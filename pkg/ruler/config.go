@@ -49,7 +49,7 @@ func (c *Config) Validate() error {
 
 type RemoteWriteConfig struct {
 	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty"`
-	Clients             map[string]config.RemoteWriteConfig `yaml:"clients"`
+	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty"`
 	Enabled             bool                                `yaml:"enabled"`
 	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
 }
