@@ -19,7 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -285,6 +287,28 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 	}
 
 	return chunkIDs, nil
+}
+
+func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+	resps, err := q.forAllIngesters(ctx, func(querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetStats(ctx, &logproto.IndexStatsRequest{
+			From:     from,
+			Through:  through,
+			Matchers: syntax.MatchersString(matchers),
+		})
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	casted := make([]*index_stats.Stats, 0, len(resps))
+	for _, resp := range resps {
+		casted = append(casted, resp.response.(*index_stats.Stats))
+	}
+
+	merged := index_stats.MergeStats(casted...)
+	return &merged, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

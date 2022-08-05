@@ -9,10 +9,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -20,6 +22,7 @@ import (
 
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 }
 
 type AsyncStoreCfg struct {
@@ -95,6 +98,42 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	}
 
 	return a.mergeIngesterAndStoreChunks(userID, storeChunks, fetchers, ingesterChunks)
+}
+
+func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	if a.queryIngestersWithin != 0 {
+		// don't query ingesters if the query does not overlap with queryIngestersWithin.
+		if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
+			return a.Store.Stats(ctx, userID, from, through, matchers...)
+		}
+	}
+
+	type f func() (*stats.Stats, error)
+	jobs := []f{
+		f(func() (*stats.Stats, error) {
+			return a.ingesterQuerier.Stats(ctx, userID, from, through, matchers...)
+		}),
+		f(func() (*stats.Stats, error) {
+			return a.Store.Stats(ctx, userID, from, through, matchers...)
+		}),
+	}
+	resps := make([]*stats.Stats, len(jobs))
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(ctx context.Context, i int) error {
+			resp, err := jobs[i]()
+			resps[i] = resp
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := stats.MergeStats(resps...)
+	return &merged, nil
 }
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {

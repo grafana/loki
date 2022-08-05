@@ -26,6 +26,8 @@ service Querier {
   rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {}
 
   rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}
+
+  rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
 }
 
 service Ingester {
