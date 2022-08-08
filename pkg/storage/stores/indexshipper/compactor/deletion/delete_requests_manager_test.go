@@ -339,12 +339,6 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				isExpired:           false,
 				nonDeletedIntervals: nil,
 			},
-			expectedDeletionRangeByUser: map[string]model.Interval{
-				testUserID: {
-					Start: now.Add(-13 * time.Hour),
-					End:   now,
-				},
-			},
 		},
 		{
 			name:         "deletes are `filter-only`",
@@ -379,12 +373,6 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           false,
 				nonDeletedIntervals: nil,
-			},
-			expectedDeletionRangeByUser: map[string]model.Interval{
-				testUserID: {
-					Start: now.Add(-13 * time.Hour),
-					End:   now,
-				},
 			},
 		},
 		{

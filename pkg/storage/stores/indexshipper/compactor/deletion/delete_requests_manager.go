@@ -130,6 +130,13 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 			continue
 		}
 
+		if ok, err := d.shouldProcessRequest(deleteRequest); !ok {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 		ur, ok := d.deleteRequestsToProcess[deleteRequest.UserID]
 		if !ok {
 			ur = &userDeleteRequests{
@@ -169,6 +176,19 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	return nil
 }
 
+func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, error) {
+	mode, err := deleteModeFromLimits(d.limits, dr.UserID)
+	if err != nil {
+		level.Error(util_log.Logger).Log(
+			"msg", "unable to determine deletion mode for user",
+			"user", dr.UserID,
+		)
+		return false, err
+	}
+
+	return mode == FilterAndDelete, nil
+}
+
 func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []retention.IntervalFilter) {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
@@ -178,21 +198,6 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		Start: ref.From,
 		End:   ref.Through,
 	}) {
-		return false, nil
-	}
-
-	mode, err := deleteModeFromLimits(d.limits, string(ref.UserID))
-	if err != nil {
-		level.Error(util_log.Logger).Log(
-			"msg", "unable to determine deletion mode for user",
-			"user", ref.UserID,
-			"chunkID", string(ref.ChunkID),
-		)
-		return false, nil
-	}
-
-	if mode == Disabled || mode == FilterOnly {
-		// Don't process deletes
 		return false, nil
 	}
 
