@@ -37,12 +37,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		name                        string
 		deletionMode                Mode
 		deleteRequestsFromStore     []DeleteRequest
+		batchSize                   int
 		expectedResp                resp
 		expectedDeletionRangeByUser map[string]model.Interval
 	}{
 		{
 			name:         "no delete requests",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			expectedResp: resp{
 				isExpired:           false,
 				nonDeletedIntervals: nil,
@@ -51,6 +53,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "no relevant delete requests",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    "different-user",
@@ -73,6 +76,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "whole chunk deleted by single request",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -95,6 +99,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "deleted interval out of range",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -117,6 +122,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "deleted interval out of range(with multiple user requests)",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -149,6 +155,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "multiple delete requests with one deleting the whole chunk",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -177,6 +184,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "multiple delete requests causing multiple holes",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -236,6 +244,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "multiple overlapping requests deleting the whole chunk",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -264,6 +273,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "multiple non-overlapping requests deleting the whole chunk",
 			deletionMode: FilterAndDelete,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -298,6 +308,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "deletes are disabled",
 			deletionMode: Disabled,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -338,6 +349,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "deletes are `filter-only`",
 			deletionMode: FilterOnly,
+			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
@@ -375,9 +387,63 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:         "Deletes are limited by batch size",
+			deletionMode: FilterAndDelete,
+			batchSize:    2,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-13 * time.Hour),
+					EndTime:   now.Add(-11 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-10 * time.Hour),
+					EndTime:   now.Add(-8 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-6 * time.Hour),
+					EndTime:   now.Add(-5 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: now.Add(-11*time.Hour) + 1,
+							End:   now.Add(-10*time.Hour) - 1,
+						},
+					},
+					{
+						Interval: model.Interval{
+							Start: now.Add(-8*time.Hour) + 1,
+							End:   now.Add(-time.Hour),
+						},
+					},
+				},
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now.Add(-8 * time.Hour),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil, tc.deletionMode)
+			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.deletionMode, tc.batchSize, nil)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
@@ -419,7 +485,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil, FilterAndDelete)
+		mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, FilterAndDelete, 70, nil)
 		require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 		interval := model.Interval{Start: 300, End: 600}

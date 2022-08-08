@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -37,9 +38,10 @@ type DeleteRequestsManager struct {
 	wg                         sync.WaitGroup
 	done                       chan struct{}
 	deletionMode               Mode
+	batchSize                  int
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer, mode Mode) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, mode Mode, batchSize int, registerer prometheus.Registerer) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
@@ -47,6 +49,7 @@ func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeri
 		metrics:                   newDeleteRequestsManagerMetrics(registerer),
 		done:                      make(chan struct{}),
 		deletionMode:              mode,
+		batchSize:                 batchSize,
 	}
 
 	go dm.loop()
@@ -120,6 +123,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		return err
 	}
 
+	var deleteCount int
 	for _, deleteRequest := range deleteRequests {
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
@@ -149,6 +153,17 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.EndTime > ur.requestsInterval.End {
 			ur.requestsInterval.End = deleteRequest.EndTime
 		}
+
+		deleteCount++
+		if deleteCount >= d.batchSize {
+			break
+		}
+	}
+
+	if deleteCount < len(deleteRequests) {
+		level.Info(util_log.Logger).Log(
+			"msg", fmt.Sprintf("Processing %d of %d delete requests. More requests will be processed in subsequent compactions", deleteCount, len(deleteRequests)),
+		)
 	}
 
 	return nil
@@ -235,6 +250,10 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
 	for _, userDeleteRequests := range d.deleteRequestsToProcess {
+		if userDeleteRequests == nil {
+			continue
+		}
+
 		for _, deleteRequest := range userDeleteRequests.requests {
 			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
 				level.Error(util_log.Logger).Log(
