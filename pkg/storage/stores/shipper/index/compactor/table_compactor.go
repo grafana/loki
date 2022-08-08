@@ -430,7 +430,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 	}
 
 	tenantIdsSlice := make([]string, 0, len(tenantsToFetch))
-	for tenant, _ := range tenantsToFetch {
+	for tenant := range tenantsToFetch {
 		tenantIdsSlice = append(tenantIdsSlice, tenant)
 	}
 
