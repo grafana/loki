@@ -7,13 +7,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/willf/bloom"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var BloomPool PoolBloom
 
-type Stats = indexgatewaypb.IndexStatsResponse
+type Stats = logproto.IndexStatsResponse
 
 func MergeStats(xs ...*Stats) (s Stats) {
 	for _, x := range xs {

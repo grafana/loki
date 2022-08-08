@@ -13,9 +13,9 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -38,12 +38,12 @@ const (
 )
 
 type mockIndexGatewayServer struct {
-	indexgatewaypb.IndexGatewayServer
+	logproto.IndexGatewayServer
 }
 
-func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
+func (m mockIndexGatewayServer) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
 	for i, query := range request.Queries {
-		resp := indexgatewaypb.QueryIndexResponse{
+		resp := logproto.QueryIndexResponse{
 			QueryKey: "",
 			Rows:     nil,
 		}
@@ -65,7 +65,7 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 		}
 
 		for j := 0; j <= i; j++ {
-			resp.Rows = append(resp.Rows, &indexgatewaypb.Row{
+			resp.Rows = append(resp.Rows, &logproto.Row{
 				RangeValue: []byte(fmt.Sprintf("%s%d", rangeValuePrefix, j)),
 				Value:      []byte(fmt.Sprintf("%s%d", valuePrefix, j)),
 			})
@@ -87,8 +87,8 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 	return nil
 }
 
-func (m mockIndexGatewayServer) GetChunkRef(context.Context, *indexgatewaypb.GetChunkRefRequest) (*indexgatewaypb.GetChunkRefResponse, error) {
-	return &indexgatewaypb.GetChunkRefResponse{}, nil
+func (m mockIndexGatewayServer) GetChunkRef(context.Context, *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
+	return &logproto.GetChunkRefResponse{}, nil
 }
 
 func createTestGrpcServer(t *testing.T) (func(), string) {
@@ -97,7 +97,7 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	require.NoError(t, err)
 	s := grpc.NewServer()
 
-	indexgatewaypb.RegisterIndexGatewayServer(s, &server)
+	logproto.RegisterIndexGatewayServer(s, &server)
 	go func() {
 		if err := s.Serve(lis); err != nil {
 			t.Logf("Failed to serve: %v", err)
@@ -226,7 +226,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 
 	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil, tm)
 	require.NoError(b, err)
-	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
+	logproto.RegisterIndexGatewayServer(s, gw)
 	go func() {
 		if err := s.Serve(listener); err != nil {
 			panic(err)
@@ -239,7 +239,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 
 	// initialize the gateway client
 	gatewayClient := GatewayClient{}
-	gatewayClient.grpcClient = indexgatewaypb.NewIndexGatewayClient(conn)
+	gatewayClient.grpcClient = logproto.NewIndexGatewayClient(conn)
 
 	// build the response we expect to get from queries
 	expected := map[string]int{}
