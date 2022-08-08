@@ -621,7 +621,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	filteringEnabled, err := deletion.DeleteEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	filteringEnabled, err := deletion.Enabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
 	}
@@ -1043,7 +1043,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits retention.Limits) 
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	deleteEnabled, err := deletion.DeleteEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	deleteEnabled, err := deletion.Enabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
 	}

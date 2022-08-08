@@ -2,6 +2,7 @@ package validation
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -242,5 +243,20 @@ reject_old_samples: true
 			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
 			require.Equal(t, tc.exp, out)
 		})
+	}
+}
+
+func TestLimitsValidation(t *testing.T) {
+	for _, tc := range []struct {
+		mode     string
+		expected error
+	}{
+		{mode: "disabled", expected: nil},
+		{mode: "filter-only", expected: nil},
+		{mode: "filter-and-delete", expected: nil},
+		{mode: "something-else", expected: fmt.Errorf("delete format must be one of 'disabled', 'filter-only', or 'filter-and-delete'")},
+	} {
+		limits := Limits{DeletionMode: tc.mode}
+		require.Equal(t, tc.expected, limits.Validate())
 	}
 }

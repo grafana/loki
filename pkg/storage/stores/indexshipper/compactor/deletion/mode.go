@@ -48,7 +48,7 @@ func ParseMode(in string) (Mode, error) {
 	return 0, errUnknownMode
 }
 
-func DeleteEnabled(in string) (bool, error) {
+func Enabled(in string) (bool, error) {
 	deleteMode, err := ParseMode(in)
 	if err != nil {
 		return false, err

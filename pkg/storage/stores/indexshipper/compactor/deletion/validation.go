@@ -3,6 +3,8 @@ package deletion
 import (
 	"errors"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
@@ -18,4 +20,21 @@ func parseDeletionQuery(query string) (syntax.LogSelectorExpr, error) {
 	}
 
 	return logSelectorExpr, nil
+}
+
+func validDeletionLimit(l retention.Limits, userID string) (bool, error) {
+	allLimits := l.AllByUserID()
+	if userLimits, ok := allLimits[userID]; ok {
+		hasDelete, err := Enabled(userLimits.DeletionMode)
+		if hasDelete {
+			return true, nil
+		}
+		return false, err
+	}
+
+	hasDelete, err := Enabled(l.DefaultLimits().DeletionMode)
+	if hasDelete {
+		return true, nil
+	}
+	return false, err
 }

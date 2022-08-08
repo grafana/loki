@@ -224,18 +224,15 @@ func (dm *DeleteRequestHandler) deletionMiddleware(next http.Handler) http.Handl
 			return
 		}
 
-		allLimits := dm.limits.AllByUserID()
-		userLimits, ok := allLimits[userID]
-		if ok {
-			if !userLimits.CompactorDeletionEnabled {
-				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-				return
-			}
-		} else {
-			if !dm.limits.DefaultLimits().CompactorDeletionEnabled {
-				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-				return
-			}
+		hasDelete, err := validDeletionLimit(dm.limits, userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if !hasDelete {
+			http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
+			return
 		}
 
 		next.ServeHTTP(w, r)
