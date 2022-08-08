@@ -18,11 +18,17 @@ const (
 	statusFail    = "fail"
 )
 
+type userDeleteRequests struct {
+	requests []DeleteRequest
+	// requestsInterval holds the earliest start time and latest end time considering all the delete requests
+	requestsInterval model.Interval
+}
+
 type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration
 
-	deleteRequestsToProcess []DeleteRequest
+	deleteRequestsToProcess map[string]*userDeleteRequests
 	chunkIntervalsToRetain  []retention.IntervalFilter
 	// WARN: If by any chance we change deleteRequestsToProcessMtx to sync.RWMutex to be able to check multiple chunks at a time,
 	// please take care of chunkIntervalsToRetain which should be unique per chunk.
@@ -37,6 +43,7 @@ func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeri
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		deleteRequestsToProcess:   map[string]*userDeleteRequests{},
 		metrics:                   newDeleteRequestsManagerMetrics(registerer),
 		done:                      make(chan struct{}),
 		deletionMode:              mode,
@@ -107,7 +114,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	d.deleteRequestsToProcess = d.deleteRequestsToProcess[:0]
+	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
 	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return err
@@ -118,13 +125,30 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
+
+		ur, ok := d.deleteRequestsToProcess[deleteRequest.UserID]
+		if !ok {
+			ur = &userDeleteRequests{
+				requestsInterval: model.Interval{
+					Start: deleteRequest.StartTime,
+					End:   deleteRequest.EndTime,
+				},
+			}
+			d.deleteRequestsToProcess[deleteRequest.UserID] = ur
+		}
 		deleteRequest.Metrics = d.metrics
 		level.Info(util_log.Logger).Log(
 			"msg", "Started processing delete request for user",
 			"delete_request_id", deleteRequest.RequestID,
 			"user", deleteRequest.UserID,
 		)
-		d.deleteRequestsToProcess = append(d.deleteRequestsToProcess, deleteRequest)
+		ur.requests = append(ur.requests, deleteRequest)
+		if deleteRequest.StartTime < ur.requestsInterval.Start {
+			ur.requestsInterval.Start = deleteRequest.StartTime
+		}
+		if deleteRequest.EndTime > ur.requestsInterval.End {
+			ur.requestsInterval.End = deleteRequest.EndTime
+		}
 	}
 
 	return nil
@@ -134,7 +158,11 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	if len(d.deleteRequestsToProcess) == 0 {
+	userIDStr := unsafeGetString(ref.UserID)
+	if d.deleteRequestsToProcess[userIDStr] == nil || !intervalsOverlap(d.deleteRequestsToProcess[userIDStr].requestsInterval, model.Interval{
+		Start: ref.From,
+		End:   ref.Through,
+	}) {
 		return false, nil
 	}
 
@@ -151,7 +179,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		},
 	})
 
-	for _, deleteRequest := range d.deleteRequestsToProcess {
+	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
 		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
 		for _, ivf := range d.chunkIntervalsToRetain {
 			entry := ref
@@ -199,52 +227,47 @@ func (d *DeleteRequestsManager) MarkPhaseFailed() {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	d.deleteRequestsToProcess = d.deleteRequestsToProcess[:0]
+	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
 }
 
 func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	for _, deleteRequest := range d.deleteRequestsToProcess {
-		if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
-			level.Error(util_log.Logger).Log(
-				"msg", "failed to mark delete request for user as processed",
-				"delete_request_id", deleteRequest.RequestID,
-				"user", deleteRequest.UserID,
-				"err", err,
-				"deleted_lines", deleteRequest.DeletedLines,
-			)
-		} else {
-			level.Info(util_log.Logger).Log(
-				"msg", "delete request for user marked as processed",
-				"delete_request_id", deleteRequest.RequestID,
-				"user", deleteRequest.UserID,
-				"deleted_lines", deleteRequest.DeletedLines,
-			)
+	for _, userDeleteRequests := range d.deleteRequestsToProcess {
+		for _, deleteRequest := range userDeleteRequests.requests {
+			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
+				level.Error(util_log.Logger).Log(
+					"msg", "failed to mark delete request for user as processed",
+					"delete_request_id", deleteRequest.RequestID,
+					"user", deleteRequest.UserID,
+					"err", err,
+					"deleted_lines", deleteRequest.DeletedLines,
+				)
+			} else {
+				level.Info(util_log.Logger).Log(
+					"msg", "delete request for user marked as processed",
+					"delete_request_id", deleteRequest.RequestID,
+					"user", deleteRequest.UserID,
+					"deleted_lines", deleteRequest.DeletedLines,
+				)
+			}
+			d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 		}
-		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
 }
 
-func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, userID string) bool {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
+	// We can't do the overlap check between the passed interval and delete requests interval from a user because
+	// if a request is issued just for today and there are chunks spanning today and yesterday then
+	// the overlap check would skip processing yesterdays index which would result in the index pointing to deleted chunks.
 	if userID != "" {
-		for _, deleteRequest := range d.deleteRequestsToProcess {
-			if deleteRequest.UserID == userID &&
-				deleteRequest.StartTime <= interval.End &&
-				deleteRequest.EndTime >= interval.Start {
-				return true
-			}
-		}
-
-		return false
+		return d.deleteRequestsToProcess[userID] != nil
 	}
 
-	// If your request includes just today and there are chunks spanning today and yesterday then
-	// with previous check it won’t process yesterday’s index.
 	return len(d.deleteRequestsToProcess) != 0
 }
 
