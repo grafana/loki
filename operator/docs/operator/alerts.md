@@ -22,6 +22,7 @@ toc: true
   - [Loki Request Panics](#Loki-Request-Panics)
   - [Loki Tenant Rate Limit](#Loki-Tenant-Rate-Limit)
   - [Loki Write Path High Load](#Loki-Write-Path-High-Load)
+  - [Loki Read Path High Load](#Loki-Read-Path-High-Load)
 
 <!-- /TOC -->
 
@@ -135,4 +136,30 @@ The write path is flushing the storage in response to back-pressuring.
 
 ### Steps
 
-- Adjust the ingestion limits for the affected tenant or add more ingesters
+- Adjust the ingestion limits for the affected tenant or increase the number of ingesters
+
+## Loki Write Path High Load
+
+### Impact
+
+The read path is under high load.
+
+### Summary
+
+The query queue is currently under high load.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging`
+    - `openshift-operators-redhat`
+
+### Steps
+
+- Increase the number of queriers

@@ -26,7 +26,10 @@ tests:
         values: '0 1 1 2+0x10'
 
       - series: 'loki_ingester_wal_replay_flushing{namespace="my-ns"}'
-        values: '0 1 0 2+0x10'
+        values: '1 1 1 2+0x10'
+
+      - series: 'cortex_query_frontend_queue_length{namespace="my-ns"}'
+        values: '3 5 2 2+0x10'
 
     # Unit test for alerting rules.
     alert_rule_test:
@@ -96,7 +99,20 @@ tests:
         exp_alerts:
           - exp_labels:
               namespace: my-ns
+              severity: warning
             exp_annotations:
               summary: "The write path is experiencing high load, causing backpressure storage flushing."
               message: "The write path is experiencing high load."
               runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
+
+      # --------- LokiReadPathHighLoad ---------
+      - eval_time: 6m
+        alertname: LokiReadPathHighLoad
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              severity: warning
+            exp_annotations:
+              summary: "The query queue is experiencing high load."
+              message: "The read path is experiencing high load."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"

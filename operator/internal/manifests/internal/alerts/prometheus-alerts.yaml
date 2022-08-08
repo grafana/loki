@@ -123,3 +123,18 @@ groups:
     for: 15m
     labels:
       severity: warning
+  - alert: LokiReadPathHighLoad
+    annotations:
+      message: |-
+        The read path is experiencing high load.
+      summary: "The query queue is experiencing high load."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"
+    expr: |
+      sum(
+        cortex_query_frontend_queue_length
+      ) by (namespace)
+      >
+      1
+    for: 5m
+    labels:
+      severity: warning
