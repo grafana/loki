@@ -20,6 +20,7 @@ toc: true
 - Loki Cluster
   - [Loki Request Errors](#Loki-Request-Errors)
   - [Loki Request Panics](#Loki-Request-Panics)
+  - [Loki Tenant Rate Limit](#Loki-Tenant-Rate-Limit)
 
 <!-- /TOC -->
 
@@ -81,3 +82,30 @@ A service(s) has crashed.
 
 - Check the logs of the service that is panicking
 - Examine metrics for signs of failure
+
+## Loki Tenant Rate Limit
+
+### Impact
+
+A tenant is being rate limited, resulting in potential loss of data.
+
+### Summary
+
+A service(s) is rate limiting at least 10% of all incoming requests.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging`
+    - `openshift-operators-redhat`
+
+### Steps
+
+- Examine the metrics for the reason and tenant that is being limited: `loki_discarded_samples_total{namespace="<namespace>"}`
+- Change the ingestion limits for the affected tenant or decrease the rate of logs entering the system

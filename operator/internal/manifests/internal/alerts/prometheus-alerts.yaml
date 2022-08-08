@@ -86,3 +86,26 @@ groups:
       > 0
     labels:
         severity: critical
+  - alert: LokiTenantRateLimit
+    annotations:
+      message: |-
+        {{ $labels.job }} {{ $labels.route }} is experiencing 429 errors.
+      summary: "At least 10% of requests are responded with the rate limit error code."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
+    expr: |
+      sum(
+        rate(
+            loki_request_duration_seconds_count{status_code="429"}[1m]
+        )
+      ) by (namespace, job, route)
+      /
+      sum(
+        rate(
+            loki_request_duration_seconds_count[1m]
+        )
+      ) by (namespace, job, route)
+      * 100
+      > 10
+    for: 15m
+    labels:
+        severity: warning

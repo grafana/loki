@@ -9,6 +9,8 @@ tests:
     input_series:
       - series: 'loki_request_duration_seconds_count{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+1x20'
+      - series: 'loki_request_duration_seconds_count{status_code="429", namespace="my-ns", job="ingester", route="my-route"}'
+        values: '1+1x20'
       - series: 'loki_request_duration_seconds_count{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+3x20'
       - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
@@ -35,7 +37,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of requests are responded by 5xx server errors."
-              message: "ingester my-route is experiencing 25.00% errors."
+              message: "ingester my-route is experiencing 20.00% errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackWriteRequestErrors
@@ -70,3 +72,17 @@ tests:
               summary: "A panic was triggered."
               message: "ingester is experiencing an increase of 2 panics."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
+
+      # --------- LokiTenantRateLimit ---------
+      - eval_time: 16m
+        alertname: LokiTenantRateLimit
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              route: my-route
+              severity: warning
+            exp_annotations:
+              summary: "At least 10% of requests are responded with the rate limit error code."
+              message: "ingester my-route is experiencing 429 errors."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
