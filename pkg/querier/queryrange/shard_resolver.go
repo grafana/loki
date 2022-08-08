@@ -13,12 +13,12 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -85,7 +85,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		adjustedThrough := r.through.Add(-grps[i].Offset)
 
 		start := time.Now()
-		resp, err := r.handler.Do(r.ctx, &indexgatewaypb.IndexStatsRequest{
+		resp, err := r.handler.Do(r.ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
 			Through:  adjustedThrough,
 			Matchers: matchers,
