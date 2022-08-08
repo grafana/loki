@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,19 +20,17 @@ const deletionNotAvailableMsg = "deletion is not available for this tenant"
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteRequestsStore       DeleteRequestsStore
-	metrics                   *deleteRequestHandlerMetrics
-	limits                    retention.Limits
-	deleteRequestCancelPeriod time.Duration
+	deleteRequestsStore DeleteRequestsStore
+	metrics             *deleteRequestHandlerMetrics
+	limits              retention.Limits
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore:       deleteStore,
-		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
-		limits:                    limits,
-		metrics:                   newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore: deleteStore,
+		limits:              limits,
+		metrics:             newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -171,11 +168,6 @@ func (dm *DeleteRequestHandler) cancelDeleteRequestHandler(w http.ResponseWriter
 
 	if deleteRequest.Status != StatusReceived {
 		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
-		return
-	}
-
-	if deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now()) {
-		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
 

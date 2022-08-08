@@ -42,7 +42,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	}
 
 	// Setup handler
-	drh := NewDeleteRequestHandler(testDeleteRequestsStore, 10*time.Second, fl, nil)
+	drh := NewDeleteRequestHandler(testDeleteRequestsStore, fl, nil)
 	middle := drh.deletionMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	// User that has deletion enabled
