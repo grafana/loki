@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -157,6 +158,12 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteCount >= d.batchSize {
 			break
 		}
+	}
+
+	if deleteCount < len(deleteRequests) {
+		level.Info(util_log.Logger).Log(
+			"msg", fmt.Sprintf("Processing %d of %d delete requests. More requests will be processed in subsequent compactions", deleteCount, len(deleteRequests)),
+		)
 	}
 
 	return nil
