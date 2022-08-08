@@ -214,6 +214,8 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 	}
 }
 
+var newRemoteURL2, _ = url.Parse("http://new-remote-write2")
+
 func newFakeLimits() fakeLimits {
 	regex, _ := relabel.NewRegexp(".+:.+")
 	regexCluster, _ := relabel.NewRegexp("__cluster__")
@@ -285,7 +287,18 @@ func newFakeLimits() fakeLimits {
 			},
 			multiRemoteWriteTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
-					//TODO
+					remote1: {
+						QueueConfig:   config.QueueConfig{Capacity: 987},
+						RemoteTimeout: model.Duration(42),
+						HTTPClientConfig: promConfig.HTTPClientConfig{
+							BearerToken: "test-token",
+						},
+					},
+					remote2: {
+						QueueConfig:   config.QueueConfig{Capacity: 800},
+						RemoteTimeout: model.Duration(10),
+						URL:           &promConfig.URL{URL: newRemoteURL2},
+					},
 				},
 			},
 		},
@@ -367,16 +380,53 @@ func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 	// but the tenant has an override for the queue capacity
 	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, defaultCapacity)
 
-	reg = setupRegistry(t, backCompatCfg, newFakeLimits())
+	reg = setupRegistry(t, cfg, newFakeLimits())
 
 	// this tenant has no overrides, so will get defaults
 	tenantCfg, err = reg.getTenantConfig("unknown")
 	require.NoError(t, err)
 
 	// tenant has not disable remote-write so will inherit the global one
-	assert.Len(t, tenantCfg.RemoteWrite, 1)
-	// but the tenant has an override for the queue capacity
-	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, defaultCapacity)
+	assert.Len(t, tenantCfg.RemoteWrite, 2)
+	// but the tenant has an override for the queue capacity for the first client
+	assert.Equal(t, defaultCapacity, tenantCfg.RemoteWrite[0].QueueConfig.Capacity)
+	assert.Equal(t, capacity, tenantCfg.RemoteWrite[1].QueueConfig.Capacity)
+}
+
+func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
+	reg := setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err := reg.getTenantConfig(multiRemoteWriteTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite, 2)
+
+	// Both remote clients have their queue capacity and timeout overwritten
+	assert.Equal(t, 987, tenantCfg.RemoteWrite[0].QueueConfig.Capacity)
+	assert.Equal(t, 800, tenantCfg.RemoteWrite[1].QueueConfig.Capacity)
+
+	assert.Equal(t, model.Duration(42), tenantCfg.RemoteWrite[0].RemoteTimeout)
+	assert.Equal(t, model.Duration(10), tenantCfg.RemoteWrite[1].RemoteTimeout)
+
+	// First remote client's HTTPClientConfig is overrwritten
+	assert.Equal(t, promConfig.HTTPClientConfig{
+		BearerToken: "test-token",
+		BasicAuth: &promConfig.BasicAuth{
+			Password: "bar",
+			Username: "foo",
+		}},
+		tenantCfg.RemoteWrite[0].HTTPClientConfig)
+	assert.Equal(t, promConfig.HTTPClientConfig{
+		BasicAuth: &promConfig.BasicAuth{
+			Password: "bar2",
+			Username: "foo2",
+		}},
+		tenantCfg.RemoteWrite[1].HTTPClientConfig)
+
+	// Second remote client's URL is overrwritten
+	assert.Equal(t, promConfig.URL{URL: newRemoteURL2}, *tenantCfg.RemoteWrite[1].URL)
+	assert.Equal(t, promConfig.URL{URL: remoteURL}, *tenantCfg.RemoteWrite[0].URL)
+
 }
 
 func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
