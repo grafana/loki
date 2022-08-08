@@ -23,18 +23,18 @@ func parseDeletionQuery(query string) (syntax.LogSelectorExpr, error) {
 }
 
 func validDeletionLimit(l retention.Limits, userID string) (bool, error) {
-	allLimits := l.AllByUserID()
-	if userLimits, ok := allLimits[userID]; ok {
-		hasDelete, err := Enabled(userLimits.DeletionMode)
-		if hasDelete {
-			return true, nil
-		}
+	mode, err := deleteModeFromLimits(l, userID)
+	if err != nil {
 		return false, err
 	}
 
-	hasDelete, err := Enabled(l.DefaultLimits().DeletionMode)
-	if hasDelete {
-		return true, nil
+	return mode.DeleteEnabled(), nil
+}
+
+func deleteModeFromLimits(l retention.Limits, userID string) (Mode, error) {
+	allLimits := l.AllByUserID()
+	if userLimits, ok := allLimits[userID]; ok {
+		return ParseMode(userLimits.DeletionMode)
 	}
-	return false, err
+	return ParseMode(l.DefaultLimits().DeletionMode)
 }

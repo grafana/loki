@@ -37,19 +37,19 @@ type DeleteRequestsManager struct {
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
 	done                       chan struct{}
-	deletionMode               Mode
 	batchSize                  int
+	limits                     retention.Limits
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, mode Mode, batchSize int, registerer prometheus.Registerer) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, batchSize int, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
 		deleteRequestsToProcess:   map[string]*userDeleteRequests{},
 		metrics:                   newDeleteRequestsManagerMetrics(registerer),
 		done:                      make(chan struct{}),
-		deletionMode:              mode,
 		batchSize:                 batchSize,
+		limits:                    limits,
 	}
 
 	go dm.loop()
@@ -181,7 +181,17 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	if d.deletionMode == Disabled || d.deletionMode == FilterOnly {
+	mode, err := deleteModeFromLimits(d.limits, string(ref.UserID))
+	if err != nil {
+		level.Error(util_log.Logger).Log(
+			"msg", "unable to determine deletion mode for user",
+			"user", ref.UserID,
+			"chunkID", string(ref.ChunkID),
+		)
+		return false, nil
+	}
+
+	if mode == Disabled || mode == FilterOnly {
 		// Don't process deletes
 		return false, nil
 	}
@@ -282,7 +292,7 @@ func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, u
 
 	// We can't do the overlap check between the passed interval and delete requests interval from a user because
 	// if a request is issued just for today and there are chunks spanning today and yesterday then
-	// the overlap check would skip processing yesterdays index which would result in the index pointing to deleted chunks.
+	// the overlap check would skip processing yesterday's index which would result in the index pointing to deleted chunks.
 	if userID != "" {
 		return d.deleteRequestsToProcess[userID] != nil
 	}

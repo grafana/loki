@@ -197,7 +197,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("30m")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 
-	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "disabled", "Set the deletion mode for the user.")
+	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Set the deletion mode for the user.")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

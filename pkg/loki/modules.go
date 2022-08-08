@@ -621,15 +621,6 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	filteringEnabled, err := deletion.Enabled(t.Cfg.CompactorConfig.DeletionMode)
-	if err != nil {
-		return nil, err
-	}
-
-	if !filteringEnabled {
-		return deletion.NewNoOpDeleteRequestsStore(), nil
-	}
-
 	compactorAddress, err := t.compactorAddress()
 	if err != nil {
 		return nil, err
@@ -935,7 +926,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
-	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode().DeleteEnabled() {
+	if t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler()))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler()))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler()))
@@ -1043,12 +1034,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits retention.Limits) 
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	deleteEnabled, err := deletion.Enabled(t.Cfg.CompactorConfig.DeletionMode)
-	if err != nil {
-		return nil, err
-	}
-
-	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !deleteEnabled {
+	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
