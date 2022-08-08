@@ -31,6 +31,9 @@ tests:
       - series: 'cortex_query_frontend_queue_length{namespace="my-ns"}'
         values: '3 5 2 2+0x10'
 
+      - series: 'namespace_job_route:loki_request_duration_seconds:99quantile{namespace="my-ns", job="ingester", route="my-route", le="1"}'
+        values: '0+10x20'
+
     # Unit test for alerting rules.
     alert_rule_test:
       - eval_time: 16m
@@ -78,6 +81,21 @@ tests:
               summary: "A panic was triggered."
               message: "ingester is experiencing an increase of 2 panics."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
+
+      # --------- LokiRequestLatency ---------
+      - eval_time: 16m
+        alertname: LokiRequestLatency
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              le: 1
+              job: ingester
+              route: my-route
+              severity: critical
+            exp_annotations:
+              summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+              message: "ingester my-route is experiencing 160.00s 99th percentile latency."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
 
       # --------- LokiTenantRateLimit ---------
       - eval_time: 16m

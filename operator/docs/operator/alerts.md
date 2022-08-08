@@ -20,6 +20,7 @@ toc: true
 - Loki Cluster
   - [Loki Request Errors](#Loki-Request-Errors)
   - [Loki Request Panics](#Loki-Request-Panics)
+  - [Loki Request Latency](#Loki-Request-Latency)
   - [Loki Tenant Rate Limit](#Loki-Tenant-Rate-Limit)
   - [Loki Write Path High Load](#Loki-Write-Path-High-Load)
   - [Loki Read Path High Load](#Loki-Read-Path-High-Load)
@@ -84,6 +85,33 @@ A service(s) has crashed.
 
 - Check the logs of the service that is panicking
 - Examine metrics for signs of failure
+
+## Loki Request Latency
+
+### Impact
+
+A service(s) is affected by slow request responses.
+
+### Summary
+
+A service(s) is slower than expected at processing data.
+
+### Severity
+
+`Critical`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging`
+    - `openshift-operators-redhat`
+
+### Steps
+
+- Check the logs of all the services
+- Check to ensure that the Loki components can reach the storage
 
 ## Loki Tenant Rate Limit
 
