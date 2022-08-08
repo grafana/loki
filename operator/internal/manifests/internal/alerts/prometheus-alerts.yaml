@@ -85,7 +85,7 @@ groups:
       ) by (namespace, job)
       > 0
     labels:
-        severity: critical
+      severity: critical
   - alert: LokiTenantRateLimit
     annotations:
       message: |-
@@ -108,4 +108,18 @@ groups:
       > 10
     for: 15m
     labels:
-        severity: warning
+      severity: warning
+  - alert: LokiWritePathHighLoad
+    annotations:
+      message: |-
+        The write path is experiencing high load.
+      summary: "The write path is experiencing high load, causing backpressure storage flushing."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
+    expr: |
+      min_over_time(
+        loki_ingester_wal_replay_flushing[5m]
+      )
+      > 0
+    for: 15m
+    labels:
+      severity: warning

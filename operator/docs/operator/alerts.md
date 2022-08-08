@@ -21,6 +21,7 @@ toc: true
   - [Loki Request Errors](#Loki-Request-Errors)
   - [Loki Request Panics](#Loki-Request-Panics)
   - [Loki Tenant Rate Limit](#Loki-Tenant-Rate-Limit)
+  - [Loki Write Path High Load](#Loki-Write-Path-High-Load)
 
 <!-- /TOC -->
 
@@ -109,3 +110,29 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 
 - Examine the metrics for the reason and tenant that is being limited: `loki_discarded_samples_total{namespace="<namespace>"}`
 - Change the ingestion limits for the affected tenant or decrease the rate of logs entering the system
+
+## Loki Write Path High Load
+
+### Impact
+
+The write path is under high pressure and requires a storage flush.
+
+### Summary
+
+The write path is flushing the storage in response to back-pressuring.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging`
+    - `openshift-operators-redhat`
+
+### Steps
+
+- Adjust the ingestion limits for the affected tenant or add more ingesters

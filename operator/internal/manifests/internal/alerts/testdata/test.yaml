@@ -25,6 +25,9 @@ tests:
       - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'
         values: '0 1 1 2+0x10'
 
+      - series: 'loki_ingester_wal_replay_flushing{namespace="my-ns"}'
+        values: '0 1 0 2+0x10'
+
     # Unit test for alerting rules.
     alert_rule_test:
       - eval_time: 16m
@@ -86,3 +89,14 @@ tests:
               summary: "At least 10% of requests are responded with the rate limit error code."
               message: "ingester my-route is experiencing 429 errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
+
+      # --------- LokiWritePathHighLoad ---------
+      - eval_time: 16m
+        alertname: LokiWritePathHighLoad
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+            exp_annotations:
+              summary: "The write path is experiencing high load, causing backpressure storage flushing."
+              message: "The write path is experiencing high load."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
