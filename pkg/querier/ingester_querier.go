@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -299,6 +301,10 @@ func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, throug
 	})
 
 	if err != nil {
+		if isUnimplementedCallError(err) {
+			// Handle communication with older ingesters gracefully
+			return &index_stats.Stats{}, nil
+		}
 		return nil, err
 	}
 
@@ -325,4 +331,17 @@ func convertMatchersToString(matchers []*labels.Matcher) string {
 
 	out.WriteRune('}')
 	return out.String()
+}
+
+// isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
+func isUnimplementedCallError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return (s.Code() == codes.Unimplemented)
 }
