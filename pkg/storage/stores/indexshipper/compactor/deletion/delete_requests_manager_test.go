@@ -34,10 +34,11 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name                    string
-		deletionMode            Mode
-		deleteRequestsFromStore []DeleteRequest
-		expectedResp            resp
+		name                        string
+		deletionMode                Mode
+		deleteRequestsFromStore     []DeleteRequest
+		expectedResp                resp
+		expectedDeletionRangeByUser map[string]model.Interval
 	}{
 		{
 			name:         "no delete requests",
@@ -62,6 +63,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				isExpired:           false,
 				nonDeletedIntervals: nil,
 			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				"different-user": {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
+			},
 		},
 		{
 			name:         "whole chunk deleted by single request",
@@ -78,6 +85,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				isExpired:           true,
 				nonDeletedIntervals: nil,
 			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
+			},
 		},
 		{
 			name:         "deleted interval out of range",
@@ -93,6 +106,44 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           false,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-48 * time.Hour),
+					End:   now.Add(-24 * time.Hour),
+				},
+			},
+		},
+		{
+			name:         "deleted interval out of range(with multiple user requests)",
+			deletionMode: FilterAndDelete,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-48 * time.Hour),
+					EndTime:   now.Add(-24 * time.Hour),
+				},
+				{
+					UserID:    "different-user",
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired:           false,
+				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-48 * time.Hour),
+					End:   now.Add(-24 * time.Hour),
+				},
+				"different-user": {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
 			},
 		},
 		{
@@ -115,6 +166,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           true,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-48 * time.Hour),
+					End:   now,
+				},
 			},
 		},
 		{
@@ -169,6 +226,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					},
 				},
 			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now,
+				},
+			},
 		},
 		{
 			name:         "multiple overlapping requests deleting the whole chunk",
@@ -190,6 +253,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           true,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now,
+				},
 			},
 		},
 		{
@@ -218,6 +287,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           true,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-12 * time.Hour),
+					End:   now,
+				},
 			},
 		},
 		{
@@ -253,6 +328,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				isExpired:           false,
 				nonDeletedIntervals: nil,
 			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now,
+				},
+			},
 		},
 		{
 			name:         "deletes are `filter-only`",
@@ -287,14 +368,22 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				isExpired:           false,
 				nonDeletedIntervals: nil,
 			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now,
+				},
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil, tc.deletionMode)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
-			for _, dr := range mgr.deleteRequestsToProcess {
-				require.EqualValues(t, 0, dr.DeletedLines)
+			for _, deleteRequests := range mgr.deleteRequestsToProcess {
+				for _, dr := range deleteRequests.requests {
+					require.EqualValues(t, 0, dr.DeletedLines)
+				}
 			}
 
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
@@ -303,6 +392,11 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.Start, interval.Interval.Start)
 				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.End, interval.Interval.End)
 				require.NotNil(t, interval.Filter)
+			}
+
+			require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.deleteRequestsToProcess))
+			for userID, dr := range tc.expectedDeletionRangeByUser {
+				require.Equal(t, dr, mgr.deleteRequestsToProcess[userID].requestsInterval)
 			}
 		})
 	}
@@ -314,12 +408,12 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 		hasChunks               bool
 		user                    string
 	}{
-		{[]DeleteRequest{{Query: `0`, UserID: "test-user", StartTime: 0, EndTime: 100}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `0`, UserID: "test-user", StartTime: 0, EndTime: 100}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `1`, UserID: "test-user", StartTime: 200, EndTime: 400}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `2`, UserID: "test-user", StartTime: 400, EndTime: 500}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `3`, UserID: "test-user", StartTime: 500, EndTime: 700}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `3`, UserID: "other-user", StartTime: 500, EndTime: 700}}, false, "test-user"},
-		{[]DeleteRequest{{Query: `4`, UserID: "test-user", StartTime: 700, EndTime: 900}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `4`, UserID: "test-user", StartTime: 700, EndTime: 900}}, true, "test-user"},
 		{[]DeleteRequest{{Query: `4`, UserID: "", StartTime: 700, EndTime: 900}}, true, ""},
 		{[]DeleteRequest{}, false, ""},
 	}
