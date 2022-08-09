@@ -55,15 +55,6 @@ DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
 MOUNT_FLAGS := :delegated
 
-NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-       rm $@; \
-       echo "\nYour go standard library was built without the 'netgo' build tag."; \
-       echo "To fix that, run"; \
-       echo "    sudo go clean -i net"; \
-       echo "    sudo go install -tags netgo std"; \
-       false; \
-}
-
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
@@ -135,7 +126,6 @@ logcli-image:
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
-	$(NETGO_CHECK)
 
 ########
 # Loki #
@@ -146,11 +136,9 @@ loki-debug: cmd/loki/loki-debug
 
 cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ###############
 # Loki-Canary #
@@ -160,7 +148,6 @@ loki-canary: cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #################
 # Loki-QueryTee #
@@ -170,7 +157,6 @@ loki-querytee: cmd/querytee/querytee
 
 cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ############
 # Promtail #
@@ -204,11 +190,9 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 
 clients/cmd/promtail/promtail:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #########
 # Mixin #
@@ -246,7 +230,6 @@ migrate: cmd/migrate/migrate
 
 cmd/migrate/migrate:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #############
 # Releasing #
@@ -411,7 +394,6 @@ docker-driver: docker-driver-clean
 
 clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
