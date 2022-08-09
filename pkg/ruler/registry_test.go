@@ -524,10 +524,27 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 	require.NoError(t, err)
 
 	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
-	assert.Equal(t, "foo", tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username)
-	assert.Equal(t, promConfig.Secret("bar"), tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password)
-	assert.Equal(t, "foo2", tenantCfg.RemoteWrite[1].HTTPClientConfig.BasicAuth.Username)
-	assert.Equal(t, promConfig.Secret("bar2"), tenantCfg.RemoteWrite[1].HTTPClientConfig.BasicAuth.Password)
+	expected := []promConfig.HTTPClientConfig{
+		{
+			BasicAuth: &promConfig.BasicAuth{
+				Username: "foo",
+				Password: promConfig.Secret("bar"),
+			},
+		},
+		{
+			BasicAuth: &promConfig.BasicAuth{
+				Username: "foo2",
+				Password: promConfig.Secret("bar2"),
+			},
+		},
+	}
+
+	actual := []promConfig.HTTPClientConfig{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.HTTPClientConfig)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "HTTPClientConfigs do not match")
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
@@ -557,17 +574,25 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 
 	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
 	assert.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, additionalHeadersRWTenant, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName])
-	assert.Equal(t, additionalHeadersRWTenant, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName])
-	// but that the additional header defined is set
-	assert.Equal(t, "Header", tenantCfg.RemoteWrite[0].Headers["Additional"])
-	// no overrides for the second client
-	assert.Equal(t, "", tenantCfg.RemoteWrite[1].Headers["Additional"])
-	// the original header must be removed
-	assert.Equal(t, "", tenantCfg.RemoteWrite[0].Headers["Base"])
-	// no overrides for the second client
-	assert.Equal(t, "value2", tenantCfg.RemoteWrite[1].Headers["Base"])
+
+	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
+	expected := []map[string]string{
+		{
+			user.OrgIDHeaderName: additionalHeadersRWTenant,
+			"Additional":         "Header",
+		},
+		{
+			user.OrgIDHeaderName: additionalHeadersRWTenant,
+			"Base":               "value2",
+		},
+	}
+
+	actual := []map[string]string{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.Headers)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "Headers do not match")
 
 	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -594,19 +619,23 @@ func TestTenantRemoteWriteHeadersReset(t *testing.T) {
 	tenantCfg, err = reg.getTenantConfig(noHeadersRWTenant)
 	require.NoError(t, err)
 
-	// first client
-	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
-	// the original header must be removed
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
+	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
+	expected := []map[string]string{
+		{
+			user.OrgIDHeaderName: noHeadersRWTenant,
+		},
+		{
+			user.OrgIDHeaderName: noHeadersRWTenant,
+			"Base":               "value2",
+		},
+	}
 
-	// second client
-	assert.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
-	// the original header remains
-	assert.Equal(t, "value2", tenantCfg.RemoteWrite[1].Headers["Base"])
+	actual := []map[string]string{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.Headers)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "Headers do not match")
 }
 
 func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
@@ -626,19 +655,24 @@ func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
 	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
 
-	// first client
-	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
-	// the original header must be present
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
+	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
+	expected := []map[string]string{
+		{
+			user.OrgIDHeaderName: enabledRWTenant,
+			"Base":               "value",
+		},
+		{
+			user.OrgIDHeaderName: enabledRWTenant,
+			"Base":               "value2",
+		},
+	}
 
-	// second client
-	assert.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
-	// the original header must be present
-	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers["Base"], "value2")
+	actual := []map[string]string{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.Headers)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "Headers do not match")
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
@@ -655,10 +689,25 @@ func TestRelabelConfigOverrides(t *testing.T) {
 	tenantCfg, err = reg.getTenantConfig(customRelabelsTenant)
 	require.NoError(t, err)
 
-	// it should also override the default label configs for the first client only
-	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
-	assert.Len(t, tenantCfg.RemoteWrite[1].WriteRelabelConfigs, 1)
-	assert.Equal(t, "__name2__", tenantCfg.RemoteWrite[1].WriteRelabelConfigs[0].SourceLabels.String())
+	// It should also override the default label configs for the first client only
+	expected := [][]string{
+		{
+			"__name__",
+			"",
+		},
+		{
+			"__name2__",
+		},
+	}
+
+	actual := [][]string{{}, {}}
+	for i, rw := range tenantCfg.RemoteWrite {
+		for _, wrc := range rw.WriteRelabelConfigs {
+			actual[i] = append(actual[i], wrc.SourceLabels.String())
+		}
+	}
+
+	assert.ElementsMatch(t, actual, expected, "Headers do not match")
 }
 
 func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
@@ -676,8 +725,17 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 	require.NoError(t, err)
 
 	// if there are no relabel configs defined for the tenant, it should not override
-	assert.EqualValues(t, reg.config.RemoteWrite.Clients[remote1].WriteRelabelConfigs, tenantCfg.RemoteWrite[0].WriteRelabelConfigs)
-	assert.EqualValues(t, reg.config.RemoteWrite.Clients[remote2].WriteRelabelConfigs, tenantCfg.RemoteWrite[1].WriteRelabelConfigs)
+	actual := [][]*relabel.Config{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.WriteRelabelConfigs)
+	}
+
+	expected := [][]*relabel.Config{
+		reg.config.RemoteWrite.Clients[remote1].WriteRelabelConfigs,
+		reg.config.RemoteWrite.Clients[remote2].WriteRelabelConfigs,
+	}
+
+	assert.ElementsMatch(t, actual, expected, "WriteRelabelConfigs do not match")
 }
 
 func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
@@ -688,16 +746,6 @@ func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
 
 	// if there is an empty slice of relabel configs, it should clear existing relabel configs
 	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(emptySliceRelabelsTenant)
-	require.NoError(t, err)
-
-	// if there is an empty slice of relabel configs, it should clear existing relabel configs
-	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
-	// if there are no relabel configs defined for the tenant, it should not override
-	assert.Len(t, tenantCfg.RemoteWrite[1].WriteRelabelConfigs, 1)
 }
 
 func TestRelabelConfigOverridesWithErrors(t *testing.T) {

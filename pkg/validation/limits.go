@@ -10,11 +10,9 @@ import (
 	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
-	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
@@ -22,6 +20,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (
