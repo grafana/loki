@@ -107,7 +107,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 
 	t.Run("add-delete-request", func(t *testing.T) {
-		params := client.DeleteRequestParams{Query: `{job="fake"} |= "lineB"`}
+		params := client.DeleteRequestParams{Start: "0000000000", Query: `{job="fake"} |= "lineB"`}
 		require.NoError(t, cliCompactor.AddDeleteRequest(params))
 	})
 

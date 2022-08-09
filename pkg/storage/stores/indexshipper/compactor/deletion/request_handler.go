@@ -2,9 +2,13 @@ package deletion
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,7 +16,6 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -46,46 +49,21 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	params := r.URL.Query()
-	query := params.Get("query")
-	if len(query) == 0 {
-		http.Error(w, "query not set", http.StatusBadRequest)
-		return
-	}
-
-	_, err = parseDeletionQuery(query)
+	query, err := query(params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	startParam := params.Get("start")
-	startTime := int64(0)
-	if startParam != "" {
-		startTime, err = util.ParseTime(startParam)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	startTime, err := startTime(params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	endParam := params.Get("end")
-	endTime := int64(model.Now())
-
-	if endParam != "" {
-		endTime, err = util.ParseTime(endParam)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if endTime > int64(model.Now()) {
-			http.Error(w, "deletes in the future are not allowed", http.StatusBadRequest)
-			return
-		}
-	}
-
-	if startTime > endTime {
-		http.Error(w, "start time can't be greater than end time", http.StatusBadRequest)
+	endTime, err := endTime(params, startTime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -185,4 +163,71 @@ func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseW
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
+}
+
+func query(params url.Values) (string, error) {
+	query := params.Get("query")
+	if len(query) == 0 {
+		return "", errors.New("query not set")
+	}
+
+	if _, err := parseDeletionQuery(query); err != nil {
+		return "", err
+	}
+
+	return query, nil
+}
+
+func startTime(params url.Values) (int64, error) {
+	startParam := params.Get("start")
+	if startParam == "" {
+		return 0, errors.New("start time not set")
+	}
+
+	st, err := parseTime(startParam)
+	if err != nil {
+		return 0, errors.New("invalid start time: require unix seconds or RFC3339 format")
+	}
+
+	return st, nil
+}
+
+func endTime(params url.Values, startTime int64) (int64, error) {
+	endParam := params.Get("end")
+
+	endTime := int64(model.Now())
+	if endParam != "" {
+		var err error
+		endTime, err = parseTime(endParam)
+		if err != nil {
+			return 0, errors.New("invalid start time: require unix seconds or RFC3339 format")
+		}
+
+		if endTime > int64(model.Now()) {
+			return 0, errors.New("deletes in the future are not allowed")
+		}
+	}
+
+	if startTime > endTime {
+		return 0, errors.New("start time can't be greater than end time")
+	}
+
+	return endTime, nil
+}
+
+func parseTime(in string) (int64, error) {
+	t, err := time.Parse(time.RFC3339, in)
+	if err != nil {
+		return timeFromInt(in)
+	}
+
+	return t.UnixMilli(), nil
+}
+
+func timeFromInt(in string) (int64, error) {
+	if len(in) != 10 {
+		return 0, errors.New("not unix seconds")
+	}
+
+	return util.ParseTime(in)
 }
