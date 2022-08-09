@@ -26,6 +26,10 @@ service Querier {
   rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {}
 
   rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}
+
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
 }
 
 service Ingester {
@@ -275,20 +279,6 @@ message ChunkRef {
   // The checksum is not written to the external storage. We use crc32,
   // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
   uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
-}
-
-service IndexGateway {
-  /// QueryIndex reads the indexes required for given query & sends back the batch of rows
-  /// in rpc streams
-  rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
-  /// GetChunkRef returns chunk reference that match the provided label matchers
-  rpc GetChunkRef(GetChunkRefRequest) returns (GetChunkRefResponse) {}
-  rpc GetSeries(GetSeriesRequest) returns (GetSeriesResponse) {}
-  rpc LabelNamesForMetricName(LabelNamesForMetricNameRequest) returns (LabelResponse) {}
-
-  rpc LabelValuesForMetricName(LabelValuesForMetricNameRequest) returns (LabelResponse) {}
-
-  rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
 }
 
 message LabelValuesForMetricNameRequest {
