@@ -19,7 +19,9 @@ Log entry deletion relies on configuration of the custom logs retention workflow
 
 ## Configuration
 
-Enable log entry deletion by setting `retention_enabled` to true and `deletion_mode` to `filter-only` or `filter-and-delete` in the compactor's configuration.
+Enable log entry deletion by setting `retention_enabled` to true in the compactor's configuration and setting and `deletion_mode` to `filter-only` or `filter-and-delete` in the runtime config.
+
+Because it is a runtime configuration, `deleteion_mode` can be set per-tenant, if desired.
 
 With `filter-only`, log lines matching the query in the delete request are filtered out when querying Loki. They are not removed from storage.
 With `filter-and-delete`, log lines matching the query in the delete request are filtered out when querying Loki, and they are also removed from storage.
