@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {

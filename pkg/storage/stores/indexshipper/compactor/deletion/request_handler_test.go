@@ -10,9 +10,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/weaveworks/common/user"
 )
