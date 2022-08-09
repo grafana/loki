@@ -361,6 +361,21 @@ type Response struct {
 	Data   DataType
 }
 
+type RulesResponse struct {
+	Status string
+	Data   RulesData
+}
+
+type RulesData struct {
+	Groups []Rules
+}
+
+type Rules struct {
+	Name  string
+	File  string
+	Rules []interface{}
+}
+
 // RunRangeQuery runs a query and returns an error if anything went wrong
 func (c *Client) RunRangeQuery(query string) (*Response, error) {
 	buf, statusCode, err := c.run(c.rangeQueryURL(query))
@@ -390,6 +405,28 @@ func (c *Client) RunQuery(query string) (*Response, error) {
 	}
 
 	return c.parseResponse(buf, statusCode)
+}
+
+// GetRules returns the loki ruler rules
+func (c *Client) GetRules() (*RulesResponse, error) {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = "/prometheus/api/v1/rules"
+
+	buf, _, err := c.run(u.String())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := RulesResponse{}
+	err = json.Unmarshal(buf, &resp)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing response data: %w", err)
+	}
+
+	return &resp, err
 }
 
 func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
