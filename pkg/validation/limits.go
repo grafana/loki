@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
@@ -197,7 +199,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("30m")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 
-	f.StringVar(&l.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "filter-and-delete", "Set the deletion mode for the user. Options are: disabled, filter-only, and filter-and-delete")
+	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Set the deletion mode for the user. Options are: disabled, filter-only, and filter-and-delete")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -236,15 +238,11 @@ func (l *Limits) Validate() error {
 		}
 	}
 
-	err := fmt.Errorf("delete format must be one of 'disabled', 'filter-only', or 'filter-and-delete'")
-	for _, mode := range []string{"disabled", "filter-only", "filter-and-delete"} {
-		if mode == l.DeletionMode {
-			err = nil
-			break
-		}
+	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
+		return err
 	}
 
-	return err
+	return nil
 }
 
 // When we load YAML from disk, we want the various per-customer limits

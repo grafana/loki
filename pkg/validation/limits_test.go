@@ -2,10 +2,12 @@ package validation
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+	"github.com/pkg/errors"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -254,9 +256,9 @@ func TestLimitsValidation(t *testing.T) {
 		{mode: "disabled", expected: nil},
 		{mode: "filter-only", expected: nil},
 		{mode: "filter-and-delete", expected: nil},
-		{mode: "something-else", expected: fmt.Errorf("delete format must be one of 'disabled', 'filter-only', or 'filter-and-delete'")},
+		{mode: "something-else", expected: deletionmode.ErrUnknownMode},
 	} {
 		limits := Limits{DeletionMode: tc.mode}
-		require.Equal(t, tc.expected, limits.Validate())
+		require.True(t, errors.Is(limits.Validate(), tc.expected))
 	}
 }

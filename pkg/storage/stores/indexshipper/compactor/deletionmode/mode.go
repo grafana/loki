@@ -1,13 +1,15 @@
-package deletion
+package deletionmode
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 )
 
 type Mode int16
 
 var (
-	errUnknownMode = errors.New("unknown deletion mode")
+	ErrUnknownMode = errors.New("unknown deletion mode")
 )
 
 const (
@@ -50,7 +52,7 @@ func ParseMode(in string) (Mode, error) {
 	case filterAndDelete:
 		return FilterAndDelete, nil
 	}
-	return 0, errUnknownMode
+	return 0, fmt.Errorf("%w: must be one of %s", ErrUnknownMode, strings.Join(AllModes(), "|"))
 }
 
 func Enabled(in string) (bool, error) {

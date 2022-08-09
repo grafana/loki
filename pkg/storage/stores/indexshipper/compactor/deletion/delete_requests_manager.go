@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -216,7 +218,7 @@ func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, er
 		return false, err
 	}
 
-	return mode == FilterAndDelete, nil
+	return mode == deletionmode.FilterAndDelete, nil
 }
 
 func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []retention.IntervalFilter) {
