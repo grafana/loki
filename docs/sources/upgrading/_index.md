@@ -52,6 +52,11 @@ Notable changes include:
   - move your current storage into `.data/minio` and it should work transparently
 - log-generator was added - if you don't need it, simply remove the service from `docker-compose.yaml` or don't start the service
 
+#### Configuration for deletes has changed
+
+The global `deletion_mode` option in the compactor configuration has been removed in favor of a `deletion-mode` override. The override takes the same options but allows global/per-tenant configuration of the delete mode.
+
+
 ## 2.6.0
 
 ### Loki

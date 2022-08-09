@@ -130,10 +130,12 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 			continue
 		}
 
-		if ok, err := d.shouldProcessRequest(deleteRequest); !ok {
-			if err != nil {
-				return err
-			}
+		processRequest, err := d.shouldProcessRequest(deleteRequest)
+		if err != nil {
+			return err
+		}
+
+		if !processRequest {
 			continue
 		}
 
