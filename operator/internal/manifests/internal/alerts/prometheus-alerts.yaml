@@ -93,7 +93,14 @@ groups:
       summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
     expr: |
-      namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*"}
+      histogram_quantile(0.99,
+        sum(
+          rate(
+            loki_request_duration_seconds_bucket{route!~"(?i).*tail.*"}[1m]
+          )
+        )
+        by (le, namespace, job, route)
+      )
       > 1
     for: 15m
     labels:
@@ -107,18 +114,54 @@ groups:
     expr: |
       sum(
         rate(
-            loki_request_duration_seconds_count{status_code="429"}[1m]
+          loki_request_duration_seconds_count{status_code="429"}[1m]
         )
       ) by (namespace, job, route)
       /
       sum(
         rate(
-            loki_request_duration_seconds_count[1m]
+          loki_request_duration_seconds_count[1m]
         )
       ) by (namespace, job, route)
       * 100
       > 10
     for: 15m
+    labels:
+      severity: warning
+  - alert: LokiStorageSlowWrite
+    annotations:
+      message: |-
+        The write path is experiencing slow response rates.
+      summary: "The write path is experiencing slow response rates."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
+    expr: |
+      histogram_quantile(.99,
+        sum(
+          rate(
+            loki_boltdb_shipper_request_duration_seconds_bucket{operation="WRITE"}[5m]
+          )
+        ) by (le, namespace, operation)
+      )
+      > 1
+    for: 5m
+    labels:
+      severity: warning
+  - alert: LokiStorageSlowRead
+    annotations:
+      message: |-
+        The read path is experiencing slow response rates.
+      summary: "The read path is experiencing slow response rates."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
+    expr: |
+      histogram_quantile(.99,
+        sum(
+          rate(
+            loki_boltdb_shipper_request_duration_seconds_bucket{operation="Shipper.Query"}[5m]
+          )
+        ) by (le, namespace, operation)
+      )
+      > 10
+    for: 5m
     labels:
       severity: warning
   - alert: LokiWritePathHighLoad
@@ -144,9 +187,8 @@ groups:
     expr: |
       sum(
         cortex_query_frontend_queue_length
-      ) by (namespace)
-      >
-      1
+      ) by (namespace, user)
+      > 1
     for: 5m
     labels:
       severity: warning
