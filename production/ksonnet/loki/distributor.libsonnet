@@ -19,7 +19,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('500m', '2500Mi') +
-    k.util.resourcesLimits(null, '5Gi'),
+    k.util.resourcesLimits(null, '5Gi') +
     container.withEnvMixin($._config.commonEnvs),
 
   local deployment = k.apps.v1.deployment,
