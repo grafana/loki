@@ -300,5 +300,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string) Config {
 	}
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
+
+	cfg.Common.CompactorAddress = "http://localhost:0"
 	return cfg
 }
