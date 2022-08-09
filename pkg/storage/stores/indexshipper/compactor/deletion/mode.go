@@ -11,6 +11,11 @@ var (
 )
 
 const (
+	disabled        = "disabled"
+	filterOnly      = "filter-only"
+	filterAndDelete = "filter-and-delete"
+	unknown         = "unknown"
+
 	Disabled Mode = iota
 	FilterOnly
 	FilterAndDelete
@@ -19,13 +24,13 @@ const (
 func (m Mode) String() string {
 	switch m {
 	case Disabled:
-		return "disabled"
+		return disabled
 	case FilterOnly:
-		return "filter-only"
+		return filterOnly
 	case FilterAndDelete:
-		return "filter-and-delete"
+		return filterAndDelete
 	}
-	return "unknown"
+	return unknown
 }
 
 func (m Mode) DeleteEnabled() bool {
@@ -38,11 +43,11 @@ func AllModes() []string {
 
 func ParseMode(in string) (Mode, error) {
 	switch in {
-	case "disabled":
+	case disabled:
 		return Disabled, nil
-	case "filter-only":
+	case filterOnly:
 		return FilterOnly, nil
-	case "filter-and-delete":
+	case filterAndDelete:
 		return FilterAndDelete, nil
 	}
 	return 0, errUnknownMode
