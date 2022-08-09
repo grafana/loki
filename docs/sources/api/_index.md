@@ -1034,8 +1034,8 @@ Log entry deletion is supported _only_ when the BoltDB Shipper is configured for
 Query parameters:
 
 * `query=<series_selector>`: query argument that identifies the streams from which to delete with optional line filters.
-* `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
-* `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
+* `start=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. This parameter is required.
+* `end=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
 
 A 204 response indicates success.
 
