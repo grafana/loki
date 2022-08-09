@@ -117,44 +117,29 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
+	// Reset this first so any errors result in a clear map
 	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+
+	deleteRequests, err := d.filteredDeleteRequests()
 	if err != nil {
 		return err
 	}
 
-	var deleteCount int
-	for _, deleteRequest := range deleteRequests {
-		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
-		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
-			continue
+	for i, deleteRequest := range deleteRequests {
+		if i >= d.batchSize {
+			logBatchTruncation(i, len(deleteRequests))
+			break
 		}
 
-		processRequest, err := d.shouldProcessRequest(deleteRequest)
-		if err != nil {
-			return err
-		}
-
-		if !processRequest {
-			continue
-		}
-
-		ur, ok := d.deleteRequestsToProcess[deleteRequest.UserID]
-		if !ok {
-			ur = &userDeleteRequests{
-				requestsInterval: model.Interval{
-					Start: deleteRequest.StartTime,
-					End:   deleteRequest.EndTime,
-				},
-			}
-			d.deleteRequestsToProcess[deleteRequest.UserID] = ur
-		}
-		deleteRequest.Metrics = d.metrics
 		level.Info(util_log.Logger).Log(
 			"msg", "Started processing delete request for user",
 			"delete_request_id", deleteRequest.RequestID,
 			"user", deleteRequest.UserID,
 		)
+
+		deleteRequest.Metrics = d.metrics
+
+		ur := d.requestsForUser(deleteRequest)
 		ur.requests = append(ur.requests, deleteRequest)
 		if deleteRequest.StartTime < ur.requestsInterval.Start {
 			ur.requestsInterval.Start = deleteRequest.StartTime
@@ -162,20 +147,63 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.EndTime > ur.requestsInterval.End {
 			ur.requestsInterval.End = deleteRequest.EndTime
 		}
-
-		deleteCount++
-		if deleteCount >= d.batchSize {
-			break
-		}
-	}
-
-	if deleteCount < len(deleteRequests) {
-		level.Info(util_log.Logger).Log(
-			"msg", fmt.Sprintf("Processing %d of %d delete requests. More requests will be processed in subsequent compactions", deleteCount, len(deleteRequests)),
-		)
 	}
 
 	return nil
+}
+
+func (d *DeleteRequestsManager) filteredDeleteRequests() ([]DeleteRequest, error) {
+	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	if err != nil {
+		return nil, err
+	}
+
+	return d.filteredRequests(deleteRequests)
+}
+
+func (d *DeleteRequestsManager) filteredRequests(reqs []DeleteRequest) ([]DeleteRequest, error) {
+	filtered := make([]DeleteRequest, 0, len(reqs))
+	for _, deleteRequest := range reqs {
+		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
+		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
+			continue
+		}
+
+		processRequest, err := d.shouldProcessRequest(deleteRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		if !processRequest {
+			continue
+		}
+
+		filtered = append(filtered, deleteRequest)
+	}
+
+	return filtered, nil
+}
+
+func (d *DeleteRequestsManager) requestsForUser(dr DeleteRequest) *userDeleteRequests {
+	ur, ok := d.deleteRequestsToProcess[dr.UserID]
+	if !ok {
+		ur = &userDeleteRequests{
+			requestsInterval: model.Interval{
+				Start: dr.StartTime,
+				End:   dr.EndTime,
+			},
+		}
+		d.deleteRequestsToProcess[dr.UserID] = ur
+	}
+	return ur
+}
+
+func logBatchTruncation(size, total int) {
+	if size < total {
+		level.Info(util_log.Logger).Log(
+			"msg", fmt.Sprintf("Processing %d of %d delete requests. More requests will be processed in subsequent compactions", size, total),
+		)
+	}
 }
 
 func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, error) {
