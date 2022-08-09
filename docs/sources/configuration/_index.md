@@ -664,9 +664,8 @@ alertmanager_client:
   # Sets the `Authorization` header on every remote write request with the
   # configured username and password.
   # password and password_file are mutually exclusive.
-  basic_auth:
-    [username: <string>]
-    [password: <secret>]
+  [basic_auth_username: <string>]
+  [basic_auth_password: <secret>]
 
   # Optional `Authorization` header configuration.
   authorization:
