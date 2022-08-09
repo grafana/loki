@@ -251,7 +251,7 @@ func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits
 
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
-		limits,
+		c.cfg.DeleteRequestCancelPeriod,
 		r,
 	)
 

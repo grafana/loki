@@ -3,34 +3,16 @@ package deletion
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
-	// build the store
-	tempDir := t.TempDir()
-
-	workingDir := filepath.Join(tempDir, "working-dir")
-	objectStorePath := filepath.Join(tempDir, "object-store")
-
-	objectClient, err := local.NewFSObjectClient(local.FSConfig{
-		Directory: objectStorePath,
-	})
-	require.NoError(t, err)
-	testDeleteRequestsStore, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
-	require.NoError(t, err)
-
-	// limits
 	fl := &fakeLimits{
 		defaultLimit: retentionLimit{
 			compactorDeletionEnabled: "disabled",
@@ -42,8 +24,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	}
 
 	// Setup handler
-	drh := NewDeleteRequestHandler(testDeleteRequestsStore, fl, nil)
-	middle := drh.deletionMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	middle := TenantMiddleware(fl, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	// User that has deletion enabled
 	req := httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)

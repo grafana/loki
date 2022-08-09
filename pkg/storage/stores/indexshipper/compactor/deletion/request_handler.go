@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -20,29 +20,24 @@ const deletionNotAvailableMsg = "deletion is not available for this tenant"
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteRequestsStore DeleteRequestsStore
-	metrics             *deleteRequestHandlerMetrics
-	limits              retention.Limits
+	deleteRequestsStore       DeleteRequestsStore
+	metrics                   *deleteRequestHandlerMetrics
+	deleteRequestCancelPeriod time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore: deleteStore,
-		limits:              limits,
-		metrics:             newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore:       deleteStore,
+		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		metrics:                   newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
 }
 
 // AddDeleteRequestHandler handles addition of a new delete request
-func (dm *DeleteRequestHandler) AddDeleteRequestHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.addDeleteRequestHandler))
-}
-
-// AddDeleteRequestHandler handles addition of a new delete request
-func (dm *DeleteRequestHandler) addDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -111,12 +106,7 @@ func (dm *DeleteRequestHandler) addDeleteRequestHandler(w http.ResponseWriter, r
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests
-func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.getAllDeleteRequestsHandler))
-}
-
-// GetAllDeleteRequestsHandler handles get all delete requests
-func (dm *DeleteRequestHandler) getAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -138,12 +128,7 @@ func (dm *DeleteRequestHandler) getAllDeleteRequestsHandler(w http.ResponseWrite
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
-func (dm *DeleteRequestHandler) CancelDeleteRequestHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.cancelDeleteRequestHandler))
-}
-
-// CancelDeleteRequestHandler handles delete request cancellation
-func (dm *DeleteRequestHandler) cancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -181,12 +166,7 @@ func (dm *DeleteRequestHandler) cancelDeleteRequestHandler(w http.ResponseWriter
 }
 
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number
-func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.getCacheGenerationNumberHandler))
-}
-
-// GetCacheGenerationNumberHandler handles requests for a user's cache generation number
-func (dm *DeleteRequestHandler) getCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -205,28 +185,4 @@ func (dm *DeleteRequestHandler) getCacheGenerationNumberHandler(w http.ResponseW
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
-}
-
-func (dm *DeleteRequestHandler) deletionMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		hasDelete, err := validDeletionLimit(dm.limits, userID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if !hasDelete {
-			http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }
