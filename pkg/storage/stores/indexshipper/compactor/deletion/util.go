@@ -5,8 +5,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
@@ -24,7 +22,7 @@ func parseDeletionQuery(query string) (syntax.LogSelectorExpr, error) {
 	return logSelectorExpr, nil
 }
 
-func validDeletionLimit(l retention.Limits, userID string) (bool, error) {
+func validDeletionLimit(l Limits, userID string) (bool, error) {
 	mode, err := deleteModeFromLimits(l, userID)
 	if err != nil {
 		return false, err
@@ -33,10 +31,7 @@ func validDeletionLimit(l retention.Limits, userID string) (bool, error) {
 	return mode.DeleteEnabled(), nil
 }
 
-func deleteModeFromLimits(l retention.Limits, userID string) (deletionmode.Mode, error) {
-	allLimits := l.AllByUserID()
-	if userLimits, ok := allLimits[userID]; ok {
-		return deletionmode.ParseMode(userLimits.DeletionMode)
-	}
-	return deletionmode.ParseMode(l.DefaultLimits().DeletionMode)
+func deleteModeFromLimits(l Limits, userID string) (deletionmode.Mode, error) {
+	mode := l.DeletionMode(userID)
+	return deletionmode.ParseMode(mode)
 }

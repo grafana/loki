@@ -3,12 +3,10 @@ package deletion
 import (
 	"net/http"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-
 	"github.com/grafana/dskit/tenant"
 )
 
-func TenantMiddleware(limits retention.Limits, next http.Handler) http.Handler {
+func TenantMiddleware(limits Limits, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		userID, err := tenant.TenantID(ctx)

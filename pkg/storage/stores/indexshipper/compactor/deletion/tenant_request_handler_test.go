@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -15,12 +17,9 @@ import (
 
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	fl := &fakeLimits{
-		defaultLimit: retentionLimit{
-			compactorDeletionEnabled: "disabled",
-		},
-		perTenant: map[string]retentionLimit{
-			"1": {compactorDeletionEnabled: "filter-only"},
-			"2": {compactorDeletionEnabled: "disabled"},
+		limits: map[string]string{
+			"1": "filter-only",
+			"2": "disabled",
 		},
 	}
 
@@ -44,26 +43,6 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	middle.ServeHTTP(res, req)
 
 	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
-
-	// User without override, this should use the default value which is false
-	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
-
-	res = httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
-
-	// User without override, after the default value is set to true
-	fl.defaultLimit.compactorDeletionEnabled = "filter-and-delete"
-
-	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
-
-	res = httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusOK, res.Result().StatusCode)
 
 	// User header is not given
 	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
@@ -89,26 +68,16 @@ func (r retentionLimit) convertToValidationLimit() *validation.Limits {
 }
 
 type fakeLimits struct {
-	defaultLimit retentionLimit
-	perTenant    map[string]retentionLimit
+	retention.Limits
+
+	limits map[string]string
+	mode   string
 }
 
-func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
-	return f.perTenant[userID].retentionPeriod
-}
-
-func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
-	return f.perTenant[userID].streamRetention
-}
-
-func (f fakeLimits) DefaultLimits() *validation.Limits {
-	return f.defaultLimit.convertToValidationLimit()
-}
-
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
-	res := make(map[string]*validation.Limits)
-	for userID, ret := range f.perTenant {
-		res[userID] = ret.convertToValidationLimit()
+func (f *fakeLimits) DeletionMode(userID string) string {
+	if f.mode != "" {
+		return f.mode
 	}
-	return res
+
+	return f.limits[userID]
 }

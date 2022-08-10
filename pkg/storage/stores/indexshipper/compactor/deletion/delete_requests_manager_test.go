@@ -433,7 +433,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.batchSize, deleteLimits(tc.deletionMode), nil)
+			mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.batchSize, &fakeLimits{mode: tc.deletionMode.String()}, nil)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
@@ -475,7 +475,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, deleteLimits(deletionmode.FilterAndDelete), nil)
+		mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{mode: deletionmode.FilterAndDelete.String()}, nil)
 		require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 		interval := model.Interval{Start: 300, End: 600}
@@ -503,12 +503,4 @@ func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID s
 	m.addedEndTime = endTime
 	m.addedQuery = query
 	return m.addErr
-}
-
-func deleteLimits(mode deletionmode.Mode) *fakeLimits {
-	return &fakeLimits{
-		defaultLimit: retentionLimit{
-			compactorDeletionEnabled: mode.String(),
-		},
-	}
 }
