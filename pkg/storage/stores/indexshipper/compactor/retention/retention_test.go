@@ -438,6 +438,7 @@ type mockExpirationChecker struct {
 	chunksExpiry map[string]chunkExpiry
 	delay        time.Duration
 	calls        int
+	timedOut     bool
 }
 
 func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) *mockExpirationChecker {
@@ -457,7 +458,7 @@ func (m *mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model
 }
 
 func (m *mockExpirationChecker) MarkPhaseTimedOut() {
-
+	m.timedOut = true
 }
 
 func TestMarkForDelete_SeriesCleanup(t *testing.T) {
@@ -686,11 +687,12 @@ func TestDeleteTimeout(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		timeout time.Duration
-		calls   int
+		timeout  time.Duration
+		calls    int
+		timedOut bool
 	}{
-		{timeout: 2 * time.Millisecond, calls: 1},
-		{timeout: 0, calls: 2},
+		{timeout: 2 * time.Millisecond, calls: 1, timedOut: true},
+		{timeout: 0, calls: 2, timedOut: false},
 	} {
 		store := newTestStore(t)
 		require.NoError(t, store.Put(context.TODO(), chunks))
@@ -714,6 +716,7 @@ func TestDeleteTimeout(t *testing.T) {
 		require.False(t, empty)
 		require.False(t, isModified)
 		require.Equal(t, tc.calls, expirationChecker.calls)
+		require.Equal(t, tc.timedOut, expirationChecker.timedOut)
 	}
 }
 
