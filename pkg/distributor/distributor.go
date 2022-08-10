@@ -219,6 +219,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, nil
 	}
 
+	req, err = DefaultLogShip.Ship(ctx, userID, req)
+	if err != nil {
+		return nil, err
+	}
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.

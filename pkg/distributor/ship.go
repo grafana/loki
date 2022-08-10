@@ -29,3 +29,10 @@ var DefaultLabelPipeline LabelPipeline
 type LabelPipeline interface {
 	Pipeline(tenantID string, labels labels.Labels) (labels.Labels, error)
 }
+
+var DefaultLogShip LogShip
+
+//send log to ES or kafka
+type LogShip interface {
+	Ship(ctx context.Context, tenantID string, req *logproto.PushRequest) (*logproto.PushRequest, error)
+}
