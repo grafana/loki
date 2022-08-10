@@ -86,11 +86,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Second, nil)
 
 		for _, tc := range []struct {
-			orgID     string
-			query     string
-			startTime string
-			endTime   string
-			error     string
+			orgID, query, startTime, endTime, error string
 		}{
 			{"", `{foo="bar"}`, "0000000000", "0000000001", "no org id\n"},
 			{"org-id", "", "0000000000", "0000000001", "query not set\n"},
