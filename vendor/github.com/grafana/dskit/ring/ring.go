@@ -872,7 +872,7 @@ func NewOp(healthyStates []InstanceState, shouldExtendReplicaSet func(s Instance
 	}
 
 	if shouldExtendReplicaSet != nil {
-		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
+		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEFT} {
 			if shouldExtendReplicaSet(s) {
 				op |= (0x10000 << s)
 			}
