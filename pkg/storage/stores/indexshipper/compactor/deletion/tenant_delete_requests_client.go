@@ -6,6 +6,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 )
 
+const deletionNotAvailableMsg = "deletion is not available for this tenant"
+
 type perTenantDeleteRequestsClient struct {
 	client DeleteRequestsClient
 	limits retention.Limits

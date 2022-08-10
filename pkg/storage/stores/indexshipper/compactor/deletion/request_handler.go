@@ -19,8 +19,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-const deletionNotAvailableMsg = "deletion is not available for this tenant"
-
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteRequestsStore       DeleteRequestsStore
