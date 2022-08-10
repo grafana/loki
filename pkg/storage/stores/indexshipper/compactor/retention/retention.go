@@ -85,14 +85,14 @@ type Marker struct {
 	markTimeout      time.Duration
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	metrics := newMarkerMetrics(r)
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
 		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
-		markTimeout:      15 * time.Minute,
+		markTimeout:      markTimeout,
 	}, nil
 }
 
@@ -165,7 +165,7 @@ func markForDelete(
 	now := model.Now()
 	chunksFound := false
 
-	iterCtx, cancel := context.WithTimeout(ctx, timeout)
+	iterCtx, cancel := ctxForTimeout(timeout, ctx)
 	defer cancel()
 
 	err := indexFile.ForEachChunk(iterCtx, func(c ChunkEntry) (bool, error) {
@@ -216,7 +216,10 @@ func markForDelete(
 		return false, nil
 	})
 	if err != nil {
-		return false, false, err
+		if !errors.Is(err, context.DeadlineExceeded) {
+			return false, false, err
+		}
+		level.Warn(util_log.Logger).Log("msg", "Timed out while running delete")
 	}
 
 	if !chunksFound {
@@ -236,6 +239,13 @@ func markForDelete(
 
 		return indexFile.CleanupSeries(info.UserID(), info.lbls)
 	})
+}
+
+func ctxForTimeout(t time.Duration, parent context.Context) (context.Context, context.CancelFunc) {
+	if t == 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(parent, t)
 }
 
 type ChunkClient interface {

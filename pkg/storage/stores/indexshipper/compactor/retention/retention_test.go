@@ -145,7 +145,7 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, expiration, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
@@ -436,18 +436,23 @@ type chunkExpiry struct {
 type mockExpirationChecker struct {
 	ExpirationChecker
 	chunksExpiry map[string]chunkExpiry
+	delay        time.Duration
+	calls        int
 }
 
-func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) mockExpirationChecker {
-	return mockExpirationChecker{chunksExpiry: chunksExpiry}
+func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) *mockExpirationChecker {
+	return &mockExpirationChecker{chunksExpiry: chunksExpiry}
 }
 
-func (m mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+func (m *mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+	time.Sleep(m.delay)
+	m.calls++
+
 	ce := m.chunksExpiry[string(ref.ChunkID)]
 	return ce.isExpired, ce.nonDeletedIntervalFilters
 }
 
-func (m mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+func (m *mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
 	return false
 }
 
@@ -667,6 +672,44 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				require.EqualValues(t, tc.expectedDeletedSeries[i], seriesCleanRecorder.deletedSeries[userID])
 			}
 		})
+	}
+}
+
+func TestDeleteTimeout(t *testing.T) {
+	chunks := []chunk.Chunk{
+		createChunk(t, "user", labels.Labels{labels.Label{Name: "foo", Value: "1"}}, model.Now(), model.Now().Add(270*time.Hour)),
+		createChunk(t, "user", labels.Labels{labels.Label{Name: "foo", Value: "2"}}, model.Now(), model.Now().Add(270*time.Hour)),
+	}
+
+	for _, tc := range []struct {
+		timeout time.Duration
+		calls   int
+	}{
+		{timeout: 2 * time.Millisecond, calls: 1},
+		{timeout: 0, calls: 2},
+	} {
+		store := newTestStore(t)
+		require.NoError(t, store.Put(context.TODO(), chunks))
+		store.Stop()
+
+		expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{})
+		expirationChecker.delay = 10 * time.Millisecond
+
+		table := store.indexTables()[0]
+		empty, isModified, err := markForDelete(
+			context.Background(),
+			tc.timeout,
+			table.name,
+			noopWriter{},
+			newSeriesCleanRecorder(table),
+			expirationChecker,
+			newChunkRewriter(store.chunkClient, table.name, table),
+		)
+
+		require.NoError(t, err)
+		require.False(t, empty)
+		require.False(t, isModified)
+		require.Equal(t, tc.calls, expirationChecker.calls)
 	}
 }
 

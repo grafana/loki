@@ -80,6 +80,7 @@ type Config struct {
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
+	DeleteTimeout             time.Duration   `yaml:"delete_timeout"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
 	RunOnce                   bool            `yaml:"-"`
@@ -97,6 +98,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.IntVar(&cfg.DeleteBatchSize, "boltdb.shipper.compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.DurationVar(&cfg.DeleteTimeout, "boltdb.shipper.compactor.delete-timeout", 0, "The maximum amount of time to spend on deletion during a retention compaction.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
@@ -233,7 +235,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 			return err
 		}
 
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, chunkClient, r)
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.DeleteTimeout, chunkClient, r)
 		if err != nil {
 			return err
 		}
