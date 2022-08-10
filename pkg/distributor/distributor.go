@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"github.com/opentracing/opentracing-go"
 	"net/http"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -219,9 +219,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, nil
 	}
 
-	req, err = DefaultLogShip.Ship(ctx, userID, req)
-	if err != nil {
-		return nil, err
+	if DefaultLogShip != nil {
+		req, err = DefaultLogShip.Ship(ctx, userID, req)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
