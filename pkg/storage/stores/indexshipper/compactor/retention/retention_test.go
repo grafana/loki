@@ -192,11 +192,11 @@ func Test_EmptyTable(t *testing.T) {
 
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
-	empty, _, err := markForDelete(context.Background(), time.Hour, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
+	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 	require.NoError(t, err)
 	require.True(t, empty)
 
-	_, _, err = markForDelete(context.Background(), time.Hour, tables[0].name, noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil)
+	_, _, err = markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil)
 	require.Equal(t, err, errNoChunksFound)
 }
 
@@ -668,7 +668,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				seriesCleanRecorder := newSeriesCleanRecorder(table)
 
 				cr := newChunkRewriter(store.chunkClient, table.name, table)
-				empty, isModified, err := markForDelete(context.Background(), time.Hour, table.name, noopWriter{}, seriesCleanRecorder,
+				empty, isModified, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, seriesCleanRecorder,
 					expirationChecker, cr)
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedEmpty[i], empty)
@@ -746,7 +746,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	require.Len(t, tables, 8)
 
 	for i, table := range tables {
-		empty, _, err := markForDelete(context.Background(), time.Hour, table.name, noopWriter{}, table,
+		empty, _, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, table,
 			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
 		require.NoError(t, err)
 		if i == 7 {
