@@ -433,7 +433,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.batchSize, deleteLimits(tc.deletionMode), nil)
+			mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.batchSize, &fakeLimits{mode: tc.deletionMode.String()}, nil)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
@@ -475,7 +475,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, deleteLimits(deletionmode.FilterAndDelete), nil)
+		mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{mode: deletionmode.FilterAndDelete.String()}, nil)
 		require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 		interval := model.Interval{Start: 300, End: 600}
@@ -486,16 +486,21 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests []DeleteRequest
+	addedUser      string
+	addedStartTime model.Time
+	addedEndTime   model.Time
+	addedQuery     string
+	addErr         error
 }
 
-func (m mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
 	return m.deleteRequests, nil
 }
 
-func deleteLimits(mode deletionmode.Mode) *fakeLimits {
-	return &fakeLimits{
-		defaultLimit: retentionLimit{
-			compactorDeletionEnabled: mode.String(),
-		},
-	}
+func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
+	m.addedUser = userID
+	m.addedStartTime = startTime
+	m.addedEndTime = endTime
+	m.addedQuery = query
+	return m.addErr
 }

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/validation"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
@@ -139,7 +141,7 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -205,7 +207,7 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits retention.Limits, r prometheus.Registerer) error {
+func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -240,7 +242,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 	return nil
 }
 
-func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits) error {
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Overrides) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -251,7 +253,7 @@ func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits
 
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
-		limits,
+		c.cfg.DeleteRequestCancelPeriod,
 		r,
 	)
 

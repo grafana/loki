@@ -40,10 +40,10 @@ type DeleteRequestsManager struct {
 	wg                         sync.WaitGroup
 	done                       chan struct{}
 	batchSize                  int
-	limits                     retention.Limits
+	limits                     Limits
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, batchSize int, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, batchSize int, limits Limits, registerer prometheus.Registerer) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
