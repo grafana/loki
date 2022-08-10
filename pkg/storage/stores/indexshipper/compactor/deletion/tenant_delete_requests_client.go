@@ -2,16 +2,20 @@ package deletion
 
 import (
 	"context"
-
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 )
+
+const deletionNotAvailableMsg = "deletion is not available for this tenant"
+
+type Limits interface {
+	DeletionMode(userID string) string
+}
 
 type perTenantDeleteRequestsClient struct {
 	client DeleteRequestsClient
-	limits retention.Limits
+	limits Limits
 }
 
-func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l retention.Limits) DeleteRequestsClient {
+func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l Limits) DeleteRequestsClient {
 	return &perTenantDeleteRequestsClient{
 		client: c,
 		limits: l,

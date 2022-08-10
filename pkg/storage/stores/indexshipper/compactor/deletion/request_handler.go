@@ -2,8 +2,13 @@ package deletion
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,38 +16,29 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-const deletionNotAvailableMsg = "deletion is not available for this tenant"
-
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteRequestsStore DeleteRequestsStore
-	metrics             *deleteRequestHandlerMetrics
-	limits              retention.Limits
+	deleteRequestsStore       DeleteRequestsStore
+	metrics                   *deleteRequestHandlerMetrics
+	deleteRequestCancelPeriod time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore: deleteStore,
-		limits:              limits,
-		metrics:             newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore:       deleteStore,
+		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		metrics:                   newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
 }
 
 // AddDeleteRequestHandler handles addition of a new delete request
-func (dm *DeleteRequestHandler) AddDeleteRequestHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.addDeleteRequestHandler))
-}
-
-// AddDeleteRequestHandler handles addition of a new delete request
-func (dm *DeleteRequestHandler) addDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -51,46 +47,21 @@ func (dm *DeleteRequestHandler) addDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	params := r.URL.Query()
-	query := params.Get("query")
-	if len(query) == 0 {
-		http.Error(w, "query not set", http.StatusBadRequest)
-		return
-	}
-
-	_, err = parseDeletionQuery(query)
+	query, err := query(params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	startParam := params.Get("start")
-	startTime := int64(0)
-	if startParam != "" {
-		startTime, err = util.ParseTime(startParam)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	startTime, err := startTime(params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	endParam := params.Get("end")
-	endTime := int64(model.Now())
-
-	if endParam != "" {
-		endTime, err = util.ParseTime(endParam)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if endTime > int64(model.Now()) {
-			http.Error(w, "deletes in the future are not allowed", http.StatusBadRequest)
-			return
-		}
-	}
-
-	if startTime > endTime {
-		http.Error(w, "start time can't be greater than end time", http.StatusBadRequest)
+	endTime, err := endTime(params, startTime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -111,12 +82,7 @@ func (dm *DeleteRequestHandler) addDeleteRequestHandler(w http.ResponseWriter, r
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests
-func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.getAllDeleteRequestsHandler))
-}
-
-// GetAllDeleteRequestsHandler handles get all delete requests
-func (dm *DeleteRequestHandler) getAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -138,12 +104,7 @@ func (dm *DeleteRequestHandler) getAllDeleteRequestsHandler(w http.ResponseWrite
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
-func (dm *DeleteRequestHandler) CancelDeleteRequestHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.cancelDeleteRequestHandler))
-}
-
-// CancelDeleteRequestHandler handles delete request cancellation
-func (dm *DeleteRequestHandler) cancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -181,12 +142,7 @@ func (dm *DeleteRequestHandler) cancelDeleteRequestHandler(w http.ResponseWriter
 }
 
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number
-func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler() http.Handler {
-	return dm.deletionMiddleware(http.HandlerFunc(dm.getCacheGenerationNumberHandler))
-}
-
-// GetCacheGenerationNumberHandler handles requests for a user's cache generation number
-func (dm *DeleteRequestHandler) getCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
+func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -207,26 +163,68 @@ func (dm *DeleteRequestHandler) getCacheGenerationNumberHandler(w http.ResponseW
 	}
 }
 
-func (dm *DeleteRequestHandler) deletionMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+func query(params url.Values) (string, error) {
+	query := params.Get("query")
+	if len(query) == 0 {
+		return "", errors.New("query not set")
+	}
 
-		hasDelete, err := validDeletionLimit(dm.limits, userID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if _, err := parseDeletionQuery(query); err != nil {
+		return "", err
+	}
 
-		if !hasDelete {
-			http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-			return
-		}
+	return query, nil
+}
 
-		next.ServeHTTP(w, r)
-	})
+func startTime(params url.Values) (int64, error) {
+	startParam := params.Get("start")
+	if startParam == "" {
+		return 0, errors.New("start time not set")
+	}
+
+	st, err := parseTime(startParam)
+	if err != nil {
+		return 0, errors.New("invalid start time: require unix seconds or RFC3339 format")
+	}
+
+	return st, nil
+}
+
+func endTime(params url.Values, startTime int64) (int64, error) {
+	endParam := params.Get("end")
+	endTime, err := parseTime(endParam)
+	if err != nil {
+		return 0, errors.New("invalid end time: require unix seconds or RFC3339 format")
+	}
+
+	if endTime > int64(model.Now()) {
+		return 0, errors.New("deletes in the future are not allowed")
+	}
+
+	if startTime > endTime {
+		return 0, errors.New("start time can't be greater than end time")
+	}
+
+	return endTime, nil
+}
+
+func parseTime(in string) (int64, error) {
+	if in == "" {
+		return int64(model.Now()), nil
+	}
+
+	t, err := time.Parse(time.RFC3339, in)
+	if err != nil {
+		return timeFromInt(in)
+	}
+
+	return t.UnixMilli(), nil
+}
+
+func timeFromInt(in string) (int64, error) {
+	if len(in) != 10 {
+		return 0, errors.New("not unix seconds")
+	}
+
+	return util.ParseTime(in)
 }
