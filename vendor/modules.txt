@@ -221,8 +221,6 @@ github.com/cloudflare/cloudflare-go
 # github.com/containerd/fifo v1.0.0
 ## explicit; go 1.13
 github.com/containerd/fifo
-# github.com/coreos/etcd v3.3.25+incompatible
-## explicit
 # github.com/coreos/go-semver v0.3.0
 ## explicit
 github.com/coreos/go-semver/semver
@@ -234,8 +232,6 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/go-systemd/v22 v22.3.2
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/journal
-# github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
-## explicit
 # github.com/cristalhq/hedgedhttp v0.7.0
 ## explicit; go 1.16
 github.com/cristalhq/hedgedhttp
@@ -1086,8 +1082,6 @@ github.com/yuin/gopher-lua/pm
 # go.etcd.io/bbolt v1.3.6
 ## explicit; go 1.12
 go.etcd.io/bbolt
-# go.etcd.io/etcd v3.3.25+incompatible
-## explicit
 # go.etcd.io/etcd/api/v3 v3.5.0
 ## explicit; go 1.16
 go.etcd.io/etcd/api/v3/authpb
