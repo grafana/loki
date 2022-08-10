@@ -121,7 +121,7 @@ type table struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func (t *table) ForEachChunk(callback ChunkEntryCallback) error {
+func (t *table) ForEachChunk(_ context.Context, callback ChunkEntryCallback) error {
 	for userID, chks := range t.chunks {
 		i := 0
 		for _, chk := range chks {

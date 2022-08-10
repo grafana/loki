@@ -45,7 +45,7 @@ type ChunkEntry struct {
 type ChunkEntryCallback func(ChunkEntry) (deleteChunk bool, err error)
 
 type ChunkIterator interface {
-	ForEachChunk(callback ChunkEntryCallback) error
+	ForEachChunk(ctx context.Context, callback ChunkEntryCallback) error
 }
 
 type SeriesCleaner interface {
@@ -82,6 +82,7 @@ type Marker struct {
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
 	chunkClient      client.Client
+	markTimeout      time.Duration
 }
 
 func NewMarker(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
@@ -91,6 +92,7 @@ func NewMarker(workingDirectory string, expiration ExpirationChecker, chunkClien
 		expiration:       expiration,
 		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
+		markTimeout:      15 * time.Minute,
 	}, nil
 }
 
@@ -124,7 +126,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 
 	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
 
-	empty, modified, err := markforDelete(ctx, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter)
+	empty, modified, err := markForDelete(ctx, t.markTimeout, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter)
 	if err != nil {
 		return false, false, err
 	}
@@ -146,8 +148,15 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 	return empty, modified, nil
 }
 
-func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, indexFile IndexProcessor,
-	expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, bool, error) {
+func markForDelete(
+	ctx context.Context,
+	timeout time.Duration,
+	tableName string,
+	marker MarkerStorageWriter,
+	indexFile IndexProcessor,
+	expiration ExpirationChecker,
+	chunkRewriter *chunkRewriter,
+) (bool, bool, error) {
 	seriesMap := newUserSeriesMap()
 	// tableInterval holds the interval for which the table is expected to have the chunks indexed
 	tableInterval := ExtractIntervalFromTableName(tableName)
@@ -156,7 +165,10 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 	now := model.Now()
 	chunksFound := false
 
-	err := indexFile.ForEachChunk(func(c ChunkEntry) (bool, error) {
+	iterCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	err := indexFile.ForEachChunk(iterCtx, func(c ChunkEntry) (bool, error) {
 		chunksFound = true
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
