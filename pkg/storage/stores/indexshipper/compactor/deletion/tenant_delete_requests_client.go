@@ -19,18 +19,14 @@ func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l retention.Limits
 }
 
 func (c *perTenantDeleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	allLimits := c.limits.AllByUserID()
-	if userLimits, ok := allLimits[userID]; ok {
-		if userLimits.CompactorDeletionEnabled {
-			return c.client.GetAllDeleteRequestsForUser(ctx, userID)
-		}
-		return nil, nil
+	hasDelete, err := validDeletionLimit(c.limits, userID)
+	if err != nil {
+		return nil, err
 	}
 
-	if c.limits.DefaultLimits().CompactorDeletionEnabled {
+	if hasDelete {
 		return c.client.GetAllDeleteRequestsForUser(ctx, userID)
 	}
-
 	return nil, nil
 }
 

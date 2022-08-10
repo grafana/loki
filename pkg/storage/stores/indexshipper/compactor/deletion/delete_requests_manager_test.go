@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -35,7 +37,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 	for _, tc := range []struct {
 		name                        string
-		deletionMode                Mode
+		deletionMode                deletionmode.Mode
 		deleteRequestsFromStore     []DeleteRequest
 		batchSize                   int
 		expectedResp                resp
@@ -43,7 +45,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	}{
 		{
 			name:         "no delete requests",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			expectedResp: resp{
 				isExpired:           false,
@@ -52,7 +54,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "no relevant delete requests",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -75,7 +77,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "whole chunk deleted by single request",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -98,7 +100,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "deleted interval out of range",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -121,7 +123,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "deleted interval out of range(with multiple user requests)",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -154,7 +156,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple delete requests with one deleting the whole chunk",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -183,7 +185,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple delete requests causing multiple holes",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -243,7 +245,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple overlapping requests deleting the whole chunk",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -272,7 +274,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "multiple non-overlapping requests deleting the whole chunk",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -307,7 +309,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 		{
 			name:         "deletes are disabled",
-			deletionMode: Disabled,
+			deletionMode: deletionmode.Disabled,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -338,17 +340,11 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           false,
 				nonDeletedIntervals: nil,
-			},
-			expectedDeletionRangeByUser: map[string]model.Interval{
-				testUserID: {
-					Start: now.Add(-13 * time.Hour),
-					End:   now,
-				},
 			},
 		},
 		{
 			name:         "deletes are `filter-only`",
-			deletionMode: FilterOnly,
+			deletionMode: deletionmode.FilterOnly,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -380,16 +376,10 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				isExpired:           false,
 				nonDeletedIntervals: nil,
 			},
-			expectedDeletionRangeByUser: map[string]model.Interval{
-				testUserID: {
-					Start: now.Add(-13 * time.Hour),
-					End:   now,
-				},
-			},
 		},
 		{
 			name:         "Deletes are limited by batch size",
-			deletionMode: FilterAndDelete,
+			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
@@ -443,7 +433,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.deletionMode, tc.batchSize, nil)
+			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, tc.batchSize, deleteLimits(tc.deletionMode), nil)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
@@ -485,7 +475,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, FilterAndDelete, 70, nil)
+		mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, deleteLimits(deletionmode.FilterAndDelete), nil)
 		require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 		interval := model.Interval{Start: 300, End: 600}
@@ -500,4 +490,12 @@ type mockDeleteRequestsStore struct {
 
 func (m mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
 	return m.deleteRequests, nil
+}
+
+func deleteLimits(mode deletionmode.Mode) *fakeLimits {
+	return &fakeLimits{
+		defaultLimit: retentionLimit{
+			compactorDeletionEnabled: mode.String(),
+		},
+	}
 }
