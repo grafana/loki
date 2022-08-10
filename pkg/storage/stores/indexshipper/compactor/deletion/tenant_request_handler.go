@@ -17,18 +17,15 @@ func TenantMiddleware(limits retention.Limits, next http.Handler) http.Handler {
 			return
 		}
 
-		allLimits := limits.AllByUserID()
-		userLimits, ok := allLimits[userID]
-		if ok {
-			if !userLimits.CompactorDeletionEnabled {
-				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-				return
-			}
-		} else {
-			if !limits.DefaultLimits().CompactorDeletionEnabled {
-				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-				return
-			}
+		hasDelete, err := validDeletionLimit(limits, userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if !hasDelete {
+			http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
+			return
 		}
 
 		next.ServeHTTP(w, r)

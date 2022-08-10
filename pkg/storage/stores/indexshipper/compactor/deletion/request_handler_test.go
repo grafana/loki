@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,12 +29,12 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
 
+		require.Equal(t, w.Code, http.StatusNoContent)
+
 		require.Equal(t, "org-id", store.addedUser)
 		require.Equal(t, `{foo="bar"}`, store.addedQuery)
 		require.Equal(t, toTime("0000000000"), store.addedStartTime)
 		require.Equal(t, toTime("0000000001"), store.addedEndTime)
-
-		require.Equal(t, w.Code, http.StatusNoContent)
 	})
 
 	t.Run("it works with RFC3339", func(t *testing.T) {
@@ -53,6 +54,23 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		require.Equal(t, toTime("1136300645"), store.addedEndTime)
 	})
 
+	t.Run("it fills in end time if blank", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, time.Second, nil)
+
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "")
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusNoContent)
+
+		require.Equal(t, "org-id", store.addedUser)
+		require.Equal(t, `{foo="bar"}`, store.addedQuery)
+		require.Equal(t, toTime("0000000000"), store.addedStartTime)
+		require.InDelta(t, int64(model.Now()), int64(store.addedEndTime), 1000)
+	})
+
 	t.Run("it returns 500 when the delete store errors", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{addErr: errors.New("something bad")}
 		h := NewDeleteRequestHandler(store, time.Second, nil)
@@ -67,92 +85,32 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 	t.Run("Validation", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Second, nil)
 
-		t.Run("userid", func(t *testing.T) {
-			req := buildRequest("", `{foo="bar"}`, "0000000000", "0000000001")
-
-			w := httptest.NewRecorder()
-			h.AddDeleteRequestHandler(w, req)
-
-			require.Equal(t, w.Code, http.StatusBadRequest)
-			require.Equal(t, w.Body.String(), "no org id\n")
-		})
-
-		t.Run("query", func(t *testing.T) {
-			t.Run("doesn't exist", func(t *testing.T) {
-				req := buildRequest("org-id", "", "0000000000", "0000000001")
-
-				w := httptest.NewRecorder()
-				h.AddDeleteRequestHandler(w, req)
-
-				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "query not set\n")
-			})
-
-			t.Run("unparsable", func(t *testing.T) {
-				req := buildRequest("org-id", `not a query`, "0000000000", "0000000001")
+		for _, tc := range []struct {
+			orgID     string
+			query     string
+			startTime string
+			endTime   string
+			error     string
+		}{
+			{"", `{foo="bar"}`, "0000000000", "0000000001", "no org id\n"},
+			{"org-id", "", "0000000000", "0000000001", "query not set\n"},
+			{"org-id", `not a query`, "0000000000", "0000000001", "invalid query expression\n"},
+			{"org-id", `{foo="bar"}`, "", "0000000001", "start time not set\n"},
+			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "invalid start time: require unix seconds or RFC3339 format\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "invalid end time: require unix seconds or RFC3339 format\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "deletes in the future are not allowed\n"},
+			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "start time can't be greater than end time\n"},
+		} {
+			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
+				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)
 
 				w := httptest.NewRecorder()
 				h.AddDeleteRequestHandler(w, req)
 
 				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "invalid query expression\n")
+				require.Equal(t, w.Body.String(), tc.error)
 			})
-		})
-
-		t.Run("start time", func(t *testing.T) {
-			t.Run("exists", func(t *testing.T) {
-				req := buildRequest("org-id", `{foo="bar"}`, "", "0000000001")
-
-				w := httptest.NewRecorder()
-				h.AddDeleteRequestHandler(w, req)
-
-				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "start time not set\n")
-			})
-
-			t.Run("is parsable", func(t *testing.T) {
-				req := buildRequest("org-id", `{foo="bar"}`, "0000000000000", "0000000001")
-
-				w := httptest.NewRecorder()
-				h.AddDeleteRequestHandler(w, req)
-
-				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "invalid start time: require unix seconds or RFC3339 format\n")
-			})
-		})
-
-		t.Run("end time", func(t *testing.T) {
-			t.Run("is parsable", func(t *testing.T) {
-				req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000000001")
-
-				w := httptest.NewRecorder()
-				h.AddDeleteRequestHandler(w, req)
-
-				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "invalid start time: require unix seconds or RFC3339 format\n")
-			})
-
-			t.Run("is <= now", func(t *testing.T) {
-				startTime := fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10]
-				req := buildRequest("org-id", `{foo="bar"}`, startTime, "0000000000")
-
-				w := httptest.NewRecorder()
-				h.AddDeleteRequestHandler(w, req)
-
-				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "start time can't be greater than end time\n")
-			})
-
-			t.Run("is > start", func(t *testing.T) {
-				req := buildRequest("org-id", `{foo="bar"}`, "0000000001", "0000000000")
-
-				w := httptest.NewRecorder()
-				h.AddDeleteRequestHandler(w, req)
-
-				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), "start time can't be greater than end time\n")
-			})
-		})
+		}
 	})
 }
 

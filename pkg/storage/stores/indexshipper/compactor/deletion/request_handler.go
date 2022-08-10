@@ -194,18 +194,13 @@ func startTime(params url.Values) (int64, error) {
 
 func endTime(params url.Values, startTime int64) (int64, error) {
 	endParam := params.Get("end")
+	endTime, err := parseTime(endParam)
+	if err != nil {
+		return 0, errors.New("invalid end time: require unix seconds or RFC3339 format")
+	}
 
-	endTime := int64(model.Now())
-	if endParam != "" {
-		var err error
-		endTime, err = parseTime(endParam)
-		if err != nil {
-			return 0, errors.New("invalid start time: require unix seconds or RFC3339 format")
-		}
-
-		if endTime > int64(model.Now()) {
-			return 0, errors.New("deletes in the future are not allowed")
-		}
+	if endTime > int64(model.Now()) {
+		return 0, errors.New("deletes in the future are not allowed")
 	}
 
 	if startTime > endTime {
@@ -216,6 +211,10 @@ func endTime(params url.Values, startTime int64) (int64, error) {
 }
 
 func parseTime(in string) (int64, error) {
+	if in == "" {
+		return int64(model.Now()), nil
+	}
+
 	t, err := time.Parse(time.RFC3339, in)
 	if err != nil {
 		return timeFromInt(in)
