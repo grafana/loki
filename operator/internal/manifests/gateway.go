@@ -7,6 +7,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
+	openshiftv1 "github.com/openshift/api/config/v1"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
@@ -25,7 +26,7 @@ const (
 )
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
-func BuildGateway(opts Options) ([]client.Object, error) {
+func BuildGateway(opts Options, profile *openshiftv1.TLSSecurityProfile) ([]client.Object, error) {
 	cm, sha1C, err := gatewayConfigMap(opts)
 	if err != nil {
 		return nil, err
@@ -50,7 +51,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace, profile); err != nil {
 			return nil, err
 		}
 

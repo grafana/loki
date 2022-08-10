@@ -6,11 +6,12 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
 	"github.com/imdario/mergo"
+	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
-func BuildAll(opts Options) ([]client.Object, error) {
+func BuildAll(opts Options, profile *openshiftv1.TLSSecurityProfile) ([]client.Object, error) {
 	res := make([]client.Object, 0)
 
 	cm, sha1C, mapErr := LokiConfigMap(opts)
@@ -75,7 +76,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.LokiStackGateway {
-		gatewayObjects, err := BuildGateway(opts)
+		gatewayObjects, err := BuildGateway(opts, profile)
 		if err != nil {
 			return nil, err
 		}

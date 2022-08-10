@@ -20,6 +20,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
+	openshiftv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -240,7 +241,19 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	objects, err := manifests.BuildAll(opts)
+	var apiServer openshiftv1.APIServer
+	if err = k.Get(ctx, client.ObjectKey{Name: "cluster"}, &apiServer); err != nil {
+		if apierrors.IsNotFound(err) {
+			return &status.DegradedError{
+				Message: "Missing apiserver object",
+				Reason:  lokiv1.ReasonMissingOpenShiftAPIServer,
+				Requeue: false,
+			}
+		}
+		return kverrors.Wrap(err, "failed to lookup apiServer")
+	}
+
+	objects, err := manifests.BuildAll(opts, apiServer.Spec.TLSSecurityProfile)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
 		return err

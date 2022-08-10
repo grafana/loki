@@ -16,6 +16,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
+	openshiftv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,6 +85,12 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string]string{},
+	}
+
+	apiServer = openshiftv1.APIServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
 	}
 )
 
@@ -221,6 +228,10 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 			k.SetClientObject(out, &defaultGatewaySecret)
 			return nil
 		}
+		if apiServer.Name == name.Name {
+			k.SetClientObject(out, &apiServer)
+			return nil
+		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -305,6 +316,10 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		}
 		if defaultGatewaySecret.Name == name.Name {
 			k.SetClientObject(object, &defaultGatewaySecret)
+			return nil
+		}
+		if apiServer.Name == name.Name {
+			k.SetClientObject(object, &apiServer)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")

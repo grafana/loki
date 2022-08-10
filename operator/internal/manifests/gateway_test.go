@@ -130,7 +130,7 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
-	})
+	}, nil)
 
 	require.NoError(t, err)
 
@@ -163,7 +163,7 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
-	})
+	}, nil)
 
 	require.NoError(t, err)
 	require.Len(t, objs, 9)
@@ -195,7 +195,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
-	})
+	}, nil)
 
 	require.NoError(t, err)
 
@@ -232,7 +232,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
-	})
+	}, nil)
 
 	require.NoError(t, err)
 
@@ -267,7 +267,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
-	})
+	}, nil)
 
 	require.NoError(t, err)
 

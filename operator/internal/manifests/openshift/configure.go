@@ -8,6 +8,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
+	openshiftv1 "github.com/openshift/api/config/v1"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -46,7 +47,11 @@ func ConfigureGatewayDeployment(
 	withTLS, withCertSigningService bool,
 	secretName, serverName string,
 	gatewayHTTPPort int,
+	profile *openshiftv1.TLSSecurityProfile,
 ) error {
+	// Get TLS profile info.
+	minTLSVersion, ciphers := getSecurityProfileInfo(profile)
+
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
 		if c.Name == gwContainerName {
@@ -97,9 +102,11 @@ func ConfigureGatewayDeployment(
 	certFilePath := path.Join(tlsDir, certFile)
 	keyFilePath := path.Join(tlsDir, keyFile)
 	caFilePath := path.Join(caDir, caFile)
+	ciphersList := strings.Join(ciphers, `,`)
 	gwArgs = append(gwArgs,
 		"--tls.client-auth-type=NoClientCert",
-		"--tls.min-version=VersionTLS12",
+		fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
+		fmt.Sprintf("--tls.cipher-suites=%s", ciphersList),
 		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
 		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
 		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
@@ -131,7 +138,7 @@ func ConfigureGatewayDeployment(
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
 			*gwContainer,
-			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, withTLS),
+			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphersList, withTLS),
 		},
 		Volumes: gwVolumes,
 	}

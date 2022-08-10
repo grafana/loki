@@ -140,7 +140,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			objects, buildErr := BuildAll(tst.BuildOptions)
+			objects, buildErr := BuildAll(tst.BuildOptions, nil)
 
 			require.NoError(t, buildErr)
 			require.Equal(t, tst.MonitorCount, serviceMonitorCount(objects))
@@ -245,7 +245,7 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 
 	err := ApplyDefaultSettings(&opts)
 	require.NoError(t, err)
-	objects, buildErr := BuildAll(opts)
+	objects, buildErr := BuildAll(opts, nil)
 	require.NoError(t, buildErr)
 
 	for _, obj := range objects {
@@ -321,7 +321,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 
 	err := ApplyDefaultSettings(&opts)
 	require.NoError(t, err)
-	objects, buildErr := BuildAll(opts)
+	objects, buildErr := BuildAll(opts, nil)
 	require.NoError(t, buildErr)
 	require.Equal(t, 8, serviceMonitorCount(objects))
 
@@ -492,7 +492,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			objs, err := BuildAll(tst.BuildOptions)
+			objs, err := BuildAll(tst.BuildOptions, nil)
 			require.NoError(t, err)
 
 			for _, o := range objs {
@@ -649,7 +649,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			objs, err := BuildAll(tst.BuildOptions)
+			objs, err := BuildAll(tst.BuildOptions, nil)
 			require.NoError(t, err)
 
 			for _, o := range objs {
@@ -747,7 +747,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 			t.Parallel()
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
-			objects, buildErr := BuildAll(tst.BuildOptions)
+			objects, buildErr := BuildAll(tst.BuildOptions, nil)
 			require.NoError(t, buildErr)
 			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
@@ -799,7 +799,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 			t.Parallel()
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
-			objects, buildErr := BuildAll(tst.BuildOptions)
+			objects, buildErr := BuildAll(tst.BuildOptions, nil)
 			require.NoError(t, buildErr)
 			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))

@@ -259,6 +259,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--tls.client-auth-type=NoClientCert",
 										"--tls.min-version=VersionTLS12",
+										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -292,6 +293,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--tls.min-version=VersionTLS12",
+										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
@@ -433,6 +435,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--tls.client-auth-type=NoClientCert",
 										"--tls.min-version=VersionTLS12",
+										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -466,6 +469,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--tls.min-version=VersionTLS12",
+										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
@@ -620,6 +624,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
 										"--tls.client-auth-type=NoClientCert",
 										"--tls.min-version=VersionTLS12",
+										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -658,6 +663,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--tls.min-version=VersionTLS12",
+										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
@@ -736,11 +742,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 	}
+
 	for _, tc := range tc {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "test", "test-ns")
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "test", "test-ns", nil)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
