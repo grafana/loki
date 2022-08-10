@@ -64,7 +64,7 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 
 - The `deletion_mode` option needs to be removed from your compactor configuration
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
-- Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides
+- Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
 ## 2.6.0
 
