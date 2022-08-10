@@ -65,8 +65,8 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	require.Equal(t, now, data.params.Start())
 	require.Equal(t, int32(10), data.statistics.Ingester.TotalReached)
 
-	// Do not collect stats if request `next` handler returns error.
-	// Rationale is in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
+	// Do not collect stats if the `next` handler returns error.
+	// Rationale being, in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
 	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
