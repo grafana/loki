@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,19 +20,17 @@ const deletionNotAvailableMsg = "deletion is not available for this tenant"
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteRequestsStore       DeleteRequestsStore
-	metrics                   *deleteRequestHandlerMetrics
-	limits                    retention.Limits
-	deleteRequestCancelPeriod time.Duration
+	deleteRequestsStore DeleteRequestsStore
+	metrics             *deleteRequestHandlerMetrics
+	limits              retention.Limits
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore:       deleteStore,
-		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
-		limits:                    limits,
-		metrics:                   newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore: deleteStore,
+		limits:              limits,
+		metrics:             newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -174,11 +171,6 @@ func (dm *DeleteRequestHandler) cancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	if deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now()) {
-		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
-		return
-	}
-
 	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -224,18 +216,15 @@ func (dm *DeleteRequestHandler) deletionMiddleware(next http.Handler) http.Handl
 			return
 		}
 
-		allLimits := dm.limits.AllByUserID()
-		userLimits, ok := allLimits[userID]
-		if ok {
-			if !userLimits.CompactorDeletionEnabled {
-				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-				return
-			}
-		} else {
-			if !dm.limits.DefaultLimits().CompactorDeletionEnabled {
-				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
-				return
-			}
+		hasDelete, err := validDeletionLimit(dm.limits, userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if !hasDelete {
+			http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
+			return
 		}
 
 		next.ServeHTTP(w, r)

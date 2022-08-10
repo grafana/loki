@@ -1,16 +1,23 @@
-package deletion
+package deletionmode
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 )
 
 type Mode int16
 
 var (
-	errUnknownMode = errors.New("unknown deletion mode")
+	ErrUnknownMode = errors.New("unknown deletion mode")
 )
 
 const (
+	disabled        = "disabled"
+	filterOnly      = "filter-only"
+	filterAndDelete = "filter-and-delete"
+	unknown         = "unknown"
+
 	Disabled Mode = iota
 	FilterOnly
 	FilterAndDelete
@@ -19,13 +26,13 @@ const (
 func (m Mode) String() string {
 	switch m {
 	case Disabled:
-		return "disabled"
+		return disabled
 	case FilterOnly:
-		return "filter-only"
+		return filterOnly
 	case FilterAndDelete:
-		return "filter-and-delete"
+		return filterAndDelete
 	}
-	return "unknown"
+	return unknown
 }
 
 func (m Mode) DeleteEnabled() bool {
@@ -38,17 +45,17 @@ func AllModes() []string {
 
 func ParseMode(in string) (Mode, error) {
 	switch in {
-	case "disabled":
+	case disabled:
 		return Disabled, nil
-	case "filter-only":
+	case filterOnly:
 		return FilterOnly, nil
-	case "filter-and-delete":
+	case filterAndDelete:
 		return FilterAndDelete, nil
 	}
-	return 0, errUnknownMode
+	return 0, fmt.Errorf("%w: must be one of %s", ErrUnknownMode, strings.Join(AllModes(), "|"))
 }
 
-func DeleteEnabled(in string) (bool, error) {
+func Enabled(in string) (bool, error) {
 	deleteMode, err := ParseMode(in)
 	if err != nil {
 		return false, err

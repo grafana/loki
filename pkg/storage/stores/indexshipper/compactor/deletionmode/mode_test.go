@@ -1,4 +1,4 @@
-package deletion
+package deletionmode
 
 import (
 	"testing"
@@ -25,23 +25,23 @@ func TestParseMode(t *testing.T) {
 	require.Equal(t, FilterAndDelete, mode)
 
 	_, err = ParseMode("something-else")
-	require.ErrorIs(t, errUnknownMode, err)
+	require.ErrorIs(t, err, ErrUnknownMode)
 }
 
 func TestDeleteEnabled(t *testing.T) {
-	enabled, err := DeleteEnabled("disabled")
+	enabled, err := Enabled("disabled")
 	require.NoError(t, err)
 	require.False(t, enabled)
 
-	enabled, err = DeleteEnabled("filter-only")
+	enabled, err = Enabled("filter-only")
 	require.NoError(t, err)
 	require.True(t, enabled)
 
-	enabled, err = DeleteEnabled("filter-and-delete")
+	enabled, err = Enabled("filter-and-delete")
 	require.NoError(t, err)
 	require.True(t, enabled)
 
-	enabled, err = DeleteEnabled("some other value")
+	enabled, err = Enabled("some other value")
 	require.Error(t, err)
 	require.False(t, enabled)
 }

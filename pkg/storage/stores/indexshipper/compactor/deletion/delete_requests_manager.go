@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -37,19 +39,19 @@ type DeleteRequestsManager struct {
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
 	done                       chan struct{}
-	deletionMode               Mode
 	batchSize                  int
+	limits                     retention.Limits
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, mode Mode, batchSize int, registerer prometheus.Registerer) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, batchSize int, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
 		deleteRequestsToProcess:   map[string]*userDeleteRequests{},
 		metrics:                   newDeleteRequestsManagerMetrics(registerer),
 		done:                      make(chan struct{}),
-		deletionMode:              mode,
 		batchSize:                 batchSize,
+		limits:                    limits,
 	}
 
 	go dm.loop()
@@ -117,35 +119,29 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
+	// Reset this first so any errors result in a clear map
 	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+
+	deleteRequests, err := d.filteredDeleteRequests()
 	if err != nil {
 		return err
 	}
 
-	var deleteCount int
-	for _, deleteRequest := range deleteRequests {
-		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
-		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
-			continue
+	for i, deleteRequest := range deleteRequests {
+		if i >= d.batchSize {
+			logBatchTruncation(i, len(deleteRequests))
+			break
 		}
 
-		ur, ok := d.deleteRequestsToProcess[deleteRequest.UserID]
-		if !ok {
-			ur = &userDeleteRequests{
-				requestsInterval: model.Interval{
-					Start: deleteRequest.StartTime,
-					End:   deleteRequest.EndTime,
-				},
-			}
-			d.deleteRequestsToProcess[deleteRequest.UserID] = ur
-		}
-		deleteRequest.Metrics = d.metrics
 		level.Info(util_log.Logger).Log(
 			"msg", "Started processing delete request for user",
 			"delete_request_id", deleteRequest.RequestID,
 			"user", deleteRequest.UserID,
 		)
+
+		deleteRequest.Metrics = d.metrics
+
+		ur := d.requestsForUser(deleteRequest)
 		ur.requests = append(ur.requests, deleteRequest)
 		if deleteRequest.StartTime < ur.requestsInterval.Start {
 			ur.requestsInterval.Start = deleteRequest.StartTime
@@ -153,20 +149,76 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.EndTime > ur.requestsInterval.End {
 			ur.requestsInterval.End = deleteRequest.EndTime
 		}
-
-		deleteCount++
-		if deleteCount >= d.batchSize {
-			break
-		}
-	}
-
-	if deleteCount < len(deleteRequests) {
-		level.Info(util_log.Logger).Log(
-			"msg", fmt.Sprintf("Processing %d of %d delete requests. More requests will be processed in subsequent compactions", deleteCount, len(deleteRequests)),
-		)
 	}
 
 	return nil
+}
+
+func (d *DeleteRequestsManager) filteredDeleteRequests() ([]DeleteRequest, error) {
+	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	if err != nil {
+		return nil, err
+	}
+
+	return d.filteredRequests(deleteRequests)
+}
+
+func (d *DeleteRequestsManager) filteredRequests(reqs []DeleteRequest) ([]DeleteRequest, error) {
+	filtered := make([]DeleteRequest, 0, len(reqs))
+	for _, deleteRequest := range reqs {
+		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
+		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
+			continue
+		}
+
+		processRequest, err := d.shouldProcessRequest(deleteRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		if !processRequest {
+			continue
+		}
+
+		filtered = append(filtered, deleteRequest)
+	}
+
+	return filtered, nil
+}
+
+func (d *DeleteRequestsManager) requestsForUser(dr DeleteRequest) *userDeleteRequests {
+	ur, ok := d.deleteRequestsToProcess[dr.UserID]
+	if !ok {
+		ur = &userDeleteRequests{
+			requestsInterval: model.Interval{
+				Start: dr.StartTime,
+				End:   dr.EndTime,
+			},
+		}
+		d.deleteRequestsToProcess[dr.UserID] = ur
+	}
+	return ur
+}
+
+func logBatchTruncation(size, total int) {
+	if size < total {
+		level.Info(util_log.Logger).Log(
+			"msg", fmt.Sprintf("Processing %d of %d delete requests. More requests will be processed in subsequent compactions", size, total),
+		)
+	}
+}
+
+func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, error) {
+	mode, err := deleteModeFromLimits(d.limits, dr.UserID)
+	if err != nil {
+		level.Error(util_log.Logger).Log(
+			"msg", "unable to determine deletion mode for user",
+			"user", dr.UserID,
+		)
+		return false, err
+	}
+
+	return mode == deletionmode.FilterAndDelete, nil
 }
 
 func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []retention.IntervalFilter) {
@@ -178,11 +230,6 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		Start: ref.From,
 		End:   ref.Through,
 	}) {
-		return false, nil
-	}
-
-	if d.deletionMode == Disabled || d.deletionMode == FilterOnly {
-		// Don't process deletes
 		return false, nil
 	}
 
@@ -282,7 +329,7 @@ func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, u
 
 	// We can't do the overlap check between the passed interval and delete requests interval from a user because
 	// if a request is issued just for today and there are chunks spanning today and yesterday then
-	// the overlap check would skip processing yesterdays index which would result in the index pointing to deleted chunks.
+	// the overlap check would skip processing yesterday's index which would result in the index pointing to deleted chunks.
 	if userID != "" {
 		return d.deleteRequestsToProcess[userID] != nil
 	}

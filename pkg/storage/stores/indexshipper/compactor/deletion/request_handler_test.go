@@ -16,49 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-type retentionLimit struct {
-	compactorDeletionEnabled bool
-	retentionPeriod          time.Duration
-	streamRetention          []validation.StreamRetention
-}
-
-func (r retentionLimit) convertToValidationLimit() *validation.Limits {
-	return &validation.Limits{
-		CompactorDeletionEnabled: r.compactorDeletionEnabled,
-		RetentionPeriod:          model.Duration(r.retentionPeriod),
-		StreamRetention:          r.streamRetention,
-	}
-}
-
-type fakeLimits struct {
-	defaultLimit retentionLimit
-	perTenant    map[string]retentionLimit
-}
-
-func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
-	return f.perTenant[userID].retentionPeriod
-}
-
-func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
-	return f.perTenant[userID].streamRetention
-}
-
-func (f fakeLimits) CompactorDeletionEnabled(userID string) bool {
-	return f.perTenant[userID].compactorDeletionEnabled
-}
-
-func (f fakeLimits) DefaultLimits() *validation.Limits {
-	return f.defaultLimit.convertToValidationLimit()
-}
-
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
-	res := make(map[string]*validation.Limits)
-	for userID, ret := range f.perTenant {
-		res[userID] = ret.convertToValidationLimit()
-	}
-	return res
-}
-
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	// build the store
 	tempDir := t.TempDir()
@@ -75,14 +32,17 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 
 	// limits
 	fl := &fakeLimits{
+		defaultLimit: retentionLimit{
+			compactorDeletionEnabled: "disabled",
+		},
 		perTenant: map[string]retentionLimit{
-			"1": {compactorDeletionEnabled: true},
-			"2": {compactorDeletionEnabled: false},
+			"1": {compactorDeletionEnabled: "filter-only"},
+			"2": {compactorDeletionEnabled: "disabled"},
 		},
 	}
 
 	// Setup handler
-	drh := NewDeleteRequestHandler(testDeleteRequestsStore, 10*time.Second, fl, nil)
+	drh := NewDeleteRequestHandler(testDeleteRequestsStore, fl, nil)
 	middle := drh.deletionMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	// User that has deletion enabled
@@ -113,7 +73,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
 
 	// User without override, after the default value is set to true
-	fl.defaultLimit.compactorDeletionEnabled = true
+	fl.defaultLimit.compactorDeletionEnabled = "filter-and-delete"
 
 	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
 	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
@@ -130,4 +90,43 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	middle.ServeHTTP(res, req)
 
 	require.Equal(t, http.StatusBadRequest, res.Result().StatusCode)
+}
+
+type retentionLimit struct {
+	compactorDeletionEnabled string
+	retentionPeriod          time.Duration
+	streamRetention          []validation.StreamRetention
+}
+
+func (r retentionLimit) convertToValidationLimit() *validation.Limits {
+	return &validation.Limits{
+		DeletionMode:    r.compactorDeletionEnabled,
+		RetentionPeriod: model.Duration(r.retentionPeriod),
+		StreamRetention: r.streamRetention,
+	}
+}
+
+type fakeLimits struct {
+	defaultLimit retentionLimit
+	perTenant    map[string]retentionLimit
+}
+
+func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
+	return f.perTenant[userID].retentionPeriod
+}
+
+func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
+	return f.perTenant[userID].streamRetention
+}
+
+func (f fakeLimits) DefaultLimits() *validation.Limits {
+	return f.defaultLimit.convertToValidationLimit()
+}
+
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	res := make(map[string]*validation.Limits)
+	for userID, ret := range f.perTenant {
+		res[userID] = ret.convertToValidationLimit()
+	}
+	return res
 }
