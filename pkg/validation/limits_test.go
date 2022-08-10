@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
