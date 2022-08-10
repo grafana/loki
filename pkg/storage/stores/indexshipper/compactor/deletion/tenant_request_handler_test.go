@@ -4,15 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
-	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
@@ -53,23 +47,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, res.Result().StatusCode)
 }
 
-type retentionLimit struct {
-	compactorDeletionEnabled string
-	retentionPeriod          time.Duration
-	streamRetention          []validation.StreamRetention
-}
-
-func (r retentionLimit) convertToValidationLimit() *validation.Limits {
-	return &validation.Limits{
-		DeletionMode:    r.compactorDeletionEnabled,
-		RetentionPeriod: model.Duration(r.retentionPeriod),
-		StreamRetention: r.streamRetention,
-	}
-}
-
 type fakeLimits struct {
-	retention.Limits
-
 	limits map[string]string
 	mode   string
 }
