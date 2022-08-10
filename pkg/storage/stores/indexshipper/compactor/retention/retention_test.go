@@ -456,6 +456,10 @@ func (m *mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model
 	return false
 }
 
+func (m *mockExpirationChecker) MarkPhaseTimedOut() {
+
+}
+
 func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 	now := model.Now()
 	schema := allSchemas[2]

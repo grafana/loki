@@ -637,6 +637,11 @@ func (e *expirationChecker) MarkPhaseFinished() {
 	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
+func (e *expirationChecker) MarkPhaseTimedOut() {
+	e.retentionExpiryChecker.MarkPhaseTimedOut()
+	e.deletionExpiryChecker.MarkPhaseTimedOut()
+}
+
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
 }

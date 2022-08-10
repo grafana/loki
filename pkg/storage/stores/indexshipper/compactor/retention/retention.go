@@ -165,7 +165,9 @@ func markForDelete(
 	now := model.Now()
 	chunksFound := false
 
-	iterCtx, cancel := ctxForTimeout(timeout, ctx)
+	// This is a fresh context so we know when deletes timeout vs something going
+	// wrong with the other context
+	iterCtx, cancel := ctxForTimeout(timeout)
 	defer cancel()
 
 	err := indexFile.ForEachChunk(iterCtx, func(c ChunkEntry) (bool, error) {
@@ -216,10 +218,13 @@ func markForDelete(
 		return false, nil
 	})
 	if err != nil {
-		if !errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {
+			// Deletes timed out. Don't return an error so compaction can continue and deletes can be retried
+			level.Warn(util_log.Logger).Log("msg", "Timed out while running delete")
+			expiration.MarkPhaseTimedOut()
+		} else {
 			return false, false, err
 		}
-		level.Warn(util_log.Logger).Log("msg", "Timed out while running delete")
 	}
 
 	if !chunksFound {
@@ -241,11 +246,11 @@ func markForDelete(
 	})
 }
 
-func ctxForTimeout(t time.Duration, parent context.Context) (context.Context, context.CancelFunc) {
+func ctxForTimeout(t time.Duration) (context.Context, context.CancelFunc) {
 	if t == 0 {
 		return context.Background(), func() {}
 	}
-	return context.WithTimeout(parent, t)
+	return context.WithTimeout(context.Background(), t)
 }
 
 type ChunkClient interface {
