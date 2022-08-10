@@ -95,7 +95,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	cfg := runtimeconfig.Config{
 		ReloadPeriod: 1 * time.Second,
 		Loader:       loader,
-		LoadPath:     path,
+		LoadPath:     []string{path},
 	}
 	flagset := flag.NewFlagSet("", flag.PanicOnError)
 	var defaults validation.Limits

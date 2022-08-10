@@ -190,12 +190,12 @@ func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
-	if t.Cfg.RuntimeConfig.LoadPath == "" {
-		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
+	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
+		t.Cfg.RuntimeConfig.LoadPath = []string{t.Cfg.LimitsConfig.PerTenantOverrideConfig}
 		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
 	}
 
-	if t.Cfg.RuntimeConfig.LoadPath == "" {
+	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
 		// no need to initialize module if load path is empty
 		return nil, nil
 	}

@@ -148,7 +148,7 @@ func TestMultiKVSetup(t *testing.T) {
 			prepareGlobalMetricsRegistry(t)
 
 			cfg := minimalWorkingConfig(t, dir, target)
-			cfg.RuntimeConfig.LoadPath = filepath.Join(dir, "config.yaml")
+			cfg.RuntimeConfig.LoadPath = []string{filepath.Join(dir, "config.yaml")}
 			c, err := New(cfg)
 			require.NoError(t, err)
 
