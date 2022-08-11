@@ -289,6 +289,15 @@ func (d *DeleteRequestsManager) MarkPhaseFailed() {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
+	d.metrics.deletionFailures.WithLabelValues("error").Inc()
+	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
+}
+
+func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
+	d.metrics.deletionFailures.WithLabelValues("timeout").Inc()
 	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
 }
 

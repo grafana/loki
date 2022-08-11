@@ -121,10 +121,11 @@ type table struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func (t *table) ForEachChunk(callback ChunkEntryCallback) error {
+func (t *table) ForEachChunk(ctx context.Context, callback ChunkEntryCallback) error {
 	for userID, chks := range t.chunks {
 		i := 0
-		for _, chk := range chks {
+		for j := 0; j < len(chks) && ctx.Err() == nil; j++ {
+			chk := chks[j]
 			deleteChunk, err := callback(entryFromChunk(chk))
 			if err != nil {
 				return err
@@ -139,7 +140,7 @@ func (t *table) ForEachChunk(callback ChunkEntryCallback) error {
 		t.chunks[userID] = t.chunks[userID][:i]
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
