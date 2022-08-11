@@ -204,6 +204,51 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	})
 }
 
+func TestGetAllDeleteRequestsHandler(t *testing.T) {
+	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1"}, {RequestID: "test-request-2"}}
+		h := NewDeleteRequestHandler(store, time.Second, nil)
+
+		req := buildRequest("org-id", ``, "", "", "")
+
+		w := httptest.NewRecorder()
+		h.GetAllDeleteRequestsHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusOK)
+		require.Equal(t, store.getAllUser, "org-id")
+		require.Equal(t, getAllResult, strings.TrimSpace(w.Body.String()))
+	})
+
+	t.Run("error getting from store", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		store.getAllErr = errors.New("something bad")
+		h := NewDeleteRequestHandler(store, time.Second, nil)
+
+		req := buildRequest("org id", ``, "", "", "test-request")
+
+		w := httptest.NewRecorder()
+		h.GetAllDeleteRequestsHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusInternalServerError)
+		require.Equal(t, "something bad\n", w.Body.String())
+	})
+
+	t.Run("validation", func(t *testing.T) {
+		t.Run("no org id", func(t *testing.T) {
+			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Second, nil)
+
+			req := buildRequest("", ``, "", "", "")
+
+			w := httptest.NewRecorder()
+			h.GetAllDeleteRequestsHandler(w, req)
+
+			require.Equal(t, w.Code, http.StatusBadRequest)
+			require.Equal(t, "no org id\n", w.Body.String())
+		})
+	})
+}
+
 func buildRequest(orgID, query, start, end, requestID string) *http.Request {
 	var req *http.Request
 	if orgID == "" {
@@ -227,3 +272,7 @@ func toTime(t string) model.Time {
 	modelTime, _ := util.ParseTime(t)
 	return model.Time(modelTime)
 }
+
+var (
+	getAllResult = `[{"request_id":"test-request-1","start_time":0,"end_time":0,"query":"","status":"","created_at":0},{"request_id":"test-request-2","start_time":0,"end_time":0,"query":"","status":"","created_at":0}]`
+)
