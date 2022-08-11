@@ -29,7 +29,10 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) err
 		dst.ApplyDynamicConfig(),
 		// Load configs from the config file a second time, this will supersede anything set by the common
 		// config with values specified in the config file.
-		// Second marshaling is not strict because the config is already populated and that causes errors with maps.
+		// By loading the config file twice and unmarshaling it into the same object,
+		// using strict yaml unmarshal causes an `already set in map` error with the `Clients` config,
+		// because it's a map that already has the keys we are trying to unmarshal into it.
+		// That is why we don't use strict for the second marshaling.
 		ConfigFileLoader(args, "config.file", false),
 		// Load the flags again, this will supersede anything set from config file with flags from the command line.
 		Flags(args, fs),

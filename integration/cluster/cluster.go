@@ -410,6 +410,13 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	if p := c.grpcPort; p != 0 {
 		allocatedFreePorts.free(p)
 	}
+	if c.rulerWALPath != "" {
+		dirs = append(dirs, c.rulerWALPath)
+	}
+	if c.rulesPath != "" {
+		dirs = append(dirs, c.rulesPath)
+	}
+
 	return files, dirs
 }
 
