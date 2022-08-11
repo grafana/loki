@@ -2105,6 +2105,19 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# The max number of delete requests to run per compaction cycle.
+# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+[delete_batch_size: <duration> | default = 70]
+
+# The maximum amount of time to spend running retention and deletion
+# on any given table in the index. 0 is no timeout
+#
+# NOTE: This timeout prioritizes runtime over completeness of retention/deletion.
+# It may take several compaction runs to fully perform retention and process
+# all outstanding delete requests
+# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+[retention_table_timeout: <duration> | default = 0]
+
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.

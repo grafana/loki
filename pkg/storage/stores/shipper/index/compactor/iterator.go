@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/prometheus/common/model"
@@ -21,7 +22,7 @@ var (
 	_ retention.SeriesCleaner = &seriesCleaner{}
 )
 
-func ForEachChunk(bucket *bbolt.Bucket, config config.PeriodConfig, callback retention.ChunkEntryCallback) error {
+func ForEachChunk(ctx context.Context, bucket *bbolt.Bucket, config config.PeriodConfig, callback retention.ChunkEntryCallback) error {
 	labelsMapper, err := newSeriesLabelsMapper(bucket, config)
 	if err != nil {
 		return err
@@ -30,7 +31,7 @@ func ForEachChunk(bucket *bbolt.Bucket, config config.PeriodConfig, callback ret
 	cursor := bucket.Cursor()
 	var current retention.ChunkEntry
 
-	for key, _ := cursor.First(); key != nil; key, _ = cursor.Next() {
+	for key, _ := cursor.First(); key != nil && ctx.Err() == nil; key, _ = cursor.Next() {
 		ref, ok, err := parseChunkRef(decodeKey(key))
 		if err != nil {
 			return err
@@ -53,7 +54,7 @@ func ForEachChunk(bucket *bbolt.Bucket, config config.PeriodConfig, callback ret
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 type seriesCleaner struct {

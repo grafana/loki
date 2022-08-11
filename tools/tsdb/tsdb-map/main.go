@@ -73,7 +73,7 @@ func main() {
 
 	// loads everything into memory.
 	if err := db.View(func(t *bbolt.Tx) error {
-		return compactor.ForEachChunk(t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
+		return compactor.ForEachChunk(context.Background(), t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
 			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),

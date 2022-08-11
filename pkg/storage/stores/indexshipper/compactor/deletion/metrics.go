@@ -48,6 +48,7 @@ type deleteRequestsManagerMetrics struct {
 	deleteRequestsProcessedTotal         *prometheus.CounterVec
 	deleteRequestsChunksSelectedTotal    *prometheus.CounterVec
 	loadPendingRequestsAttemptsTotal     *prometheus.CounterVec
+	deletionFailures                     *prometheus.CounterVec
 	oldestPendingDeleteRequestAgeSeconds prometheus.Gauge
 	pendingDeleteRequestsCount           prometheus.Gauge
 	deletedLinesTotal                    *prometheus.CounterVec
@@ -66,6 +67,11 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 		Name:      "compactor_delete_requests_chunks_selected_total",
 		Help:      "Number of chunks selected while building delete plans per user",
 	}, []string{"user"})
+	m.deletionFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "compactor_delete_processing_fails_total",
+		Help:      "Number times the delete phase of compaction has failed",
+	}, []string{"cause"})
 	m.loadPendingRequestsAttemptsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "compactor_load_pending_requests_attempts_total",
