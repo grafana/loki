@@ -64,6 +64,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		tRuler = clu.AddComponent(
 			"ruler",
 			"-target=ruler",
+			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
 	)
 
