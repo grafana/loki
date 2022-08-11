@@ -363,9 +363,17 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 	// tenant has not disable remote-write so will inherit the global one
 	assert.Len(t, tenantCfg.RemoteWrite, 2)
 	// but the tenant has an override for the queue capacity for the first client
-	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, 987)
 	// second client remains unchanged
-	assert.Equal(t, tenantCfg.RemoteWrite[1].QueueConfig.Capacity, capacity)
+	expected := []int{
+		987,
+		capacity,
+	}
+	actual := []int{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.QueueConfig.Capacity)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
@@ -389,8 +397,16 @@ func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 	// tenant has not disable remote-write so will inherit the global one
 	assert.Len(t, tenantCfg.RemoteWrite, 2)
 	// but the tenant has an override for the queue capacity for the first client
-	assert.Equal(t, defaultCapacity, tenantCfg.RemoteWrite[0].QueueConfig.Capacity)
-	assert.Equal(t, capacity, tenantCfg.RemoteWrite[1].QueueConfig.Capacity)
+	expected := []int{
+		defaultCapacity,
+		capacity,
+	}
+	actual := []int{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.QueueConfig.Capacity)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
 }
 
 func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
@@ -402,31 +418,60 @@ func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
 	assert.Len(t, tenantCfg.RemoteWrite, 2)
 
 	// Both remote clients have their queue capacity and timeout overwritten
-	assert.Equal(t, 987, tenantCfg.RemoteWrite[0].QueueConfig.Capacity)
-	assert.Equal(t, 800, tenantCfg.RemoteWrite[1].QueueConfig.Capacity)
+	expectedCap := []int{
+		987,
+		800,
+	}
+	actualCap := []int{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actualCap = append(actualCap, rw.QueueConfig.Capacity)
+	}
 
-	assert.Equal(t, model.Duration(42), tenantCfg.RemoteWrite[0].RemoteTimeout)
-	assert.Equal(t, model.Duration(10), tenantCfg.RemoteWrite[1].RemoteTimeout)
+	assert.ElementsMatch(t, actualCap, expectedCap, "QueueConfig capacity do not match")
+
+	expectedDurations := []model.Duration{
+		model.Duration(10),
+		model.Duration(42),
+	}
+
+	actualDurations := []model.Duration{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actualDurations = append(actualDurations, rw.RemoteTimeout)
+	}
+	assert.ElementsMatch(t, actualDurations, expectedDurations, "RemoteTimeouts do not match")
 
 	// First remote client's HTTPClientConfig is overrwritten
-	assert.Equal(t, promConfig.HTTPClientConfig{
-		BearerToken: "test-token",
-		BasicAuth: &promConfig.BasicAuth{
-			Password: "bar",
-			Username: "foo",
-		}},
-		tenantCfg.RemoteWrite[0].HTTPClientConfig)
-	assert.Equal(t, promConfig.HTTPClientConfig{
-		BasicAuth: &promConfig.BasicAuth{
-			Password: "bar2",
-			Username: "foo2",
-		}},
-		tenantCfg.RemoteWrite[1].HTTPClientConfig)
+	expected := []promConfig.HTTPClientConfig{
+		{
+			BearerToken: "test-token",
+			BasicAuth: &promConfig.BasicAuth{
+				Password: "bar",
+				Username: "foo",
+			}},
+		{
+			BasicAuth: &promConfig.BasicAuth{
+				Password: "bar2",
+				Username: "foo2",
+			}},
+	}
+	actual := []promConfig.HTTPClientConfig{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.HTTPClientConfig)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "HTTPClientConfig do not match")
 
 	// Second remote client's URL is overrwritten
-	assert.Equal(t, promConfig.URL{URL: newRemoteURL2}, *tenantCfg.RemoteWrite[1].URL)
-	assert.Equal(t, promConfig.URL{URL: remoteURL}, *tenantCfg.RemoteWrite[0].URL)
+	expectedURLs := []promConfig.URL{
+		{URL: newRemoteURL2},
+		{URL: remoteURL},
+	}
 
+	actualURLs := []promConfig.URL{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actualURLs = append(actualURLs, *rw.URL)
+	}
+	assert.ElementsMatch(t, actualURLs, expectedURLs, "URLs do not match")
 }
 
 func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
@@ -450,13 +495,17 @@ func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
 	// tenant has not disable remote-write so will inherit the global one
 	assert.Len(t, tenantCfg.RemoteWrite, 2)
 	// ensure sigv4 config is not nil and overwritten for first client
-	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
-		assert.Equal(t, sigV4TenantRegion, tenantCfg.RemoteWrite[0].SigV4Config.Region)
-	}
 	// ensure sigv4 config is not nil and not overwritten for second client
-	if assert.NotNil(t, tenantCfg.RemoteWrite[1].SigV4Config) {
-		assert.Equal(t, sigV4GlobalRegion, tenantCfg.RemoteWrite[1].SigV4Config.Region)
+	expected := []string{
+		sigV4TenantRegion,
+		sigV4GlobalRegion,
 	}
+	actual := []string{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.SigV4Config.Region)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "SigV4Config regions do not match")
 }
 
 func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {

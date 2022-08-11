@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -468,4 +469,22 @@ func getFreePort() (port int, err error) {
 		}
 	}
 	return
+}
+
+func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
+	server := httptest.NewUnstartedServer(*handler)
+	p, err := getFreePort()
+	if err != nil {
+		panic(fmt.Errorf("error allocating HTTP port: %w", err))
+	}
+
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	if err != nil {
+		panic(fmt.Errorf("failed to listen on: %v", err))
+	}
+
+	server.Listener = l
+	server.Start()
+
+	return server
 }

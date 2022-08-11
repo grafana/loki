@@ -2,7 +2,6 @@ package integration
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -69,22 +68,27 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	)
 
 	remoteCalled := []bool{false, false}
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	handler1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/write" {
 			t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
 		}
 		remoteCalled[0] = true
 
 		w.WriteHeader(http.StatusOK)
-	}))
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	})
+	server1 := cluster.NewRemoteWriteServer(&handler1)
+
+	handler2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/write" {
 			t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
 		}
 		remoteCalled[1] = true
 
 		w.WriteHeader(http.StatusOK)
-	}))
+	})
+	server2 := cluster.NewRemoteWriteServer(&handler2)
+
 	defer server1.Close()
 	defer server2.Close()
 

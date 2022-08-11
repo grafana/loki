@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logql"
@@ -11,7 +12,11 @@ import (
 
 func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*ruler.Ruler, error) {
 	// For backward compatibility, client and clients are defined in the remote_write config.
-	// When both are present, Clients config overrides client, otherwise one or the other is used.
+	// When both are present, an error is thrown.
+	if len(cfg.RemoteWrite.Clients) > 0 && cfg.RemoteWrite.Client != nil {
+		return nil, errors.New("Both Client and Clients are defined! Please use one or the other")
+	}
+
 	if len(cfg.RemoteWrite.Clients) == 0 && cfg.RemoteWrite.Client != nil {
 		cfg.RemoteWrite.Clients["default"] = *cfg.RemoteWrite.Client
 	}
