@@ -192,11 +192,11 @@ func Test_EmptyTable(t *testing.T) {
 
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
-	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
+	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 
-	_, _, err = markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil)
+	_, _, err = markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
 	require.Equal(t, err, errNoChunksFound)
 }
 
@@ -668,8 +668,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				seriesCleanRecorder := newSeriesCleanRecorder(table)
 
 				cr := newChunkRewriter(store.chunkClient, table.name, table)
-				empty, isModified, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, seriesCleanRecorder,
-					expirationChecker, cr)
+				empty, isModified, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, seriesCleanRecorder, expirationChecker, cr, util_log.Logger)
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedEmpty[i], empty)
 				require.Equal(t, tc.expectedModified[i], isModified)
@@ -710,6 +709,7 @@ func TestDeleteTimeout(t *testing.T) {
 			newSeriesCleanRecorder(table),
 			expirationChecker,
 			newChunkRewriter(store.chunkClient, table.name, table),
+			util_log.Logger,
 		)
 
 		require.NoError(t, err)
@@ -747,7 +747,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		empty, _, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, table,
-			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
+			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil, util_log.Logger)
 		require.NoError(t, err)
 		if i == 7 {
 			require.False(t, empty)

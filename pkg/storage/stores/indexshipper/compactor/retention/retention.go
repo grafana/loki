@@ -106,7 +106,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, in
 	}()
 	level.Debug(logger).Log("msg", "starting to process table")
 
-	empty, modified, err := t.markTable(ctx, tableName, userID, indexProcessor)
+	empty, modified, err := t.markTable(ctx, tableName, userID, indexProcessor, logger)
 	if err != nil {
 		status = statusFailure
 		return false, false, err
@@ -114,7 +114,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, in
 	return empty, modified, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor) (bool, bool, error) {
+func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
 	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
@@ -126,7 +126,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 
 	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
 
-	empty, modified, err := markForDelete(ctx, t.markTimeout, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter)
+	empty, modified, err := markForDelete(ctx, t.markTimeout, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter, logger)
 	if err != nil {
 		return false, false, err
 	}
@@ -156,6 +156,7 @@ func markForDelete(
 	indexFile IndexProcessor,
 	expiration ExpirationChecker,
 	chunkRewriter *chunkRewriter,
+	logger log.Logger,
 ) (bool, bool, error) {
 	seriesMap := newUserSeriesMap()
 	// tableInterval holds the interval for which the table is expected to have the chunks indexed
@@ -220,7 +221,7 @@ func markForDelete(
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {
 			// Deletes timed out. Don't return an error so compaction can continue and deletes can be retried
-			level.Warn(util_log.Logger).Log("msg", "Timed out while running delete")
+			level.Warn(logger).Log("msg", "Timed out while running delete")
 			expiration.MarkPhaseTimedOut()
 		} else {
 			return false, false, err
