@@ -65,7 +65,14 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), query); err != nil {
+	req := DeleteRequest{
+		StartTime: startTime,
+		EndTime:   endTime,
+		Query:     query,
+		UserID:    userID,
+	}
+
+	if _, err := dm.deleteRequestsStore.AddDeleteRequest(ctx, req); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -103,6 +110,8 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	}
 }
 
+//TODO Tests for cancel
+
 // CancelDeleteRequestHandler handles delete request cancellation
 func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -132,7 +141,9 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
+	deleteRequest.UserID = userID
+	deleteRequest.RequestID = requestID
+	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, *deleteRequest); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -176,7 +187,7 @@ func query(params url.Values) (string, error) {
 	return query, nil
 }
 
-func startTime(params url.Values) (int64, error) {
+func startTime(params url.Values) (model.Time, error) {
 	startParam := params.Get("start")
 	if startParam == "" {
 		return 0, errors.New("start time not set")
@@ -187,10 +198,10 @@ func startTime(params url.Values) (int64, error) {
 		return 0, errors.New("invalid start time: require unix seconds or RFC3339 format")
 	}
 
-	return st, nil
+	return model.Time(st), nil
 }
 
-func endTime(params url.Values, startTime int64) (int64, error) {
+func endTime(params url.Values, startTime model.Time) (model.Time, error) {
 	endParam := params.Get("end")
 	endTime, err := parseTime(endParam)
 	if err != nil {
@@ -201,11 +212,11 @@ func endTime(params url.Values, startTime int64) (int64, error) {
 		return 0, errors.New("deletes in the future are not allowed")
 	}
 
-	if startTime > endTime {
+	if int64(startTime) > endTime {
 		return 0, errors.New("start time can't be greater than end time")
 	}
 
-	return endTime, nil
+	return model.Time(endTime), nil
 }
 
 func parseTime(in string) (int64, error) {

@@ -497,10 +497,10 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
-	m.addedUser = userID
-	m.addedStartTime = startTime
-	m.addedEndTime = endTime
-	m.addedQuery = query
-	return m.addErr
+func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, req DeleteRequest) (string, error) {
+	m.addedUser = req.UserID
+	m.addedStartTime = req.StartTime
+	m.addedEndTime = req.EndTime
+	m.addedQuery = req.Query
+	return "", m.addErr
 }

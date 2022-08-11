@@ -2,8 +2,6 @@ package deletion
 
 import (
 	"context"
-
-	"github.com/prometheus/common/model"
 )
 
 func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
@@ -12,8 +10,8 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
-	return nil
+func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, req DeleteRequest) (string, error) {
+	return "", nil
 }
 
 func (d *noOpDeleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
@@ -24,7 +22,7 @@ func (d *noOpDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Contex
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error {
+func (d *noOpDeleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
 	return nil
 }
 
@@ -32,7 +30,7 @@ func (d *noOpDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, 
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error {
+func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, req DeleteRequest) error {
 	return nil
 }
 

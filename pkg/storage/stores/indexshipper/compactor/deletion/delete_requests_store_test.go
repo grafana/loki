@@ -28,7 +28,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			UserID:    user1,
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-i * time.Hour).Add(30 * time.Minute),
-			CreatedAt: now.Add(-i * time.Hour).Add(30 * time.Minute),
+			CreatedAt: model.Time(38),
 			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1),
 			Status:    StatusReceived,
 		})
@@ -36,7 +36,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			UserID:    user2,
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-(i + 1) * time.Hour),
-			CreatedAt: now.Add(-(i + 1) * time.Hour),
+			CreatedAt: model.Time(38),
 			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2),
 			Status:    StatusReceived,
 		})
@@ -52,35 +52,28 @@ func TestDeleteRequestsStore(t *testing.T) {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	testDeleteRequestsStore, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
-
+	testDeleteRequestsStore := ds.(*deleteRequestsStore)
+	testDeleteRequestsStore.now = func() model.Time { return model.Time(38) }
 	defer testDeleteRequestsStore.Stop()
 
 	// add requests for both the users to the store
 	for i := 0; i < len(user1ExpectedRequests); i++ {
-		requestID, err := testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
+		requestID, err := testDeleteRequestsStore.AddDeleteRequest(
 			context.Background(),
-			user1ExpectedRequests[i].UserID,
-			user1ExpectedRequests[i].CreatedAt,
-			user1ExpectedRequests[i].StartTime,
-			user1ExpectedRequests[i].EndTime,
-			user1ExpectedRequests[i].Query,
+			user1ExpectedRequests[i],
 		)
 		require.NoError(t, err)
-		user1ExpectedRequests[i].RequestID = string(requestID)
+		user1ExpectedRequests[i].RequestID = requestID
 		require.NoError(t, user1ExpectedRequests[i].SetQuery(user1ExpectedRequests[i].Query))
 
-		requestID, err = testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
+		requestID, err = testDeleteRequestsStore.AddDeleteRequest(
 			context.Background(),
-			user2ExpectedRequests[i].UserID,
-			user2ExpectedRequests[i].CreatedAt,
-			user2ExpectedRequests[i].StartTime,
-			user2ExpectedRequests[i].EndTime,
-			user2ExpectedRequests[i].Query,
+			user2ExpectedRequests[i],
 		)
 		require.NoError(t, err)
-		user2ExpectedRequests[i].RequestID = string(requestID)
+		user2ExpectedRequests[i].RequestID = requestID
 		require.NoError(t, user2ExpectedRequests[i].SetQuery(user2ExpectedRequests[i].Query))
 	}
 
@@ -128,7 +121,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			request = user2ExpectedRequests[i]
 		}
 
-		require.NoError(t, testDeleteRequestsStore.UpdateStatus(context.Background(), request.UserID, request.RequestID, StatusProcessed))
+		require.NoError(t, testDeleteRequestsStore.UpdateStatus(context.Background(), request, StatusProcessed))
 	}
 
 	// see if requests in the store have right values
@@ -162,7 +155,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			remainingRequests = append(remainingRequests, user1ExpectedRequests[i])
 		}
 
-		require.NoError(t, testDeleteRequestsStore.RemoveDeleteRequest(context.Background(), request.UserID, request.RequestID, request.CreatedAt, request.StartTime, request.EndTime))
+		require.NoError(t, testDeleteRequestsStore.RemoveDeleteRequest(context.Background(), request))
 	}
 
 	// see if the store has the right remaining requests

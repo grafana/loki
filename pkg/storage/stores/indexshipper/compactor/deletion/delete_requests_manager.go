@@ -311,7 +311,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
+			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest, StatusProcessed); err != nil {
 				level.Error(util_log.Logger).Log(
 					"msg", "failed to mark delete request for user as processed",
 					"delete_request_id", deleteRequest.RequestID,
