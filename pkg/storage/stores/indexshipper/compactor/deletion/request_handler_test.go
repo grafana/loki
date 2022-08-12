@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -274,7 +275,37 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 
 		require.Equal(t, w.Code, http.StatusOK)
 		require.Equal(t, store.getAllUser, "org-id")
-		require.Equal(t, getAllResult, strings.TrimSpace(w.Body.String()))
+
+		var result []DeleteRequest
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+		require.ElementsMatch(t, store.getAllResult, result)
+	})
+
+	t.Run("it merges requests with the same requestID", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		store.getAllResult = []DeleteRequest{
+			{RequestID: "test-request-1", CreatedAt: now, StartTime: now, EndTime: now.Add(time.Hour)},
+			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(2 * time.Hour), EndTime: now.Add(3 * time.Hour)},
+			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
+			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(time.Hour), EndTime: now.Add(2 * time.Hour)},
+		}
+		h := NewDeleteRequestHandler(store, nil)
+
+		req := buildRequest("org-id", ``, "", "")
+
+		w := httptest.NewRecorder()
+		h.GetAllDeleteRequestsHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusOK)
+
+		var result []DeleteRequest
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+		require.Len(t, result, 2)
+		require.Equal(t, []DeleteRequest{
+			{RequestID: "test-request-1", CreatedAt: now, StartTime: now, EndTime: now.Add(3 * time.Hour)},
+			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
+		}, result)
 	})
 
 	t.Run("error getting from store", func(t *testing.T) {
@@ -336,7 +367,3 @@ func toTime(t string) model.Time {
 	modelTime, _ := util.ParseTime(t)
 	return model.Time(modelTime)
 }
-
-var (
-	getAllResult = `[{"request_id":"test-request-1","start_time":0,"end_time":0,"query":"","status":"","created_at":0},{"request_id":"test-request-2","start_time":0,"end_time":0,"query":"","status":"","created_at":0}]`
-)

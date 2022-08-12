@@ -313,14 +313,6 @@ func (ds *deleteRequestsStore) queryDeleteRequestDetails(ctx context.Context, de
 	return requestWithDetails, nil
 }
 
-func partitionByRequestID(reqs []DeleteRequest) map[string][]DeleteRequest {
-	groups := make(map[string][]DeleteRequest)
-	for _, req := range reqs {
-		groups[req.RequestID] = append(groups[req.RequestID], req)
-	}
-	return groups
-}
-
 // RemoveDeleteRequests the passed delete requests
 func (ds *deleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
 	writeBatch := ds.indexClient.NewWriteBatch()

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/grafana/loki/pkg/util"
@@ -132,17 +134,54 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		return
 	}
 
-	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
+	deleteGroups, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	deletesPerRequest := partitionByRequestID(deleteGroups)
+	deleteRequests := mergeDeletes(deletesPerRequest)
+
+	sort.Slice(deleteRequests, func(i, j int) bool {
+		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt
+	})
+
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
+}
+
+func mergeDeletes(groups map[string][]DeleteRequest) []DeleteRequest {
+	var mergedRequests []DeleteRequest
+	for _, deletes := range groups {
+		startTime, endTime := findStartAndEnd(deletes)
+		newDelete := deletes[0]
+		newDelete.StartTime = startTime
+		newDelete.EndTime = endTime
+
+		mergedRequests = append(mergedRequests, newDelete)
+	}
+	return mergedRequests
+}
+
+func findStartAndEnd(deletes []DeleteRequest) (model.Time, model.Time) {
+	startTime := model.Time(math.MaxInt64)
+	endTime := model.Time(0)
+
+	for _, del := range deletes {
+		if del.StartTime < startTime {
+			startTime = del.StartTime
+		}
+
+		if del.EndTime > endTime {
+			endTime = del.EndTime
+		}
+	}
+
+	return startTime, endTime
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
