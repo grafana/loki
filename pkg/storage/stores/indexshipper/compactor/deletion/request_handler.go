@@ -21,17 +21,15 @@ import (
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteRequestsStore       DeleteRequestsStore
-	metrics                   *deleteRequestHandlerMetrics
-	deleteRequestCancelPeriod time.Duration
+	deleteRequestsStore DeleteRequestsStore
+	metrics             *deleteRequestHandlerMetrics
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore:       deleteStore,
-		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
-		metrics:                   newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore: deleteStore,
+		metrics:             newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
