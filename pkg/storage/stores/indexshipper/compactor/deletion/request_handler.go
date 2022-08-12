@@ -63,14 +63,14 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	req := DeleteRequest{
-		StartTime: startTime,
-		EndTime:   endTime,
-		Query:     query,
-		UserID:    userID,
+	queryRange, err := queryRange(params, startTime, endTime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, []DeleteRequest{req}); err != nil {
+	deleteRequests := shardDeleteRequestsByQueryRange(startTime, endTime, query, userID, queryRange)
+	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -84,6 +84,43 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func shardDeleteRequestsByQueryRange(startTime, endTime model.Time, query, userID string, queryRange time.Duration) []DeleteRequest {
+	var deleteRequests []DeleteRequest
+	for start := startTime; ; start = start.Add(queryRange) + 1 {
+		if start.Equal(endTime) || start.After(endTime) {
+			break
+		}
+
+		end := start.Add(queryRange)
+		if end.After(endTime) {
+			end = endTime
+		}
+
+		deleteRequests = append(deleteRequests,
+			DeleteRequest{
+				StartTime: start,
+				EndTime:   end,
+				Query:     query,
+				UserID:    userID,
+			})
+	}
+	return deleteRequests
+}
+
+func queryRange(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
+	qr := params.Get("max_query_range")
+	if qr == "" {
+		return endTime.Sub(startTime), nil
+	}
+
+	queryRange, err := time.ParseDuration(qr)
+	if err != nil || queryRange < time.Second {
+		return 0, errors.New("invalid query range: valid time units are 's', 'm', 'h'")
+	}
+
+	return queryRange, nil
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests

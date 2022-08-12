@@ -486,7 +486,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests []DeleteRequest
-	addReq         DeleteRequest
+	addReqs        []DeleteRequest
 	addErr         error
 
 	removeReqs []DeleteRequest
@@ -507,7 +507,7 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _
 }
 
 func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
-	m.addReq = reqs[0]
+	m.addReqs = reqs
 	return nil, m.addErr
 }
 

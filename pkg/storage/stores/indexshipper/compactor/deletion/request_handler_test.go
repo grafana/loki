@@ -24,58 +24,88 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001", "")
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
 
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
 
 		require.Equal(t, w.Code, http.StatusNoContent)
 
-		require.Equal(t, "org-id", store.addReq.UserID)
-		require.Equal(t, `{foo="bar"}`, store.addReq.Query)
-		require.Equal(t, toTime("0000000000"), store.addReq.StartTime)
-		require.Equal(t, toTime("0000000001"), store.addReq.EndTime)
+		require.Equal(t, "org-id", store.addReqs[0].UserID)
+		require.Equal(t, `{foo="bar"}`, store.addReqs[0].Query)
+		require.Equal(t, toTime("0000000000"), store.addReqs[0].StartTime)
+		require.Equal(t, toTime("0000000001"), store.addReqs[0].EndTime)
+	})
+
+	t.Run("it shards deletes based on a query param", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, nil)
+
+		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
+		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
+
+		req := buildRequest("org-id", `{foo="bar"}`, unixString(from), unixString(to))
+		params := req.URL.Query()
+		params.Set("max_query_range", "1h")
+		req.URL.RawQuery = params.Encode()
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusNoContent)
+		require.Len(t, store.addReqs, 3)
+
+		for i, req := range store.addReqs {
+			startTime := from.Add(time.Duration(i)*time.Hour) + model.Time(i)
+			endTime := from.Add(time.Duration(i+1)*time.Hour) + model.Time(i)
+			if endTime.After(to) {
+				endTime = to
+			}
+
+			require.Equal(t, startTime, req.StartTime)
+			require.Equal(t, endTime, req.EndTime)
+		}
 	})
 
 	t.Run("it works with RFC3339", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", `{foo="bar"}`, "2006-01-02T15:04:05Z", "2006-01-03T15:04:05Z", "")
+		req := buildRequest("org-id", `{foo="bar"}`, "2006-01-02T15:04:05Z", "2006-01-03T15:04:05Z")
 
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
 
 		require.Equal(t, w.Code, http.StatusNoContent)
 
-		require.Equal(t, "org-id", store.addReq.UserID)
-		require.Equal(t, `{foo="bar"}`, store.addReq.Query)
-		require.Equal(t, toTime("1136214245"), store.addReq.StartTime)
-		require.Equal(t, toTime("1136300645"), store.addReq.EndTime)
+		require.Equal(t, "org-id", store.addReqs[0].UserID)
+		require.Equal(t, `{foo="bar"}`, store.addReqs[0].Query)
+		require.Equal(t, toTime("1136214245"), store.addReqs[0].StartTime)
+		require.Equal(t, toTime("1136300645"), store.addReqs[0].EndTime)
 	})
 
 	t.Run("it fills in end time if blank", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "", "")
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "")
 
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
 
 		require.Equal(t, w.Code, http.StatusNoContent)
 
-		require.Equal(t, "org-id", store.addReq.UserID)
-		require.Equal(t, `{foo="bar"}`, store.addReq.Query)
-		require.Equal(t, toTime("0000000000"), store.addReq.StartTime)
-		require.InDelta(t, int64(model.Now()), int64(store.addReq.EndTime), 1000)
+		require.Equal(t, "org-id", store.addReqs[0].UserID)
+		require.Equal(t, `{foo="bar"}`, store.addReqs[0].Query)
+		require.Equal(t, toTime("0000000000"), store.addReqs[0].StartTime)
+		require.InDelta(t, int64(model.Now()), int64(store.addReqs[0].EndTime), 1000)
 	})
 
 	t.Run("it returns 500 when the delete store errors", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{addErr: errors.New("something bad")}
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001", "")
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
 
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
@@ -86,19 +116,25 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, nil)
 
 		for _, tc := range []struct {
-			orgID, query, startTime, endTime, error string
+			orgID, query, startTime, endTime, queryRange, error string
 		}{
-			{"", `{foo="bar"}`, "0000000000", "0000000001", "no org id\n"},
-			{"org-id", "", "0000000000", "0000000001", "query not set\n"},
-			{"org-id", `not a query`, "0000000000", "0000000001", "invalid query expression\n"},
-			{"org-id", `{foo="bar"}`, "", "0000000001", "start time not set\n"},
-			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "invalid start time: require unix seconds or RFC3339 format\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "invalid end time: require unix seconds or RFC3339 format\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "deletes in the future are not allowed\n"},
-			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "start time can't be greater than end time\n"},
+			{"", `{foo="bar"}`, "0000000000", "0000000001", "", "no org id\n"},
+			{"org-id", "", "0000000000", "0000000001", "", "query not set\n"},
+			{"org-id", `not a query`, "0000000000", "0000000001", "", "invalid query expression\n"},
+			{"org-id", `{foo="bar"}`, "", "0000000001", "", "start time not set\n"},
+			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "", "invalid start time: require unix seconds or RFC3339 format\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "", "deletes in the future are not allowed\n"},
+			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than end time\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "not-a-duration", "invalid query range: valid time units are 's', 'm', 'h'\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1ms", "invalid query range: valid time units are 's', 'm', 'h'\n"},
 		} {
 			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
-				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime, "")
+				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)
+
+				params := req.URL.Query()
+				params.Set("max_query_range", tc.queryRange)
+				req.URL.RawQuery = params.Encode()
 
 				w := httptest.NewRecorder()
 				h.AddDeleteRequestHandler(w, req)
@@ -121,7 +157,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", ``, "", "", "test-request")
+		req := buildRequest("org-id", ``, "", "")
+		params := req.URL.Query()
+		params.Set("request_id", "test-request")
+		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
 		h.CancelDeleteRequestHandler(w, req)
@@ -138,7 +177,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		store.getErr = errors.New("something bad")
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org id", ``, "", "", "test-request")
+		req := buildRequest("org id", ``, "", "")
+		params := req.URL.Query()
+		params.Set("request_id", "test-request")
+		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
 		h.CancelDeleteRequestHandler(w, req)
@@ -155,7 +197,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", ``, "", "", "test-request")
+		req := buildRequest("org-id", ``, "", "")
+		params := req.URL.Query()
+		params.Set("request_id", "test-request")
+		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
 		h.CancelDeleteRequestHandler(w, req)
@@ -168,7 +213,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		t.Run("no org id", func(t *testing.T) {
 			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, nil)
 
-			req := buildRequest("", ``, "", "", "test-request")
+			req := buildRequest("", ``, "", "")
+			params := req.URL.Query()
+			params.Set("request_id", "test-request")
+			req.URL.RawQuery = params.Encode()
 
 			w := httptest.NewRecorder()
 			h.CancelDeleteRequestHandler(w, req)
@@ -180,7 +228,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		t.Run("request not found", func(t *testing.T) {
 			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{getErr: ErrDeleteRequestNotFound}, nil)
 
-			req := buildRequest("org-id", ``, "", "", "test-request")
+			req := buildRequest("org-id", ``, "", "")
+			params := req.URL.Query()
+			params.Set("request_id", "test-request")
+			req.URL.RawQuery = params.Encode()
 
 			w := httptest.NewRecorder()
 			h.CancelDeleteRequestHandler(w, req)
@@ -196,7 +247,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 
 			h := NewDeleteRequestHandler(store, nil)
 
-			req := buildRequest("org-id", ``, "", "", "test-request")
+			req := buildRequest("org-id", ``, "", "")
+			params := req.URL.Query()
+			params.Set("request_id", "test-request")
+			req.URL.RawQuery = params.Encode()
 
 			w := httptest.NewRecorder()
 			h.CancelDeleteRequestHandler(w, req)
@@ -213,7 +267,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1"}, {RequestID: "test-request-2"}}
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org-id", ``, "", "", "")
+		req := buildRequest("org-id", ``, "", "")
 
 		w := httptest.NewRecorder()
 		h.GetAllDeleteRequestsHandler(w, req)
@@ -228,7 +282,10 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		store.getAllErr = errors.New("something bad")
 		h := NewDeleteRequestHandler(store, nil)
 
-		req := buildRequest("org id", ``, "", "", "test-request")
+		req := buildRequest("org id", ``, "", "")
+		params := req.URL.Query()
+		params.Set("request_id", "test-request")
+		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
 		h.GetAllDeleteRequestsHandler(w, req)
@@ -241,7 +298,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		t.Run("no org id", func(t *testing.T) {
 			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, nil)
 
-			req := buildRequest("", ``, "", "", "")
+			req := buildRequest("", ``, "", "")
 
 			w := httptest.NewRecorder()
 			h.GetAllDeleteRequestsHandler(w, req)
@@ -252,7 +309,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	})
 }
 
-func buildRequest(orgID, query, start, end, requestID string) *http.Request {
+func buildRequest(orgID, query, start, end string) *http.Request {
 	var req *http.Request
 	if orgID == "" {
 		req, _ = http.NewRequest(http.MethodGet, "", nil)
@@ -265,10 +322,14 @@ func buildRequest(orgID, query, start, end, requestID string) *http.Request {
 	q.Set("query", query)
 	q.Set("start", start)
 	q.Set("end", end)
-	q.Set("request_id", requestID)
+
 	req.URL.RawQuery = q.Encode()
 
 	return req
+}
+
+func unixString(t model.Time) string {
+	return fmt.Sprint(t.Unix())
 }
 
 func toTime(t string) model.Time {
