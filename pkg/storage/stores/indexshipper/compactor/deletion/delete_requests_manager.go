@@ -3,6 +3,7 @@ package deletion
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -122,7 +123,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	// Reset this first so any errors result in a clear map
 	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
 
-	deleteRequests, err := d.filteredDeleteRequests()
+	deleteRequests, err := d.filteredSortedDeleteRequests()
 	if err != nil {
 		return err
 	}
@@ -154,13 +155,22 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	return nil
 }
 
-func (d *DeleteRequestsManager) filteredDeleteRequests() ([]DeleteRequest, error) {
+func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
 	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return nil, err
 	}
 
-	return d.filteredRequests(deleteRequests)
+	deleteRequests, err = d.filteredRequests(deleteRequests)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(deleteRequests, func(i, j int) bool {
+		return deleteRequests[i].StartTime < deleteRequests[j].StartTime
+	})
+
+	return deleteRequests, nil
 }
 
 func (d *DeleteRequestsManager) filteredRequests(reqs []DeleteRequest) ([]DeleteRequest, error) {

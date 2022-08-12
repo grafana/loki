@@ -378,21 +378,15 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "Deletes are limited by batch size",
+			name:         "Deletes are sorted by start time and limited by batch size",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
-					StartTime: now.Add(-13 * time.Hour),
-					EndTime:   now.Add(-11 * time.Hour),
-				},
-				{
-					UserID:    testUserID,
-					Query:     lblFoo.String(),
-					StartTime: now.Add(-10 * time.Hour),
-					EndTime:   now.Add(-8 * time.Hour),
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
 				},
 				{
 					UserID:    testUserID,
@@ -403,8 +397,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
-					StartTime: now.Add(-2 * time.Hour),
-					EndTime:   now,
+					StartTime: now.Add(-10 * time.Hour),
+					EndTime:   now.Add(-8 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-13 * time.Hour),
+					EndTime:   now.Add(-11 * time.Hour),
 				},
 			},
 			expectedResp: resp{
