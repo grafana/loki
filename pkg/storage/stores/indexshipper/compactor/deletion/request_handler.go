@@ -179,20 +179,22 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 func mergeDeletes(groups map[string][]DeleteRequest) []DeleteRequest {
 	var mergedRequests []DeleteRequest
 	for _, deletes := range groups {
-		startTime, endTime := findStartAndEnd(deletes)
+		startTime, endTime, status := mergeData(deletes)
 		newDelete := deletes[0]
 		newDelete.StartTime = startTime
 		newDelete.EndTime = endTime
+		newDelete.Status = status
 
 		mergedRequests = append(mergedRequests, newDelete)
 	}
 	return mergedRequests
 }
 
-func findStartAndEnd(deletes []DeleteRequest) (model.Time, model.Time) {
+func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestStatus) {
 	startTime := model.Time(math.MaxInt64)
 	endTime := model.Time(0)
 
+	isProcessed := true
 	for _, del := range deletes {
 		if del.StartTime < startTime {
 			startTime = del.StartTime
@@ -201,9 +203,16 @@ func findStartAndEnd(deletes []DeleteRequest) (model.Time, model.Time) {
 		if del.EndTime > endTime {
 			endTime = del.EndTime
 		}
+
+		isProcessed = isProcessed && del.Status == StatusProcessed
 	}
 
-	return startTime, endTime
+	status := StatusProcessed
+	if !isProcessed {
+		status = StatusReceived
+	}
+
+	return startTime, endTime, status
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
