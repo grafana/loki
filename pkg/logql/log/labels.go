@@ -234,6 +234,16 @@ func (b *LabelsBuilder) labels() labels.Labels {
 	return b.buf
 }
 
+func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
+	if b.err != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+	}
+	if b.errDetails != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
+	}
+	return buf
+}
+
 func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		if buf == nil {
@@ -242,13 +252,7 @@ func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
 			buf = buf[:0]
 		}
 		buf = append(buf, b.base...)
-		if b.err != "" {
-			buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-		}
-		if b.errDetails != "" {
-			buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
-		}
-		return buf
+		return b.appendErrors(buf)
 	}
 
 	// In the general case, labels are removed, modified or moved
@@ -273,11 +277,7 @@ Outer:
 		buf = append(buf, l)
 	}
 	buf = append(buf, b.add...)
-	if b.err != "" {
-		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-	}
-
-	return buf
+	return b.appendErrors(buf)
 }
 
 func (b *LabelsBuilder) Map() map[string]string {
