@@ -112,7 +112,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 func TestCancelDeleteRequestHandler(t *testing.T) {
 	t.Run("it removes delete request from the store", func(t *testing.T) {
-		stored := &DeleteRequest{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived}
+		stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived}}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
 
@@ -127,7 +127,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 
 		require.Equal(t, store.getUser, "org-id")
 		require.Equal(t, store.getID, "test-request")
-		require.Equal(t, *stored, store.removeReq)
+		require.Equal(t, stored, store.removeReqs)
 	})
 
 	t.Run("error getting from store", func(t *testing.T) {
@@ -145,7 +145,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	})
 
 	t.Run("error removing from the store", func(t *testing.T) {
-		stored := &DeleteRequest{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived}
+		stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived}}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
 		store.removeErr = errors.New("something bad")
@@ -187,7 +187,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		})
 
 		t.Run("already processed", func(t *testing.T) {
-			stored := &DeleteRequest{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusProcessed}
+			stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusProcessed}}
 			store := &mockDeleteRequestsStore{}
 			store.getResult = stored
 

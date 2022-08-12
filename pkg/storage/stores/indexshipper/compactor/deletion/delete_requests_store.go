@@ -37,15 +37,15 @@ const (
 	DeleteRequestsTableName = "delete_requests"
 )
 
-var ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
+var ErrDeleteRequestNotFound = errors.New("could not find matching delete requests")
 
 type DeleteRequestsStore interface {
-	AddDeleteRequest(ctx context.Context, req DeleteRequest) (string, error)
+	AddDeleteRequestGroup(ctx context.Context, req []DeleteRequest) ([]DeleteRequest, error)
 	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error
-	GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error)
-	RemoveDeleteRequest(ctx context.Context, req DeleteRequest) error
+	GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error)
+	RemoveDeleteRequests(ctx context.Context, req []DeleteRequest) error
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 	Stop()
 	Name() string
@@ -74,19 +74,55 @@ func (ds *deleteRequestsStore) Stop() {
 	ds.indexClient.Stop()
 }
 
-// AddDeleteRequest creates entries for a new delete request.
-func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, req DeleteRequest) (string, error) {
-	requestID, err := ds.generateID(ctx, req)
-	if err != nil {
-		return "", err
+// AddDeleteRequestGroup creates entries for new delete requests. All passed delete requests will be associeted to
+// each other by request id
+func (ds *deleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
+	if len(reqs) == 0 {
+		return nil, nil
 	}
 
-	// userID, requestID
-	userIDAndRequestID := fmt.Sprintf("%s:%s", req.UserID, requestID)
-
-	// Add an entry with userID, requestID as range key and status as value to make it easy to manage and lookup status
-	// We don't want to set anything in hash key here since we would want to find delete requests by just status
+	createdAt := ds.now()
 	writeBatch := ds.indexClient.NewWriteBatch()
+	requestID, err := ds.generateID(ctx, reqs[0])
+	if err != nil {
+		return nil, err
+	}
+
+	var results []DeleteRequest
+	for i, req := range reqs {
+		newReq, err := newRequest(req, requestID, createdAt, i)
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, newReq)
+		ds.writeDeleteRequest(newReq, writeBatch)
+	}
+
+	if err := ds.indexClient.BatchWrite(ctx, writeBatch); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func newRequest(req DeleteRequest, requestID []byte, createdAt model.Time, seqNumber int) (DeleteRequest, error) {
+	req.RequestID = string(requestID)
+	req.Status = StatusReceived
+	req.CreatedAt = createdAt
+	req.SequenceNum = int64(seqNumber)
+	if err := req.SetQuery(req.Query); err != nil {
+		return DeleteRequest{}, err
+	}
+	return req, nil
+}
+
+func (ds *deleteRequestsStore) writeDeleteRequest(req DeleteRequest, writeBatch index.WriteBatch) {
+	userIDAndRequestID := deleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
+
+	// Add an entry with userID, requestID, and sequence number as range key and status as value to make it easy
+	// to manage and lookup status. We don't want to set anything in hash key here since we would want to find
+	// delete requests by just status
 	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
 
 	// Add another entry with additional details like creation time, time range of delete request and the logQL requests in value
@@ -95,19 +131,23 @@ func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, req DeleteR
 
 	// create a gen number for this result
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, generateCacheGenNumber())
+}
 
-	if err := ds.indexClient.BatchWrite(ctx, writeBatch); err != nil {
-		return "", err
+func deleteRequestHash(userID, requestID string, sequenceNumber int64) string {
+	// Any requests made before the addition of sequence numbers won't have one
+	// Ensure backward compatibility by treating the 0th sequence number as the
+	// old format
+	if sequenceNumber == 0 {
+		return fmt.Sprintf("%s:%s", userID, requestID)
 	}
-
-	return string(requestID), nil
+	return fmt.Sprintf("%s:%s:%d", userID, requestID, sequenceNumber)
 }
 
 func (ds *deleteRequestsStore) generateID(ctx context.Context, req DeleteRequest) ([]byte, error) {
 	requestID := generateUniqueID(req.UserID, req.Query)
 
 	for {
-		_, err := ds.GetDeleteRequest(ctx, req.UserID, string(requestID))
+		_, err := ds.GetDeleteRequestGroup(ctx, req.UserID, string(requestID))
 		if err != nil {
 			if err == ErrDeleteRequestNotFound {
 				break
@@ -143,7 +183,7 @@ func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, 
 
 // UpdateStatus updates status of a delete request.
 func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
-	userIDAndRequestID := fmt.Sprintf("%s:%s", req.UserID, req.RequestID)
+	userIDAndRequestID := deleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
 
 	writeBatch := ds.indexClient.NewWriteBatch()
 	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
@@ -156,8 +196,8 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteReque
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
-// GetDeleteRequest returns delete request with given requestID.
-func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
+// GetDeleteRequestGroup returns delete requests with given requestID.
+func (ds *deleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	deleteRequests, err := ds.queryDeleteRequests(ctx, index.Query{
@@ -173,7 +213,7 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 		return nil, ErrDeleteRequestNotFound
 	}
 
-	return &deleteRequests[0], nil
+	return deleteRequests, nil
 }
 
 func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
@@ -198,9 +238,9 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 }
 
 func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.Query) ([]DeleteRequest, error) {
-	deleteRequests := []DeleteRequest{}
-	// No need to lock inside the callback since we run a single index query.
+	var deleteRequests []DeleteRequest
 	err := ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+		// No need to lock inside the callback since we run a single index query.
 		itr := batch.Iterator()
 		for itr.Next() {
 			userID, requestID := splitUserIDAndRequestID(string(itr.RangeValue()))
@@ -217,63 +257,91 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 		return nil, err
 	}
 
-	for i, deleteRequest := range deleteRequests {
-		deleteRequestQuery := []index.Query{
-			{
-				TableName: DeleteRequestsTableName,
-				HashValue: fmt.Sprintf("%s:%s:%s", deleteRequestDetails, deleteRequest.UserID, deleteRequest.RequestID),
-			},
-		}
+	return ds.deleteRequestsWithDetails(ctx, deleteRequests)
+}
 
-		var parseError error
-		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
-			itr := batch.Iterator()
-			itr.Next()
-
-			deleteRequest, err = parseDeleteRequestTimestamps(itr.RangeValue(), deleteRequest)
+func (ds *deleteRequestsStore) deleteRequestsWithDetails(ctx context.Context, partialDeleteRequests []DeleteRequest) ([]DeleteRequest, error) {
+	deleteRequests := make([]DeleteRequest, 0, len(partialDeleteRequests))
+	for _, group := range partitionByRequestID(partialDeleteRequests) {
+		for i, deleteRequest := range group {
+			deleteRequest.SequenceNum = int64(i)
+			requestWithDetails, err := ds.queryDeleteRequestDetails(ctx, deleteRequest)
 			if err != nil {
-				parseError = err
-				return false
+				return nil, err
 			}
-
-			err = deleteRequest.SetQuery(string(itr.Value()))
-			if err != nil {
-				parseError = err
-				return false
-			}
-			deleteRequests[i] = deleteRequest
-
-			return true
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		if parseError != nil {
-			return nil, parseError
+			deleteRequests = append(deleteRequests, requestWithDetails)
 		}
 	}
-
 	return deleteRequests, nil
 }
 
-// RemoveDeleteRequest removes a delete request
-func (ds *deleteRequestsStore) RemoveDeleteRequest(ctx context.Context, req DeleteRequest) error {
-	userIDAndRequestID := fmt.Sprintf("%s:%s", req.UserID, req.RequestID)
+func (ds *deleteRequestsStore) queryDeleteRequestDetails(ctx context.Context, deleteRequest DeleteRequest) (DeleteRequest, error) {
+	userIDAndRequestID := deleteRequestHash(deleteRequest.UserID, deleteRequest.RequestID, deleteRequest.SequenceNum)
+	deleteRequestQuery := []index.Query{
+		{
+			TableName: DeleteRequestsTableName,
+			HashValue: fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
+		},
+	}
 
+	var parseError error
+	var requestWithDetails DeleteRequest
+	err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+		itr := batch.Iterator()
+		itr.Next()
+
+		requestWithDetails, parseError = parseDeleteRequestTimestamps(itr.RangeValue(), deleteRequest)
+		if parseError != nil {
+			return false
+		}
+
+		parseError = requestWithDetails.SetQuery(string(itr.Value()))
+		if parseError != nil {
+			return false
+		}
+
+		return true
+	})
+	if err != nil {
+		return DeleteRequest{}, err
+	}
+
+	if parseError != nil {
+		return DeleteRequest{}, parseError
+	}
+
+	return requestWithDetails, nil
+}
+
+func partitionByRequestID(reqs []DeleteRequest) map[string][]DeleteRequest {
+	groups := make(map[string][]DeleteRequest)
+	for _, req := range reqs {
+		groups[req.RequestID] = append(groups[req.RequestID], req)
+	}
+	return groups
+}
+
+// RemoveDeleteRequests the passed delete requests
+func (ds *deleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
 	writeBatch := ds.indexClient.NewWriteBatch()
+
+	for _, r := range reqs {
+		ds.removeRequest(r, writeBatch)
+	}
+
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
+}
+
+func (ds *deleteRequestsStore) removeRequest(req DeleteRequest, writeBatch index.WriteBatch) {
+	userIDAndRequestID := deleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
 	writeBatch.Delete(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(req.CreatedAt), int64(req.StartTime), int64(req.EndTime))
-	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
-		[]byte(rangeValue))
+	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID), []byte(rangeValue))
 
 	// ensure caches are invalidated
-	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID),
-		[]byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
-
-	return ds.indexClient.BatchWrite(ctx, writeBatch)
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
 }
 
 func (ds *deleteRequestsStore) Name() string {
@@ -330,12 +398,8 @@ func encodeUniqueID(t uint32) []byte {
 }
 
 func splitUserIDAndRequestID(rangeValue string) (userID, requestID string) {
-	lastIndex := strings.LastIndex(rangeValue, ":")
-
-	userID = rangeValue[:lastIndex]
-	requestID = rangeValue[lastIndex+1:]
-
-	return
+	parts := strings.Split(rangeValue, ":")
+	return parts[0], parts[1]
 }
 
 // unsafeGetString is like yolostring but with a meaningful name

@@ -10,8 +10,8 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, req DeleteRequest) (string, error) {
-	return "", nil
+func (d *noOpDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, req []DeleteRequest) ([]DeleteRequest, error) {
+	return nil, nil
 }
 
 func (d *noOpDeleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
@@ -26,11 +26,11 @@ func (d *noOpDeleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteRe
 	return nil
 }
 
-func (d *noOpDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, req DeleteRequest) error {
+func (d *noOpDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
 	return nil
 }
 

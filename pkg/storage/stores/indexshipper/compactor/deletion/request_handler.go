@@ -72,7 +72,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		UserID:    userID,
 	}
 
-	if _, err := dm.deleteRequestsStore.AddDeleteRequest(ctx, req); err != nil {
+	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, []DeleteRequest{req}); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -121,26 +121,26 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
-	deleteRequest, err := dm.deleteRequestsStore.GetDeleteRequest(ctx, userID, requestID)
+	deleteRequests, err := dm.deleteRequestsStore.GetDeleteRequestGroup(ctx, userID, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if deleteRequest == nil {
+	// TODO check length
+	if deleteRequests == nil {
 		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
 		return
 	}
 
-	if deleteRequest.Status != StatusReceived {
-		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
-		return
-	}
+	// TODO Check all recieved
+	//if deleteRequest[0].Status != StatusReceived {
+	//	http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
+	//	return
+	//}
 
-	deleteRequest.UserID = userID
-	deleteRequest.RequestID = requestID
-	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, *deleteRequest); err != nil {
+	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -489,12 +489,12 @@ type mockDeleteRequestsStore struct {
 	addReq         DeleteRequest
 	addErr         error
 
-	removeReq DeleteRequest
-	removeErr error
+	removeReqs []DeleteRequest
+	removeErr  error
 
 	getUser   string
 	getID     string
-	getResult *DeleteRequest
+	getResult []DeleteRequest
 	getErr    error
 
 	getAllUser   string
@@ -506,17 +506,17 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, req DeleteRequest) (string, error) {
-	m.addReq = req
-	return "", m.addErr
+func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
+	m.addReq = reqs[0]
+	return nil, m.addErr
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, req DeleteRequest) error {
-	m.removeReq = req
+func (m *mockDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+	m.removeReqs = reqs
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
 	return m.getResult, m.getErr
