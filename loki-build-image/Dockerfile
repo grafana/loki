@@ -4,7 +4,7 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/maintaining/release-loki-build-image.md
 
-FROM alpine as helm
+FROM alpine:3.15.6 as helm
 ARG HELM_VER="v3.2.3"
 
 RUN apk add --no-cache curl && \
@@ -13,7 +13,7 @@ RUN apk add --no-cache curl && \
     mv /tmp/linux-amd64/helm /usr/bin/helm && \
     rm -rf /tmp/linux-amd64 /tmp/helm-$HELM_VER.tgz
 
-FROM alpine as lychee
+FROM alpine:3.15.6 as lychee
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
     curl -L -o /tmp/lychee-$LYCHEE_VER.tgz https://github.com/lycheeverse/lychee/releases/download/${LYCHEE_VER}/lychee-${LYCHEE_VER}-x86_64-unknown-linux-gnu.tar.gz && \
@@ -21,18 +21,18 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf /tmp/linux-amd64 /tmp/lychee-$LYCHEE_VER.tgz
 
-FROM alpine as golangci
+FROM alpine:3.15.6 as golangci
 RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.45.2
 
-FROM alpine:3.15.4 as buf
+FROM alpine:3.15.6 as buf
 
 RUN apk add --no-cache curl && \
     curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$(uname -s)-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
-FROM alpine:3.15.4 as docker
+FROM alpine:3.15.6 as docker
 RUN apk add --no-cache docker-cli
 
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
