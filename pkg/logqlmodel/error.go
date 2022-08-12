@@ -52,24 +52,30 @@ func NewStageError(expr string, err error) ParseError {
 }
 
 type PipelineError struct {
-	metric    labels.Labels
-	errorType string
+	metric       labels.Labels
+	errorType    string
+	errorDetails string
 }
 
 func NewPipelineErr(metric labels.Labels) *PipelineError {
 	return &PipelineError{
-		metric:    metric,
-		errorType: metric.Get(ErrorLabel),
+		metric:       metric,
+		errorType:    metric.Get(ErrorLabel),
+		errorDetails: metric.Get(ErrorDetailsLabel),
 	}
 }
 
 func (e PipelineError) Error() string {
+	var errorDetails string
+	if e.errorDetails != "" {
+		errorDetails = " (" + e.errorDetails + ")"
+	}
 	return fmt.Sprintf(
-		"pipeline error: '%s' for series: '%s'.\n"+
+		"pipeline error: '%s'%s for series: '%s'.\n"+
 			"Use a label filter to intentionally skip this error. (e.g | __error__!=\"%s\").\n"+
 			"To skip all potential errors you can match empty errors.(e.g __error__=\"\")\n"+
 			"The label filter can also be specified after unwrap. (e.g | unwrap latency | __error__=\"\" )\n",
-		e.errorType, e.metric, e.errorType)
+		e.errorType, errorDetails, e.metric, e.errorType)
 }
 
 // Is allows to use errors.Is(err,ErrPipeline) on this error.
