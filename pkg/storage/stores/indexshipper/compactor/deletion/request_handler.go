@@ -25,12 +25,14 @@ import (
 type DeleteRequestHandler struct {
 	deleteRequestsStore DeleteRequestsStore
 	metrics             *deleteRequestHandlerMetrics
+	maxQueryRange       time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxQueryRange time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteRequestsStore: deleteStore,
+		maxQueryRange:       maxQueryRange,
 		metrics:             newDeleteRequestHandlerMetrics(registerer),
 	}
 
@@ -65,7 +67,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	queryRange, err := queryRange(params, startTime, endTime)
+	queryRange, err := dm.queryRange(params, startTime, endTime)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -111,10 +113,14 @@ func shardDeleteRequestsByQueryRange(startTime, endTime model.Time, query, userI
 	return deleteRequests
 }
 
-func queryRange(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
+func (dm *DeleteRequestHandler) queryRange(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
 	qr := params.Get("max_query_range")
 	if qr == "" {
-		return endTime.Sub(startTime), nil
+		if dm.maxQueryRange == 0 {
+			return endTime.Sub(startTime), nil
+		}
+
+		return min(endTime.Sub(startTime), dm.maxQueryRange), nil
 	}
 
 	queryRange, err := time.ParseDuration(qr)
@@ -122,7 +128,23 @@ func queryRange(params url.Values, startTime, endTime model.Time) (time.Duration
 		return 0, errors.New("invalid query range: valid time units are 's', 'm', 'h'")
 	}
 
+	if queryRange > dm.maxQueryRange && dm.maxQueryRange != 0 {
+		dur, err := time.ParseDuration(dm.maxQueryRange.String())
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error parsing query range", "err", err)
+			return 0, err
+		}
+		return 0, fmt.Errorf("query range can't be greater than %s", dur.String())
+	}
+
 	return queryRange, nil
+}
+
+func min(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests

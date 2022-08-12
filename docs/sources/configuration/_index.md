@@ -2105,6 +2105,14 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# Constrain the size of any one delete request. When a delete request > delete_max_query_range
+# is input, the request is sharded into smaller requests of no more than delete_max_query_range
+# 0 means no max_query_period.
+#
+# Default is 0
+# CLI flag: -boltdb.shipper.compactor.delete-max-query-range
+[delete_max_query_range: <duration> | default = 0]
+
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
 [delete_batch_size: <duration> | default = 70]

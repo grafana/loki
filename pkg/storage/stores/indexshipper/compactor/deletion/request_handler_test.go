@@ -23,7 +23,7 @@ import (
 func TestAddDeleteRequestHandler(t *testing.T) {
 	t.Run("it adds the delete request to the store", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
 
@@ -40,7 +40,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 	t.Run("it shards deletes based on a query param", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
 		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
@@ -68,9 +68,36 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("it uses the default for sharding when the query param isn't present", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, time.Hour, nil)
+
+		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
+		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
+
+		req := buildRequest("org-id", `{foo="bar"}`, unixString(from), unixString(to))
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusNoContent)
+		require.Len(t, store.addReqs, 3)
+
+		for i, req := range store.addReqs {
+			startTime := from.Add(time.Duration(i)*time.Hour) + model.Time(i)
+			endTime := from.Add(time.Duration(i+1)*time.Hour) + model.Time(i)
+			if endTime.After(to) {
+				endTime = to
+			}
+
+			require.Equal(t, startTime, req.StartTime)
+			require.Equal(t, endTime, req.EndTime)
+		}
+	})
+
 	t.Run("it works with RFC3339", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", `{foo="bar"}`, "2006-01-02T15:04:05Z", "2006-01-03T15:04:05Z")
 
@@ -87,7 +114,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 	t.Run("it fills in end time if blank", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "")
 
@@ -104,7 +131,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 	t.Run("it returns 500 when the delete store errors", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{addErr: errors.New("something bad")}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
 
@@ -114,7 +141,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 	})
 
 	t.Run("Validation", func(t *testing.T) {
-		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, nil)
+		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Minute, nil)
 
 		for _, tc := range []struct {
 			orgID, query, startTime, endTime, queryRange, error string
@@ -129,6 +156,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than end time\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "not-a-duration", "invalid query range: valid time units are 's', 'm', 'h'\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1ms", "invalid query range: valid time units are 's', 'm', 'h'\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1h", "query range can't be greater than 1m0s\n"},
 		} {
 			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)
@@ -156,7 +184,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
 
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", ``, "", "")
 		params := req.URL.Query()
@@ -176,7 +204,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	t.Run("error getting from store", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getErr = errors.New("something bad")
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org id", ``, "", "")
 		params := req.URL.Query()
@@ -196,7 +224,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		store.getResult = stored
 		store.removeErr = errors.New("something bad")
 
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", ``, "", "")
 		params := req.URL.Query()
@@ -212,7 +240,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 
 	t.Run("Validation", func(t *testing.T) {
 		t.Run("no org id", func(t *testing.T) {
-			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, nil)
+			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, nil)
 
 			req := buildRequest("", ``, "", "")
 			params := req.URL.Query()
@@ -227,7 +255,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		})
 
 		t.Run("request not found", func(t *testing.T) {
-			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{getErr: ErrDeleteRequestNotFound}, nil)
+			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{getErr: ErrDeleteRequestNotFound}, 0, nil)
 
 			req := buildRequest("org-id", ``, "", "")
 			params := req.URL.Query()
@@ -246,7 +274,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 			store := &mockDeleteRequestsStore{}
 			store.getResult = stored
 
-			h := NewDeleteRequestHandler(store, nil)
+			h := NewDeleteRequestHandler(store, 0, nil)
 
 			req := buildRequest("org-id", ``, "", "")
 			params := req.URL.Query()
@@ -266,7 +294,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1"}, {RequestID: "test-request-2"}}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", ``, "", "")
 
@@ -289,7 +317,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
 			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(time.Hour), EndTime: now.Add(2 * time.Hour)},
 		}
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", ``, "", "")
 
@@ -311,7 +339,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	t.Run("error getting from store", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getAllErr = errors.New("something bad")
-		h := NewDeleteRequestHandler(store, nil)
+		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org id", ``, "", "")
 		params := req.URL.Query()
@@ -327,7 +355,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 
 	t.Run("validation", func(t *testing.T) {
 		t.Run("no org id", func(t *testing.T) {
-			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, nil)
+			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, nil)
 
 			req := buildRequest("", ``, "", "")
 
