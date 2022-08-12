@@ -111,8 +111,11 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 }
 
 func TestCancelDeleteRequestHandler(t *testing.T) {
-	t.Run("it removes delete request from the store", func(t *testing.T) {
-		stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived}}
+	t.Run("it removes unprocessed delete requests from the store", func(t *testing.T) {
+		stored := []DeleteRequest{
+			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 0, Status: StatusProcessed},
+			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 1, Status: StatusReceived},
+		}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
 
@@ -127,7 +130,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 
 		require.Equal(t, store.getUser, "org-id")
 		require.Equal(t, store.getID, "test-request")
-		require.Equal(t, stored, store.removeReqs)
+		require.Equal(t, stored[1], store.removeReqs[0])
 	})
 
 	t.Run("error getting from store", func(t *testing.T) {
@@ -175,18 +178,18 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		})
 
 		t.Run("request not found", func(t *testing.T) {
-			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Second, nil)
+			h := NewDeleteRequestHandler(&mockDeleteRequestsStore{getErr: ErrDeleteRequestNotFound}, time.Second, nil)
 
 			req := buildRequest("org-id", ``, "", "", "test-request")
 
 			w := httptest.NewRecorder()
 			h.CancelDeleteRequestHandler(w, req)
 
-			require.Equal(t, w.Code, http.StatusBadRequest)
+			require.Equal(t, w.Code, http.StatusNotFound)
 			require.Equal(t, "could not find delete request with given id\n", w.Body.String())
 		})
 
-		t.Run("already processed", func(t *testing.T) {
+		t.Run("all requests in group are already processed", func(t *testing.T) {
 			stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusProcessed}}
 			store := &mockDeleteRequestsStore{}
 			store.getResult = stored

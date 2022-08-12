@@ -123,30 +123,39 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	requestID := params.Get("request_id")
 	deleteRequests, err := dm.deleteRequestsStore.GetDeleteRequestGroup(ctx, userID, requestID)
 	if err != nil {
+		if errors.Is(err, ErrDeleteRequestNotFound) {
+			http.Error(w, "could not find delete request with given id", http.StatusNotFound)
+			return
+		}
+
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// TODO check length
-	if deleteRequests == nil {
-		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
+	toDelete := filterProcessed(deleteRequests)
+	if len(toDelete) == 0 {
+		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
 		return
 	}
 
-	// TODO Check all recieved
-	//if deleteRequest[0].Status != StatusReceived {
-	//	http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
-	//	return
-	//}
-
-	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, deleteRequests); err != nil {
+	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, toDelete); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func filterProcessed(reqs []DeleteRequest) []DeleteRequest {
+	var unprocessed []DeleteRequest
+	for _, r := range reqs {
+		if r.Status == StatusReceived {
+			unprocessed = append(unprocessed, r)
+		}
+	}
+	return unprocessed
 }
 
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number
