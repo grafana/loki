@@ -293,7 +293,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1"}, {RequestID: "test-request-2"}}
+		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1", Status: StatusReceived}, {RequestID: "test-request-2", Status: StatusReceived}}
 		h := NewDeleteRequestHandler(store, 0, nil)
 
 		req := buildRequest("org-id", ``, "", "")
@@ -331,8 +331,8 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 
 		require.Len(t, result, 2)
 		require.Equal(t, []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now, EndTime: now.Add(3 * time.Hour)},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
+			{RequestID: "test-request-1", Status: StatusReceived, CreatedAt: now, StartTime: now, EndTime: now.Add(3 * time.Hour)},
+			{RequestID: "test-request-2", Status: StatusReceived, CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
 		}, result)
 	})
 
@@ -342,9 +342,9 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
 			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
 			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(1), Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(1), Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(1), Status: StatusProcessed},
+			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
+			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
+			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
 		}
 		h := NewDeleteRequestHandler(store, 0, nil)
 
@@ -361,7 +361,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		require.Len(t, result, 2)
 		require.Equal(t, []DeleteRequest{
 			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
-			{RequestID: "test-request-2", CreatedAt: now.Add(1), Status: StatusProcessed},
+			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
 		}, result)
 	})
 
