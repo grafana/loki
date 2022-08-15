@@ -169,11 +169,11 @@ type StageAnalysisRecorder struct {
 	records    []StageAnalysisRecord
 }
 
-func (s StageAnalysisRecorder) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lineBefore := unsafeGetString(line)
 	labelsBefore := lbs.unsortedLabels(nil)
 
-	lineResult, ok := s.origin.Process(line, lbs)
+	lineResult, ok := s.origin.Process(ts, line, lbs)
 
 	s.records[s.stageIndex] = StageAnalysisRecord{
 		Processed:    true,
