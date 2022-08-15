@@ -7,9 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
-
+	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -20,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
