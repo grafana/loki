@@ -1198,7 +1198,7 @@ steps:
   image: plugins/docker
   name: build-logql-analyzer-image
   settings:
-    dockerfile: clients/cmd/logql-analyzer/Dockerfile
+    dockerfile: cmd/logql-analyzer/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -1213,7 +1213,7 @@ steps:
   image: plugins/docker
   name: publish-logql-analyzer-image
   settings:
-    dockerfile: clients/cmd/logql-analyzer/Dockerfile
+    dockerfile: cmd/logql-analyzer/Dockerfile
     dry_run: false
     password:
       from_secret: docker_password
@@ -1528,6 +1528,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 54404450c51585838eb0f7038ffc7f0e312bb2a662fa5095105ba07f98c44788
+hmac: a9b8921396d009dc5ff6a4bb9057525fca82a4ec04e545de7056a3318bd04ce6
 
 ...

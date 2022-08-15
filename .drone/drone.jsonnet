@@ -314,7 +314,7 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
 local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   steps+: [
     // dry run for everything that is not tag or main
-    clients_docker('amd64', 'logql-analyzer') {
+    docker('amd64', 'logql-analyzer') {
       depends_on: ['image-tag'],
       when: onPRs,
       settings+: {
@@ -324,7 +324,7 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
     },
   ] + [
     // publish for tag or main
-    clients_docker('amd64', 'logql-analyzer') {
+    docker('amd64', 'logql-analyzer') {
       depends_on: ['image-tag'],
       when: onTagOrMain,
       settings+: {
