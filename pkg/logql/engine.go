@@ -106,9 +106,6 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 }
 
 func (opts *EngineOpts) applyDefault() {
-	// if opts.Timeout == 0 {
-	// 	opts.Timeout = 5 * time.Minute
-	// }
 	if opts.MaxLookBackPeriod == 0 {
 		opts.MaxLookBackPeriod = 30 * time.Second
 	}
