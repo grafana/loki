@@ -11,7 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 )
 
 const objectsStorageDirName = "objects"
@@ -32,7 +32,7 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 	cfg := Config{
 		UploadInterval: time.Hour,
 	}
-	tm, err := NewTableManager(cfg, storageClient)
+	tm, err := NewTableManager(cfg, storageClient, nil)
 	require.NoError(t, err)
 
 	return tm, func() {
@@ -64,7 +64,7 @@ func TestTableManager(t *testing.T) {
 
 					// see if we can find all the added indexes in the table.
 					indexesFound := map[string]*mockIndex{}
-					err := testTableManager.ForEach(tableName, userID, func(index index.Index) error {
+					err := testTableManager.ForEach(tableName, userID, func(_ bool, index index.Index) error {
 						indexesFound[index.Path()] = index.(*mockIndex)
 						return nil
 					})

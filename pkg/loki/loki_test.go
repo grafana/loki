@@ -57,6 +57,11 @@ func TestFlagDefaults(t *testing.T) {
 	require.Contains(t, gotFlags, flagToCheck)
 	require.Equal(t, c.Server.GRPCServerPingWithoutStreamAllowed, true)
 	require.Contains(t, gotFlags[flagToCheck], "(default true)")
+
+	flagToCheck = "-server.http-listen-port"
+	require.Contains(t, gotFlags, flagToCheck)
+	require.Equal(t, c.Server.HTTPListenPort, 3100)
+	require.Contains(t, gotFlags[flagToCheck], "(default 3100)")
 }
 
 func TestLoki_isModuleEnabled(t1 *testing.T) {
@@ -125,6 +130,7 @@ server:
   http_listen_port: %d
   grpc_listen_port: %d
 common:
+  compactor_address: http://localhost:%d
   path_prefix: /tmp/loki
   ring:
     kvstore:
@@ -138,7 +144,7 @@ schema_config:
       schema: v11
       index:
         prefix: index_
-        period: 24h`, httpPort, grpcPort)
+        period: 24h`, httpPort, grpcPort, httpPort)
 
 	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
 	require.NoError(t, err)

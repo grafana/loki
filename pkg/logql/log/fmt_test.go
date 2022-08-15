@@ -16,6 +16,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 		name  string
 		fmter *LineFormatter
 		lbs   labels.Labels
+		ts    int64
 
 		want    []byte
 		wantLbs labels.Labels
@@ -25,6 +26,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("fooblipbuzzblop"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -33,6 +35,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"Replace",
 			newMustLineFormatter(`foo{{.foo}}buzz{{ Replace .bar "blop" "bar" -1 }}`),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("fooblipbuzzbar"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -41,6 +44,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"replace",
 			newMustLineFormatter(`foo{{.foo}}buzz{{ .bar | replace "blop" "bar" }}`),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("fooblipbuzzbar"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -49,6 +53,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"title",
 			newMustLineFormatter(`{{.foo | title }}`),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("Blip"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -59,6 +64,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 				`{{.foo | substr 1 3 }} {{ .bar  | trunc 1 }} {{ .bar  | trunc 3 }}`,
 			),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("li b blo"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -69,6 +75,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 				`{{.foo | trim }} {{ .bar  | trimAll "op" }} {{ .bar  | trimPrefix "b" }} {{ .bar  | trimSuffix "p" }}`,
 			),
 			labels.Labels{{Name: "foo", Value: "  blip "}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("blip bl lop blo"),
 			labels.Labels{{Name: "foo", Value: "  blip "}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -77,6 +84,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"lower and upper",
 			newMustLineFormatter(`{{.foo | lower }} {{ .bar  | upper }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("blip BLOP"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -85,6 +93,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"repeat",
 			newMustLineFormatter(`{{ "foo" | repeat 3 }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("foofoofoo"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -93,6 +102,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"indent",
 			newMustLineFormatter(`{{ "foo\n bar" | indent 4 }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("    foo\n     bar"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -101,6 +111,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"nindent",
 			newMustLineFormatter(`{{ "foo" | nindent 2 }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("\n  foo"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -109,6 +120,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"contains",
 			newMustLineFormatter(`{{ if  .foo | contains "p"}}yes{{end}}-{{ if  .foo | contains "z"}}no{{end}}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("yes-"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -117,6 +129,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"hasPrefix",
 			newMustLineFormatter(`{{ if  .foo | hasPrefix "BL" }}yes{{end}}-{{ if  .foo | hasPrefix "p"}}no{{end}}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("yes-"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -125,6 +138,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"hasSuffix",
 			newMustLineFormatter(`{{ if  .foo | hasSuffix "Ip" }}yes{{end}}-{{ if  .foo | hasSuffix "pw"}}no{{end}}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("yes-"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -133,6 +147,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"regexReplaceAll",
 			newMustLineFormatter(`{{ regexReplaceAll "(p)" .foo "t" }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("BLIt"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -141,6 +156,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"regexReplaceAllLiteral",
 			newMustLineFormatter(`{{ regexReplaceAllLiteral "(p)" .foo "${1}" }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("BLI${1}"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -149,14 +165,20 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"err",
 			newMustLineFormatter(`{{.foo Replace "foo"}}`),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			nil,
-			labels.Labels{{Name: logqlmodel.ErrorLabel, Value: errTemplateFormat}, {Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"},
+				{Name: "__error_details__", Value: "template: line:1:2: executing \"line\" at <.foo>: foo is not a method but has arguments"},
+			},
 			nil,
 		},
 		{
 			"missing",
 			newMustLineFormatter("foo {{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "bar", Value: "blop"}},
+			0,
 			[]byte("foo buzzblop"),
 			labels.Labels{{Name: "bar", Value: "blop"}},
 			nil,
@@ -165,6 +187,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"function",
 			newMustLineFormatter("foo {{.foo | ToUpper }} buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
 			[]byte("foo BLIP buzzblop"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
@@ -173,6 +196,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"mathint",
 			newMustLineFormatter("{{ add .foo 1 | sub .bar | mul .baz | div .bazz}}"),
 			labels.Labels{{Name: "foo", Value: "1"}, {Name: "bar", Value: "3"}, {Name: "baz", Value: "10"}, {Name: "bazz", Value: "20"}},
+			0,
 			[]byte("2"),
 			labels.Labels{{Name: "foo", Value: "1"}, {Name: "bar", Value: "3"}, {Name: "baz", Value: "10"}, {Name: "bazz", Value: "20"}},
 			nil,
@@ -181,6 +205,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"mathfloat",
 			newMustLineFormatter("{{ addf .foo 1.5 | subf .bar 1.5 | mulf .baz | divf .bazz }}"),
 			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
+			0,
 			[]byte("3.8476190476190477"),
 			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
 			nil,
@@ -189,6 +214,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"mathfloatround",
 			newMustLineFormatter("{{ round (addf .foo 1.5 | subf .bar | mulf .baz | divf .bazz) 5 .2}}"),
 			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.4"}},
+			0,
 			[]byte("3.88572"),
 			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.4"}},
 			nil,
@@ -197,6 +223,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"min",
 			newMustLineFormatter("min is {{ min .foo .bar .baz }} and max is {{ max .foo .bar .baz }}"),
 			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "10"}, {Name: "baz", Value: "15"}},
+			0,
 			[]byte("min is 5 and max is 15"),
 			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "10"}, {Name: "baz", Value: "15"}},
 			nil,
@@ -205,6 +232,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"max",
 			newMustLineFormatter("minf is {{ minf .foo .bar .baz }} and maxf is {{maxf .foo .bar .baz}}"),
 			labels.Labels{{Name: "foo", Value: "5.3"}, {Name: "bar", Value: "10.5"}, {Name: "baz", Value: "15.2"}},
+			0,
 			[]byte("minf is 5.3 and maxf is 15.2"),
 			labels.Labels{{Name: "foo", Value: "5.3"}, {Name: "bar", Value: "10.5"}, {Name: "baz", Value: "15.2"}},
 			nil,
@@ -213,6 +241,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"ceilfloor",
 			newMustLineFormatter("ceil is {{ ceil .foo }} and floor is {{floor .foo }}"),
 			labels.Labels{{Name: "foo", Value: "5.3"}},
+			0,
 			[]byte("ceil is 6 and floor is 5"),
 			labels.Labels{{Name: "foo", Value: "5.3"}},
 			nil,
@@ -221,6 +250,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"mod",
 			newMustLineFormatter("mod is {{ mod .foo 3 }}"),
 			labels.Labels{{Name: "foo", Value: "20"}},
+			0,
 			[]byte("mod is 2"),
 			labels.Labels{{Name: "foo", Value: "20"}},
 			nil,
@@ -229,6 +259,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"float64int",
 			newMustLineFormatter("{{ \"2.5\" | float64 | int | add 10}}"),
 			labels.Labels{{Name: "foo", Value: "2.5"}},
+			0,
 			[]byte("12"),
 			labels.Labels{{Name: "foo", Value: "2.5"}},
 			nil,
@@ -237,6 +268,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"datetime",
 			newMustLineFormatter("{{ sub (unixEpoch (toDate \"2006-01-02\" \"2021-11-02\")) (unixEpoch (toDate \"2006-01-02\" \"2021-11-01\")) }}"),
 			labels.Labels{},
+			0,
 			[]byte("86400"),
 			labels.Labels{},
 			nil,
@@ -245,6 +277,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"dateformat",
 			newMustLineFormatter("{{ date \"2006-01-02\" (toDate \"2006-01-02\" \"2021-11-02\") }}"),
 			labels.Labels{},
+			0,
 			[]byte("2021-11-02"),
 			labels.Labels{},
 			nil,
@@ -253,6 +286,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"now",
 			newMustLineFormatter("{{ div (unixEpoch now) (unixEpoch now) }}"),
 			labels.Labels{},
+			0,
 			[]byte("1"),
 			labels.Labels{},
 			nil,
@@ -261,6 +295,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"line",
 			newMustLineFormatter("{{ __line__ }} bar {{ .bar }}"),
 			labels.Labels{{Name: "bar", Value: "2"}},
+			0,
 			[]byte("1 bar 2"),
 			labels.Labels{{Name: "bar", Value: "2"}},
 			[]byte("1"),
@@ -269,8 +304,41 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"default",
 			newMustLineFormatter(`{{.foo | default "-" }}{{.bar | default "-"}}{{.unknown | default "-"}}`),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: ""}},
+			0,
 			[]byte("blip--"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: ""}},
+			nil,
+		},
+		{
+			"timestamp",
+			newMustLineFormatter("{{ __timestamp__ | date \"2006-01-02\" }} bar {{ .bar }}"),
+			labels.Labels{{Name: "bar", Value: "2"}},
+			1656353124120000000,
+			[]byte("2022-06-27 bar 2"),
+			labels.Labels{{Name: "bar", Value: "2"}},
+			[]byte("1"),
+		},
+		{
+			"timestamp_unix",
+			newMustLineFormatter("{{ __timestamp__ | unixEpoch }} bar {{ .bar }}"),
+			labels.Labels{{Name: "bar", Value: "2"}},
+			1656353124120000000,
+			[]byte("1656353124 bar 2"),
+			labels.Labels{{Name: "bar", Value: "2"}},
+			[]byte("1"),
+		},
+		{
+			"template_error",
+			newMustLineFormatter("{{.foo | now}}"),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
+			nil,
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "__error_details__", Value: "template: line:1:9: executing \"line\" at <now>: wrong number of args for now: want 0 got 1"},
+			},
 			nil,
 		},
 	}
@@ -280,7 +348,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			sort.Sort(tt.wantLbs)
 			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			builder.Reset()
-			outLine, _ := tt.fmter.Process(tt.in, builder)
+			outLine, _ := tt.fmter.Process(tt.ts, tt.in, builder)
 			require.Equal(t, tt.want, outLine)
 			require.Equal(t, tt.wantLbs, builder.LabelsResult().Labels())
 		})
@@ -341,13 +409,24 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
 		},
+		{
+			"template error",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{replace \"test\" .foo}}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "__error_details__", Value: "template: label:1:2: executing \"label\" at <replace>: wrong number of args for replace: want 3 got 2"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
 			builder.Reset()
-			_, _ = tt.fmter.Process(nil, builder)
+			_, _ = tt.fmter.Process(0, nil, builder)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})

@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -291,7 +292,7 @@ func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([
 }
 
 func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
-	return nil
+	return defaultPeriodConfigs
 }
 
 func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
@@ -316,6 +317,10 @@ func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, 
 
 func (s *mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
+}
+
+func (s *mockStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return &stats.Stats{}, nil
 }
 
 func (s *mockStore) Stop() {}
@@ -588,7 +593,9 @@ func Test_InMemoryLabels(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
 
+	start := time.Unix(0, 0)
 	res, err := i.Label(ctx, &logproto.LabelRequest{
+		Start:  &start,
 		Name:   "bar",
 		Values: true,
 	})
@@ -596,7 +603,7 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"baz1", "baz2"}, res.Values)
 
-	res, err = i.Label(ctx, &logproto.LabelRequest{})
+	res, err = i.Label(ctx, &logproto.LabelRequest{Start: &start})
 	require.NoError(t, err)
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }
@@ -708,7 +715,7 @@ func Test_DedupeIngester(t *testing.T) {
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
 		for _, s := range streams {
-			expectedLabels = append(expectedLabels, s.WithoutLabels("foo").String())
+			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
 		}
 		sort.Strings(expectedLabels)
 		for i := int64(0); i < requests; i++ {

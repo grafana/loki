@@ -2,12 +2,14 @@ package manifests
 
 import (
 	"fmt"
+	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -23,11 +25,22 @@ const (
 	lokiLivenessPath  = "/loki/api/v1/status/buildinfo"
 	lokiReadinessPath = "/ready"
 
+	lokiFrontendContainerName = "loki-query-frontend"
+
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
 	gatewayInternalPort     = 8081
 	gatewayHTTPPortName     = "public"
 	gatewayInternalPortName = "metrics"
+
+	walVolumeName          = "wal"
+	configVolumeName       = "config"
+	rulesStorageVolumeName = "rules"
+	storageVolumeName      = "storage"
+
+	walDirectory          = "/tmp/wal"
+	dataDirectory         = "/tmp/loki"
+	rulesStorageDirectory = "/tmp/rules"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
@@ -35,7 +48,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.5.0"
+	DefaultContainerImage = "docker.io/grafana/loki:2.6.1"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -64,6 +77,19 @@ const (
 	LabelRulerComponent string = "ruler"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
+
+	// httpTLSDir is the path that is mounted from the secret for TLS
+	httpTLSDir = "/var/run/tls/http"
+	// grpcTLSDir is the path that is mounted from the secret for TLS
+	grpcTLSDir = "/var/run/tls/grpc"
+	// tlsCertFile is the file of the X509 server certificate file
+	tlsCertFile = "tls.crt"
+	// tlsKeyFile is the file name of the server private key
+	tlsKeyFile = "tls.key"
+	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
+	caBundleDir = "/var/run/ca"
+	// caFile is the file name of the certificate authority file
+	caFile = "service-ca.crt"
 )
 
 var (
@@ -89,7 +115,7 @@ func commonLabels(stackName string) map[string]string {
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
-		annotations[openshift.ServingCertKey] = signingServiceSecretName(serviceName)
+		annotations[openshift.ServingCertKey] = serviceName
 	}
 	return annotations
 }
@@ -158,6 +184,10 @@ func PrometheusRuleName(stackName string) string {
 	return fmt.Sprintf("%s-prometheus-rule", stackName)
 }
 
+func lokiConfigMapName(stackName string) string {
+	return fmt.Sprintf("%s-config", stackName)
+}
+
 func serviceNameQuerierHTTP(stackName string) string {
 	return fmt.Sprintf("%s-querier-http", stackName)
 }
@@ -223,7 +253,15 @@ func serviceMonitorName(componentName string) string {
 }
 
 func signingServiceSecretName(serviceName string) string {
-	return fmt.Sprintf("%s-metrics", serviceName)
+	return fmt.Sprintf("%s-tls", serviceName)
+}
+
+func signingCABundleName(stackName string) string {
+	return fmt.Sprintf("%s-ca-bundle", stackName)
+}
+
+func signingCAPath() string {
+	return path.Join(caBundleDir, caFile)
 }
 
 func fqdn(serviceName, namespace string) string {
@@ -292,4 +330,27 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
+}
+
+func containerSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: pointer.Bool(false),
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+	}
+}
+
+func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
+	context := corev1.PodSecurityContext{
+		RunAsNonRoot: pointer.Bool(true),
+	}
+
+	if withSeccompProfile {
+		context.SeccompProfile = &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		}
+	}
+
+	return &context
 }

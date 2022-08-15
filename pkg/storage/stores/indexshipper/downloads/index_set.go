@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,21 +16,22 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
-	gzipExtension = ".gz"
+	gzipExtension  = ".gz"
+	maxSyncRetries = 1
 )
 
+var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
+
 type IndexSet interface {
-	Init() error
+	Init(forQuerying bool) error
 	Close()
 	ForEach(ctx context.Context, callback index.ForEachIndexCallback) error
 	DropAllDBs() error
@@ -87,7 +89,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 }
 
 // Init downloads all the db files for the table from object storage.
-func (t *indexSet) Init() (err error) {
+func (t *indexSet) Init(forQuerying bool) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
 	ctx, cancelFunc := context.WithTimeout(context.Background(), downloadTimeout)
@@ -142,7 +144,7 @@ func (t *indexSet) Init() (err error) {
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.index)))
 
 	// sync the table to get new files and remove the deleted ones from storage.
-	err = t.sync(ctx, false)
+	err = t.syncWithRetry(ctx, false, forQuerying)
 	if err != nil {
 		return
 	}
@@ -183,7 +185,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	for _, idx := range t.index {
-		if err := callback(idx); err != nil {
+		if err := callback(t.userID == "", idx); err != nil {
 			return err
 		}
 	}
@@ -241,14 +243,34 @@ func (t *indexSet) cleanupDB(fileName string) error {
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
-	return t.sync(ctx, true)
+	return t.syncWithRetry(ctx, true, false)
+}
+
+// syncWithRetry runs a sync with upto maxSyncRetries on failure
+func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool) error {
+	var err error
+	for i := 0; i <= maxSyncRetries; i++ {
+		err = t.sync(ctx, lock, bypassListCache)
+		if err == nil {
+			return nil
+		}
+
+		if errors.Is(err, errIndexListCacheTooStale) && i < maxSyncRetries {
+			level.Info(t.logger).Log("msg", "we have hit stale list cache, refreshing it before retrying")
+			t.baseIndexSet.RefreshIndexListCache(ctx)
+		}
+
+		level.Error(t.logger).Log("msg", "sync failed, retrying it", "err", err)
+	}
+
+	return err
 }
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
-func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
+func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err error) {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.tableName))
 
-	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock)
+	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock, bypassListCache)
 	if err != nil {
 		return err
 	}
@@ -258,6 +280,14 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
 		return err
+	}
+
+	// if we did not bypass list cache and skipped downloading all the new files due to them being removed by compaction,
+	// it means the cache is not valid anymore since compaction would have happened after last index list cache refresh.
+	// Let us return error to ask the caller to re-run the sync after the list cache refresh.
+	if !bypassListCache && len(downloadedFiles) == 0 && len(toDownload) > 0 {
+		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownload)
+		return errIndexListCacheTooStale
 	}
 
 	if lock {
@@ -289,11 +319,11 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 }
 
 // checkStorageForUpdates compares files from cache with storage and builds the list of files to be downloaded from storage and to be deleted from cache
-func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock bool) (toDownload []storage.IndexFile, toDelete []string, err error) {
+func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListCache bool) (toDownload []storage.IndexFile, toDelete []string, err error) {
 	// listing tables from store
 	var files []storage.IndexFile
 
-	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID, false)
+	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID, bypassListCache)
 	if err != nil {
 		return
 	}
@@ -334,64 +364,20 @@ func (t *indexSet) AwaitReady(ctx context.Context) error {
 }
 
 func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) (string, error) {
-	decompress := shipper_util.IsCompressedFile(fileName)
+	decompress := storage.IsCompressedFile(fileName)
 	dst := filepath.Join(folderPathForTable, fileName)
 	if decompress {
 		dst = strings.Trim(dst, gzipExtension)
 	}
-	return filepath.Base(dst), downloadFileFromStorage(
+	return filepath.Base(dst), storage.DownloadFileFromStorage(
 		dst,
 		decompress,
 		true,
-		shipper_util.LoggerWithFilename(t.logger, fileName),
+		storage.LoggerWithFilename(t.logger, fileName),
 		func() (io.ReadCloser, error) {
 			return t.baseIndexSet.GetFile(ctx, t.tableName, t.userID, fileName)
 		},
 	)
-}
-
-// DownloadFileFromStorage downloads a file from storage to given location.
-func downloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc shipper_util.GetFileFunc) error {
-	start := time.Now()
-	readCloser, err := getFileFunc()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := f.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
-		}
-	}()
-	var objectReader io.Reader = readCloser
-	if decompressFile {
-		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-		defer chunkenc.Gzip.PutReader(decompressedReader)
-
-		objectReader = decompressedReader
-	}
-
-	_, err = io.Copy(f, objectReader)
-	if err != nil {
-		return err
-	}
-
-	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
-	if sync {
-		return f.Sync()
-	}
-	return nil
 }
 
 // doConcurrentDownload downloads objects(files) concurrently. It ignores only missing file errors caused by removal of file by compaction.

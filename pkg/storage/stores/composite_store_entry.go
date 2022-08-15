@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -51,6 +52,12 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	level.Debug(log).Log(
+		"shortcut", shortcut,
+		"from", from.Time(),
+		"through", through.Time(),
+		"err", err,
+	)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {
@@ -105,6 +112,20 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 	}
 
 	return c.index.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+}
+
+func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.Stats")
+	defer log.Span.Finish()
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.index.Stats(ctx, userID, from, through, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

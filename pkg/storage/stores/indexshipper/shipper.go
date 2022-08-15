@@ -8,14 +8,15 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/uploads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -47,7 +48,7 @@ type IndexShipper interface {
 	// ForEach lets us iterates through each index file in a table for a specific user.
 	// On the write path, it would iterate on the files given to the shipper for uploading, until they eventually get dropped from local disk.
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
-	ForEach(ctx context.Context, tableName, userID string, callback func(index index.Index) error) error
+	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	Stop()
 }
 
@@ -84,7 +85,7 @@ func (cfg *Config) Validate() error {
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
 	}
-	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+	return storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
 type indexShipper struct {
@@ -98,7 +99,12 @@ type indexShipper struct {
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
 // It manages the whole life cycle of uploading the index and downloading the index at query time.
-func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc) (IndexShipper, error) {
+//
+// Since IndexShipper is generic, which means it can be used to manage various index types under the same object storage and/or local disk path,
+// it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
+// This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
+func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -109,7 +115,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 		openIndexFileFunc: open,
 	}
 
-	err := shipper.init(storageClient, limits, ownsTenantFn)
+	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangesToHandle, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +125,8 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 	return &shipper, nil
 }
 
-func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant) error {
+func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -127,7 +134,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient)
+		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg)
 		if err != nil {
 			return err
 		}
@@ -143,7 +150,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangesToHandle, reg)
 		if err != nil {
 			return err
 		}
@@ -158,7 +165,7 @@ func (s *indexShipper) AddIndex(tableName, userID string, index index.Index) err
 	return s.uploadsManager.AddIndex(tableName, userID, index)
 }
 
-func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback func(index index.Index) error) error {
+func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 	if s.downloadsManager != nil {
 		if err := s.downloadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
 			return err

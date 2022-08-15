@@ -110,8 +110,14 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			logger := spanlogger.FromContext(ctx)
 			start := time.Now()
 
+			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
+			st, statsCtx := stats.NewContext(ctx)
+
 			// execute the request
-			resp, err := next.Do(ctx, req)
+			resp, err := next.Do(statsCtx, req)
+			if err != nil {
+				return resp, err
+			}
 
 			// collect stats and status
 			var statistics *stats.Result
@@ -145,6 +151,9 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if statistics != nil {
+				// merge the response's statistics with the stats collected by the middleware
+				statistics.Merge(st.Result(time.Since(start), 0, totalEntries))
+
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
 				statistics.ComputeSummary(time.Since(start), 0, totalEntries)
@@ -169,9 +178,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}
-
 			}
-			return resp, err
+			return resp, nil
 		})
 	})
 }

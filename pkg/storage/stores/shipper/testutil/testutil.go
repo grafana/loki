@@ -112,8 +112,8 @@ func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]s
 	}
 }
 
+// ToDo(Sandeep): refactor to remove DBConfig and use DBRecords directly
 type DBConfig struct {
-	CompressFile bool
 	DBRecords
 }
 
@@ -132,31 +132,9 @@ func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketNa
 
 	for name, dbConfig := range dbs {
 		AddRecordsToDB(t, filepath.Join(path, name), dbConfig.Start, dbConfig.NumRecords, bucketName)
-		if dbConfig.CompressFile {
-			compressFile(t, filepath.Join(path, name))
-		}
 	}
 
 	return path
-}
-
-func compressFile(t *testing.T, filepath string) {
-	t.Helper()
-	uncompressedFile, err := os.Open(filepath)
-	require.NoError(t, err)
-
-	compressedFile, err := os.Create(fmt.Sprintf("%s.gz", filepath))
-	require.NoError(t, err)
-
-	compressedWriter := gzip.NewWriter(compressedFile)
-
-	_, err = io.Copy(compressedWriter, uncompressedFile)
-	require.NoError(t, err)
-
-	require.NoError(t, compressedWriter.Close())
-	require.NoError(t, uncompressedFile.Close())
-	require.NoError(t, compressedFile.Close())
-	require.NoError(t, os.Remove(filepath))
 }
 
 func DecompressFile(t *testing.T, src, dest string) {
@@ -208,7 +186,6 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 
 	for i := 0; i < commonDBsConfig.NumUnCompactedDBs; i++ {
 		commonDBsWithDefaultBucket[fmt.Sprint(i)] = DBConfig{
-			CompressFile: i%2 == 0,
 			DBRecords: DBRecords{
 				Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
 				NumRecords: numRecordsPerDB,
@@ -218,7 +195,6 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 
 	for i := 0; i < commonDBsConfig.NumCompactedDBs; i++ {
 		commonDBsWithDefaultBucket[fmt.Sprintf("compactor-%d", i)] = DBConfig{
-			CompressFile: i%2 == 0,
 			DBRecords: DBRecords{
 				Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
 				NumRecords: ((i + 1) * numRecordsPerDB) * 2,
@@ -246,7 +222,6 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 				perUserDBs[userID] = map[string]DBConfig{}
 			}
 			perUserDBs[userID][fmt.Sprintf("compactor-%d", i)] = DBConfig{
-				CompressFile: i%2 == 0,
 				DBRecords: DBRecords{
 					Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
 					NumRecords: (i + 1) * numRecordsPerDB,

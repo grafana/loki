@@ -53,14 +53,14 @@ type ringAccess interface {
 }
 
 type ringPageHandler struct {
-	r               ringAccess
-	heartbeatPeriod time.Duration
+	r                ringAccess
+	heartbeatTimeout time.Duration
 }
 
-func newRingPageHandler(r ringAccess, heartbeatPeriod time.Duration) *ringPageHandler {
+func newRingPageHandler(r ringAccess, heartbeatTimeout time.Duration) *ringPageHandler {
 	return &ringPageHandler{
-		r:               r,
-		heartbeatPeriod: heartbeatPeriod,
+		r:                r,
+		heartbeatTimeout: heartbeatTimeout,
 	}
 }
 
@@ -93,7 +93,7 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_, ownedTokens := ringDesc.countTokens()
+	ownedTokens := ringDesc.countTokens()
 
 	var ingesterIDs []string
 	for id := range ringDesc.Ingesters {
@@ -106,7 +106,7 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 	for _, id := range ingesterIDs {
 		ing := ringDesc.Ingesters[id]
 		state := ing.State.String()
-		if !ing.IsHealthy(Reporting, h.heartbeatPeriod, now) {
+		if !ing.IsHealthy(Reporting, h.heartbeatTimeout, now) {
 			state = "UNHEALTHY"
 		}
 

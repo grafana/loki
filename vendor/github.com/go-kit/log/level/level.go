@@ -1,6 +1,14 @@
 package level
 
-import "github.com/go-kit/log"
+import (
+	"errors"
+	"strings"
+
+	"github.com/go-kit/log"
+)
+
+// ErrInvalidLevelString is returned whenever an invalid string is passed to Parse.
+var ErrInvalidLevelString = errors.New("invalid level string")
 
 // Error returns a logger that includes a Key/ErrorValue pair.
 func Error(logger log.Logger) log.Logger {
@@ -66,6 +74,22 @@ func (l *logger) Log(keyvals ...interface{}) error {
 // Option sets a parameter for the leveled logger.
 type Option func(*logger)
 
+// Allow the provided log level to pass.
+func Allow(v Value) Option {
+	switch v {
+	case debugValue:
+		return AllowDebug()
+	case infoValue:
+		return AllowInfo()
+	case warnValue:
+		return AllowWarn()
+	case errorValue:
+		return AllowError()
+	default:
+		return AllowNone()
+	}
+}
+
 // AllowAll is an alias for AllowDebug.
 func AllowAll() Option {
 	return AllowDebug()
@@ -98,6 +122,33 @@ func AllowNone() Option {
 
 func allowed(allowed level) Option {
 	return func(l *logger) { l.allowed = allowed }
+}
+
+// Parse a string to its corresponding level value. Valid strings are "debug",
+// "info", "warn", and "error". Strings are normalized via strings.TrimSpace and
+// strings.ToLower.
+func Parse(level string) (Value, error) {
+	switch strings.TrimSpace(strings.ToLower(level)) {
+	case debugValue.name:
+		return debugValue, nil
+	case infoValue.name:
+		return infoValue, nil
+	case warnValue.name:
+		return warnValue, nil
+	case errorValue.name:
+		return errorValue, nil
+	default:
+		return nil, ErrInvalidLevelString
+	}
+}
+
+// ParseDefault calls Parse and returns the default Value on error.
+func ParseDefault(level string, def Value) Value {
+	v, err := Parse(level)
+	if err != nil {
+		return def
+	}
+	return v
 }
 
 // ErrNotAllowed sets the error to return from Log when it squelches a log

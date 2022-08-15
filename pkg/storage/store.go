@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -38,6 +39,8 @@ var (
 	indexTypeStats  = usagestats.NewString("store_index_type")
 	objectTypeStats = usagestats.NewString("store_object_type")
 	schemaStats     = usagestats.NewString("store_schema")
+
+	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
 // Store is the Loki chunk store to retrieve and save chunks.
@@ -85,19 +88,19 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		}
 	}
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache)
 	if err != nil {
 		return nil, err
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger)
+	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +121,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := stores.NewCompositeStore(limits)
+	stores := stores.NewCompositeStore(limits, registerer)
 
 	s := &store{
 		Store:     stores,
@@ -204,30 +207,36 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
 	if p.IndexType == config.TSDBType {
-		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		// ToDo(Sandeep): Avoid initializing writer when in read only mode
-		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
 			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			idx = series.NewIndexGatewayClientStore(gw, idx)
+			idx := series.NewIndexGatewayClientStore(gw, nil)
+
+			return failingChunkWriter{}, idx, func() {
+				f.Stop()
+				gw.Stop()
+			}, nil
+		}
+
+		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		writer, idx, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), indexClientReg)
+		if err != nil {
+			return nil, nil, nil, err
 		}
 
 		return writer, idx,
 			func() {
 				f.Stop()
 				chunkClient.Stop()
+				stopTSDBStoreFunc()
 				objectClient.Stop()
 			}, nil
 	}
@@ -491,4 +500,32 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 		filtered = append(filtered, chunk)
 	}
 	return filtered
+}
+
+type failingChunkWriter struct{}
+
+func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
+	return errWritingChunkUnsupported
+}
+
+func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return errWritingChunkUnsupported
+}
+
+func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
+	var ranges config.TableRanges
+	for i := range periodicConfigs {
+		if periodicConfigs[i].IndexType != indexType {
+			continue
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(periodicConfigs)-1 {
+			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
+	}
+
+	return ranges
 }

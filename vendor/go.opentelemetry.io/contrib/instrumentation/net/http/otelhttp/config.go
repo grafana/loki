@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otelhttp
+package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 import (
 	"context"
@@ -62,7 +62,7 @@ func (o optionFunc) apply(c *config) {
 func newConfig(opts ...Option) *config {
 	c := &config{
 		Propagators:   otel.GetTextMapPropagator(),
-		MeterProvider: global.GetMeterProvider(),
+		MeterProvider: global.MeterProvider(),
 	}
 	for _, opt := range opts {
 		opt.apply(c)

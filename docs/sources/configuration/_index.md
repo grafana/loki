@@ -32,9 +32,15 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 ## Configuration File Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
-command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML),
-defined by the scheme below. Brackets indicate that a parameter is optional. For
-non-list parameters the value is set to the specified default.
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` sub-directory and try to use that.
+
+The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
 
 ### Use environment variables in the configuration
 
@@ -86,7 +92,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the distributor and compactor, but all in the same process.
 # Supported values: all, compactor, distributor, ingester, querier, query-scheduler,
 #  ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
-# A full list of available targets can be printed when running Loki with the `-list-targets` command line flag.
+# A full list of available targets can be printed when running Loki with the
+# `-list-targets` command line flag.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -94,9 +101,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [auth_enabled: <boolean> | default = true]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to optimize
-# garbage collection. Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at
-# the cost of heap size. The ballast will not consume physical memory, because it is never read from.
-# It will, however, distort metrics, because it is counted as live memory.
+# garbage collection. Larger ballasts result in fewer garbage collection passes, reducing
+# CPU overhead at the cost of heap size. The ballast will not consume physical memory,
+# because it is never read from. It will, however, distort metrics, because it is
+# counted as live memory.
 [ballast_bytes: <int> | default = 0]
 
 # Configures the server of the launched module(s).
@@ -128,8 +136,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # or the querier.
 [ingester_client: <ingester_client>]
 
-# The ingester block configures the ingester and how the ingester will register itself to a
-# key value store.
+# The ingester block configures the ingester and how the ingester will register itself
+# to a key value store.
 [ingester: <ingester>]
 
 # Configures the index gateway server.
@@ -144,7 +152,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
-# The compactor block configures the compactor component which compacts index shards for performance.
+# The compactor block configures the compactor component, which compacts index shards
+# for performance.
 [compactor: <compactor>]
 
 # Configures limits per-tenant or globally.
@@ -157,7 +166,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The table_manager block configures the table manager for retention.
 [table_manager: <table_manager>]
 
-# Configuration for "runtime config" module, responsible for reloading runtime configuration file.
+# Configuration for "runtime config" module, responsible for reloading runtime
+# configuration file.
 [runtime_config: <runtime_config>]
 
 # Configuration for tracing.
@@ -294,17 +304,18 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.max-concurrent
 [max_concurrent: <int> | default = 10]
 
-# Only query the store, do not attempt to query any ingesters,
-# useful for running a standalone querier pool opearting only against stored data.
+# Only query the store, and not attempt any ingesters.
+# This is useful for running a standalone querier pool operating only against
+# stored data.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
-# Queriers should only query the ingesters and not try to query any store,
-# useful for when object store is unavailable.
+# When true, queriers only query the ingesters, and not stored data.
+# This is useful when the object store is unavailable.
 # CLI flag: -querier.query-ingester-only
 [query_ingester_only: <boolean> | default = false]
 
-# Allow queries for multiple tenants.
+# When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
 
@@ -387,6 +398,27 @@ The `frontend` block configures the Loki query-frontend.
 # URL of querier for tail proxy.
 # CLI flag: -frontend.tail-proxy-url
 [tail_proxy_url: <string> | default = ""]
+
+tail_tls_config:
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -frontend.tail-tls-config.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -frontend.tail-tls-config.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -frontend.tail-tls-config.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -frontend.tail-tls-config.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
 
 # DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address
@@ -556,21 +588,7 @@ remote_write:
     # Optionally configures AWS's Signature Verification 4 signing process to
     # sign requests. Cannot be set at the same time as basic_auth, authorization, or oauth2.
     # To use the default credentials from the AWS SDK, use `sigv4: {}`.
-    sigv4:
-      # The AWS region. If blank, the region from the default credentials chain
-      # is used.
-      [region: <string>]
-
-      # The AWS API keys. If blank, the environment variables `AWS_ACCESS_KEY_ID`
-      # and `AWS_SECRET_ACCESS_KEY` are used.
-      [access_key: <string>]
-      [secret_key: <secret>]
-
-      # Named AWS profile used to authenticate.
-      [profile: <string>]
-
-      # AWS Role ARN, an alternative to using AWS API keys.
-      [role_arn: <string>]
+    [sigv4: <sigv4_config>]
 
     # Configures the remote write request's TLS settings.
     tls_config:
@@ -857,6 +875,10 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # Name of GCS bucket to put chunks in.
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
+
+# Service account key content in JSON format.
+# CLI flag: -<prefix>.gcs.service-account
+[service_account: <string> | default = ""]
 
 # The size of the buffer that GCS client for each PUT request. 0 to disable
 # buffering.
@@ -1778,8 +1800,8 @@ boltdb_shipper:
 # CLI flag: -store.index-cache-validity
 [index_cache_validity: <duration> | default = 5m]
 
-# Disable broad index queries which results in reduced cache usage and faster query performance at the expense of
-# somewhat higher QPS on the index store.
+# Disable broad index queries, which results in reduced cache usage and faster query
+# performance at the expense of a somewhat higher QPS on the index store.
 # CLI flag: -store.disable-broad-index-queries
 [disable_broad_index_queries: <bool> | default = false]
 
@@ -1805,10 +1827,6 @@ to wait before saving them to the backing store.
 # The cache configuration for deduplicating writes
 # The CLI flags prefix for this block config is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
-
-# The minimum time between a chunk update and being saved
-# to the store.
-[min_chunk_age: <duration>]
 
 # Cache index entries older than this period. Default is disabled.
 # CLI flag: -store.cache-lookups-older-than
@@ -2087,10 +2105,18 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
-# Which deletion mode to use. Supported values are: disabled,
-# whole-stream-deletion, filter-only, filter-and-delete
-# CLI flag: -boltdb.shipper.compactor.deletion-mode
-[deletion_mode: <string> | default = "whole-stream-deletion"]
+# The max number of delete requests to run per compaction cycle.
+# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+[delete_batch_size: <duration> | default = 70]
+
+# The maximum amount of time to spend running retention and deletion
+# on any given table in the index. 0 is no timeout
+#
+# NOTE: This timeout prioritizes runtime over completeness of retention/deletion.
+# It may take several compaction runs to fully perform retention and process
+# all outstanding delete requests
+# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+[retention_table_timeout: <duration> | default = 0]
 
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
@@ -2099,11 +2125,11 @@ compacts index shards to more performant forms.
 [max_compaction_parallelism: <int> | default = 1]
 
 # Deletion mode.
-# Can be one of "disabled", "whole-stream-deletion", "filter-only", or "filter-and-delete".
-# When set to the default value of "whole-stream-deletion", and if
+# Can be one of "disabled", "filter-only", or "filter-and-delete".
+# When set to "filter-only" or "filter-and-delete", and if
 # retention_enabled is true, then the log entry deletion API endpoints are available.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
-[deletion_mode: <string> | default = "whole-stream-deletion"]
+[deletion_mode: <string> | default = "disabled"]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
@@ -2356,6 +2382,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This is experimental and might change in the future.
 [ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
 
+# Configures AWS's Signature Verification 4 signing process to
+# sign every remote write request.
+[ruler_remote_write_sigv4_config:  <sigv4_config>]
+
 # Limit queries that can be sharded.
 # Queries within the time range of now and now minus this sharding lookback
 # are not sharded. The default value of 0s disables the lookback, causing
@@ -2367,6 +2397,28 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
+```
+
+## sigv4_config
+
+The `sigv4_config` block configures AWS's Signature Verification 4 signing process to
+sign every remote write request.
+
+```yaml
+# The AWS region. If blank, the region from the default credentials chain
+# is used.
+[region: <string>]
+
+# The AWS API keys. If blank, the environment variables `AWS_ACCESS_KEY_ID`
+# and `AWS_SECRET_ACCESS_KEY` are used.
+[access_key: <string>]
+[secret_key: <secret>]
+
+# Named AWS profile used to authenticate.
+[profile: <string>]
+
+# AWS Role ARN, an alternative to using AWS API keys.
+[role_arn: <string>]
 ```
 
 ### grpc_client_config
@@ -2610,14 +2662,24 @@ This way, one doesn't have to replicate configuration in multiple places.
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
 
-# Address, including port, where the compactor api is served
+# Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
+
+# Groupcache is an in-process, distributed cache that behaves similarly to memcached but is built-in to Loki
+groupcache:
+  # Enable groupcache
+  # CLI flag: -common.groupcache.enabled
+  [enabled: <boolean>: default = false]
+  # Set the maximum available memory to use for each groupcache group
+  # NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.
+  # CLI flag: -common.groupcache.capacity-per-cache-mb
+  [capacity_per_cache_mb: <int>: default = 100]
 ```
 
 ## analytics
 
-The `analytics` block configures the reporting of Loki analytics to grafana.com
+The `analytics` block configures the reporting of Loki analytics to grafana.com.
 
 ```yaml
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration

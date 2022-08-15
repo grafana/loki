@@ -6,6 +6,7 @@ import (
 	"strings"
 	"text/template"
 	"text/template/parse"
+	"time"
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
@@ -14,7 +15,8 @@ import (
 )
 
 const (
-	functionLineName = "__line__"
+	functionLineName      = "__line__"
+	functionTimestampName = "__timestamp__"
 )
 
 var (
@@ -102,6 +104,7 @@ type LineFormatter struct {
 	buf *bytes.Buffer
 
 	currentLine []byte
+	currentTs   int64
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
@@ -116,6 +119,9 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	functions[functionLineName] = func() string {
 		return unsafeGetString(lf.currentLine)
 	}
+	functions[functionTimestampName] = func() time.Time {
+		return time.Unix(0, lf.currentTs)
+	}
 	t, err := template.New("line").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %w", err)
@@ -124,18 +130,17 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
-func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
 	lf.currentLine = line
+	lf.currentTs = ts
 
 	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
-	// todo(cyriltovena): we might want to reuse the input line or a bytes buffer.
-	res := make([]byte, len(lf.buf.Bytes()))
-	copy(res, lf.buf.Bytes())
-	return res, true
+	return lf.buf.Bytes(), true
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -274,7 +279,7 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(_ int64, l []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	var data interface{}
 	for _, f := range lf.formats {
 		if f.Rename {
@@ -291,6 +296,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		}
 		if err := f.tmpl.Execute(lf.buf, data); err != nil {
 			lbs.SetErr(errTemplateFormat)
+			lbs.SetErrorDetails(err.Error())
 			continue
 		}
 		lbs.Set(f.Name, lf.buf.String())

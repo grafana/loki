@@ -32,15 +32,11 @@ workflows:
           requires: [test]
           filters: { <<: *tag-or-main }
 
-      - publish/binaries:
-          requires: [test]
-          filters: { <<: *only-tags }
-
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.19.0
+    - image: grafana/loki-build-image:0.23.0
   working_directory: /src/loki
 
 jobs:
@@ -81,10 +77,3 @@ jobs:
           name: docker-driver
           command: make docker-driver-push
 
-  publish/binaries:
-    <<: *defaults
-    steps:
-      - checkout
-      - run:
-          name: github release
-          command: make BUILD_IN_CONTAINER=false publish

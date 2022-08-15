@@ -31,8 +31,51 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### Fifocache is deprecated
+
+We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
+
+Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
+
+#### Evenly spread queriers across kubernetes nodes
+
+We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
+If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
+
+#### Default value for `server.http-listen-port` changed
+
+This value now defaults to 3100, so the Loki process doesn't require special privileges. Previously, it had been set to port 80, which is a privileged port. If you need Loki to listen on port 80, you can set it back to the previous default using `-server.http-listen-port=80`.
+
+#### docker-compose setup has been updated
+
+The docker-compose [setup](https://github.com/grafana/loki/blob/main/production/docker) has been updated to **v2.6.0** and includes many improvements.
+
+Notable changes include:
+- authentication (multi-tenancy) is **enabled** by default; you can disable it in `production/docker/config/loki.yaml` by setting `auth_enabled: false`
+- storage is now using Minio instead of local filesystem
+  - move your current storage into `.data/minio` and it should work transparently
+- log-generator was added - if you don't need it, simply remove the service from `docker-compose.yaml` or don't start the service
+
+#### Configuration for deletes has changed
+
+The global `deletion_mode` option in the compactor configuration moved to runtime configurations.
+
+- The `deletion_mode` option needs to be removed from your compactor configuration
+- The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
+- Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
+
+## 2.6.0
 
 ### Loki
+
+#### Implementation of unwrapped `rate` aggregation changed
+
+The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).
+This means that the rate per second is calculated based on the sum of the extracted values, instead of the average increase over time.
+
+If you want the extracted values to be treated as [Counter](https://prometheus.io/docs/concepts/metric_types/#counter) metric, you should use the new `rate_counter()` aggregation function, which calculates the per-second average rate of increase of the vector.
 
 #### Default value for `azure.container-name` changed
 
@@ -58,7 +101,7 @@ limits_config:
   split_queries_by_interval: 10m
 ```
 
-In 2.5.0 it can only be defined in the `limits_config` section, **Loki will fail to start if you do not remove the `split_queries_by_interval` config from the `query_range` section.** 
+In 2.5.0 it can only be defined in the `limits_config` section, **Loki will fail to start if you do not remove the `split_queries_by_interval` config from the `query_range` section.**
 
 Additionally, it has a new default value of `30m` rather than `0`.
 
@@ -101,10 +144,10 @@ Meanwhile, the legacy format is a string in the following format:
 * `parallelise_shardable_queries` under the `query_range` config now defaults to `true`.
 * `split_queries_by_interval` under the `limits_config` config now defaults to `30m`, it was `0s`.
 * `max_chunk_age` in the `ingester` config now defaults to `2h` previously it was `1h`.
-* `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters. 
+* `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters.
 * `max_concurrent` under the `querier` config now defaults to `10` instead of `20`.
 * `match_max_concurrent` under the `frontend_worker` config now defaults to true, this supersedes the `parallelism` setting which can now be removed from your config. Controlling query parallelism of a single process can now be done with the `querier` `max_concurrent` setting.
-* `flush_op_timeout` under the `ingester` configuration block now defaults to `10m`, increased from `10s`. This can help when replaying a large WAL on Loki startup, and avoid `msg="failed to flush user" ... context deadline exceeded` errors.
+* `flush_op_timeout` under the `ingester` configuration block now defaults to `10m`, increased from `10s`. This can help when replaying a large WAL on Loki startup, and avoid `msg="failed to flush" ... context deadline exceeded` errors.
 
 ### Promtail
 
@@ -349,7 +392,7 @@ server:
   grpc_server_ping_without_stream_allowed: true
 ```
 
-[This issue](https://github.com/grafana/loki/issues/4375) has some more information on the change. 
+[This issue](https://github.com/grafana/loki/issues/4375) has some more information on the change.
 
 #### Some metric prefixes have changed from `cortex_` to `loki_`
 

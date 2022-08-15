@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.21.0
+BUILD_IMAGE_VERSION := 0.23.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -54,15 +54,6 @@ DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(G
 DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
 MOUNT_FLAGS := :delegated
-
-NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-       rm $@; \
-       echo "\nYour go standard library was built without the 'netgo' build tag."; \
-       echo "To fix that, run"; \
-       echo "    sudo go clean -i net"; \
-       echo "    sudo go install -tags netgo std"; \
-       false; \
-}
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -135,7 +126,6 @@ logcli-image:
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
-	$(NETGO_CHECK)
 
 ########
 # Loki #
@@ -146,11 +136,9 @@ loki-debug: cmd/loki/loki-debug
 
 cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ###############
 # Loki-Canary #
@@ -160,7 +148,6 @@ loki-canary: cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #################
 # Loki-QueryTee #
@@ -170,7 +157,6 @@ loki-querytee: cmd/querytee/querytee
 
 cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ############
 # Promtail #
@@ -204,11 +190,9 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 
 clients/cmd/promtail/promtail:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #########
 # Mixin #
@@ -216,6 +200,7 @@ clients/cmd/promtail/promtail-debug:
 
 MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
+MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
 loki-mixin:
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -226,11 +211,16 @@ else
 	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
 	@cd $(MIXIN_PATH) && jb install
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PATH)/rules.yaml --directory $(MIXIN_OUT_PATH)/dashboards ${MIXIN_PATH}/mixin.libsonnet
+
+	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
+	@cd $(MIXIN_PATH) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
 endif
 
 loki-mixin-check: loki-mixin
 	@echo "Checking diff"
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
+	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
 ###############
 # Migrate #
@@ -240,14 +230,12 @@ migrate: cmd/migrate/migrate
 
 cmd/migrate/migrate:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #############
 # Releasing #
 #############
-# concurrency is limited to 2 to prevent CircleCI from OOMing. Sorry
-GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
-CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
@@ -258,11 +246,7 @@ dist: clean
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
 packages: dist
-	mkdir -p dist/tmp
-	unzip dist/logcli-linux-amd64.zip -d dist/tmp
-	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
-	nfpm package -f tools/nfpm.yaml -p deb -t dist/
-	rm -rf dist/tmp
+	@tools/packaging/nfpm.sh
 
 publish: packages
 	./tools/release
@@ -272,7 +256,7 @@ publish: packages
 ########
 
 # To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.23.0 lint
 lint:
 	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
@@ -410,7 +394,6 @@ docker-driver: docker-driver-clean
 
 clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
@@ -574,6 +557,13 @@ endif
 	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
 	$(call push,loki-build-image,latest)
 
+# loki-operator
+loki-operator-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile operator/
+loki-operator-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
+loki-operator-push: loki-operator-image-cross
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 ########
 # Misc #

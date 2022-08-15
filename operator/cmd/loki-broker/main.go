@@ -10,7 +10,8 @@ import (
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
-	"github.com/grafana/loki/operator/api/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"sigs.k8s.io/yaml"
@@ -22,7 +23,7 @@ type config struct {
 	Namespace string
 	Image     string
 
-	featureFlags  manifests.FeatureFlags
+	featureFlags  configv1.FeatureGates
 	objectStorage storage.Options
 
 	crFilepath string
@@ -35,12 +36,16 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Namespace, "namespace", "", "Namespace to deploy to")
 	f.StringVar(&c.Image, "image", manifests.DefaultContainerImage, "The Loki image pull spec loation.")
 	// Feature flags
-	c.featureFlags = manifests.FeatureFlags{}
-	f.BoolVar(&c.featureFlags.EnableCertificateSigningService, "with-cert-signing-service", false, "Enable usage of cert-signing service for scraping prometheus metrics via TLS.")
-	f.BoolVar(&c.featureFlags.EnableServiceMonitors, "with-service-monitors", false, "Enable service monitors for all LokiStack components.")
-	f.BoolVar(&c.featureFlags.EnableTLSServiceMonitorConfig, "with-tls-service-monitors", false, "Enable TLS endpoint for service monitors.")
-	f.BoolVar(&c.featureFlags.EnablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts")
-	f.BoolVar(&c.featureFlags.EnableGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
+	c.featureFlags = configv1.FeatureGates{}
+	c.featureFlags.OpenShift = configv1.OpenShiftFeatureGates{}
+	f.BoolVar(&c.featureFlags.OpenShift.ServingCertsService, "with-serving-certs-service", false, "Enable usage of serving certs service on OpenShift.")
+	f.BoolVar(&c.featureFlags.ServiceMonitors, "with-service-monitors", false, "Enable service monitors for all LokiStack components.")
+	f.BoolVar(&c.featureFlags.HTTPEncryption, "with-http-tls-services", false, "Enables TLS for all LokiStack GRPC services.")
+	f.BoolVar(&c.featureFlags.GRPCEncryption, "with-grpc-tls-services", false, "Enables TLS for all LokiStack HTTP services.")
+	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
+	f.BoolVar(&c.featureFlags.LokiStackAlerts, "with-lokistack-alerts", false, "Enables prometheus alerts")
+	f.BoolVar(&c.featureFlags.LokiStackGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
+	f.BoolVar(&c.featureFlags.RuntimeSeccompProfile, "with-runtime-seccomp-profile", false, "Enables the usage of the runtime/default seccomp profile for pods and containers.")
 	// Object storage options
 	c.objectStorage = storage.Options{
 		S3: &storage.S3StorageConfig{},
@@ -86,7 +91,7 @@ func (c *config) validateFlags(log logr.Logger) {
 		os.Exit(1)
 	}
 	// Validate feature flags
-	if cfg.featureFlags.EnablePrometheusAlerts && !cfg.featureFlags.EnableServiceMonitors {
+	if cfg.featureFlags.LokiStackAlerts && !cfg.featureFlags.ServiceMonitors {
 		log.Info("-with-prometheus-alerts flag requires -with-service-monitors")
 		os.Exit(1)
 	}
@@ -115,7 +120,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ls := &v1beta1.LokiStack{}
+	ls := &lokiv1.LokiStack{}
 	if err = yaml.Unmarshal(b, ls); err != nil {
 		logger.Error(err, "failed to unmarshal LokiStack CR", "path", cfg.crFilepath)
 		os.Exit(1)
@@ -127,7 +132,7 @@ func main() {
 		Namespace:     cfg.Namespace,
 		Image:         cfg.Image,
 		Stack:         ls.Spec,
-		Flags:         cfg.featureFlags,
+		Gates:         cfg.featureFlags,
 		ObjectStorage: cfg.objectStorage,
 	}
 

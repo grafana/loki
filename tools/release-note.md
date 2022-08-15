@@ -1,4 +1,4 @@
-This is release `${CIRCLE_TAG}` of Loki.
+This is release `${DRONE_TAG}` of Loki.
 
 ### Notable changes:
 :warning: **ADD RELEASE NOTES HERE** :warning:
@@ -11,8 +11,8 @@ The components of Loki are currently distributed in plain binary form and as Doc
 * https://hub.docker.com/r/grafana/loki
 * https://hub.docker.com/r/grafana/promtail
 ```bash
-$ docker pull "grafana/loki:${CIRCLE_TAG}"
-$ docker pull "grafana/promtail:${CIRCLE_TAG}"
+$ docker pull "grafana/loki:${DRONE_TAG}"
+$ docker pull "grafana/promtail:${DRONE_TAG}"
 ```
 
 #### Binary
@@ -21,7 +21,7 @@ Choose from the assets below for the application and architecture matching your 
 Example for `Loki` on the `linux` operating system and `amd64` architecture:
 
 ```bash
-$ curl -O -L "https://github.com/grafana/loki/releases/download/${CIRCLE_TAG}/loki-linux-amd64.zip"
+$ curl -O -L "https://github.com/grafana/loki/releases/download/${DRONE_TAG}/loki-linux-amd64.zip"
 # extract the binary
 $ unzip "loki-linux-amd64.zip"
 # make sure it is executable

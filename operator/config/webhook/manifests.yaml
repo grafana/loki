@@ -11,6 +11,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-loki-grafana-com-v1-lokistack
+  failurePolicy: Fail
+  name: vlokistack.loki.grafana.com
+  rules:
+  - apiGroups:
+    - loki.grafana.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lokistacks
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-loki-grafana-com-v1beta1-alertingrule
   failurePolicy: Fail
   name: valertingrule.kb.io

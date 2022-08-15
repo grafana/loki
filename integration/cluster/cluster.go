@@ -301,7 +301,8 @@ func (c *Component) run() error {
 		defer c.cluster.waitGroup.Done()
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
-			errCh <- err
+			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
+			errCh <- newErr
 		}
 	}()
 
@@ -326,7 +327,45 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	if c.dataPath != "" {
 		dirs = append(dirs, c.dataPath)
 	}
+	if p := c.httpPort; p != 0 {
+		allocatedFreePorts.free(p)
+	}
+	if p := c.grpcPort; p != 0 {
+		allocatedFreePorts.free(p)
+	}
 	return files, dirs
+}
+
+// keep track of previously allocated random ports, to ensure them not to clash
+var (
+	allocatedFreePorts = newAllocatedPorts()
+)
+
+type allocatedPorts struct {
+	m    map[int]struct{}
+	lock sync.Mutex
+}
+
+func newAllocatedPorts() *allocatedPorts {
+	return &allocatedPorts{
+		m: make(map[int]struct{}),
+	}
+}
+
+func (a *allocatedPorts) reserve(p int) (ok bool) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if _, exists := a.m[p]; exists {
+		return false
+	}
+	a.m[p] = struct{}{}
+	return true
+}
+
+func (a *allocatedPorts) free(p int) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	delete(a.m, p)
 }
 
 func getFreePort() (port int, err error) {
@@ -335,7 +374,13 @@ func getFreePort() (port int, err error) {
 		var l *net.TCPListener
 		if l, err = net.ListenTCP("tcp", a); err == nil {
 			defer l.Close()
-			return l.Addr().(*net.TCPAddr).Port, nil
+			port := l.Addr().(*net.TCPAddr).Port
+
+			if !allocatedFreePorts.reserve(port) {
+				// port has been allocated before, try your luck again
+				return getFreePort()
+			}
+			return port, nil
 		}
 	}
 	return

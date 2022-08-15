@@ -7,23 +7,21 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // implements stores.Index
 type IndexClient struct {
-	schema config.SchemaConfig
-	idx    Index
+	idx Index
 }
 
-func NewIndexClient(idx Index, pd config.PeriodConfig) *IndexClient {
+func NewIndexClient(idx Index) *IndexClient {
 	return &IndexClient{
-		schema: config.SchemaConfig{
-			Configs: []config.PeriodConfig{pd},
-		},
 		idx: idx,
 	}
 }
@@ -34,7 +32,9 @@ func NewIndexClient(idx Index, pd config.PeriodConfig) *IndexClient {
 // In the future, we should use dynamic sharding in TSDB to determine the shard factors
 // and we may no longer wish to send a shard label inside the queries,
 // but rather expose it as part of the stores.Index interface
-func (c *IndexClient) shard(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.ShardAnnotation, error) {
+func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.ShardAnnotation, error) {
+	// first use withoutNameLabel to make a copy with the name label removed
+	matchers = withoutNameLabel(matchers)
 	s, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
 		return nil, nil, err
@@ -47,6 +47,15 @@ func (c *IndexClient) shard(matchers ...*labels.Matcher) ([]*labels.Matcher, *in
 			Shard: uint32(s.Shard),
 			Of:    uint32(s.Of),
 		}
+
+		if err := shard.Validate(); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if len(matchers) == 0 {
+		// hack to query all data
+		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	}
 
 	return matchers, shard, err
@@ -57,14 +66,32 @@ func (c *IndexClient) shard(matchers ...*labels.Matcher) ([]*labels.Matcher, *in
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
-	matchers = withoutNameLabel(matchers)
-	matchers, shard, err := c.shard(matchers...)
+	log, ctx := spanlogger.New(ctx, "IndexClient.GetChunkRefs")
+	defer log.Span.Finish()
+
+	var kvps []interface{}
+	defer func() {
+		log.Log(kvps...)
+	}()
+
+	matchers, shard, err := cleanMatchers(matchers...)
+	kvps = append(kvps,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"cleanMatcherErr", err,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO(owen-d): use a pool to reduce allocs here
 	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	kvps = append(kvps,
+		"chunks", len(chks),
+		"indexErr", err,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +111,7 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 }
 
 func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
-	matchers = withoutNameLabel(matchers)
-	matchers, shard, err := c.shard(matchers...)
+	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +130,34 @@ func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, throug
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
 func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	matchers = withoutNameLabel(matchers)
+	matchers, _, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
 	return c.idx.LabelValues(ctx, userID, from, through, labelName, matchers...)
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
 func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
 	return c.idx.LabelNames(ctx, userID, from, through)
+}
+
+func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	matchers, shard, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	blooms := stats.BloomPool.Get()
+	defer stats.BloomPool.Put(blooms)
+	blooms, err = c.idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+
+	if err != nil {
+		return nil, err
+	}
+	res := blooms.Stats()
+
+	return &res, nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
