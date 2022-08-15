@@ -97,6 +97,7 @@ scrape_configs:
       json: false
       max_age: 12h
       path: /var/log/journal
+      matches: _TRANSPORT=kernel
       labels:
         job: systemd-journal
     relabel_configs:
@@ -109,7 +110,9 @@ here for reference. The `max_age` field ensures that no older entry than the
 time specified will be sent to Loki; this circumvents "entry too old" errors.
 The `path` field tells Promtail where to read journal entries from. The labels
 map defines a constant list of labels to add to every journal entry that Promtail
-reads.
+reads. The `matches` field adds journal filters. If multiple filters are specified
+matching different fields, the log entries are filtered by both, if two filters
+apply to the same field, then they are automatically matched as alternatives.
 
 When the `json` field is set to `true`, messages from the journal will be
 passed through the pipeline as JSON, keeping all of the original fields from the
@@ -190,13 +193,19 @@ resuming the target without skipping logs.
 
 see the [configuration](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#windows_events) section for more information.
 
-## Gcplog scraping
-Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
-Configs are set in `gcplog` section in `scrape_config`
+## GCP Log scraping
+
+Promtail supports scraping cloud resource logs such as GCS bucket logs, load balancer logs, and Kubernetes cluster logs from GCP.
+Configuration is specified in the `gcplog` section, within `scrape_config`.
+
+There are two kind of scraping strategies: `pull` and `push`.
+
+### Pull
 
 ```yaml
   - job_name: gcplog
     gcplog:
+      subscription_type: "pull" # If the `subscription_type` field is empty, defaults to `pull`
       project_id: "my-gcp-project"
       subscription: "my-pubsub-subscription"
       use_incoming_timestamp: false # default rewrite timestamps.
@@ -222,6 +231,38 @@ When Promtail receives GCP logs, various internal labels are made available for 
   - `__gcp_resource_type`
   - `__gcp_resource_labels_<NAME>`
     In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
+
+### Push
+
+```yaml
+  - job_name: gcplog
+    gcplog:
+      subscription_type: "push"
+      use_incoming_timestamp: false
+      labels:
+        job: "gcplog-push"
+      server:
+        http_listen_address: 0.0.0.0
+        http_listen_port: 8080
+    relabel_configs:
+      - source_labels: ['__gcp_message_id']
+        target_label: 'message_id'
+      - source_labels: ['__gcp_attributes_logging_googleapis_com_timestamp']
+        target_label: 'incoming_ts'
+```
+
+When configuring the GCP Log push target, Promtail will start an HTTP server listening on port `8080`, as configured in the `server`
+section. This server exposes the single endpoint `POST /gcp/api/v1/push`, responsible for receiving logs from GCP.
+
+It also supports `relabeling` and `pipeline` stages.
+
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
+- `__gcp_message_id`
+- `__gcp_attributes_<NAME>`
+
+In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are 
+transformed to `message_id` and `incoming_ts` through `relabel_configs`. All other internal labels, for example some other attribute,
+will be dropped by the target if not transformed.
 
 ## Syslog Receiver
 
@@ -377,7 +418,7 @@ scrape_configs:
 ```
 
 Only `api_token` and `zone_id` are required.
-Refer to the [Cloudfare](../../configuration/#cloudflare) configuration section for details.
+Refer to the [Cloudfare](../configuration/#cloudflare) configuration section for details.
 
 ## Heroku Drain
 Promtail supports receiving logs from a Heroku application by using a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).

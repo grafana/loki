@@ -1828,10 +1828,6 @@ to wait before saving them to the backing store.
 # The CLI flags prefix for this block config is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
-# The minimum time between a chunk update and being saved
-# to the store.
-[min_chunk_age: <duration>]
-
 # Cache index entries older than this period. Default is disabled.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration>]
@@ -2108,6 +2104,19 @@ compacts index shards to more performant forms.
 # Ideally this should be set to at least 24h.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
+
+# The max number of delete requests to run per compaction cycle.
+# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+[delete_batch_size: <duration> | default = 70]
+
+# The maximum amount of time to spend running retention and deletion
+# on any given table in the index. 0 is no timeout
+#
+# NOTE: This timeout prioritizes runtime over completeness of retention/deletion.
+# It may take several compaction runs to fully perform retention and process
+# all outstanding delete requests
+# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+[retention_table_timeout: <duration> | default = 0]
 
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
@@ -2388,10 +2397,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
-
-# When true, access to the deletion API is enabled.
-# CLI flag: -compactor.allow_deletes
-[allow_deletes: <boolean> | default = false]
 ```
 
 ## sigv4_config

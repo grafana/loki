@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -242,5 +246,20 @@ reject_old_samples: true
 			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
 			require.Equal(t, tc.exp, out)
 		})
+	}
+}
+
+func TestLimitsValidation(t *testing.T) {
+	for _, tc := range []struct {
+		mode     string
+		expected error
+	}{
+		{mode: "disabled", expected: nil},
+		{mode: "filter-only", expected: nil},
+		{mode: "filter-and-delete", expected: nil},
+		{mode: "something-else", expected: deletionmode.ErrUnknownMode},
+	} {
+		limits := Limits{DeletionMode: tc.mode}
+		require.True(t, errors.Is(limits.Validate(), tc.expected))
 	}
 }

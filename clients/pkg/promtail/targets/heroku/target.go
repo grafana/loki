@@ -1,7 +1,6 @@
 package heroku
 
 import (
-	"flag"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,8 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
-	"github.com/imdario/mergo"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -21,6 +18,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -50,26 +48,14 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 		relabelConfigs: relabel,
 	}
 
-	// Bit of a chicken and egg problem trying to register the defaults and apply overrides from the loaded config.
-	// First create an empty config and set defaults.
-	defaults := server.Config{}
-	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	// Then apply any config values loaded as overrides to the defaults.
-	if err := mergo.Merge(&defaults, config.Server, mergo.WithOverride); err != nil {
-		return nil, errors.Wrap(err, "failed to parse configs and override defaults when configuring heroku drain target")
-	}
-	// The merge won't overwrite with a zero value but in the case of ports 0 value
-	// indicates the desire for a random port so reset these to zero if the incoming config val is 0
-	if config.Server.HTTPListenPort == 0 {
-		defaults.HTTPListenPort = 0
-	}
-	if config.Server.GRPCListenPort == 0 {
-		defaults.GRPCListenPort = 0
+	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring heroku drain target: %w", err)
 	}
 	// Set the config to the new combined config.
-	config.Server = defaults
+	config.Server = mergedServerConfigs
 
-	err := ht.run()
+	err = ht.run()
 	if err != nil {
 		return nil, err
 	}

@@ -13,12 +13,12 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -59,7 +59,7 @@ type dynamicShardResolver struct {
 }
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
-	sp, _ := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
+	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
 	defer sp.Finish()
 	// We try to shard subtrees in the AST independently if possible, although
 	// nested binary expressions can make this difficult. In this case,
@@ -74,7 +74,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	results := make([]*stats.Stats, 0, len(grps))
 
 	start := time.Now()
-	if err := concurrency.ForEachJob(r.ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
+	if err := concurrency.ForEachJob(ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
 		matchers := syntax.MatchersString(grps[i].Matchers)
 		diff := grps[i].Interval + grps[i].Offset
 		adjustedFrom := r.from.Add(-diff)
@@ -85,7 +85,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		adjustedThrough := r.through.Add(-grps[i].Offset)
 
 		start := time.Now()
-		resp, err := r.handler.Do(r.ctx, &indexgatewaypb.IndexStatsRequest{
+		resp, err := r.handler.Do(r.ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
 			Through:  adjustedThrough,
 			Matchers: matchers,
