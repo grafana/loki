@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 
 	dskit_flagext "github.com/grafana/dskit/flagext"
@@ -248,6 +249,10 @@ func (l *Limits) Validate() error {
 
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
 		return err
+	}
+
+	if l.CompactorDeletionEnabled {
+		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
 	}
 
 	return nil

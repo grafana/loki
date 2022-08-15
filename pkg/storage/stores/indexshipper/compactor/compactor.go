@@ -121,7 +121,15 @@ func (cfg *Config) Validate() error {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
 	}
 
-	return shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+	if err := shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix); err != nil {
+		return err
+	}
+
+	if cfg.DeletionMode != "" {
+		level.Warn(util_log.Logger).Log("msg", "boltdb.shipper.compactor.deletion-mode has been deprecated and will be ignored. This has been moved to the deletion_mode per tenant configuration.")
+	}
+
+	return nil
 }
 
 type Compactor struct {
