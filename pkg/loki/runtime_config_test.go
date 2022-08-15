@@ -95,7 +95,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	cfg := runtimeconfig.Config{
 		ReloadPeriod: 1 * time.Second,
 		Loader:       loader,
-		LoadPath:     path,
+		LoadPath:     []string{path},
 	}
 	flagset := flag.NewFlagSet("", flag.PanicOnError)
 	var defaults validation.Limits
@@ -103,7 +103,8 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	require.NoError(t, flagset.Parse(nil))
 	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
-	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), log.NewNopLogger())
+	reg := prometheus.NewPedanticRegistry()
+	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))

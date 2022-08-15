@@ -36,7 +36,7 @@ type Server interface {
 }
 
 // Server embed weaveworks server with static file and templating capability
-type server struct {
+type PromtailServer struct {
 	*serverww.Server
 	log               log.Logger
 	tms               *targets.TargetManagers
@@ -88,7 +88,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 		healthCheckTargetFlag = *cfg.HealthCheckTarget
 	}
 
-	serv := &server{
+	serv := &PromtailServer{
 		Server:            wws,
 		log:               log,
 		tms:               tms,
@@ -108,7 +108,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 }
 
 // serviceDiscovery serves the service discovery page.
-func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
+func (s *PromtailServer) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 	var index []string
 	allTarget := s.tms.AllTargets()
 	for job := range allTarget {
@@ -175,7 +175,7 @@ func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (s *server) config(rw http.ResponseWriter, req *http.Request) {
+func (s *PromtailServer) config(rw http.ResponseWriter, req *http.Request) {
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data:         s.promtailCfg,
 		BuildVersion: version.Info(),
@@ -186,7 +186,7 @@ func (s *server) config(rw http.ResponseWriter, req *http.Request) {
 }
 
 // targets serves the targets page.
-func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
+func (s *PromtailServer) targets(rw http.ResponseWriter, req *http.Request) {
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data: struct {
 			TargetPools map[string][]target.Target
@@ -219,7 +219,7 @@ func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
 }
 
 // ready serves the ready endpoint
-func (s *server) ready(rw http.ResponseWriter, _ *http.Request) {
+func (s *PromtailServer) ready(rw http.ResponseWriter, _ *http.Request) {
 	if s.healthCheckTarget && !s.tms.Ready() {
 		http.Error(rw, readinessProbeFailure, http.StatusInternalServerError)
 		return

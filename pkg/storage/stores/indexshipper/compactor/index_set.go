@@ -97,6 +97,10 @@ func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet sto
 		logger:       logger,
 	}
 
+	if userID != "" {
+		ui.logger = log.With(logger, "user-id", userID)
+	}
+
 	var err error
 	ui.sourceObjects, err = ui.baseIndexSet.ListFiles(ui.ctx, ui.tableName, ui.userID, false)
 	if err != nil {

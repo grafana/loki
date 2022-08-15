@@ -1,133 +1,134 @@
 package deletion
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/pkg/util"
+
+	"github.com/weaveworks/common/user"
 )
 
-type retentionLimit struct {
-	compactorDeletionEnabled bool
-	retentionPeriod          time.Duration
-	streamRetention          []validation.StreamRetention
-}
+func TestAddDeleteRequestHandler(t *testing.T) {
+	t.Run("it adds the delete request to the store", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, time.Second, nil)
 
-func (r retentionLimit) convertToValidationLimit() *validation.Limits {
-	return &validation.Limits{
-		CompactorDeletionEnabled: r.compactorDeletionEnabled,
-		RetentionPeriod:          model.Duration(r.retentionPeriod),
-		StreamRetention:          r.streamRetention,
-	}
-}
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
 
-type fakeLimits struct {
-	defaultLimit retentionLimit
-	perTenant    map[string]retentionLimit
-}
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
 
-func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
-	return f.perTenant[userID].retentionPeriod
-}
+		require.Equal(t, w.Code, http.StatusNoContent)
 
-func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
-	return f.perTenant[userID].streamRetention
-}
-
-func (f fakeLimits) CompactorDeletionEnabled(userID string) bool {
-	return f.perTenant[userID].compactorDeletionEnabled
-}
-
-func (f fakeLimits) DefaultLimits() *validation.Limits {
-	return f.defaultLimit.convertToValidationLimit()
-}
-
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
-	res := make(map[string]*validation.Limits)
-	for userID, ret := range f.perTenant {
-		res[userID] = ret.convertToValidationLimit()
-	}
-	return res
-}
-
-func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
-	// build the store
-	tempDir := t.TempDir()
-
-	workingDir := filepath.Join(tempDir, "working-dir")
-	objectStorePath := filepath.Join(tempDir, "object-store")
-
-	objectClient, err := local.NewFSObjectClient(local.FSConfig{
-		Directory: objectStorePath,
+		require.Equal(t, "org-id", store.addedUser)
+		require.Equal(t, `{foo="bar"}`, store.addedQuery)
+		require.Equal(t, toTime("0000000000"), store.addedStartTime)
+		require.Equal(t, toTime("0000000001"), store.addedEndTime)
 	})
-	require.NoError(t, err)
-	testDeleteRequestsStore, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
-	require.NoError(t, err)
 
-	// limits
-	fl := &fakeLimits{
-		perTenant: map[string]retentionLimit{
-			"1": {compactorDeletionEnabled: true},
-			"2": {compactorDeletionEnabled: false},
-		},
+	t.Run("it works with RFC3339", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, time.Second, nil)
+
+		req := buildRequest("org-id", `{foo="bar"}`, "2006-01-02T15:04:05Z", "2006-01-03T15:04:05Z")
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusNoContent)
+
+		require.Equal(t, "org-id", store.addedUser)
+		require.Equal(t, `{foo="bar"}`, store.addedQuery)
+		require.Equal(t, toTime("1136214245"), store.addedStartTime)
+		require.Equal(t, toTime("1136300645"), store.addedEndTime)
+	})
+
+	t.Run("it fills in end time if blank", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, time.Second, nil)
+
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "")
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusNoContent)
+
+		require.Equal(t, "org-id", store.addedUser)
+		require.Equal(t, `{foo="bar"}`, store.addedQuery)
+		require.Equal(t, toTime("0000000000"), store.addedStartTime)
+		require.InDelta(t, int64(model.Now()), int64(store.addedEndTime), 1000)
+	})
+
+	t.Run("it returns 500 when the delete store errors", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{addErr: errors.New("something bad")}
+		h := NewDeleteRequestHandler(store, time.Second, nil)
+
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+		require.Equal(t, w.Code, http.StatusInternalServerError)
+	})
+
+	t.Run("Validation", func(t *testing.T) {
+		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Second, nil)
+
+		for _, tc := range []struct {
+			orgID, query, startTime, endTime, error string
+		}{
+			{"", `{foo="bar"}`, "0000000000", "0000000001", "no org id\n"},
+			{"org-id", "", "0000000000", "0000000001", "query not set\n"},
+			{"org-id", `not a query`, "0000000000", "0000000001", "invalid query expression\n"},
+			{"org-id", `{foo="bar"}`, "", "0000000001", "start time not set\n"},
+			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "invalid start time: require unix seconds or RFC3339 format\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "invalid end time: require unix seconds or RFC3339 format\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "deletes in the future are not allowed\n"},
+			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "start time can't be greater than end time\n"},
+		} {
+			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
+				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)
+
+				w := httptest.NewRecorder()
+				h.AddDeleteRequestHandler(w, req)
+
+				require.Equal(t, w.Code, http.StatusBadRequest)
+				require.Equal(t, w.Body.String(), tc.error)
+			})
+		}
+	})
+}
+
+func buildRequest(orgID, query, start, end string) *http.Request {
+	var req *http.Request
+	if orgID == "" {
+		req, _ = http.NewRequest(http.MethodGet, "", nil)
+	} else {
+		ctx := user.InjectOrgID(context.Background(), orgID)
+		req, _ = http.NewRequestWithContext(ctx, http.MethodGet, "", nil)
 	}
 
-	// Setup handler
-	drh := NewDeleteRequestHandler(testDeleteRequestsStore, 10*time.Second, fl, nil)
-	middle := drh.deletionMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	q := req.URL.Query()
+	q.Set("query", query)
+	q.Set("start", start)
+	q.Set("end", end)
+	req.URL.RawQuery = q.Encode()
 
-	// User that has deletion enabled
-	req := httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "1"))
+	return req
+}
 
-	res := httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusOK, res.Result().StatusCode)
-
-	// User that does not have deletion enabled
-	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "2"))
-
-	res = httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
-
-	// User without override, this should use the default value which is false
-	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
-
-	res = httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
-
-	// User without override, after the default value is set to true
-	fl.defaultLimit.compactorDeletionEnabled = true
-
-	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
-
-	res = httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusOK, res.Result().StatusCode)
-
-	// User header is not given
-	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
-
-	res = httptest.NewRecorder()
-	middle.ServeHTTP(res, req)
-
-	require.Equal(t, http.StatusBadRequest, res.Result().StatusCode)
+func toTime(t string) model.Time {
+	modelTime, _ := util.ParseTime(t)
+	return model.Time(modelTime)
 }

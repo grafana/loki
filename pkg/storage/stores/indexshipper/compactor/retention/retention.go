@@ -45,7 +45,7 @@ type ChunkEntry struct {
 type ChunkEntryCallback func(ChunkEntry) (deleteChunk bool, err error)
 
 type ChunkIterator interface {
-	ForEachChunk(callback ChunkEntryCallback) error
+	ForEachChunk(ctx context.Context, callback ChunkEntryCallback) error
 }
 
 type SeriesCleaner interface {
@@ -82,15 +82,17 @@ type Marker struct {
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
 	chunkClient      client.Client
+	markTimeout      time.Duration
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	metrics := newMarkerMetrics(r)
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
 		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
+		markTimeout:      markTimeout,
 	}, nil
 }
 
@@ -104,7 +106,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, in
 	}()
 	level.Debug(logger).Log("msg", "starting to process table")
 
-	empty, modified, err := t.markTable(ctx, tableName, userID, indexProcessor)
+	empty, modified, err := t.markTable(ctx, tableName, userID, indexProcessor, logger)
 	if err != nil {
 		status = statusFailure
 		return false, false, err
@@ -112,7 +114,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, in
 	return empty, modified, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor) (bool, bool, error) {
+func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
 	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
@@ -124,7 +126,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 
 	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
 
-	empty, modified, err := markforDelete(ctx, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter)
+	empty, modified, err := markForDelete(ctx, t.markTimeout, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter, logger)
 	if err != nil {
 		return false, false, err
 	}
@@ -146,8 +148,16 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 	return empty, modified, nil
 }
 
-func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, indexFile IndexProcessor,
-	expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, bool, error) {
+func markForDelete(
+	ctx context.Context,
+	timeout time.Duration,
+	tableName string,
+	marker MarkerStorageWriter,
+	indexFile IndexProcessor,
+	expiration ExpirationChecker,
+	chunkRewriter *chunkRewriter,
+	logger log.Logger,
+) (bool, bool, error) {
 	seriesMap := newUserSeriesMap()
 	// tableInterval holds the interval for which the table is expected to have the chunks indexed
 	tableInterval := ExtractIntervalFromTableName(tableName)
@@ -156,7 +166,12 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 	now := model.Now()
 	chunksFound := false
 
-	err := indexFile.ForEachChunk(func(c ChunkEntry) (bool, error) {
+	// This is a fresh context so we know when deletes timeout vs something going
+	// wrong with the other context
+	iterCtx, cancel := ctxForTimeout(timeout)
+	defer cancel()
+
+	err := indexFile.ForEachChunk(iterCtx, func(c ChunkEntry) (bool, error) {
 		chunksFound = true
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
@@ -204,7 +219,13 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 		return false, nil
 	})
 	if err != nil {
-		return false, false, err
+		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {
+			// Deletes timed out. Don't return an error so compaction can continue and deletes can be retried
+			level.Warn(logger).Log("msg", "Timed out while running delete")
+			expiration.MarkPhaseTimedOut()
+		} else {
+			return false, false, err
+		}
 	}
 
 	if !chunksFound {
@@ -224,6 +245,13 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 
 		return indexFile.CleanupSeries(info.UserID(), info.lbls)
 	})
+}
+
+func ctxForTimeout(t time.Duration) (context.Context, context.CancelFunc) {
+	if t == 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), t)
 }
 
 type ChunkClient interface {

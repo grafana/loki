@@ -160,7 +160,7 @@ func openCompactedIndex(path string) (*compactedIndex, error) {
 	return &compactedIndex{indexFile: idxFile}, nil
 }
 
-func (c compactedIndex) ForEachChunk(_ retention.ChunkEntryCallback) error {
+func (c compactedIndex) ForEachChunk(_ context.Context, _ retention.ChunkEntryCallback) error {
 	return nil
 }
 
