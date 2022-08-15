@@ -73,14 +73,15 @@ func NewTargetManager(
 				_, ok := tm.groups[syncerKey]
 				if !ok {
 					tm.groups[syncerKey] = &targetGroup{
-						metrics:       metrics,
-						logger:        logger,
-						positions:     positions,
-						targets:       make(map[string]*Target),
-						entryHandler:  pipeline.Wrap(pushClient),
-						defaultLabels: model.LabelSet{},
-						relabelConfig: cfg.RelabelConfigs,
-						host:          sdConfig.Host,
+						metrics:          metrics,
+						logger:           logger,
+						positions:        positions,
+						targets:          make(map[string]*Target),
+						entryHandler:     pipeline.Wrap(pushClient),
+						defaultLabels:    model.LabelSet{},
+						relabelConfig:    cfg.RelabelConfigs,
+						host:             sdConfig.Host,
+						httpClientConfig: sdConfig.HTTPClientConfig,
 					}
 				}
 				configs[syncerKey] = append(configs[syncerKey], sdConfig)
