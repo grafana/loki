@@ -2,7 +2,7 @@ FROM golang:1.17.9 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
-RUN CGO_ENABLED=0 go build ./cmd/logql-analyzer/
+RUN make clean && CGO_ENABLED=0 go build ./cmd/logql-analyzer/
 
 FROM alpine:3.15.4
 
