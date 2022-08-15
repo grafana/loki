@@ -1179,6 +1179,49 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+depends_on:
+- check
+kind: pipeline
+name: logql-analyzer
+steps:
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-logql-analyzer-image
+  settings:
+    dockerfile: clients/cmd/logql-analyzer/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/logql-analyzer
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-logql-analyzer-image
+  settings:
+    dockerfile: clients/cmd/logql-analyzer/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/logql-analyzer
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
@@ -1474,8 +1517,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: f97eb90ab5198649edd375255530188042f0b35172ce589e51362f5a5fef20ca
-
-...

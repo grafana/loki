@@ -45,5 +45,8 @@ func createServer(cfg server.Config) (*server.Server, error) {
 	s.HTTP.Use(mux.CORSMethodMiddleware(s.HTTP))
 	s.HTTP.Use(logqlanalyzer.CorsMiddleware())
 	s.HTTP.Handle("/api/logql-analyze", &logqlanalyzer.LogQLAnalyzeHandler{}).Methods(http.MethodPost, http.MethodOptions)
+	s.HTTP.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "ready", http.StatusOK)
+	}).Methods(http.MethodGet)
 	return s, err
 }
