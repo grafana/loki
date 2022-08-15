@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -69,7 +70,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, r.Method, p.routeName).Inc()
+	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, r.Method, p.routeName, detectIssuer(r)).Inc()
 }
 
 func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *backendResponse) {
@@ -80,6 +81,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 		expectedResponseIdx int
 		responses           = make([]*backendResponse, len(p.backends))
 		query               = r.URL.RawQuery
+		issuer              = detectIssuer(r)
 	)
 
 	if r.Body != nil {
@@ -133,7 +135,13 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			}
 
 			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", b.name, "status", status, "elapsed", elapsed)
-			p.metrics.requestDuration.WithLabelValues(res.backend.name, r.Method, p.routeName, strconv.Itoa(res.statusCode())).Observe(elapsed.Seconds())
+			p.metrics.requestDuration.WithLabelValues(
+				res.backend.name,
+				r.Method,
+				p.routeName,
+				strconv.Itoa(res.statusCode()),
+				issuer,
+			).Observe(elapsed.Seconds())
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
@@ -170,7 +178,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				result = comparisonFailed
 			}
 
-			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result).Inc()
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
 		}
 	}
 }
@@ -249,4 +257,11 @@ func (r *backendResponse) statusCode() int {
 	}
 
 	return r.status
+}
+
+func detectIssuer(r *http.Request) string {
+	if strings.HasPrefix(r.Header.Get("User-Agent"), "loki-canary") {
+		return canaryIssuer
+	}
+	return unknownIssuer
 }
