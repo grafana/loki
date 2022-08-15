@@ -1183,7 +1183,16 @@ depends_on:
 - check
 kind: pipeline
 name: logql-analyzer
+platform:
+  arch: amd64
+  os: linux
 steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -1517,3 +1526,8 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
+---
+kind: signature
+hmac: 54404450c51585838eb0f7038ffc7f0e312bb2a662fa5095105ba07f98c44788
+
+...

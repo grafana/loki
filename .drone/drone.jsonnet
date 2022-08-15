@@ -311,7 +311,7 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
-local logql_analyzer() = pipeline('logql-analyzer') {
+local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'logql-analyzer') {
