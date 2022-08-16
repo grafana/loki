@@ -2124,10 +2124,8 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
-# Deletion mode.
-# Can be one of "disabled", "filter-only", or "filter-and-delete".
-# When set to "filter-only" or "filter-and-delete", and if
-# retention_enabled is true, then the log entry deletion API endpoints are available.
+# Deprecated: Deletion mode.
+# Use deletion_mode per tenant configuration instead.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "disabled"]
 
@@ -2397,6 +2395,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
+
+# Deprecated: Use deletion_mode per tenant configuration instead.
+# CLI flag: -compactor.allow_deletes
+[allow_deletes: <boolean> | default = false]
+
+# Deletion mode.
+# Can be one of "disabled", "filter-only", or "filter-and-delete".
+# When set to "filter-only" or "filter-and-delete", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "filter-and-delete"]
 ```
 
 ## sigv4_config
