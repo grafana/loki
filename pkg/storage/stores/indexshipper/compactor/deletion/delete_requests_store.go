@@ -74,7 +74,7 @@ func (ds *deleteRequestsStore) Stop() {
 	ds.indexClient.Stop()
 }
 
-// AddDeleteRequestGroup creates entries for new delete requests. All passed delete requests will be associeted to
+// AddDeleteRequestGroup creates entries for new delete requests. All passed delete requests will be associated to
 // each other by request id
 func (ds *deleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
 	if len(reqs) == 0 {
@@ -147,10 +147,9 @@ func (ds *deleteRequestsStore) generateID(ctx context.Context, req DeleteRequest
 	requestID := generateUniqueID(req.UserID, req.Query)
 
 	for {
-		_, err := ds.GetDeleteRequestGroup(ctx, req.UserID, string(requestID))
-		if err != nil {
+		if _, err := ds.GetDeleteRequestGroup(ctx, req.UserID, string(requestID)); err != nil {
 			if err == ErrDeleteRequestNotFound {
-				break
+				return requestID, nil
 			}
 			return nil, err
 		}
@@ -159,8 +158,6 @@ func (ds *deleteRequestsStore) generateID(ctx context.Context, req DeleteRequest
 		time.Sleep(time.Millisecond)
 		requestID = generateUniqueID(req.UserID, req.Query)
 	}
-
-	return requestID, nil
 }
 
 // GetDeleteRequestsByStatus returns all delete requests for given status.

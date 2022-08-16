@@ -91,12 +91,8 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 }
 
 func shardDeleteRequestsByQueryRange(startTime, endTime model.Time, query, userID string, queryRange time.Duration) []DeleteRequest {
-	var deleteRequests []DeleteRequest
-	for start := startTime; ; start = start.Add(queryRange) + 1 {
-		if start.Equal(endTime) || start.After(endTime) {
-			break
-		}
-
+	deleteRequests := make([]DeleteRequest, 0, endTime.Sub(startTime)/queryRange)
+	for start := startTime; start.Before(endTime); start = start.Add(queryRange) + 1 {
 		end := start.Add(queryRange)
 		if end.After(endTime) {
 			end = endTime
