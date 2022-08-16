@@ -238,7 +238,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg+",stream:"+pushReqStream.Labels)
 	}
 
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
