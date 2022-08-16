@@ -22,6 +22,8 @@ toc: true
   - [Loki Request Panics](#Loki-Request-Panics)
   - [Loki Request Latency](#Loki-Request-Latency)
   - [Loki Tenant Rate Limit](#Loki-Tenant-Rate-Limit)
+  - [Loki Storage Write Read](#Loki-Storage-Slow-Write)
+  - [Loki Storage Slow Read](#Loki-Storage-Slow-Read)
   - [Loki Write Path High Load](#Loki-Write-Path-High-Load)
   - [Loki Read Path High Load](#Loki-Read-Path-High-Load)
 
@@ -139,6 +141,58 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 
 - Examine the metrics for the reason and tenant that is being limited: `loki_discarded_samples_total{namespace="<namespace>"}`
 - Change the ingestion limits for the affected tenant or decrease the rate of logs entering the system
+
+## Loki Storage Slow Write
+
+### Impact
+
+The cluster is unable to push logs to backend storage in a timely manner.
+
+### Summary
+
+The cluster is unable to push logs to backend storage in a timely manner.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging`
+    - `openshift-operators-redhat`
+
+### Steps
+
+- Ensure that the cluster can communicate with the backend storage
+
+## Loki Storage Slow Read
+
+### Impact
+
+The cluster is unable to retrieve logs to backend storage in a timely manner.
+
+### Summary
+
+The cluster is unable to retrieve logs to backend storage in a timely manner.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging`
+    - `openshift-operators-redhat`
+
+### Steps
+
+- Ensure that the cluster can communicate with the backend storage
 
 ## Loki Write Path High Load
 

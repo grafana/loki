@@ -2,15 +2,12 @@
 groups:
 - name: logging_loki.rules
   rules:
-  - record: namespace_job_route:loki_request_duration_seconds_count:rate1m
+  - record: job_namespace_route:loki_request_duration_seconds_count:rate1m
     expr: |
-      sum by (namespace, job, route) (rate(loki_request_duration_seconds_count[1m]))
-  - record: namespace_operation:loki_boltdb_shipper_request_duration_seconds:99quantile
+      sum by (job, namespace, route) (rate(loki_request_duration_seconds_count[1m]))
+  - record: namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m
     expr: |
-      histogram_quantile(.99,
-        sum(
-          rate(
-            loki_boltdb_shipper_request_duration_seconds_bucket[5m]
-          )
-        ) by (le, namespace, operation)
-      )
+      sum by (le, namespace, operation) (rate(loki_boltdb_shipper_request_duration_seconds_bucket[5m]))
+  - record: namespace_operation:loki_boltdb_shipper_request_duration_seconds_rate5m:99quantile
+    expr: |
+      histogram_quantile(.99, namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m)
