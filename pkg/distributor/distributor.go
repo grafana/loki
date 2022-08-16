@@ -205,6 +205,7 @@ type pushTracker struct {
 }
 
 // Push a set of streams.
+// The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -260,12 +261,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 			// since Loki will accept out of order writes it doesn't account for separate
 			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.incrementDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
+			if validationContext.incrementDuplicateTimestamps && n != 0 {
 				// Traditional logic for Loki is that 2 lines with the same timestamp and
 				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 				// To maintain this behavior, only increment the timestamp if the log content is different
 				if stream.Entries[n-1].Line != entry.Line {
-					stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
+					stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
 				}
 			}
 
@@ -336,6 +337,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// maxT returns the highest between two given timestamps.
+func maxT(t1, t2 time.Time) time.Time {
+	if t1.Before(t2) {
+		return t2
+	}
+
+	return t1
 }
 
 func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
