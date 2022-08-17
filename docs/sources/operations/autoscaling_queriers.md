@@ -17,7 +17,7 @@ we have designed a set of resources to help you autoscale your Loki queriers.
 You need to run Loki in Kubernetes as a set of microservices.
 
 We recommend using [Kubernetes Event-Driven Autoscaling (KEDA)](https://keda.sh/) to configure autoscaling
-based on Prometheus metrics. Refer to the [Deploying KEDA](https://keda.sh/docs/latest/deploy) to learn more
+based on Prometheus metrics. Refer to the [Deploying KEDA](https://keda.sh/docs/latest/deploy) section to learn more
 about setting up KEDA in your Kubernetes cluster.
 
 ## Scaling metric
@@ -28,7 +28,7 @@ Queriers pull queries from the query-scheduler queue and process them on the que
 - The queries running in the queriers.
 
 The query-scheduler exposes the `cortex_query_scheduler_inflight_requests` metric.
-It tracks the number of queued queries plus the number of queries currently running in the querier workers.
+It tracks the sum of queued queries plus the number of queries currently running in the querier workers.
 The following query is useful to scale queriers based on the inflight requests.
 
 ```promql
