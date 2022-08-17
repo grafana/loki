@@ -361,7 +361,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 
 		require.Len(t, result, 2)
 		require.Equal(t, []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
+			{RequestID: "test-request-1", CreatedAt: now, Status: "66% Complete"},
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
 		}, result)
 	})

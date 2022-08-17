@@ -186,10 +186,12 @@ func mergeDeletes(groups map[string][]DeleteRequest) []DeleteRequest {
 }
 
 func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestStatus) {
-	startTime := model.Time(math.MaxInt64)
-	endTime := model.Time(0)
+	var (
+		startTime    = model.Time(math.MaxInt64)
+		endTime      = model.Time(0)
+		numProcessed = 0
+	)
 
-	isProcessed := true
 	for _, del := range deletes {
 		if del.StartTime < startTime {
 			startTime = del.StartTime
@@ -199,12 +201,15 @@ func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestSt
 			endTime = del.EndTime
 		}
 
-		isProcessed = isProcessed && del.Status == StatusProcessed
+		if del.Status == StatusProcessed {
+			numProcessed++
+		}
 	}
 
 	status := StatusProcessed
-	if !isProcessed {
-		status = StatusReceived
+	if numProcessed != len(deletes) && len(deletes) > 0 {
+		percentCompleted := (float64(numProcessed) / float64(len(deletes))) * 100
+		status = DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted)))
 	}
 
 	return startTime, endTime, status
