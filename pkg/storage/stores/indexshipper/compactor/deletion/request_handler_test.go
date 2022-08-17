@@ -346,6 +346,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
+			{RequestID: "test-request-3", CreatedAt: now.Add(time.Minute), Status: StatusReceived},
 		}
 		h := NewDeleteRequestHandler(store, 0, nil)
 
@@ -359,10 +360,11 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		var result []DeleteRequest
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 
-		require.Len(t, result, 2)
+		require.Len(t, result, 3)
 		require.Equal(t, []DeleteRequest{
 			{RequestID: "test-request-1", CreatedAt: now, Status: "66% Complete"},
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
+			{RequestID: "test-request-3", CreatedAt: now.Add(time.Minute), Status: StatusReceived},
 		}, result)
 	})
 

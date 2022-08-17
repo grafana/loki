@@ -172,7 +172,7 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 }
 
 func mergeDeletes(groups map[string][]DeleteRequest) []DeleteRequest {
-	var mergedRequests []DeleteRequest
+	mergedRequests := []DeleteRequest{} // Declare this way so the return value is [] rather than null
 	for _, deletes := range groups {
 		startTime, endTime, status := mergeData(deletes)
 		newDelete := deletes[0]
@@ -206,13 +206,20 @@ func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestSt
 		}
 	}
 
-	status := StatusProcessed
-	if numProcessed != len(deletes) && len(deletes) > 0 {
-		percentCompleted := (float64(numProcessed) / float64(len(deletes))) * 100
-		status = DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted)))
+	return startTime, endTime, deleteRequestStatus(numProcessed, len(deletes))
+}
+
+func deleteRequestStatus(processed, total int) DeleteRequestStatus {
+	if processed == 0 {
+		return StatusReceived
 	}
 
-	return startTime, endTime, status
+	if processed == total {
+		return StatusProcessed
+	}
+
+	percentCompleted := float64(processed) / float64(total)
+	return DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted*100)))
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
