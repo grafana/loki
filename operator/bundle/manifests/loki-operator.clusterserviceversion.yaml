@@ -1096,6 +1096,7 @@ spec:
           - servicemonitors
           verbs:
           - create
+          - delete
           - get
           - list
           - update
@@ -1131,6 +1132,7 @@ spec:
           - routes
           verbs:
           - create
+          - delete
           - get
           - list
           - update
