@@ -282,30 +282,32 @@ func (ds *deleteRequestsStore) queryDeleteRequestDetails(ctx context.Context, de
 		},
 	}
 
-	var parseError error
+	var marshalError error
 	var requestWithDetails DeleteRequest
 	err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
-		itr := batch.Iterator()
-		itr.Next()
-
-		requestWithDetails, parseError = parseDeleteRequestTimestamps(itr.RangeValue(), deleteRequest)
-		if parseError != nil {
-			return false
-		}
-
-		parseError = requestWithDetails.SetQuery(string(itr.Value()))
-		if parseError != nil {
+		if requestWithDetails, marshalError = unmarshalDeleteRequestDetails(batch.Iterator(), deleteRequest); marshalError != nil {
 			return false
 		}
 
 		return true
 	})
-	if err != nil {
+	if err != nil || marshalError != nil {
 		return DeleteRequest{}, err
 	}
 
-	if parseError != nil {
-		return DeleteRequest{}, parseError
+	return requestWithDetails, nil
+}
+
+func unmarshalDeleteRequestDetails(itr index.ReadBatchIterator, req DeleteRequest) (DeleteRequest, error) {
+	itr.Next()
+
+	requestWithDetails, err := parseDeleteRequestTimestamps(itr.RangeValue(), req)
+	if err != nil {
+		return DeleteRequest{}, nil
+	}
+
+	if err = requestWithDetails.SetQuery(string(itr.Value())); err != nil {
+		return DeleteRequest{}, err
 	}
 
 	return requestWithDetails, nil
