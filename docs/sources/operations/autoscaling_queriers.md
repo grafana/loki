@@ -5,7 +5,7 @@ description: Kubernetes deployments of a microservices mode Loki cluster can use
 weight: 30
 ---
 
-# Autoscaling Loki Queriers
+# Autoscaling Loki queriers
 
 A microservices deployment of a Loki cluster that runs on Kubernetes will typically handle a
 workload that varies throughout the day.
@@ -16,18 +16,18 @@ we have designed a set of resources to help you autoscale your Loki queriers.
 
 You need to run Loki in Kubernetes as a set of microservices.
 
-We recommend using [KEDA (*Kubernetes-based Event Driven Autoscaler*)](https://keda.sh/) to configure autoscaling
-based on Prometheus metrics. Refer to the [KEDA documentation](https://keda.sh/docs/latest/deploy) to learn more
+We recommend using [Kubernetes Event-Driven Autoscaling (KEDA)](https://keda.sh/) to configure autoscaling
+based on Prometheus metrics. Refer to the [Deploying KEDA](https://keda.sh/docs/latest/deploy) to learn more
 about setting up KEDA in your Kubernetes cluster.
 
 ## Scaling metric
 
-Queriers pull queries from the query scheduler queue and process them on the querier workers. Therefore, it makes sense to scale based on:
+Queriers pull queries from the query-scheduler queue and process them on the querier workers. Therefore, it makes sense to scale based on:
 
 - The scheduler queue size.
 - The queries running in the queriers.
 
-The Query Scheduler exposes the `cortex_query_scheduler_inflight_requests` metric.
+The query-scheduler exposes the `cortex_query_scheduler_inflight_requests` metric.
 It tracks the number of queued queries plus the number of queries currently running in the querier workers.
 The following query is useful to scale queriers based on the inflight requests.
 
