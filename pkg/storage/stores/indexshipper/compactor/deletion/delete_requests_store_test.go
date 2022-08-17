@@ -62,6 +62,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 	for _, expectedRequest := range append(user1Requests, user2Requests...) {
 		actualRequest, err := tc.store.GetDeleteRequestGroup(context.Background(), expectedRequest.UserID, expectedRequest.RequestID)
 		require.NoError(t, err)
+		require.Len(t, actualRequest, 1)
 		require.Equal(t, expectedRequest, actualRequest[0])
 	}
 

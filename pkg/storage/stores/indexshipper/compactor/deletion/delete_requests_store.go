@@ -118,7 +118,7 @@ func newRequest(req DeleteRequest, requestID []byte, createdAt model.Time, seqNu
 }
 
 func (ds *deleteRequestsStore) writeDeleteRequest(req DeleteRequest, writeBatch index.WriteBatch) {
-	userIDAndRequestID := deleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
+	userIDAndRequestID := backwardCompatibleDeleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
 
 	// Add an entry with userID, requestID, and sequence number as range key and status as value to make it easy
 	// to manage and lookup status. We don't want to set anything in hash key here since we would want to find
@@ -133,10 +133,11 @@ func (ds *deleteRequestsStore) writeDeleteRequest(req DeleteRequest, writeBatch 
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, generateCacheGenNumber())
 }
 
-func deleteRequestHash(userID, requestID string, sequenceNumber int64) string {
-	// Any requests made before the addition of sequence numbers won't have one
-	// Ensure backward compatibility by treating the 0th sequence number as the
-	// old format
+// backwardCompatibleDeleteRequestHash generates the hash key for a delete request.
+// Sequence numbers were added after deletion was in production so any requests made
+// before then won't have one. Ensure backward compatibility by treating the 0th
+// sequence number as the old format without any number
+func backwardCompatibleDeleteRequestHash(userID, requestID string, sequenceNumber int64) string {
 	if sequenceNumber == 0 {
 		return fmt.Sprintf("%s:%s", userID, requestID)
 	}
@@ -180,7 +181,7 @@ func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, 
 
 // UpdateStatus updates status of a delete request.
 func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
-	userIDAndRequestID := deleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
+	userIDAndRequestID := backwardCompatibleDeleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
 
 	writeBatch := ds.indexClient.NewWriteBatch()
 	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
@@ -273,7 +274,7 @@ func (ds *deleteRequestsStore) deleteRequestsWithDetails(ctx context.Context, pa
 }
 
 func (ds *deleteRequestsStore) queryDeleteRequestDetails(ctx context.Context, deleteRequest DeleteRequest) (DeleteRequest, error) {
-	userIDAndRequestID := deleteRequestHash(deleteRequest.UserID, deleteRequest.RequestID, deleteRequest.SequenceNum)
+	userIDAndRequestID := backwardCompatibleDeleteRequestHash(deleteRequest.UserID, deleteRequest.RequestID, deleteRequest.SequenceNum)
 	deleteRequestQuery := []index.Query{
 		{
 			TableName: DeleteRequestsTableName,
@@ -322,7 +323,7 @@ func (ds *deleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []
 }
 
 func (ds *deleteRequestsStore) removeRequest(req DeleteRequest, writeBatch index.WriteBatch) {
-	userIDAndRequestID := deleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
+	userIDAndRequestID := backwardCompatibleDeleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
 	writeBatch.Delete(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value

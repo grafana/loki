@@ -2109,8 +2109,8 @@ compacts index shards to more performant forms.
 # is input, the request is sharded into smaller requests of no more than delete_max_query_range.
 #
 # 0 means no max_query_period.
-# CLI flag: -boltdb.shipper.compactor.delete-max-query-range
-[delete_max_query_range: <duration> | default = 0]
+# CLI flag: -boltdb.shipper.compactor.delete-max-interval
+[delete_max_interval: <duration> | default = 0]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size

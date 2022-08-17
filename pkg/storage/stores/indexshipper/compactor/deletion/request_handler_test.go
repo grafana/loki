@@ -47,7 +47,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 		req := buildRequest("org-id", `{foo="bar"}`, unixString(from), unixString(to))
 		params := req.URL.Query()
-		params.Set("max_query_range", "1h")
+		params.Set("max_interval", "1h")
 		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
@@ -144,7 +144,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Minute, nil)
 
 		for _, tc := range []struct {
-			orgID, query, startTime, endTime, queryRange, error string
+			orgID, query, startTime, endTime, interval, error string
 		}{
 			{"", `{foo="bar"}`, "0000000000", "0000000001", "", "no org id\n"},
 			{"org-id", "", "0000000000", "0000000001", "", "query not set\n"},
@@ -154,15 +154,15 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "", "deletes in the future are not allowed\n"},
 			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than end time\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "not-a-duration", "invalid query range: valid time units are 's', 'm', 'h'\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1ms", "invalid query range: valid time units are 's', 'm', 'h'\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1h", "query range can't be greater than 1m0s\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "not-a-duration", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1ms", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
+			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1h", "max_interval can't be greater than 1m\n"},
 		} {
 			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)
 
 				params := req.URL.Query()
-				params.Set("max_query_range", tc.queryRange)
+				params.Set("max_interval", tc.interval)
 				req.URL.RawQuery = params.Encode()
 
 				w := httptest.NewRecorder()

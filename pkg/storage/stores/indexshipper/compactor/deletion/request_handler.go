@@ -25,14 +25,14 @@ import (
 type DeleteRequestHandler struct {
 	deleteRequestsStore DeleteRequestsStore
 	metrics             *deleteRequestHandlerMetrics
-	maxQueryRange       time.Duration
+	maxInterval         time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxQueryRange time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxInterval time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteRequestsStore: deleteStore,
-		maxQueryRange:       maxQueryRange,
+		maxInterval:         maxInterval,
 		metrics:             newDeleteRequestHandlerMetrics(registerer),
 	}
 
@@ -67,13 +67,13 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	queryRange, err := dm.queryRange(params, startTime, endTime)
+	interval, err := dm.interval(params, startTime, endTime)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	deleteRequests := shardDeleteRequestsByQueryRange(startTime, endTime, query, userID, queryRange)
+	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, interval)
 	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -90,10 +90,10 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func shardDeleteRequestsByQueryRange(startTime, endTime model.Time, query, userID string, queryRange time.Duration) []DeleteRequest {
-	deleteRequests := make([]DeleteRequest, 0, endTime.Sub(startTime)/queryRange)
-	for start := startTime; start.Before(endTime); start = start.Add(queryRange) + 1 {
-		end := start.Add(queryRange)
+func shardDeleteRequestsByInterval(startTime, endTime model.Time, query, userID string, interval time.Duration) []DeleteRequest {
+	deleteRequests := make([]DeleteRequest, 0, endTime.Sub(startTime)/interval)
+	for start := startTime; start.Before(endTime); start = start.Add(interval) + 1 {
+		end := start.Add(interval)
 		if end.After(endTime) {
 			end = endTime
 		}
@@ -109,31 +109,31 @@ func shardDeleteRequestsByQueryRange(startTime, endTime model.Time, query, userI
 	return deleteRequests
 }
 
-func (dm *DeleteRequestHandler) queryRange(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
-	qr := params.Get("max_query_range")
+func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
+	qr := params.Get("max_interval")
 	if qr == "" {
-		if dm.maxQueryRange == 0 {
+		if dm.maxInterval == 0 {
 			return endTime.Sub(startTime), nil
 		}
 
-		return min(endTime.Sub(startTime), dm.maxQueryRange), nil
+		return min(endTime.Sub(startTime), dm.maxInterval), nil
 	}
 
-	queryRange, err := time.ParseDuration(qr)
-	if err != nil || queryRange < time.Second {
-		return 0, errors.New("invalid query range: valid time units are 's', 'm', 'h'")
+	interval, err := time.ParseDuration(qr)
+	if err != nil || interval < time.Second {
+		return 0, errors.New("invalid max_interval: valid time units are 's', 'm', 'h'")
 	}
 
-	if queryRange > dm.maxQueryRange && dm.maxQueryRange != 0 {
-		dur, err := time.ParseDuration(dm.maxQueryRange.String())
+	if interval > dm.maxInterval && dm.maxInterval != 0 {
+		dur, err := model.ParseDuration(dm.maxInterval.String())
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error parsing query range", "err", err)
+			level.Error(util_log.Logger).Log("msg", "error parsing max_interval", "err", err)
 			return 0, err
 		}
-		return 0, fmt.Errorf("query range can't be greater than %s", dur.String())
+		return 0, fmt.Errorf("max_interval can't be greater than %s", dur.String())
 	}
 
-	return queryRange, nil
+	return interval, nil
 }
 
 func min(a, b time.Duration) time.Duration {

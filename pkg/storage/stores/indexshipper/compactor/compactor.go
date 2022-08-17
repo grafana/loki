@@ -82,7 +82,7 @@ type Config struct {
 	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
-	DeleteMaxQueryRange       time.Duration   `yaml:"delete_max_query_range"`
+	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
 	RunOnce                   bool            `yaml:"-"`
@@ -103,7 +103,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.IntVar(&cfg.DeleteBatchSize, "boltdb.shipper.compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
-	f.DurationVar(&cfg.DeleteMaxQueryRange, "boltdb.shipper.compactor.delete-max-query-range", 0, "Constrain the size of any one delete request. When a delete request > delete_max_query_range is input, the request is sharded into smaller requests of no more than delete_max_query_range")
+	f.DurationVar(&cfg.DeleteMaxInterval, "boltdb.shipper.compactor.delete-max-interval", 0, "Constrain the size of any one delete request. When a delete request > delete_max_query_range is input, the request is sharded into smaller requests of no more than delete_max_interval")
 	f.DurationVar(&cfg.RetentionTableTimeout, "boltdb.shipper.compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
@@ -273,7 +273,7 @@ func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Over
 
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
-		c.cfg.DeleteMaxQueryRange,
+		c.cfg.DeleteMaxInterval,
 		r,
 	)
 
