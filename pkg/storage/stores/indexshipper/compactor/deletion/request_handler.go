@@ -125,12 +125,11 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 	}
 
 	if interval > dm.maxInterval && dm.maxInterval != 0 {
-		dur, err := model.ParseDuration(dm.maxInterval.String())
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error parsing max_interval", "err", err)
-			return 0, err
-		}
-		return 0, fmt.Errorf("max_interval can't be greater than %s", dur.String())
+		return 0, fmt.Errorf("max_interval can't be greater than %s", dm.maxInterval.String())
+	}
+
+	if interval > endTime.Sub(startTime) {
+		return 0, fmt.Errorf("max_interval can't be greater than the interval to be deleted (%s)", endTime.Sub(startTime))
 	}
 
 	return interval, nil
