@@ -90,11 +90,11 @@ a stabilization window for scaling down.
 
 ### KEDA configuration
 
-The following [KEDA ScaledObject](https://keda.sh/docs/latest/concepts/scaling-deployments/) configures autoscaling
+This [KEDA ScaledObject](https://keda.sh/docs/latest/concepts/scaling-deployments/) example configures autoscaling
 for the querier deployment in the `loki-cluster` namespace.
 We set the minimum number of replicas to 10 and the maximum number of replicas to 50.
 Since each querier runs 6 workers, aiming to use 75% of those workers, we set the threshold to 4.
-The metric is served at `http://prometheus.default:9090/prometheus`. We configure an stabilization window of 30 minutes.
+The metric is served at `http://prometheus.default:9090/prometheus`. We configure a stabilization window of 30 minutes.
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
