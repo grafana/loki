@@ -49,18 +49,18 @@ Our recommendation is to adjust these values according to your workload.
 
 ## Cluster capacity planning
 
-When configuring KEDA to scale your Loki queriers, we need to configure a few things:
+When configuring KEDA to scale your Loki queriers, we need to configure:
 
-- The threshold for scaling up and down.
-- Scale down stabilization period.
-- The minimum and the maximum number of queriers.
+- The threshold for scaling up and down
+- The scale down stabilization period
+- The minimum and the maximum number of queriers
 
-Querier workers process queries from the queue, each of our queriers can be configured to run several workers.
-Our recommendation is to aim using 75% of those workers to leave some workforce headroom for workload spikes.
+Querier workers process queries from the queue. Each of our queriers can be configured to run several workers.
+Our recommendation is to aim for using 75% of those workers, to leave some workforce headroom for workload spikes.
 Therefore, if we configure our queriers to run 6 workers, we will set a threshold of `floor(0.75 * 6) = 4`.
 
-Our recommendation for the minimum number of queriers is running at least one queriers and look at the average
-number of inflight requests 75% of the time in the last seven days, targeting a 75% utilization of our queriers.
+Our recommendation for the minimum number of queriers is to run at least one querier, and to look at the average
+number of inflight requests 75% of the time in the last seven days, targeting a 75% utilization of the queriers.
 So if we use 6 workers per querier, we will use the following query:
 
 ```promql
