@@ -74,7 +74,7 @@ clamp_min(ceil(
 Our recommendation for the maximum number of queriers is running the number of queriers that would be required
 to process all the inflight requests you had 50% of the time during the last seven days.
 As for the previous example, if each querier runs 6 workers, we divide the inflight requests by 6.
-The resulting query looks as follows.
+The resulting query becomes:
 
 ```promql
 ceil(
