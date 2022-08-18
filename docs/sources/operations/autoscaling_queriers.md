@@ -14,7 +14,7 @@ we have designed a set of resources to help you autoscale your Loki queriers.
 
 ## Prerequisites
 
-You need to run Loki in Kubernetes as a set of microservices.
+You need to run Loki in Kubernetes as a set of microservices. You need to use the query-scheduler.
 
 We recommend using [Kubernetes Event-Driven Autoscaling (KEDA)](https://keda.sh/) to configure autoscaling
 based on Prometheus metrics. Refer to the [Deploying KEDA](https://keda.sh/docs/latest/deploy) section to learn more
