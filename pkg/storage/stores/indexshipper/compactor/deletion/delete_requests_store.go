@@ -136,7 +136,8 @@ func (ds *deleteRequestsStore) writeDeleteRequest(req DeleteRequest, writeBatch 
 // backwardCompatibleDeleteRequestHash generates the hash key for a delete request.
 // Sequence numbers were added after deletion was in production so any requests made
 // before then won't have one. Ensure backward compatibility by treating the 0th
-// sequence number as the old format without any number
+// sequence number as the old format without any number. As a consequence, the 0th
+// sequence number will also be ignored for any new delete requests.
 func backwardCompatibleDeleteRequestHash(userID, requestID string, sequenceNumber int64) string {
 	if sequenceNumber == 0 {
 		return fmt.Sprintf("%s:%s", userID, requestID)
