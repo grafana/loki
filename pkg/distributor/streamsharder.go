@@ -1,8 +1,10 @@
 package distributor
 
+import "github.com/grafana/loki/pkg/logproto"
+
 type NoopStreamSharder struct{}
 
-func (s *NoopStreamSharder) ShardsFor(stream string) ShardIter {
+func (s *NoopStreamSharder) ShardsFor(_ logproto.Stream) ShardIter {
 	return &NoopShardIter{}
 }
 func (s *NoopStreamSharder) IncreaseShardsFor(_ string) {}

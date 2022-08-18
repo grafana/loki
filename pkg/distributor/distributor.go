@@ -55,14 +55,16 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 }
 
+// StreamSharder manages the state necessary to shard streams.
+type StreamSharder interface {
+	ShardsFor(stream logproto.Stream) ShardIter
+	IncreaseShardsFor(stream string)
+}
+
+// ShardIter provides the information needed to shard a stream in a threadsafe way
 type ShardIter interface {
 	NumShards() int
 	NextShardID() int
-}
-
-type StreamSharder interface {
-	ShardsFor(stream string) ShardIter
-	IncreaseShardsFor(stream string)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
