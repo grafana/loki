@@ -1103,10 +1103,13 @@ curl -u "Tenant1:$API_TOKEN" \
 DELETE /loki/api/v1/delete
 ```
 
+Query Parameters:
+* `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted.
+
 Remove a delete request for the authenticated tenant.
 The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
-Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
+Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 

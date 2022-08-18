@@ -251,6 +251,11 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
+	if len(toDelete) != len(deleteRequests) && params.Get("force") != "true" {
+		http.Error(w, "Unable to cancel partially completed delete request. To force, use the ?force query parameter", http.StatusBadRequest)
+		return
+	}
+
 	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, toDelete); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

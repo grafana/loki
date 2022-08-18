@@ -177,7 +177,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 }
 
 func TestCancelDeleteRequestHandler(t *testing.T) {
-	t.Run("it removes unprocessed delete requests from the store", func(t *testing.T) {
+	t.Run("it removes unprocessed delete requests from the store when force is true", func(t *testing.T) {
 		stored := []DeleteRequest{
 			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 0, Status: StatusProcessed},
 			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 1, Status: StatusReceived},
@@ -190,6 +190,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		req := buildRequest("org-id", ``, "", "")
 		params := req.URL.Query()
 		params.Set("request_id", "test-request")
+		params.Set("force", "true")
 		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
@@ -200,6 +201,30 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		require.Equal(t, store.getUser, "org-id")
 		require.Equal(t, store.getID, "test-request")
 		require.Equal(t, stored[1], store.removeReqs[0])
+	})
+
+	t.Run("it returns an error when parts of the query have started to be processed", func(t *testing.T) {
+		stored := []DeleteRequest{
+			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
+			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
+			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
+		}
+		store := &mockDeleteRequestsStore{}
+		store.getResult = stored
+
+		h := NewDeleteRequestHandler(store, 0, nil)
+
+		req := buildRequest("org-id", ``, "", "")
+		params := req.URL.Query()
+		params.Set("request_id", "test-request")
+		params.Set("force", "false")
+		req.URL.RawQuery = params.Encode()
+
+		w := httptest.NewRecorder()
+		h.CancelDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusBadRequest)
+		require.Equal(t, "Unable to cancel partially completed delete request. To force, use the ?force query parameter\n", w.Body.String())
 	})
 
 	t.Run("error getting from store", func(t *testing.T) {
