@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-kit/log/level"
+	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
@@ -16,7 +18,9 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -111,7 +115,8 @@ type Limits struct {
 	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 	RulerRemoteWriteSigV4Config            *sigv4.SigV4Config           `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
 
-	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
+	// Global and per tenant deletion mode
+	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -120,6 +125,9 @@ type Limits struct {
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
+
+	// Deprecated
+	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
 }
 
 type StreamRetention struct {
@@ -196,7 +204,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("30m")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 
-	f.BoolVar(&l.CompactorDeletionEnabled, "compactor.allow-deletes", false, "Enable access to the deletion API.")
+	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Set the deletion mode for the user. Options are: disabled, filter-only, and filter-and-delete")
+
+	// Deprecated
+	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -234,6 +245,15 @@ func (l *Limits) Validate() error {
 			l.StreamRetention[i].Matchers = matchers
 		}
 	}
+
+	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
+		return err
+	}
+
+	if l.CompactorDeletionEnabled {
+		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
+	}
+
 	return nil
 }
 
@@ -536,8 +556,8 @@ func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
 }
 
-func (o *Overrides) CompactorDeletionEnabled(userID string) bool {
-	return o.getOverridesForUser(userID).CompactorDeletionEnabled
+func (o *Overrides) DeletionMode(userID string) string {
+	return o.getOverridesForUser(userID).DeletionMode
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

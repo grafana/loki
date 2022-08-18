@@ -160,6 +160,10 @@ type JournalTargetConfig struct {
 	// Path to a directory to read journal entries from. Defaults to system path
 	// if empty.
 	Path string `yaml:"path"`
+
+	// Journal matches to filter. Character (+) is not supported, only logical AND
+	// matches will be added.
+	Matches string `yaml:"matches"`
 }
 
 // SyslogTargetConfig describes a scrape config that listens for log lines over syslog.
@@ -348,7 +352,7 @@ type GcplogTargetConfig struct {
 	// ProjectID is the Cloud project id
 	ProjectID string `yaml:"project_id"`
 
-	// Subscription is the scription name we use to pull logs from a pubsub topic.
+	// Subscription is the subscription name we use to pull logs from a pubsub topic.
 	Subscription string `yaml:"subscription"`
 
 	// Labels are the additional labels to be added to log entry while pushing it to Loki server.
@@ -358,6 +362,13 @@ type GcplogTargetConfig struct {
 	// current timestamp at the time of processing.
 	// Its default value(`false`) denotes, replace it with current timestamp at the time of processing.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// SubscriptionType decides if the target works with a `pull` or `push` subscription type.
+	// Defaults to `pull` for backwards compatibility reasons.
+	SubscriptionType string `yaml:"subscription_type"`
+
+	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
+	Server server.Config `yaml:"server"`
 }
 
 // HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.

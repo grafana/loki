@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -83,12 +82,12 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			EndTs:   end,
 		}, false},
 		{"index_stats", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &indexgatewaypb.IndexStatsRequest{
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 			})
-		}, &indexgatewaypb.IndexStatsRequest{
+		}, &logproto.IndexStatsRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
@@ -216,9 +215,9 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"index stats", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(indexStatsString))},
-			&indexgatewaypb.IndexStatsRequest{},
+			&logproto.IndexStatsRequest{},
 			&IndexStatsResponse{
-				Response: &indexgatewaypb.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
 					Streams: 1,
 					Chunks:  2,
 					Bytes:   3,
@@ -354,7 +353,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 
 func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 	from, through := util.RoundToMilliseconds(start, end)
-	toEncode := &indexgatewaypb.IndexStatsRequest{
+	toEncode := &logproto.IndexStatsRequest{
 		From:     from,
 		Through:  through,
 		Matchers: `{job="foo"}`,
@@ -439,7 +438,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 		{
 			"index stats",
 			&IndexStatsResponse{
-				Response: &indexgatewaypb.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
 					Streams: 1,
 					Chunks:  2,
 					Bytes:   3,

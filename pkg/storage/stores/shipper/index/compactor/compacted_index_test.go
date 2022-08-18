@@ -46,7 +46,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 
 			// remove c1, c2 chunk and index c4 with same labels as c2
 			c4 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(30*time.Minute))
-			err := compactedIndex.ForEachChunk(func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+			err := compactedIndex.ForEachChunk(context.Background(), func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
 				if entry.Labels.Get("fizz") == "buzz" {
 					chunkIndexed, err := compactedIndex.IndexChunk(c4)
 					require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			}
 			chunkEntriesFound := []retention.ChunkEntry{}
 			err = modifiedBoltDB.View(func(tx *bbolt.Tx) error {
-				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
 					chunkEntriesFound = append(chunkEntriesFound, entry)
 					return false, nil
 				})
