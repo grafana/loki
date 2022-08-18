@@ -265,6 +265,33 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
+		"incrementing enabled, multiple repeated-timestamps": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "hi"},
+							{Timestamp: time.Unix(123456, 0), Line: "hey there"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 1), Line: "hi"},
+							{Timestamp: time.Unix(123456, 2), Line: "hey there"},
+						},
+					},
+				},
+			},
+		},
 		"incrementing enabled, multiple subsequent increments": {
 			limits: incrementingEnabled,
 			push: &logproto.PushRequest{
