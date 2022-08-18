@@ -42,9 +42,7 @@ func (shard ShardAnnotation) Match(fp model.Fingerprint) bool {
 	requiredBits := shard.RequiredBits()
 
 	// A shard only matches a fingerprint when they both start with the same prefix
-	prefix := uint64(shard.Shard) << (64 - requiredBits)
-
-	return prefix^uint64(fp) < 1<<(64-requiredBits)
+	return uint64(shard.Shard) == uint64(fp)>>(64-requiredBits)
 }
 
 // String encodes a shardAnnotation into a label value

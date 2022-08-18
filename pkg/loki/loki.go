@@ -255,7 +255,7 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
-	groupcacheRingManager    *cache.GroupcacheRingManager
+	embeddedcacheRingManager *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -476,7 +476,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
-	mm.RegisterModule(GroupCache, t.initGroupcache, modules.UserInvisibleModule)
+	mm.RegisterModule(Embededcache, t.initEmbeddedCache, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -503,16 +503,16 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		GroupCache:               {RuntimeConfig, Server, MemberlistKV},
+		Embededcache:             {RuntimeConfig, Server, MemberlistKV},
 		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, GroupCache, IndexGatewayRing},
+		Store:                    {Overrides, Embededcache, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
-		QueryFrontendTripperware: {Server, GroupCache, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Embededcache, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},

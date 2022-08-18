@@ -130,6 +130,7 @@ server:
   http_listen_port: %d
   grpc_listen_port: %d
 common:
+  compactor_address: http://localhost:%d
   path_prefix: /tmp/loki
   ring:
     kvstore:
@@ -143,7 +144,7 @@ schema_config:
       schema: v11
       index:
         prefix: index_
-        period: 24h`, httpPort, grpcPort)
+        period: 24h`, httpPort, grpcPort, httpPort)
 
 	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
 	require.NoError(t, err)

@@ -26,27 +26,6 @@ func TestTenantDeleteRequestsClient(t *testing.T) {
 		require.Nil(t, err)
 		require.Empty(t, reqs)
 	})
-
-	t.Run("tenant disabled but default enabled", func(t *testing.T) {
-		limits.defaultLimit.compactorDeletionEnabled = true
-		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "2")
-		require.Nil(t, err)
-		require.Empty(t, reqs)
-	})
-
-	t.Run("default is enabled", func(t *testing.T) {
-		limits.defaultLimit.compactorDeletionEnabled = true
-		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "3")
-		require.Nil(t, err)
-		require.Equal(t, []DeleteRequest{{RequestID: "test-request"}}, reqs)
-	})
-
-	t.Run("default is disabled", func(t *testing.T) {
-		limits.defaultLimit.compactorDeletionEnabled = false
-		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "3")
-		require.Nil(t, err)
-		require.Empty(t, reqs)
-	})
 }
 
 type fakeRequestsClient struct {
@@ -61,9 +40,9 @@ func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, user
 
 var (
 	limits = &fakeLimits{
-		perTenant: map[string]retentionLimit{
-			"1": {compactorDeletionEnabled: true},
-			"2": {compactorDeletionEnabled: false},
+		limits: map[string]string{
+			"1": "filter-only",
+			"2": "disabled",
 		},
 	}
 )

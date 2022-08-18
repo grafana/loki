@@ -96,12 +96,10 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-
 			Version:       lokiv1.ObjectStorageSchemaV11,
 			EffectiveDate: "2020-10-11",
 		},
 		{
-
 			Version:       lokiv1.ObjectStorageSchemaV12,
 			EffectiveDate: "2021-10-11",
 		},

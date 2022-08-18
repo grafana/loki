@@ -148,7 +148,7 @@ func TestMultiKVSetup(t *testing.T) {
 			prepareGlobalMetricsRegistry(t)
 
 			cfg := minimalWorkingConfig(t, dir, target)
-			cfg.RuntimeConfig.LoadPath = filepath.Join(dir, "config.yaml")
+			cfg.RuntimeConfig.LoadPath = []string{filepath.Join(dir, "config.yaml")}
 			c, err := New(cfg)
 			require.NoError(t, err)
 
@@ -300,5 +300,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string) Config {
 	}
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
+
+	cfg.Common.CompactorAddress = "http://localhost:0"
 	return cfg
 }

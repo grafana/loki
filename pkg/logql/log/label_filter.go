@@ -342,6 +342,7 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 	if s.Name == logqlmodel.ErrorLabel {
 		return line, s.Matches(lbs.GetErr())
 	}
+
 	v, _ := lbs.Get(s.Name)
 	return line, s.Matches(v)
 }

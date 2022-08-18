@@ -202,7 +202,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			want: &appsv1.Deployment{},
 		},
 		{
-
 			desc:      "openshift-logging mode",
 			mode:      lokiv1.OpenshiftLogging,
 			stackName: "test",

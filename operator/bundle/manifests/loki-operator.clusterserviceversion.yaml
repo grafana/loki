@@ -162,6 +162,8 @@ metadata:
     olm.skipRange: '>=5.4.0-0 <5.5.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
+    operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift
+      Platform Plus"]'
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     support: AOS Cluster Logging
@@ -1094,6 +1096,7 @@ spec:
           - servicemonitors
           verbs:
           - create
+          - delete
           - get
           - list
           - update
@@ -1129,6 +1132,7 @@ spec:
           - routes
           verbs:
           - create
+          - delete
           - get
           - list
           - update
@@ -1181,7 +1185,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.6.0
+                  value: quay.io/openshift-logging/loki:v2.6.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1307,7 +1311,7 @@ spec:
   provider:
     name: Grafana.com
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.6.0
+  - image: quay.io/openshift-logging/loki:v2.6.1
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
