@@ -638,7 +638,8 @@ type timeRangeLimits interface {
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
-	if maxQueryLookback := limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+	var maxQueryLookback time.Duration
+	if maxQueryLookback = limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
@@ -652,7 +653,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
 	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "this data is no longer available, it is past now - max_query_lookback (%s)", maxQueryLookback)
 	}
 	return from, through, nil
 }
