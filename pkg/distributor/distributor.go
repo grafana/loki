@@ -55,6 +55,16 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 }
 
+type ShardIter interface {
+	NumShards() int
+	NextShardID() int
+}
+
+type StreamSharder interface {
+	ShardsFor(stream string) ShardIter
+	IncreaseShardsFor(stream string)
+}
+
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
 	services.Service
@@ -66,6 +76,7 @@ type Distributor struct {
 	ingestersRing    ring.ReadRing
 	validator        *Validator
 	pool             *ring_client.Pool
+	streamSharder    StreamSharder
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -75,11 +86,9 @@ type Distributor struct {
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
-
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
 	labelCache           *lru.Cache
-
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
@@ -87,7 +96,15 @@ type Distributor struct {
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
+func New(
+	cfg Config,
+	clientCfg client.Config,
+	configs *runtime.TenantConfigs,
+	ingestersRing ring.ReadRing,
+	overrides *validation.Overrides,
+	sharder StreamSharder,
+	registerer prometheus.Registerer,
+) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
@@ -135,6 +152,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		ingestersRing:          ingestersRing,
 		distributorsLifecycler: distributorsLifecycler,
 		validator:              validator,
+		streamSharder:          sharder,
 		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:             labelCache,
