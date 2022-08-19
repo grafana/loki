@@ -88,14 +88,13 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // StreamSharder manages the state necessary to shard streams.
 type StreamSharder interface {
-	ShardsFor(stream logproto.Stream) (ShardIter, bool)
+	ShardsFor(stream logproto.Stream) (ShardStats, bool)
 	IncreaseShardsFor(stream logproto.Stream)
 }
 
-// ShardIter provides the information needed to shard a stream in a threadsafe way
-type ShardIter interface {
+// ShardStats provides the information needed to shard a stream in a threadsafe way
+type ShardStats interface {
 	NumShards() int
-	NextShardID() (int, bool)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -423,7 +422,6 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 	var entriesWindowSize float64
 	entriesWindowSize = float64(len(stream.Entries)) / float64(shardsIter.NumShards())
 	for i := 0; i < shardsIter.NumShards(); i++ {
-		idx, _ := shardsIter.NextShardID()
 		streamCopy := logproto.Stream{}
 		lbs, err := syntax.ParseLabels(stream.Labels)
 		if err != nil {
@@ -431,7 +429,7 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 			continue
 		}
 
-		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", idx)})
+		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", i)})
 		streamCopy.Labels = lbs.String()
 		streamCopy.Hash = lbs.Hash()
 
@@ -445,11 +443,6 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 
 		derivedKeys = append(derivedKeys, util.TokenFor(userID, streamCopy.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: streamCopy})
-
-		for range streamCopy.Entries {
-			// skip N shard calls to skip to next batch.
-			shardsIter.NextShardID()
-		}
 	}
 
 	return derivedKeys, derivedStreams

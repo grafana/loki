@@ -37,29 +37,3 @@ func TestStreamSharder(t *testing.T) {
 		require.Equal(t, 2, iter.NumShards())
 	})
 }
-
-func TestShardIter(t *testing.T) {
-	stream := logproto.Stream{Entries: make([]logproto.Entry, 11)}
-
-	t.Run("it returns indices for batching entries in a stream", func(t *testing.T) {
-		iter := NewShardIter(stream, 3)
-
-		var indices []int
-		for idx, cont := iter.NextShardID(); cont; idx, cont = iter.NextShardID() {
-			indices = append(indices, idx)
-		}
-
-		require.Equal(t, []int{0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2}, indices)
-	})
-
-	t.Run("it returns the same index when numShards is 0", func(t *testing.T) {
-		iter := NewShardIter(stream, 0)
-
-		var indices []int
-		for idx, cont := iter.NextShardID(); cont; idx, cont = iter.NextShardID() {
-			indices = append(indices, idx)
-		}
-
-		require.Equal(t, []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, indices)
-	})
-}

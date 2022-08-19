@@ -18,13 +18,13 @@ func NewStreamSharder() StreamSharder {
 	}
 }
 
-func (s *streamSharder) ShardsFor(stream logproto.Stream) (ShardIter, bool) {
+func (s *streamSharder) ShardsFor(stream logproto.Stream) (ShardStats, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	shards := s.streams[stream.Labels]
 	if shards > 0 {
-		return NewShardIter(stream, shards), true
+		return NewShardStats(stream, shards), true
 	}
 
 	return nil, false
@@ -52,7 +52,7 @@ type shardIter struct {
 	currentIndex int
 }
 
-func NewShardIter(stream logproto.Stream, numShards int) ShardIter {
+func NewShardStats(stream logproto.Stream, numShards int) ShardStats {
 	numEntries := len(stream.Entries)
 	batchSize := float64(0)
 	if numShards > 0 {
