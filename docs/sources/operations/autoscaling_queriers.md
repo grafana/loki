@@ -39,7 +39,7 @@ sum(
 )
 ```
 
-We can use the quantile (Q) and the range (R) parameters to fine-tune the metric.
+Use the quantile (Q) and the range (R) parameters to fine-tune the metric.
 The higher Q is, the more sensitive the metric is to short-lasting spikes.
 As R increases, we reduce the variation over time in the metric.
 A higher value for R helps avoid the autoscaler from modifying the number of replicas too frequently.
