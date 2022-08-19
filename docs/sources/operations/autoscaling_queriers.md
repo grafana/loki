@@ -7,7 +7,7 @@ weight: 30
 
 # Autoscaling Loki queriers
 
-A microservices deployment of a Loki cluster that runs on Kubernetes will typically handle a
+A microservices deployment of a Loki cluster that runs on Kubernetes typically handles a
 workload that varies throughout the day.
 To make Loki easier to operate and optimize the cost of running Loki at scale,
 we have designed a set of resources to help you autoscale your Loki queriers.
