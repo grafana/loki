@@ -1,7 +1,7 @@
 package logproto
 
 import (
-	"sync/atomic"
+	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
