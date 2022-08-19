@@ -259,7 +259,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.tenantConfigs,
 		t.ring,
 		t.overrides,
-		&distributor.NoopStreamSharder{},
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
