@@ -71,8 +71,8 @@ clamp_min(ceil(
 ), 1)
 ```
 
-Our recommendation for the maximum number of queriers is running the number of queriers that would be required
-to process all the inflight requests you had 50% of the time during the last seven days.
+The maximum number of queriers to run is equal to the number of queriers required to process all inflight
+requests 50% of the time during a seven-day timespan.
 As for the previous example, if each querier runs 6 workers, divide the inflight requests by 6.
 The resulting query becomes:
 
