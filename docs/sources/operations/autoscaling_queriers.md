@@ -45,7 +45,7 @@ As R increases, we reduce the variation over time in the metric.
 A higher R-value helps avoid the autoscaler from modifying the number of replicas too frequently.
 
 In our experience, we have found that a Q of 0.75 and an R of 2 minutes work well.
-Our recommendation is to adjust these values according to your workload.
+You can adjust these values according to your workload.
 
 ## Cluster capacity planning
 
