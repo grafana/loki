@@ -910,7 +910,7 @@ spec:
     The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
     ## Prerequisites and Requirements
     ### Loki Operator Namespace
-    The Loki Operator must be deployed to the global operator group namespace `openshift-logging`.
+    The Loki Operator must be deployed to the global operator group namespace `openshift-operators-redhat`.
     ### Memory Considerations
     Loki is a memory intensive application.  The initial
     set of OCP nodes may not be large enough to support the Loki cluster.  Additional OCP nodes must be added
