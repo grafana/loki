@@ -1,0 +1,68 @@
+version: "3.9" 
+
+services:
+  grafana:
+    image: grafana/grafana:8.3.4
+    ports:
+    - "3000:3000"
+    volumes:
+    - db-data:/var/lib/grafana
+    - ./.compose/grafana/provisioning:/etc/grafana/provisioning
+    - ./.compose/grafana/plugins/shipwright-app:/var/lib/grafana/plugins/shipwright-app
+    - ./.compose/grafana/custom.ini:/etc/grafana/grafana.ini
+    networks:
+    - grafana
+    environment:
+    - GF_AUTH_ANONYMOUS_ENABLED=true
+    - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    - GF_AUTH_DISABLE_LOGIN_FORM=true
+
+  loki:
+    image: grafana/loki:2.4.1
+    ports:
+    - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+    - ./.compose/loki/config.yaml:/etc/loki/local-config.yaml
+    networks:
+    - grafana
+
+  tempo:
+    image: grafana/tempo:1.3.2
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+    - ./.compose/tempo/config.yaml:/etc/tempo.yaml
+    - tempo-data:/tmp/tempo
+    networks:
+    - grafana
+    ports:
+    - "14268:14268"  # jaeger ingest
+    - "3200:3200"   # tempo
+
+  promtail:
+    image: grafana/promtail:2.4.1
+    volumes:
+    - ./.compose/promtail/config.yml:/etc/loki/local-config.yml
+    - /var/log:/var/log
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+    - grafana
+
+  prometheus:
+    image: prom/prometheus:v2.30.3
+    ports:
+    - 9090:9090
+    volumes:
+    - ./.compose/prometheus/config.yaml:/etc/prometheus/prometheus.yml
+    - prometheus-data:/prometheus
+    command: --web.enable-lifecycle  --config.file=/etc/prometheus/prometheus.yml
+    networks:
+    - grafana
+
+networks:
+  grafana:
+volumes:
+  db-data:
+  tempo-data:
+  prometheus-data:
+  logvolume01: {}

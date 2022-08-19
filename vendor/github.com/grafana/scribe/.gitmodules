@@ -1,0 +1,3 @@
+[submodule ".compose/grafana/plugins/shipwright-app"]
+	path = .compose/grafana/plugins/shipwright-app
+	url = git@github.com:grafana/shipwright-app.git

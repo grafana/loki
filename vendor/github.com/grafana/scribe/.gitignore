@@ -1,0 +1,6 @@
+bin/
+node_modules/
+frontend/node_modules/
+./shipwright
+./pipeline
+echo-test/echo-test
