@@ -88,13 +88,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // StreamSharder manages the state necessary to shard streams.
 type StreamSharder interface {
-	ShardsFor(stream logproto.Stream) (ShardStats, bool)
+	ShardsFor(stream logproto.Stream) (int, bool)
 	IncreaseShardsFor(stream logproto.Stream)
-}
-
-// ShardStats provides the information needed to shard a stream in a threadsafe way
-type ShardStats interface {
-	NumShards() int
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -407,21 +402,21 @@ func min(x1, x2 int) int {
 // It will derive N streams (and its entries) from the given stream, where N is the sharding size for the given stream.
 func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder, userID string) ([]uint32, []streamTracker) {
 	logger := util_log.Logger
-	shardsIter, ok := streamSharder.ShardsFor(stream)
+	shards, ok := streamSharder.ShardsFor(stream)
 	if !ok {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
-	derivedKeys := make([]uint32, 0, shardsIter.NumShards())
-	derivedStreams := make([]streamTracker, 0, shardsIter.NumShards())
+	derivedKeys := make([]uint32, 0, shards)
+	derivedStreams := make([]streamTracker, 0, shards)
 
 	if cfg.ShardStreams.Debug {
 		level.Warn(logger).Log("msg", "sharding request with mode", "mode", cfg.ShardStreams.Mode)
 	}
 
 	var entriesWindowSize float64
-	entriesWindowSize = float64(len(stream.Entries)) / float64(shardsIter.NumShards())
-	for i := 0; i < shardsIter.NumShards(); i++ {
+	entriesWindowSize = float64(len(stream.Entries)) / float64(shards)
+	for i := 0; i < shards; i++ {
 		streamCopy := logproto.Stream{}
 		lbs, err := syntax.ParseLabels(stream.Labels)
 		if err != nil {
