@@ -869,8 +869,12 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		if params == nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
-		if p, err = strconv.Atoi(*params); err != nil {
+		p, err = strconv.Atoi(*params)
+		if err != nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
+		}
+		if p <= 0 {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0))
 		}
 
 	default:
