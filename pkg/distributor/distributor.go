@@ -87,14 +87,14 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // StreamSharder manages the state necessary to shard streams.
 type StreamSharder interface {
-	ShardsFor(stream logproto.Stream) ShardIter
-	IncreaseShardsFor(stream string)
+	ShardsFor(stream logproto.Stream) (ShardIter, bool)
+	IncreaseShardsFor(stream logproto.Stream)
 }
 
 // ShardIter provides the information needed to shard a stream in a threadsafe way
 type ShardIter interface {
 	NumShards() int
-	NextShardID() int
+	NextShardID() (int, bool)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -134,7 +134,6 @@ func New(
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
 	overrides *validation.Overrides,
-	sharder StreamSharder,
 	registerer prometheus.Registerer,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -184,7 +183,6 @@ func New(
 		ingestersRing:          ingestersRing,
 		distributorsLifecycler: distributorsLifecycler,
 		validator:              validator,
-		streamSharder:          sharder,
 		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:             labelCache,
@@ -216,6 +214,8 @@ func New(
 	d.subservicesWatcher = services.NewFailureWatcher()
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
+
+	d.streamSharder = NewStreamSharder()
 
 	return &d, nil
 }
@@ -400,7 +400,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // It will derive N streams (and its entries) from the given stream, where N is the sharding size for the given stream.
 func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder, userID string) ([]uint32, []streamTracker) {
 	logger := util_log.Logger
-	shardsIter := streamSharder.ShardsFor(stream)
+	shardsIter, _ := streamSharder.ShardsFor(stream)
 
 	derivedKeys := make([]uint32, 0, shardsIter.NumShards())
 	derivedStreams := make([]streamTracker, 0, shardsIter.NumShards())
@@ -410,7 +410,7 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 	}
 
 	for i := 0; i < shardsIter.NumShards(); i++ {
-		idx := shardsIter.NextShardID()
+		idx, _ := shardsIter.NextShardID()
 		streamCopy := stream
 		lbs, err := syntax.ParseLabels(streamCopy.Labels)
 		if err != nil {
