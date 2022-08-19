@@ -3,9 +3,10 @@ package logproto
 import (
 	"sync/atomic"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 // Note, this is not very efficient and use should be minimized as it requires label construction on each comparison
