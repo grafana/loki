@@ -125,7 +125,7 @@ spec:
 ## Prometheus alerting when at capacity
 
 Because the configured maximum might not be sufficient, a Prometheus alert can identify
-when the quantity of queriers has been at its configured maximum for an extended time. This example specifies 3 hours as the extended time:
+when the quantity of queriers has been at its configured maximum for an extended time. The following example specifies three hours (`3h`) as the extended time:
 
 ```yaml
 name: LokiAutoscalerMaxedOut
