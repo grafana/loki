@@ -57,7 +57,7 @@ When configuring KEDA to scale your Loki queriers, we need to configure:
 
 Querier workers process queries from the queue. You can configure each Loki querier to run several workers.
 Our recommendation is to aim for using 75% of those workers, to leave some workforce headroom for workload spikes.
-Therefore, if we configure our queriers to run 6 workers, we will set a threshold of `floor(0.75 * 6) = 4`.
+For example, if you configure the Loki queriers to run 6 workers, set a threshold of `floor(0.75 * 6) = 4`.
 
 Our recommendation for the minimum number of queriers is to run at least one querier, and to look at the average
 number of inflight requests 75% of the time in the last seven days, targeting a 75% utilization of the queriers.
