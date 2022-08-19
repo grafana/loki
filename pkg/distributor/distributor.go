@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -87,14 +88,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // StreamSharder manages the state necessary to shard streams.
 type StreamSharder interface {
-	ShardsFor(stream logproto.Stream) (ShardIter, bool)
+	ShardsFor(stream logproto.Stream) (int, bool)
 	IncreaseShardsFor(stream logproto.Stream)
-}
-
-// ShardIter provides the information needed to shard a stream in a threadsafe way
-type ShardIter interface {
-	NumShards() int
-	NextShardID() (int, bool)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -395,31 +390,48 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+func min(x1, x2 int) int {
+	if x1 < x2 {
+		return x1
+	}
+	return x2
+}
+
 // shardStream shards (divides) the given stream into smaller streams.
 //
 // It will derive N streams (and its entries) from the given stream, where N is the sharding size for the given stream.
 func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder, userID string) ([]uint32, []streamTracker) {
 	logger := util_log.Logger
-	shardsIter, _ := streamSharder.ShardsFor(stream)
+	shards, ok := streamSharder.ShardsFor(stream)
+	if !ok {
+		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
+	}
 
-	derivedKeys := make([]uint32, 0, shardsIter.NumShards())
-	derivedStreams := make([]streamTracker, 0, shardsIter.NumShards())
+	derivedKeys := make([]uint32, 0, shards)
+	derivedStreams := make([]streamTracker, 0, shards)
 
 	if cfg.ShardStreams.Debug {
 		level.Warn(logger).Log("msg", "sharding request with mode", "mode", cfg.ShardStreams.Mode)
 	}
 
-	for i := 0; i < shardsIter.NumShards(); i++ {
-		idx, _ := shardsIter.NextShardID()
-		streamCopy := stream
-		lbs, err := syntax.ParseLabels(streamCopy.Labels)
+	var entriesWindowSize float64
+	entriesWindowSize = float64(len(stream.Entries)) / float64(shards)
+	for i := 0; i < shards; i++ {
+		streamCopy := logproto.Stream{}
+		lbs, err := syntax.ParseLabels(stream.Labels)
 		if err != nil {
 			level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", streamCopy.Labels)
 			continue
 		}
-		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", idx)})
+
+		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", i)})
 		streamCopy.Labels = lbs.String()
 		streamCopy.Hash = lbs.Hash()
+
+		lowerBound := int(math.Floor(float64(i) * entriesWindowSize))
+		upperBound := min(int(float64(i+1)*entriesWindowSize), len(stream.Entries))
+
+		streamCopy.Entries = stream.Entries[lowerBound:upperBound]
 		if cfg.ShardStreams.Debug {
 			level.Info(logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", streamCopy.Labels)
 		}
