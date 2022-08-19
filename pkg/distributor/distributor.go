@@ -41,6 +41,21 @@ var (
 	rfStats           = usagestats.NewInt("distributor_replication_factor")
 )
 
+// TODO: document shard streams configurations/modes.
+type ShardStreamsConfig struct {
+	// Mode defines the sharding mode.
+	//   'always': shard all streams, regardless of being a big or a small one. Not for production usage.
+	//   'never': never shards any stream. Default mode.
+	//   'dynamic': shard only streams that did hit the per-stream rate limit. First requests are expected to be slower
+	// but once the correct amount of sharding is calculated, no latency increase is expected.
+	Mode string `yaml:"mode"`
+
+	// Debug defines if debugging log lines should be enabled or not.
+	//
+	// Not for production usage since adding logging to the push/write path is impactful cost-wise and performance-wise.
+	Debug bool `yaml:"debug"`
+}
+
 // Config for a Distributor.
 type Config struct {
 	// Distributors ring
@@ -48,11 +63,18 @@ type Config struct {
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
+
+	// ShardStreams configures wether big streams should be sharded or not.
+	ShardStreams ShardStreamsConfig `yaml:"shard_streams"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
+
+	// TODO: fix sharding flags to support prefix.
+	fs.StringVar(&cfg.ShardStreams.Mode, "mode", "never", "Defines the mode to run the shard requests feature. Valid values are 'always' and 'never' (default).")
+	fs.BoolVar(&cfg.ShardStreams.Debug, "debug", false, "Defines if logging messages should be enabled. Not for production usage.")
 }
 
 // StreamSharder manages the state necessary to shard streams.
@@ -296,8 +318,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
-		keys = append(keys, util.TokenFor(userID, stream.Labels))
-		streams = append(streams, streamTracker{stream: stream})
+		if d.cfg.ShardStreams.Mode != "never" {
+			derivedKeys, derivedStreams := shardStream(stream, d.cfg, d.streamSharder, userID)
+			keys = append(keys, derivedKeys...)
+			streams = append(streams, derivedStreams...)
+		} else {
+			keys = append(keys, util.TokenFor(userID, stream.Labels))
+			streams = append(streams, streamTracker{stream: stream})
+		}
 	}
 
 	// Return early if none of the streams contained entries
