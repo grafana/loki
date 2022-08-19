@@ -55,7 +55,7 @@ When configuring KEDA to scale your Loki queriers, we need to configure:
 - The scale down stabilization period
 - The minimum and the maximum number of queriers
 
-Querier workers process queries from the queue. Each of our queriers can be configured to run several workers.
+Querier workers process queries from the queue. You can configure each Loki querier to run several workers.
 Our recommendation is to aim for using 75% of those workers, to leave some workforce headroom for workload spikes.
 Therefore, if we configure our queriers to run 6 workers, we will set a threshold of `floor(0.75 * 6) = 4`.
 
