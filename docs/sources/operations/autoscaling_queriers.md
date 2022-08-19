@@ -84,7 +84,7 @@ ceil(
 )
 ```
 
-Finally, to minimize the scenario where we scale up shortly after scaling down, we recommend setting
+To minimize the scenario where Loki scales up shortly after scaling down, set
 a stabilization window for scaling down.
 
 
