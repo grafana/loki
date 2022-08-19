@@ -22,7 +22,7 @@ about setting up KEDA in your Kubernetes cluster.
 
 ## Scaling metric
 
-Queriers pull queries from the query-scheduler queue and process them on the querier workers. Therefore, it makes sense to scale based on:
+Because queriers pull queries from the query-scheduler queue and process them on the querier workers, you should scale metrics based on:
 
 - The scheduler queue size.
 - The queries running in the queriers.
