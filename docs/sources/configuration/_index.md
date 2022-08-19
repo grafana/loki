@@ -196,6 +196,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# TLS configuration for serving over HTTPS
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
 [grpc_listen_address: <string>]
@@ -203,6 +218,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # gRPC server listen port
 # CLI flag: -server.grpc-listen-port
 [grpc_listen_port: <int> | default = 9095]
+
+# TLS configuration for serving over gRPC
+grpc_tls_config:
+  # gRPC server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # gRPC server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+  # gRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # gRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 # Register instrumentation handlers (/metrics, etc.)
 # CLI flag: -server.register-instrumentation
