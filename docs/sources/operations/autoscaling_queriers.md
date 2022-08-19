@@ -59,8 +59,8 @@ Querier workers process queries from the queue. You can configure each Loki quer
 To reserve workforce headroom to address workload spikes, our recommendation is not to use more than 75% of the workers.
 For example, if you configure the Loki queriers to run 6 workers, set a threshold of `floor(0.75 * 6) = 4`.
 
-Our recommendation for the minimum number of queriers is to run at least one querier, and to look at the average
-number of inflight requests 75% of the time in the last seven days, targeting a 75% utilization of the queriers.
+To determine the minimum number of queries that you should run, run at least one querier and determine the average
+number of inflight requests the system processes 75% of the time over seven days. The target utilization of the queries is 75%.
 So if we use 6 workers per querier, we will use the following query:
 
 ```promql
