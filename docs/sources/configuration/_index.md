@@ -206,13 +206,6 @@ http_tls_config:
   [key_file: <string> | default = ""]
   # HTTP TLS Client Auth type.
   # CLI flag: -server.http-tls-client-auth
-  # Possible values:
-  # - RequestClientCert
-  # - RequireAnyClientCert
-  # - RequireClientCert
-  # - VerifyClientCertIfGiven
-  # - RequireAndVerifyClientCert
-  # - "" (Empty string) or "NoClientCert"
   [client_auth_type: <string> | default = ""]
   # HTTP TLS Client CA path.
   # CLI flag: -server.http-tls-ca-path
@@ -236,13 +229,6 @@ grpc_tls_config:
   [key_file: <string> | default = ""]
   # gRPC TLS Client Auth type.
   # CLI flag: -server.grpc-tls-client-auth
-  # Possible values:
-  # - RequestClientCert
-  # - RequireAnyClientCert
-  # - RequireClientCert
-  # - VerifyClientCertIfGiven
-  # - RequireAndVerifyClientCert
-  # - "" (Empty string) or "NoClientCert"
   [client_auth_type: <string> | default = ""]
   # gRPC TLS Client CA path.
   # CLI flag: -server.grpc-tls-ca-path
