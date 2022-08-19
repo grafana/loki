@@ -72,6 +72,6 @@ variable "lambda_vpc_security_groups" {
 }
 
 variable "kms_key_arn" {
-  type = string
+  type    = string
   default = ""
 }
