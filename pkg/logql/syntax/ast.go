@@ -928,10 +928,16 @@ func canInjectVectorGrouping(vecOp, rangeOp string) bool {
 
 func (e *VectorAggregationExpr) String() string {
 	var params []string
-	if e.Params != 0 {
+	switch e.Operation {
+	// bottomK and topk can have first parameter as 0
+	case OpTypeBottomK, OpTypeTopK:
 		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
-	} else {
-		params = []string{e.Left.String()}
+	default:
+		if e.Params != 0 {
+			params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
+		} else {
+			params = []string{e.Left.String()}
+		}
 	}
 	return formatOperation(e.Operation, e.Grouping, params...)
 }
