@@ -41,7 +41,7 @@ sum(
 
 Use the quantile (Q) and the range (R) parameters to fine-tune the metric.
 The higher Q is, the more sensitive the metric is to short-lasting spikes.
-As R increases, we reduce the variation over time in the metric.
+As R increases, you can reduce the variation over time in the metric.
 A higher R-value helps avoid the autoscaler from modifying the number of replicas too frequently.
 
 In our experience, we have found that a Q of 0.75 and an R of 2 minutes work well.
@@ -49,7 +49,7 @@ You can adjust these values according to your workload.
 
 ## Cluster capacity planning
 
-When configuring KEDA to scale your Loki queriers, we need to configure:
+To scale the Loki queries, you configure the following settings:
 
 - The threshold for scaling up and down
 - The scale down stabilization period
