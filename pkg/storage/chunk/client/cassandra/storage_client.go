@@ -6,8 +6,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -18,6 +16,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/pkg/storage/chunk"

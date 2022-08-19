@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"flag"
-	"github.com/opentracing/opentracing-go"
 	"net/http"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
