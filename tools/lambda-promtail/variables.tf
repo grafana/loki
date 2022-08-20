@@ -72,6 +72,7 @@ variable "lambda_vpc_security_groups" {
 }
 
 variable "kms_key_arn" {
-  type    = string
-  default = ""
+  type        = string
+  description = "kms key arn for encryp env vars."
+  default     = ""
 }
