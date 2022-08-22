@@ -527,13 +527,21 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
-	if err != nil {
-		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
-		// TODO: look for a better way to recognize a per-stream rate limit
-		if errMsg := err.Error(); strings.Contains(errMsg, "Per stream rate limit exceeded (limit") {
-			d.streamSharding.Inc()
-			shardLimitedStream(errMsg, d.streamSharder)
-		}
+
+	if err == nil {
+		return nil
+	}
+
+	d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+
+	// TODO: look for a better way to recognize a per-stream rate limit.
+	if d.cfg.ShardStreams.Mode == "never" {
+		return err
+	}
+
+	if errMsg := err.Error(); strings.Contains(errMsg, "Per stream rate limit exceeded (limit") {
+		d.streamSharding.Inc()
+		shardLimitedStream(errMsg, d.streamSharder)
 	}
 	return err
 }
