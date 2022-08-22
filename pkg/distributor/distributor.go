@@ -420,7 +420,7 @@ func min(x1, x2 int) int {
 func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder, userID string) ([]uint32, []streamTracker) {
 	logger := util_log.Logger
 	shards, ok := streamSharder.ShardsFor(stream)
-	if !ok || shards == 1 {
+	if !ok || shards <= 1 {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
