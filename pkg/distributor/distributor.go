@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -338,13 +337,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
-		if d.cfg.ShardStreams.Mode != NeverShardMode {
+		if d.cfg.ShardStreams.Mode == NeverShardMode {
+			keys = append(keys, util.TokenFor(userID, stream.Labels))
+			streams = append(streams, streamTracker{stream: stream})
+		} else {
 			derivedKeys, derivedStreams := shardStream(stream, d.cfg, d.streamSharder, userID)
 			keys = append(keys, derivedKeys...)
 			streams = append(streams, derivedStreams...)
-		} else {
-			keys = append(keys, util.TokenFor(userID, stream.Labels))
-			streams = append(streams, streamTracker{stream: stream})
 		}
 	}
 
