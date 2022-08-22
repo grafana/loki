@@ -433,6 +433,13 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 
 	entriesPerWindow := float64(len(stream.Entries)) / float64(shards) // divide and keep decimal value.
 	for i := 0; i < shards; i++ {
+		fIdx := float64(i)
+		lowerBound := int(fIdx * entriesPerWindow)
+		upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
+		if lowerBound > upperBound {
+			continue
+		}
+
 		streamCopy := logproto.Stream{}
 		lbs, err := syntax.ParseLabels(stream.Labels)
 		if err != nil {
@@ -444,10 +451,6 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: idx})
 		streamCopy.Labels = lbs.String()
 		streamCopy.Hash = lbs.Hash()
-
-		fIdx := float64(i)
-		lowerBound := int(fIdx * entriesPerWindow)
-		upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
 
 		streamCopy.Entries = stream.Entries[lowerBound:upperBound]
 		if cfg.ShardStreams.Debug {

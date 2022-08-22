@@ -543,6 +543,76 @@ func TestStreamShard(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:    "four shards with 2 entries",
+			shards:  4,
+			entries: totalEntries[0:2],
+			wantDerivedStream: []streamTracker{
+				{
+					stream: logproto.Stream{
+						Entries: []logproto.Entry{},
+						Labels:  generateShardLabels(baseLabels, 0).String(),
+						Hash:    generateShardLabels(baseLabels, 0).Hash(),
+					},
+				},
+				{
+					stream: logproto.Stream{
+						Entries: totalEntries[0:1],
+						Labels:  generateShardLabels(baseLabels, 1).String(),
+						Hash:    generateShardLabels(baseLabels, 1).Hash(),
+					},
+				},
+				{
+					stream: logproto.Stream{
+						Entries: []logproto.Entry{},
+						Labels:  generateShardLabels(baseLabels, 2).String(),
+						Hash:    generateShardLabels(baseLabels, 2).Hash(),
+					},
+				},
+				{
+					stream: logproto.Stream{
+						Entries: totalEntries[1:2],
+						Labels:  generateShardLabels(baseLabels, 3).String(),
+						Hash:    generateShardLabels(baseLabels, 3).Hash(),
+					},
+				},
+			},
+		},
+		{
+			name:    "four shards with 1 entry",
+			shards:  4,
+			entries: totalEntries[0:1],
+			wantDerivedStream: []streamTracker{
+				{
+					stream: logproto.Stream{
+						Labels:  generateShardLabels(baseLabels, 0).String(),
+						Hash:    generateShardLabels(baseLabels, 0).Hash(),
+						Entries: []logproto.Entry{},
+					},
+				},
+				{
+					stream: logproto.Stream{
+						Labels:  generateShardLabels(baseLabels, 1).String(),
+						Hash:    generateShardLabels(baseLabels, 1).Hash(),
+						Entries: []logproto.Entry{},
+					},
+				},
+				{
+					stream: logproto.Stream{
+						Labels:  generateShardLabels(baseLabels, 2).String(),
+						Hash:    generateShardLabels(baseLabels, 2).Hash(),
+						Entries: []logproto.Entry{},
+					},
+				},
+				{
+					stream: logproto.Stream{
+						Entries: totalEntries[0:1],
+						Labels:  generateShardLabels(baseLabels, 3).String(),
+						Hash:    generateShardLabels(baseLabels, 3).Hash(),
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			streamSharder := NewStreamSharderMock(tc.shards)
