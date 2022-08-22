@@ -2162,6 +2162,23 @@ compacts index shards to more performant forms.
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
 [compactor_ring: <ring>]
+
+# Number of tables that compactor will try to compact. Newer tables
+# are chosen when this is less than the number of tables available
+# CLI flag:  -boltdb.shipper.compact.tables-to-compact
+[tables_to_compact: <int> | default: 0]
+
+# Do not compact N latest tables.  Together with
+# -boltdb.shipper.compactor.run-once and
+# -boltdb.shipper.compactor.tables-to-compact, this is useful when
+# clearing compactor backlogs.
+# CLI flag: -boltdb.shipper.compact.skip-latest-n-tables
+[skip_latest_n_tables: <int> | default: 0]
+
+# The hash ring configuration used by compactors to elect a single instance for running compactions
+# The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
+[compactor_ring: <ring>]
+
 ```
 
 ## limits_config

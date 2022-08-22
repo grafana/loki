@@ -85,9 +85,9 @@ type Config struct {
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
-	RunOnce                   bool            `yaml:"-"`
-	TablesToCompact           int             `yaml:"-"`
-	YoungestTableToCompact    int             `yaml:"-"`
+	RunOnce                   bool            `yaml:"_"`
+	TablesToCompact           int             `yaml:"tables_to_compact"`
+	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
 
 	// Deprecated
 	DeletionMode string `yaml:"deletion_mode"`
@@ -114,7 +114,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 	f.IntVar(&cfg.TablesToCompact, "boltdb.shipper.compactor.tables-to-compact", 0, "The number of most recent tables to compact in a single run. Default: all")
-	f.IntVar(&cfg.YoungestTableToCompact, "boltdb.shipper.compactor.youngest-table", 0, "Compact only tables older than the n-th youngest.")
+	f.IntVar(&cfg.SkipLatestNTables, "boltdb.shipper.compactor.skip-latest-n-tables", 0, "Skip compacting latest N tables")
 
 }
 
@@ -567,8 +567,8 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	sortTablesByRange(tables)
 
 	// apply passed in compaction limits
-	if c.cfg.YoungestTableToCompact <= len(tables) {
-		tables = tables[c.cfg.YoungestTableToCompact:]
+	if c.cfg.SkipLatestNTables <= len(tables) {
+		tables = tables[c.cfg.SkipLatestNTables:]
 	}
 	if c.cfg.TablesToCompact > 0 && c.cfg.TablesToCompact < len(tables) {
 		tables = tables[:c.cfg.TablesToCompact]
