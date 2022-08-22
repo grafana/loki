@@ -51,6 +51,14 @@ var (
 	rfStats           = usagestats.NewInt("distributor_replication_factor")
 )
 
+type ShardStreamMode string
+
+const (
+	NeverShardMode       ShardStreamMode = "never"
+	AlwaysShardMode                      = "always"
+	DynamicallyShardMode                 = "dynamic"
+)
+
 // TODO: document shard streams configurations/modes.
 type ShardStreamsConfig struct {
 	// TODO: create enum for sharding modes.
@@ -59,7 +67,7 @@ type ShardStreamsConfig struct {
 	//   'never': never shards any stream. Default mode.
 	//   'dynamic': shard only streams that did hit the per-stream rate limit. First requests are expected to be slower
 	// but once the correct amount of sharding is calculated, no latency increase is expected.
-	Mode string `yaml:"mode"`
+	Mode ShardStreamMode `yaml:"mode"`
 
 	// Debug defines if debugging log lines should be enabled or not.
 	//
@@ -83,7 +91,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 
-	cfg.ShardStreams.Mode = "never"
+	cfg.ShardStreams.Mode = NeverShardMode
 
 	// TODO: add sharding flags.
 }
@@ -329,7 +337,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
-		if d.cfg.ShardStreams.Mode != "never" {
+		if d.cfg.ShardStreams.Mode != NeverShardMode {
 			derivedKeys, derivedStreams := shardStream(stream, d.cfg, d.streamSharder, userID)
 			keys = append(keys, derivedKeys...)
 			streams = append(streams, derivedStreams...)
@@ -535,7 +543,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 	d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 
 	// TODO: look for a better way to recognize a per-stream rate limit.
-	if d.cfg.ShardStreams.Mode == "never" {
+	if d.cfg.ShardStreams.Mode == NeverShardMode {
 		return err
 	}
 
