@@ -37,3 +37,34 @@ func TestStreamSharder(t *testing.T) {
 		require.Equal(t, 2, shards)
 	})
 }
+
+type StreamSharderMock struct {
+	calls map[string]int
+
+	ShardsForStub func() (int, bool)
+}
+
+func NewStreamSharderMock(shardsForStub func() (int, bool)) *StreamSharderMock {
+	return &StreamSharderMock{
+		calls:         make(map[string]int),
+		ShardsForStub: shardsForStub,
+	}
+}
+
+func (s *StreamSharderMock) IncreaseShardsFor(stream logproto.Stream) {
+	s.increaseCallsFor("IncreaseShardsFor")
+}
+
+func (s *StreamSharderMock) ShardsFor(stream logproto.Stream) (int, bool) {
+	s.increaseCallsFor("ShardsFor")
+	return s.ShardsForStub()
+}
+
+func (s *StreamSharderMock) increaseCallsFor(funcName string) {
+	if _, ok := s.calls[funcName]; ok {
+		s.calls[funcName]++
+		return
+	}
+
+	s.calls[funcName] = 1
+}
