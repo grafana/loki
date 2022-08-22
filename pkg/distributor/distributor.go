@@ -211,7 +211,7 @@ func New(
 		}),
 		streamSharding: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
-			Name:      "distributor_stream_sharding",
+			Name:      "distributor_streams_sharded_total",
 			Help:      "Counts stream sharding occurrences.",
 		}),
 	}
