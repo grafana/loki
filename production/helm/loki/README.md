@@ -1,6 +1,6 @@
-# loki-simple-scalable
+# loki
 
-![Version: 1.8.4](https://img.shields.io/badge/Version-1.8.4-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
+![Version: 3.0.0](https://img.shields.io/badge/Version-3.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
 
 Helm chart for Grafana Loki in simple, scalable mode
 
@@ -14,7 +14,7 @@ Helm chart for Grafana Loki in simple, scalable mode
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.2.2 |
+| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.2.3 |
 | https://helm.min.io/ | minio(minio) | 8.0.9 |
 
 ## Chart Repo
@@ -109,10 +109,23 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | global.image.registry | string | `nil` | Overrides the Docker registry globally for all images |
 | global.priorityClassName | string | `nil` | Overrides the priorityClassName for all pods |
 | imagePullSecrets | list | `[]` | Image pull secrets for Docker images |
+| ingress.annotations | object | `{}` |  |
+| ingress.enabled | bool | `false` |  |
+| ingress.hosts[0] | string | `"loki.example.com"` |  |
+| ingress.paths.read[0] | string | `"/api/prom/tail"` |  |
+| ingress.paths.read[1] | string | `"/loki/api/v1/tail"` |  |
+| ingress.paths.read[2] | string | `"/loki/api"` |  |
+| ingress.paths.read[3] | string | `"/api/prom/rules"` |  |
+| ingress.paths.read[4] | string | `"/loki/api/v1/rules"` |  |
+| ingress.paths.read[5] | string | `"/prometheus/api/v1/rules"` |  |
+| ingress.paths.read[6] | string | `"/prometheus/api/v1/alerts"` |  |
+| ingress.paths.write[0] | string | `"/api/prom/push"` |  |
+| ingress.paths.write[1] | string | `"/loki/api/v1/push"` |  |
 | loki.auth_enabled | bool | `true` |  |
 | loki.commonConfig | object | `{"path_prefix":"/var/loki","replication_factor":3}` | Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration |
 | loki.config | string | See values.yaml | Config file contents for Loki |
 | loki.containerSecurityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true}` | The SecurityContext for Loki containers |
+| loki.deploymentMode | string | `"simple-scalable"` |  |
 | loki.existingSecretForConfig | string | `""` | Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config` |
 | loki.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
 | loki.image.registry | string | `"docker.io"` | The Docker registry |
@@ -231,6 +244,32 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | serviceAccount.create | bool | `true` | Specifies whether a ServiceAccount should be created |
 | serviceAccount.imagePullSecrets | list | `[]` | Image pull secrets for the service account |
 | serviceAccount.name | string | `nil` | The name of the ServiceAccount to use. If not set and create is true, a name is generated using the fullname template |
+| singleBinary.affinity | string | Hard node and soft zone anti-affinity | Affinity for single binary pods. Passed through `tpl` and, thus, to be configured as string |
+| singleBinary.autoscaling.enabled | bool | `false` | Enable autoscaling, this is only used if `queryIndex.enabled: true` |
+| singleBinary.autoscaling.maxReplicas | int | `3` | Maximum autoscaling replicas for the single binary |
+| singleBinary.autoscaling.minReplicas | int | `1` | Minimum autoscaling replicas for the single binary |
+| singleBinary.autoscaling.targetCPUUtilizationPercentage | int | `60` | Target CPU utilisation percentage for the single binary |
+| singleBinary.autoscaling.targetMemoryUtilizationPercentage | string | `nil` | Target memory utilisation percentage for the single binary |
+| singleBinary.extraArgs | list | `[]` | Additional CLI args for the single binary |
+| singleBinary.extraEnv | list | `[]` | Environment variables to add to the single binary pods |
+| singleBinary.extraEnvFrom | list | `[]` | Environment variables from secrets or configmaps to add to the single binary pods |
+| singleBinary.extraVolumeMounts | list | `[]` | Volume mounts to add to the single binary pods |
+| singleBinary.extraVolumes | list | `[]` | Volumes to add to the single binary pods |
+| singleBinary.image.registry | string | `nil` | The Docker registry for the single binary image. Overrides `loki.image.registry` |
+| singleBinary.image.repository | string | `nil` | Docker image repository for the single binary image. Overrides `loki.image.repository` |
+| singleBinary.image.tag | string | `nil` | Docker image tag for the single binary image. Overrides `loki.image.tag` |
+| singleBinary.nodeSelector | object | `{}` | Node selector for single binary pods |
+| singleBinary.persistence.size | string | `"10Gi"` | Size of persistent disk |
+| singleBinary.persistence.storageClass | string | `nil` | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). |
+| singleBinary.podAnnotations | object | `{}` | Annotations for single binary pods |
+| singleBinary.priorityClassName | string | `nil` | The name of the PriorityClass for single binary pods |
+| singleBinary.replicas | int | `3` | Number of replicas for the single binary |
+| singleBinary.resources | object | `{}` | Resource requests and limits for the single binary |
+| singleBinary.selectorLabels | object | `{}` | Additional selecto labels for each `single binary` pod |
+| singleBinary.serviceLabels | object | `{}` | Labels for single binary service |
+| singleBinary.terminationGracePeriodSeconds | int | `30` | Grace period to allow the single binary to shutdown before it is killed |
+| singleBinary.tolerations | list | `[]` | Tolerations for single binary pods |
+| tracing.jaegerAgentHost | string | `""` |  |
 | write.affinity | string | Hard node and soft zone anti-affinity | Affinity for write pods. Passed through `tpl` and, thus, to be configured as string |
 | write.extraArgs | list | `[]` | Additional CLI args for the write |
 | write.extraEnv | list | `[]` | Environment variables to add to the write pods |
