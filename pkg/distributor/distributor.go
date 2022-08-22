@@ -546,11 +546,11 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 
 	d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 
-	// TODO: look for a better way to recognize a per-stream rate limit.
 	if d.cfg.ShardStreams.Mode == NeverShardMode {
 		return err
 	}
 
+	// TODO: look for a better way to recognize a per-stream rate limit.
 	if errMsg := err.Error(); strings.Contains(errMsg, "Per stream rate limit exceeded (limit") {
 		d.streamSharding.Inc()
 		shardLimitedStream(errMsg, d.streamSharder)
