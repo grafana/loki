@@ -63,28 +63,27 @@ type indexSet struct {
 	compactedIndex CompactedIndex
 	sourceObjects  []storage.IndexFile
 	logger         log.Logger
-	metrics        *metrics
 }
 
 // newUserIndexSet intializes a new index set for user index.
-func newUserIndexSet(ctx context.Context, tableName, userID string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger, metrics *metrics) (*indexSet, error) {
+func newUserIndexSet(ctx context.Context, tableName, userID string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
 	if !baseUserIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for user index")
 	}
 
-	return newIndexSet(ctx, tableName, userID, baseUserIndexSet, workingDir, log.With(logger, "user-id", userID), metrics)
+	return newIndexSet(ctx, tableName, userID, baseUserIndexSet, workingDir, log.With(logger, "user-id", userID))
 }
 
 // newCommonIndexSet intializes a new index set for common index.
-func newCommonIndexSet(ctx context.Context, tableName string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger, metrics *metrics) (*indexSet, error) {
+func newCommonIndexSet(ctx context.Context, tableName string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
 	if baseUserIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for common index")
 	}
 
-	return newIndexSet(ctx, tableName, "", baseUserIndexSet, workingDir, logger, metrics)
+	return newIndexSet(ctx, tableName, "", baseUserIndexSet, workingDir, logger)
 }
 
-func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet storage.IndexSet, workingDir string, logger log.Logger, metrics *metrics) (*indexSet, error) {
+func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
 	if err := util.EnsureDirectory(workingDir); err != nil {
 		return nil, err
 	}
@@ -96,7 +95,6 @@ func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet sto
 		workingDir:   workingDir,
 		baseIndexSet: baseIndexSet,
 		logger:       logger,
-		metrics:      metrics,
 	}
 
 	var err error
@@ -259,9 +257,6 @@ func (is *indexSet) upload() error {
 		return err
 	}
 	err = is.baseIndexSet.PutFile(is.ctx, is.tableName, is.userID, fmt.Sprintf("%s.gz", fileName), f)
-	if is.metrics != nil {
-		is.metrics.indexFilesToCompactForLastCompaction.WithLabelValues(is.tableName).Add(1)
-	}
 	return err
 }
 
@@ -274,10 +269,6 @@ func (is *indexSet) removeFilesFromStorage() error {
 		if err != nil {
 			return err
 		}
-		if is.metrics != nil {
-			is.metrics.indexFilesToCompactForLastCompaction.WithLabelValues(is.tableName).Add(-1)
-		}
-
 	}
 
 	return nil

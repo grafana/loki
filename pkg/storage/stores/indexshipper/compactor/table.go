@@ -132,7 +132,7 @@ func (t *table) compact(applyRetention bool) error {
 
 	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
 	if t.metrics != nil {
-		t.metrics.indexFilesToCompactForLastCompaction.WithLabelValues(t.name).Set(float64(len(indexFiles)))
+		t.metrics.uncompactedIndexFilesDiscovered.WithLabelValues(t.name).Set(float64(len(indexFiles)))
 	}
 	defer func() {
 		for _, is := range t.indexSets {
@@ -144,7 +144,7 @@ func (t *table) compact(applyRetention bool) error {
 		}
 	}()
 
-	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger, t.metrics)
+	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger)
 	if err != nil {
 		return err
 	}
@@ -154,7 +154,7 @@ func (t *table) compact(applyRetention bool) error {
 
 	for _, userID := range t.usersWithPerUserIndex {
 		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger, t.metrics)
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
 		if err != nil {
 			return err
 		}
@@ -168,7 +168,7 @@ func (t *table) compact(applyRetention bool) error {
 		defer indexSetsMtx.Unlock()
 
 		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger, t.metrics)
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
 		return t.indexSets[userID], err
 	}, t.periodConfig)
 
