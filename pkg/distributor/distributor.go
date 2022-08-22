@@ -567,7 +567,7 @@ func shardLimitedStream(perStreamErrorMsg string, sharder StreamSharder) {
 		return
 	}
 
-	labels := fmt.Sprintf("{%s}", matches[0][1]) // add curly braces
+	labels := "{" + matches[0][1] + "}"
 
 	lbs, err := syntax.ParseLabels(labels)
 	if err != nil {
