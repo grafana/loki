@@ -41,13 +41,13 @@ func TestStreamSharder(t *testing.T) {
 type StreamSharderMock struct {
 	calls map[string]int
 
-	ShardsForStub func() (int, bool)
+	wantShards int
 }
 
-func NewStreamSharderMock(shardsForStub func() (int, bool)) *StreamSharderMock {
+func NewStreamSharderMock(shards int) *StreamSharderMock {
 	return &StreamSharderMock{
-		calls:         make(map[string]int),
-		ShardsForStub: shardsForStub,
+		calls:      make(map[string]int),
+		wantShards: shards,
 	}
 }
 
@@ -57,7 +57,10 @@ func (s *StreamSharderMock) IncreaseShardsFor(stream logproto.Stream) {
 
 func (s *StreamSharderMock) ShardsFor(stream logproto.Stream) (int, bool) {
 	s.increaseCallsFor("ShardsFor")
-	return s.ShardsForStub()
+	if s.wantShards < 0 {
+		return 0, false
+	}
+	return s.wantShards, true
 }
 
 func (s *StreamSharderMock) increaseCallsFor(funcName string) {

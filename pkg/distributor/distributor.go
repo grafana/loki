@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math"
 	"net/http"
 	"time"
 
@@ -52,6 +51,7 @@ var (
 
 // TODO: document shard streams configurations/modes.
 type ShardStreamsConfig struct {
+	// TODO: create enum for sharding modes.
 	// Mode defines the sharding mode.
 	//   'always': shard all streams, regardless of being a big or a small one. Not for production usage.
 	//   'never': never shards any stream. Default mode.
@@ -81,9 +81,9 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 
-	// TODO: fix sharding flags to support prefix.
-	fs.StringVar(&cfg.ShardStreams.Mode, "mode", "never", "Defines the mode to run the shard requests feature. Valid values are 'always' and 'never' (default).")
-	fs.BoolVar(&cfg.ShardStreams.Debug, "debug", false, "Defines if logging messages should be enabled. Not for production usage.")
+	cfg.ShardStreams.Mode = "never"
+
+	// TODO: add sharding flags.
 }
 
 // StreamSharder manages the state necessary to shard streams.
@@ -414,8 +414,7 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 		level.Warn(logger).Log("msg", "sharding request with mode", "mode", cfg.ShardStreams.Mode)
 	}
 
-	var entriesWindowSize float64
-	entriesWindowSize = float64(len(stream.Entries)) / float64(shards)
+	entriesPerWindow := float64(len(stream.Entries)) / float64(shards) // divide and keep decimal value.
 	for i := 0; i < shards; i++ {
 		streamCopy := logproto.Stream{}
 		lbs, err := syntax.ParseLabels(stream.Labels)
@@ -428,8 +427,9 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 		streamCopy.Labels = lbs.String()
 		streamCopy.Hash = lbs.Hash()
 
-		lowerBound := int(math.Floor(float64(i) * entriesWindowSize))
-		upperBound := min(int(float64(i+1)*entriesWindowSize), len(stream.Entries))
+		fIdx := float64(i)
+		lowerBound := int(fIdx * entriesPerWindow)
+		upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
 
 		streamCopy.Entries = stream.Entries[lowerBound:upperBound]
 		if cfg.ShardStreams.Debug {

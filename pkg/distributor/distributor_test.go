@@ -408,22 +408,18 @@ func TestStreamShard(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		entries           []logproto.Entry
-		forShardsFor      func() (int, bool) // stub call to ShardsFor.
+		shards            int // stub call to ShardsFor.
 		wantDerivedStream []streamTracker
 	}{
 		{
-			name:    "one shard with no entries",
-			entries: nil,
-			forShardsFor: func() (int, bool) {
-				return 1, true
-			},
+			name:              "one shard with no entries",
+			entries:           nil,
+			shards:            1,
 			wantDerivedStream: []streamTracker{{stream: baseStream}},
 		},
 		{
-			name: "one shard with one entry",
-			forShardsFor: func() (int, bool) {
-				return 1, true
-			},
+			name:    "one shard with one entry",
+			shards:  1,
 			entries: totalEntries[0:1],
 			wantDerivedStream: []streamTracker{
 				{
@@ -436,19 +432,17 @@ func TestStreamShard(t *testing.T) {
 			},
 		},
 		{
-			name: "two shards with 3 entries",
-			forShardsFor: func() (int, bool) {
-				return 2, true
-			},
+			name:    "two shards with 3 entries",
+			shards:  2,
 			entries: totalEntries[0:3],
 			wantDerivedStream: []streamTracker{
-				{
+				{ // shard 1.
 					stream: logproto.Stream{
 						Entries: totalEntries[0:1],
 						Labels:  generateShardLabels(baseLabels, 0).String(),
 						Hash:    generateShardLabels(baseLabels, 0).Hash(),
 					},
-				},
+				}, // shard 2.
 				{
 					stream: logproto.Stream{
 						Entries: totalEntries[1:3],
@@ -459,19 +453,17 @@ func TestStreamShard(t *testing.T) {
 			},
 		},
 		{
-			name: "two shards with 5 entries",
-			forShardsFor: func() (int, bool) {
-				return 2, true
-			},
+			name:    "two shards with 5 entries",
+			shards:  2,
 			entries: totalEntries[0:5],
 			wantDerivedStream: []streamTracker{
-				{
+				{ // shard 1.
 					stream: logproto.Stream{
 						Entries: totalEntries[0:2],
 						Labels:  generateShardLabels(baseLabels, 0).String(),
 						Hash:    generateShardLabels(baseLabels, 0).Hash(),
 					},
-				},
+				}, // shard 2.
 				{
 					stream: logproto.Stream{
 						Entries: totalEntries[2:5],
@@ -482,13 +474,11 @@ func TestStreamShard(t *testing.T) {
 			},
 		},
 		{
-			name: "one shard with 20 entries",
-			forShardsFor: func() (int, bool) {
-				return 1, true
-			},
+			name:    "one shard with 20 entries",
+			shards:  1,
 			entries: totalEntries[0:20],
 			wantDerivedStream: []streamTracker{
-				{
+				{ // shard 1.
 					stream: logproto.Stream{
 						Entries: totalEntries[0:20],
 						Labels:  baseStream.Labels,
@@ -498,19 +488,17 @@ func TestStreamShard(t *testing.T) {
 			},
 		},
 		{
-			name: "two shards with 20 entries",
-			forShardsFor: func() (int, bool) {
-				return 2, true
-			},
+			name:    "two shards with 20 entries",
+			shards:  2,
 			entries: totalEntries[0:20],
 			wantDerivedStream: []streamTracker{
-				{
+				{ // shard 1.
 					stream: logproto.Stream{
 						Entries: totalEntries[0:10],
 						Labels:  generateShardLabels(baseLabels, 0).String(),
 						Hash:    generateShardLabels(baseLabels, 0).Hash(),
 					},
-				},
+				}, // shard 2.
 				{
 					stream: logproto.Stream{
 						Entries: totalEntries[10:20],
@@ -521,34 +509,32 @@ func TestStreamShard(t *testing.T) {
 			},
 		},
 		{
-			name: "four shards with 20 entries",
-			forShardsFor: func() (int, bool) {
-				return 4, true
-			},
+			name:    "four shards with 20 entries",
+			shards:  4,
 			entries: totalEntries[0:20],
 			wantDerivedStream: []streamTracker{
-				{
+				{ // shard 1.
 					stream: logproto.Stream{
 						Entries: totalEntries[0:5],
 						Labels:  generateShardLabels(baseLabels, 0).String(),
 						Hash:    generateShardLabels(baseLabels, 0).Hash(),
 					},
 				},
-				{
+				{ // shard 2.
 					stream: logproto.Stream{
 						Entries: totalEntries[5:10],
 						Labels:  generateShardLabels(baseLabels, 1).String(),
 						Hash:    generateShardLabels(baseLabels, 1).Hash(),
 					},
 				},
-				{
+				{ // shard 3.
 					stream: logproto.Stream{
 						Entries: totalEntries[10:15],
 						Labels:  generateShardLabels(baseLabels, 2).String(),
 						Hash:    generateShardLabels(baseLabels, 2).Hash(),
 					},
 				},
-				{
+				{ // shard 4.
 					stream: logproto.Stream{
 						Entries: totalEntries[15:20],
 						Labels:  generateShardLabels(baseLabels, 3).String(),
@@ -559,7 +545,7 @@ func TestStreamShard(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			streamSharder := NewStreamSharderMock(tc.forShardsFor)
+			streamSharder := NewStreamSharderMock(tc.shards)
 			baseStream.Entries = tc.entries
 
 			_, derivedStreams := shardStream(baseStream, Config{}, streamSharder, "fake")
