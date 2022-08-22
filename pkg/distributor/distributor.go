@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -439,7 +440,8 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 			continue
 		}
 
-		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", i)})
+		idx := strconv.Itoa(i)
+		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: idx})
 		streamCopy.Labels = lbs.String()
 		streamCopy.Hash = lbs.Hash()
 

@@ -555,6 +555,63 @@ func TestStreamShard(t *testing.T) {
 	}
 }
 
+func BenchmarkShardStream(b *testing.B) {
+	stream := logproto.Stream{}
+	labels := "{app='myapp', job='fizzbuzz'}"
+	lbs, err := syntax.ParseLabels(labels)
+	require.NoError(b, err)
+	stream.Hash = lbs.Hash()
+	stream.Labels = lbs.String()
+
+	// helper funcs
+	generateEntries := func(n int) []logproto.Entry {
+		var entries []logproto.Entry
+		for i := 0; i < n; i++ {
+			entries = append(entries, logproto.Entry{
+				Line:      fmt.Sprintf("log line %d", i),
+				Timestamp: time.Now(),
+			})
+		}
+		return entries
+	}
+	allEntries := generateEntries(25000)
+
+	cfg := Config{ShardStreams: ShardStreamsConfig{
+		Debug: false,
+	}}
+	b.Run("high number of entries, low number of shards", func(b *testing.B) {
+		streamSharder := NewStreamSharderMock(1)
+		stream.Entries = allEntries
+		for n := 0; n < b.N; n++ {
+			shardStream(stream, cfg, streamSharder, "fake")
+		}
+	})
+
+	b.Run("low number of entries, low number of shards", func(b *testing.B) {
+		streamSharder := NewStreamSharderMock(1)
+		stream.Entries = nil
+		for n := 0; n < b.N; n++ {
+			shardStream(stream, cfg, streamSharder, "fake")
+		}
+	})
+
+	b.Run("high number of entries, high number of shards", func(b *testing.B) {
+		streamSharder := NewStreamSharderMock(64)
+		stream.Entries = allEntries
+		for n := 0; n < b.N; n++ {
+			shardStream(stream, cfg, streamSharder, "fake")
+		}
+	})
+
+	b.Run("low number of entries, high number of shards", func(b *testing.B) {
+		streamSharder := NewStreamSharderMock(64)
+		stream.Entries = nil
+		for n := 0; n < b.N; n++ {
+			shardStream(stream, cfg, streamSharder, "fake")
+		}
+	})
+}
+
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
