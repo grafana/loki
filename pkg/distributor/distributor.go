@@ -4,9 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -96,7 +94,6 @@ type Distributor struct {
 	validator        *Validator
 	pool             *ring_client.Pool
 	streamSharder    StreamSharder
-	labelsRegex      *regexp.Regexp
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -112,7 +109,6 @@ type Distributor struct {
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
-	streamSharding         prometheus.Counter
 	replicationFactor      prometheus.Gauge
 }
 
@@ -176,7 +172,6 @@ func New(
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:             labelCache,
 		rateLimitStrat:         rateLimitStrat,
-		labelsRegex:            regexp.MustCompile("\\{(.*?)\\}"),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -191,11 +186,6 @@ func New(
 			Namespace: "loki",
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
-		}),
-		streamSharding: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "distributor_streams_sharded_total",
-			Help:      "Counts stream sharding occurrences.",
 		}),
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
@@ -526,43 +516,10 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
-
-	if err == nil {
-		return nil
-	}
-
-	d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
-
-	if d.cfg.ShardStreams.Mode == NeverShardMode {
-		return err
-	}
-
-	// TODO: look for a better way to recognize a per-stream rate limit.
-	if errMsg := err.Error(); strings.Contains(errMsg, "Per stream rate limit exceeded (limit") {
-		d.streamSharding.Inc()
-		shardLimitedStream(errMsg, d.streamSharder, d.labelsRegex)
+	if err != nil {
+		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
-}
-
-// shardLimitedStream shards limited stream based on the given per-stream rate limited message.
-func shardLimitedStream(perStreamErrorMsg string, sharder StreamSharder, labelsRegex *regexp.Regexp) {
-	matches := labelsRegex.FindAllStringSubmatch(perStreamErrorMsg, 1)
-	if len(matches) < 1 {
-		return
-	}
-
-	labels := "{" + matches[0][1] + "}"
-
-	lbs, err := syntax.ParseLabels(labels)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "couldn't shard stream", "err", err, "labels", labels)
-		return
-	}
-
-	lbs = lbs.MatchLabels(false, ShardLbName) // drop stream_shard label
-	stream := logproto.Stream{Labels: lbs.String()}
-	sharder.IncreaseShardsFor(stream)
 }
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {
