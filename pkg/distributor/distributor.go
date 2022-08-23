@@ -402,63 +402,66 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 
 	derivedKeys := make([]uint32, 0, shards)
 	derivedStreams := make([]streamTracker, 0, shards)
-
-	boundsFor := d.boundsCalculator(stream, shards)
-	for shard := 0; shard < shards; shard++ {
-		lowerBound, upperBound, ok := boundsFor(shard)
+	for i := 0; i < shards; i++ {
+		shard, ok := d.createShard(stream, shards, i)
 		if !ok {
 			continue
 		}
 
-		lbs, ok := d.labelsFor(stream, shard)
-		if !ok {
-			continue
-		}
-
-		streamCopy := logproto.Stream{
-			Labels:  lbs.String(),
-			Hash:    lbs.Hash(),
-			Entries: stream.Entries[lowerBound:upperBound],
-		}
-
-		derivedKeys = append(derivedKeys, util.TokenFor(userID, streamCopy.Labels))
-		derivedStreams = append(derivedStreams, streamTracker{stream: streamCopy})
+		derivedKeys = append(derivedKeys, util.TokenFor(userID, shard.Labels))
+		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
 		if d.cfg.ShardStreams.Debug {
-			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", streamCopy.Labels)
+			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
 
 	return derivedKeys, derivedStreams
 }
 
-func (d *Distributor) labelsFor(stream logproto.Stream, shard int) (labels.Labels, bool) {
+func (d *Distributor) createShard(stream logproto.Stream, totalShards, shardNumber int) (logproto.Stream, bool) {
+	lowerBound, upperBound, ok := d.boundsFor(stream, totalShards, shardNumber)
+	if !ok {
+		return logproto.Stream{}, false
+	}
+
+	lbs, ok := d.labelsFor(stream, shardNumber)
+	if !ok {
+		return logproto.Stream{}, false
+	}
+
+	return logproto.Stream{
+		Labels:  lbs.String(),
+		Hash:    lbs.Hash(),
+		Entries: stream.Entries[lowerBound:upperBound],
+	}, true
+}
+
+func (d *Distributor) labelsFor(stream logproto.Stream, shardNumber int) (labels.Labels, bool) {
 	lbs, err := syntax.ParseLabels(stream.Labels)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", stream.Labels)
 		return nil, false
 	}
 
-	return append(lbs, labels.Label{Name: ShardLbName, Value: strconv.Itoa(shard)}), true
+	return append(lbs, labels.Label{Name: ShardLbName, Value: strconv.Itoa(shardNumber)}), true
 }
 
-func (d *Distributor) boundsCalculator(stream logproto.Stream, totalShards int) func(int) (int, int, bool) {
+func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, shardNumber int) (int, int, bool) {
 	entriesPerWindow := float64(len(stream.Entries)) / float64(totalShards)
 
-	return func(shardNumber int) (int, int, bool) {
-		fIdx := float64(shardNumber)
-		lowerBound := int(fIdx * entriesPerWindow)
-		upperBound := min(int(entriesPerWindow*(1+fIdx)), totalShards)
+	fIdx := float64(shardNumber)
+	lowerBound := int(fIdx * entriesPerWindow)
+	upperBound := min(int(entriesPerWindow*(1+fIdx)), totalShards)
 
-		if lowerBound > upperBound {
-			if d.cfg.ShardStreams.Debug {
-				level.Warn(util_log.Logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", totalShards, "labels", stream.Labels)
-			}
-			return 0, 0, false
+	if lowerBound > upperBound {
+		if d.cfg.ShardStreams.Debug {
+			level.Warn(util_log.Logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", totalShards, "labels", stream.Labels)
 		}
-
-		return lowerBound, upperBound, true
+		return 0, 0, false
 	}
+
+	return lowerBound, upperBound, true
 }
 
 // maxT returns the highest between two given timestamps.
