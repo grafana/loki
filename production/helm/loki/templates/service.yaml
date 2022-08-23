@@ -2,21 +2,23 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.memberlist" . }}
+  name: {{ include "loki.name" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
-  clusterIP: None
   ports:
-    - name: tcp
-      port: 7946
-      targetPort: http-memberlist
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
       protocol: TCP
   selector:
     {{- if eq (include "loki.requiresMultiStageUpgrade" . ) "true" }}
     {{- include "loki.legacy.singleBinarySelectorLabels" . | nindent 4 }}
     {{- else -}}
     {{- include "loki.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/part-of: memberlist
     {{- end }}
