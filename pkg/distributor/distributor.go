@@ -51,23 +51,8 @@ var (
 	rfStats           = usagestats.NewInt("distributor_replication_factor")
 )
 
-type ShardStreamMode string
-
-const (
-	NeverShardMode       ShardStreamMode = "never"
-	AlwaysShardMode                      = "always"
-	DynamicallyShardMode                 = "dynamic"
-)
-
-// TODO: document shard streams configurations/modes.
 type ShardStreamsConfig struct {
-	// TODO: create enum for sharding modes.
-	// Mode defines the sharding mode.
-	//   'always': shard all streams, regardless of being a big or a small one. Not for production usage.
-	//   'never': never shards any stream. Default mode.
-	//   'dynamic': shard only streams that did hit the per-stream rate limit. First requests are expected to be slower
-	// but once the correct amount of sharding is calculated, no latency increase is expected.
-	Mode ShardStreamMode `yaml:"mode"`
+	Enabled bool `yaml:"enabled"`
 
 	// Debug defines if debugging log lines should be enabled or not.
 	//
@@ -90,10 +75,7 @@ type Config struct {
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
-
-	cfg.ShardStreams.Mode = NeverShardMode
-
-	// TODO: add sharding flags.
+	fs.BoolVar(&cfg.ShardStreams.Enabled, "distributor.enable-stream-sharding", false, "Automatically shard streams to keep them under the per-stream rate limit")
 }
 
 // StreamSharder manages the state necessary to shard streams.
@@ -339,13 +321,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
-		if d.cfg.ShardStreams.Mode == NeverShardMode {
-			keys = append(keys, util.TokenFor(userID, stream.Labels))
-			streams = append(streams, streamTracker{stream: stream})
-		} else {
+		if d.cfg.ShardStreams.Enabled {
 			derivedKeys, derivedStreams := shardStream(stream, d.cfg, d.streamSharder, userID)
 			keys = append(keys, derivedKeys...)
 			streams = append(streams, derivedStreams...)
+		} else {
+			keys = append(keys, util.TokenFor(userID, stream.Labels))
+			streams = append(streams, streamTracker{stream: stream})
 		}
 	}
 
@@ -429,7 +411,7 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 	derivedStreams := make([]streamTracker, 0, shards)
 
 	if cfg.ShardStreams.Debug {
-		level.Info(logger).Log("msg", "sharding request with mode", "mode", cfg.ShardStreams.Mode)
+		level.Info(logger).Log("msg", "sharding request", "stream", stream.Labels)
 	}
 
 	entriesPerWindow := float64(len(stream.Entries)) / float64(shards) // divide and keep decimal value.
