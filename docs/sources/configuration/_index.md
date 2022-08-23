@@ -276,6 +276,19 @@ ring:
   # reading and writing.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+# Configures the distributor to shard streams that are too big
+shard_streams:
+  # Whether to enable stream sharding
+  #
+  # CLI flag: -distributor.stream-sharding.enabled
+  [enabled: <boolean> | default = false]
+
+  # Enable debug logging when sharding streams apart from log
+  # levels because logging on the read path may impact performance
+  #
+  # CLI flag: -distributor.stream-sharding.debug-logging-enabled
+  [debug_logging_enabled: <boolean> | default = false]
 ```
 
 ## querier

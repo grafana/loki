@@ -50,12 +50,8 @@ var (
 )
 
 type ShardStreamsConfig struct {
-	Enabled bool `yaml:"enabled"`
-
-	// Debug defines if debugging log lines should be enabled or not.
-	//
-	// Not for production usage since adding logging to the push/write path is impactful cost-wise and performance-wise.
-	Debug bool `yaml:"debug"`
+	Enabled             bool `yaml:"enabled"`
+	DebugLoggingEnabled bool `yaml:"debug_logging_enabled"`
 }
 
 // Config for a Distributor.
@@ -73,7 +69,8 @@ type Config struct {
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
-	fs.BoolVar(&cfg.ShardStreams.Enabled, "distributor.enable-stream-sharding", false, "Automatically shard streams to keep them under the per-stream rate limit")
+	fs.BoolVar(&cfg.ShardStreams.Enabled, "distributor.stream-sharding.enabled", false, "Automatically shard streams to keep them under the per-stream rate limit")
+	fs.BoolVar(&cfg.ShardStreams.DebugLoggingEnabled, "distributor.stream-sharding.debug-logging-enabled", false, "Enable debug logging when sharding streams")
 }
 
 // StreamSharder manages the state necessary to shard streams.
@@ -396,7 +393,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
-	if d.cfg.ShardStreams.Debug {
+	if d.cfg.ShardStreams.DebugLoggingEnabled {
 		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels)
 	}
 
@@ -411,7 +408,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 		derivedKeys = append(derivedKeys, util.TokenFor(userID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
-		if d.cfg.ShardStreams.Debug {
+		if d.cfg.ShardStreams.DebugLoggingEnabled {
 			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
@@ -455,7 +452,7 @@ func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, shardNumber
 	upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
 
 	if lowerBound > upperBound {
-		if d.cfg.ShardStreams.Debug {
+		if d.cfg.ShardStreams.DebugLoggingEnabled {
 			level.Warn(util_log.Logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", totalShards, "labels", stream.Labels)
 		}
 		return 0, 0, false

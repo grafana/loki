@@ -648,12 +648,8 @@ func BenchmarkShardStream(b *testing.B) {
 	}
 	allEntries := generateEntries(25000)
 
-	cfg := Config{ShardStreams: ShardStreamsConfig{
-		Debug: false,
-	}}
 	b.Run("high number of entries, low number of shards", func(b *testing.B) {
 		d := Distributor{
-			cfg:           cfg,
 			streamSharder: NewStreamSharderMock(1),
 		}
 		stream.Entries = allEntries
@@ -666,7 +662,6 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("low number of entries, low number of shards", func(b *testing.B) {
 		d := Distributor{
-			cfg:           cfg,
 			streamSharder: NewStreamSharderMock(1),
 		}
 		stream.Entries = nil
@@ -679,7 +674,6 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("high number of entries, high number of shards", func(b *testing.B) {
 		d := Distributor{
-			cfg:           cfg,
 			streamSharder: NewStreamSharderMock(64),
 		}
 		stream.Entries = allEntries
@@ -692,7 +686,6 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("low number of entries, high number of shards", func(b *testing.B) {
 		d := Distributor{
-			cfg:           cfg,
 			streamSharder: NewStreamSharderMock(64),
 		}
 		stream.Entries = nil
