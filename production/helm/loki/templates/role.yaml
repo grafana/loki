@@ -1,20 +1,31 @@
-{{- if .Values.rbac.create }}
+{{- if or .Values.rbac.pspEnabled .Values.rbac.sccEnabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ template "loki.fullname" . }}
+  name: {{ include "loki.name" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    heritage: {{ .Release.Service }}
-    release: {{ .Release.Name }}
+    {{- include "loki.labels" . | nindent 4 }}
 {{- if .Values.rbac.pspEnabled }}
 rules:
-- apiGroups:      ['extensions']
-  resources:      ['podsecuritypolicies']
-  verbs:          ['use']
-  resourceNames:  [{{ template "loki.fullname" . }}]
+  - apiGroups:
+      - policy
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+    resourceNames:
+      - {{ include "loki.fullname" . }}
+{{- end }}
+{{- if .Values.rbac.sccEnabled }}
+rules:
+  - apiGroups:
+      - security.openshift.io
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+    resourceNames:
+      - {{ include "loki.fullname" . }}
 {{- end }}
 {{- end }}
-
