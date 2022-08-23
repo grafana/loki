@@ -312,7 +312,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		stream.Entries = stream.Entries[:n]
 
 		if d.cfg.ShardStreams.Enabled {
-			derivedKeys, derivedStreams := shardStream(stream, d.cfg, d.streamSharder, userID)
+			derivedKeys, derivedStreams := d.shardStream(stream, userID)
 			keys = append(keys, derivedKeys...)
 			streams = append(streams, derivedStreams...)
 		} else {
@@ -390,54 +390,75 @@ func min(x1, x2 int) int {
 // shardStream shards (divides) the given stream into smaller streams.
 //
 // It will derive N streams (and its entries) from the given stream, where N is the sharding size for the given stream.
-func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder, userID string) ([]uint32, []streamTracker) {
-	logger := util_log.Logger
-	shards, ok := streamSharder.ShardsFor(stream)
+func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker) {
+	shards, ok := d.streamSharder.ShardsFor(stream)
 	if !ok || shards <= 1 {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
+	}
+
+	if d.cfg.ShardStreams.Debug {
+		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels)
 	}
 
 	derivedKeys := make([]uint32, 0, shards)
 	derivedStreams := make([]streamTracker, 0, shards)
 
-	if cfg.ShardStreams.Debug {
-		level.Info(logger).Log("msg", "sharding request", "stream", stream.Labels)
-	}
-
-	entriesPerWindow := float64(len(stream.Entries)) / float64(shards) // divide and keep decimal value.
-	for i := 0; i < shards; i++ {
-		fIdx := float64(i)
-		lowerBound := int(fIdx * entriesPerWindow)
-		upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
-		if lowerBound > upperBound {
-			if cfg.ShardStreams.Debug {
-				level.Warn(logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", shards, "labels", stream.Labels)
-			}
+	boundsFor := d.boundsCalculator(stream, shards)
+	for shard := 0; shard < shards; shard++ {
+		lowerBound, upperBound, ok := boundsFor(shard)
+		if !ok {
 			continue
 		}
 
-		streamCopy := logproto.Stream{}
-		lbs, err := syntax.ParseLabels(stream.Labels)
-		if err != nil {
-			level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", streamCopy.Labels)
+		lbs, ok := d.labelsFor(stream, shard)
+		if !ok {
 			continue
 		}
 
-		idx := strconv.Itoa(i)
-		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: idx})
-		streamCopy.Labels = lbs.String()
-		streamCopy.Hash = lbs.Hash()
-
-		streamCopy.Entries = stream.Entries[lowerBound:upperBound]
-		if cfg.ShardStreams.Debug {
-			level.Info(logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", streamCopy.Labels)
+		streamCopy := logproto.Stream{
+			Labels:  lbs.String(),
+			Hash:    lbs.Hash(),
+			Entries: stream.Entries[lowerBound:upperBound],
 		}
 
 		derivedKeys = append(derivedKeys, util.TokenFor(userID, streamCopy.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: streamCopy})
+
+		if d.cfg.ShardStreams.Debug {
+			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", streamCopy.Labels)
+		}
 	}
 
 	return derivedKeys, derivedStreams
+}
+
+func (d *Distributor) labelsFor(stream logproto.Stream, shard int) (labels.Labels, bool) {
+	lbs, err := syntax.ParseLabels(stream.Labels)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", stream.Labels)
+		return nil, false
+	}
+
+	return append(lbs, labels.Label{Name: ShardLbName, Value: strconv.Itoa(shard)}), true
+}
+
+func (d *Distributor) boundsCalculator(stream logproto.Stream, totalShards int) func(int) (int, int, bool) {
+	entriesPerWindow := float64(len(stream.Entries)) / float64(totalShards)
+
+	return func(shardNumber int) (int, int, bool) {
+		fIdx := float64(shardNumber)
+		lowerBound := int(fIdx * entriesPerWindow)
+		upperBound := min(int(entriesPerWindow*(1+fIdx)), totalShards)
+
+		if lowerBound > upperBound {
+			if d.cfg.ShardStreams.Debug {
+				level.Warn(util_log.Logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", totalShards, "labels", stream.Labels)
+			}
+			return 0, 0, false
+		}
+
+		return lowerBound, upperBound, true
+	}
 }
 
 // maxT returns the highest between two given timestamps.
