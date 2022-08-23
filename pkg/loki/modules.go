@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -96,8 +97,23 @@ const (
 	UsageReport              string = "usage-report"
 )
 
+func (t *Loki) initRegisterer() prometheus.Registerer {
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(version.NewCollector("loki"))
+	registry.MustRegister(collectors.NewGoCollector(
+		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsScheduler),
+	))
+
+	// override default registerer & gatherer since we refer to these global variables in several places
+	// TODO: refactor the rest of the codebase to decouple from these global variables
+	prometheus.DefaultRegisterer = registry
+	prometheus.DefaultGatherer = registry
+
+	return registry
+}
+
 func (t *Loki) initServer() (services.Service, error) {
-	prometheus.MustRegister(version.NewCollector("loki"))
+	t.initRegisterer()
 
 	// Loki handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
