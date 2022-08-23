@@ -79,7 +79,8 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{n}`),
 			labels.Labels{},
 			labels.Labels{
-				{Name: logqlmodel.ErrorLabel, Value: errJSON},
+				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "__error_details__", Value: "ReadMapCB: expect \" after {, but found n, error found in #2 byte of ...|{n}|..., bigger context ...|{n}|..."},
 			},
 		},
 		{
@@ -570,7 +571,8 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: logqlmodel.ErrorLabel, Value: errLogfmt},
+				{Name: "__error__", Value: "LogfmtParserErr"},
+				{Name: "__error_details__", Value: "logfmt syntax error at pos 8 : unexpected '='"},
 			},
 		},
 		{
@@ -746,6 +748,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.Labels{},
 			labels.Labels{
 				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "__error_details__", Value: "expecting json object(6), but it is not"},
 			},
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
 		},
@@ -755,6 +758,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.Labels{{Name: "cluster", Value: "us-central1"}},
 			labels.Labels{
 				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "__error_details__", Value: "expecting json object(6), but it is not"},
 				{Name: "cluster", Value: "us-central1"},
 			},
 			[]byte(`["foo","bar"]`),

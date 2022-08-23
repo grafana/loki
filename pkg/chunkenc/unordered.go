@@ -116,6 +116,15 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string) error {
 	}
 	displaced := hb.rt.Add(e)
 	if displaced[0] != nil {
+		// While we support multiple entries at the same timestamp, we _do_ de-duplicate
+		// entries at the same time with the same content, iterate through any existing
+		// entries and ignore the line if we already have an entry with the same content
+		for _, et := range displaced[0].(*nsEntries).entries {
+			if et == line {
+				e.entries = displaced[0].(*nsEntries).entries
+				return nil
+			}
+		}
 		e.entries = append(displaced[0].(*nsEntries).entries, line)
 	} else {
 		e.entries = []string{line}

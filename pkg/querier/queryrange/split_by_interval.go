@@ -151,13 +151,12 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		data.req.LogToSpan(sp)
 
 		resp, err := next.Do(ctx, data.req)
+		sp.Finish()
 
 		select {
 		case <-ctx.Done():
-			sp.Finish()
 			return
 		case data.ch <- &packedResp{resp, err}:
-			sp.Finish()
 		}
 	}
 }

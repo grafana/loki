@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/require"
 )
@@ -166,11 +166,11 @@ analytics:
 overrides:
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			ReplicationFactor: 1,
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             4,
 						IngestionBurstSize:        6,
 						MaxLabelNameLength:        1024,
@@ -179,7 +179,7 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 					},
-					QueryLimits: &lokiv1beta1.QueryLimitSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
@@ -198,8 +198,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -214,7 +215,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
-			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -222,9 +223,9 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []lokiv1beta1.ObjectStorageSchema{
+			Schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
 			},
@@ -400,11 +401,11 @@ overrides:
     max_chunks_per_query: 1000000
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			ReplicationFactor: 1,
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             4,
 						IngestionBurstSize:        6,
 						MaxLabelNameLength:        1024,
@@ -413,20 +414,20 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 					},
-					QueryLimits: &lokiv1beta1.QueryLimitSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 					},
 				},
-				Tenants: map[string]lokiv1beta1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.LimitsTemplateSpec{
 					"test-a": {
-						IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             2,
 							IngestionBurstSize:        5,
 							MaxGlobalStreamsPerTenant: 1,
 						},
-						QueryLimits: &lokiv1beta1.QueryLimitSpec{
+						QueryLimits: &lokiv1.QueryLimitSpec{
 							MaxChunksPerQuery: 1000000,
 						},
 					},
@@ -444,8 +445,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -460,7 +462,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
-			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -468,9 +470,9 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []lokiv1beta1.ObjectStorageSchema{
+			Schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
 			},
@@ -484,11 +486,11 @@ overrides:
 
 func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			ReplicationFactor: 1,
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             4,
 						IngestionBurstSize:        6,
 						MaxLabelNameLength:        1024,
@@ -513,8 +515,9 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -529,7 +532,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
-			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -537,9 +540,9 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []lokiv1beta1.ObjectStorageSchema{
+			Schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
 			},
@@ -763,11 +766,11 @@ analytics:
 overrides:
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			ReplicationFactor: 1,
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             4,
 						IngestionBurstSize:        6,
 						MaxLabelNameLength:        1024,
@@ -776,7 +779,7 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 					},
-					QueryLimits: &lokiv1beta1.QueryLimitSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
@@ -795,8 +798,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -858,7 +862,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
-			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -866,9 +870,9 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []lokiv1beta1.ObjectStorageSchema{
+			Schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
 			},
@@ -1093,11 +1097,11 @@ analytics:
 overrides:
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			ReplicationFactor: 1,
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             4,
 						IngestionBurstSize:        6,
 						MaxLabelNameLength:        1024,
@@ -1106,7 +1110,7 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 					},
-					QueryLimits: &lokiv1beta1.QueryLimitSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
@@ -1125,8 +1129,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1189,7 +1194,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
-			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -1197,9 +1202,9 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []lokiv1beta1.ObjectStorageSchema{
+			Schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
 			},
@@ -1437,11 +1442,11 @@ analytics:
 overrides:
 `
 	opts := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			ReplicationFactor: 1,
-			Limits: &lokiv1beta1.LimitsSpec{
-				Global: &lokiv1beta1.LimitsTemplateSpec{
-					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             4,
 						IngestionBurstSize:        6,
 						MaxLabelNameLength:        1024,
@@ -1450,7 +1455,7 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 					},
-					QueryLimits: &lokiv1beta1.QueryLimitSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
@@ -1469,8 +1474,9 @@ overrides:
 			Port: 7946,
 		},
 		Querier: Address{
-			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
-			Port: 3100,
+			Protocol: "http",
+			FQDN:     "loki-querier-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
 		},
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1550,7 +1556,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
-			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -1558,9 +1564,9 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []lokiv1beta1.ObjectStorageSchema{
+			Schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
 			},

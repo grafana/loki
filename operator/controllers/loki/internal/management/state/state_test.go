@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 
@@ -21,7 +21,7 @@ import (
 func TestIsManaged(t *testing.T) {
 	type test struct {
 		name   string
-		stack  lokiv1beta1.LokiStack
+		stack  lokiv1.LokiStack
 		wantOk bool
 	}
 
@@ -35,7 +35,7 @@ func TestIsManaged(t *testing.T) {
 	table := []test{
 		{
 			name: "managed",
-			stack: lokiv1beta1.LokiStack{
+			stack: lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -44,15 +44,15 @@ func TestIsManaged(t *testing.T) {
 					Namespace: "some-ns",
 					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 				},
-				Spec: lokiv1beta1.LokiStackSpec{
-					ManagementState: lokiv1beta1.ManagementStateManaged,
+				Spec: lokiv1.LokiStackSpec{
+					ManagementState: lokiv1.ManagementStateManaged,
 				},
 			},
 			wantOk: true,
 		},
 		{
 			name: "unmanaged",
-			stack: lokiv1beta1.LokiStack{
+			stack: lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -61,8 +61,8 @@ func TestIsManaged(t *testing.T) {
 					Namespace: "some-ns",
 					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 				},
-				Spec: lokiv1beta1.LokiStackSpec{
-					ManagementState: lokiv1beta1.ManagementStateUnmanaged,
+				Spec: lokiv1.LokiStackSpec{
+					ManagementState: lokiv1.ManagementStateUnmanaged,
 				},
 			},
 		},

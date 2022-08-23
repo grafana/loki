@@ -7,20 +7,45 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // implements stores.Index
 type IndexClient struct {
-	idx Index
+	idx  Index
+	opts IndexClientOptions
 }
 
-func NewIndexClient(idx Index) *IndexClient {
+type IndexClientOptions struct {
+	// Whether using bloom filters in the Stats() method
+	// should be skipped. This helps probabilistically detect
+	// duplicates when chunks are written to multiple
+	// index buckets, which is of use in the (index-gateway|querier)
+	// but not worth the memory costs in the ingesters.
+	UseBloomFilters bool
+}
+
+func DefaultIndexClientOptions() IndexClientOptions {
+	return IndexClientOptions{
+		UseBloomFilters: true,
+	}
+}
+
+type IndexStatsAccumulator interface {
+	AddStream(fp model.Fingerprint)
+	AddChunk(fp model.Fingerprint, chk index.ChunkMeta)
+	Stats() stats.Stats
+}
+
+func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
 	return &IndexClient{
-		idx: idx,
+		idx:  idx,
+		opts: opts,
 	}
 }
 
@@ -45,6 +70,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 			Shard: uint32(s.Shard),
 			Of:    uint32(s.Of),
 		}
+
+		if err := shard.Validate(); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if len(matchers) == 0 {
@@ -60,13 +89,32 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	log, ctx := spanlogger.New(ctx, "IndexClient.GetChunkRefs")
+	defer log.Span.Finish()
+
+	var kvps []interface{}
+	defer func() {
+		log.Log(kvps...)
+	}()
+
 	matchers, shard, err := cleanMatchers(matchers...)
+	kvps = append(kvps,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"cleanMatcherErr", err,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO(owen-d): use a pool to reduce allocs here
 	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	kvps = append(kvps,
+		"chunks", len(chks),
+		"indexErr", err,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -123,14 +171,20 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 		return nil, err
 	}
 
-	blooms := stats.BloomPool.Get()
-	defer stats.BloomPool.Put(blooms)
-	blooms, err = c.idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+	var acc IndexStatsAccumulator
+	if c.opts.UseBloomFilters {
+		blooms := stats.BloomPool.Get()
+		defer stats.BloomPool.Put(blooms)
+		acc = blooms
+	} else {
+		acc = &stats.Stats{}
+	}
+	err = c.idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
 
 	if err != nil {
 		return nil, err
 	}
-	res := blooms.Stats()
+	res := acc.Stats()
 
 	return &res, nil
 }

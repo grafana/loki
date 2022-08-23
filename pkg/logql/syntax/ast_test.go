@@ -180,6 +180,21 @@ func Test_SampleExpr_String(t *testing.T) {
 	}
 }
 
+func Test_SampleExpr_String_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`topk(0, sum(rate({region="us-east1"}[5m])) by (name))`,
+		`topk by (name)(0,sum(rate({region="us-east1"}[5m])))`,
+		`bottomk(0, sum(rate({region="us-east1"}[5m])) by (name))`,
+		`bottomk by (name)(0,sum(rate({region="us-east1"}[5m])))`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "parse error : invalid parameter (must be greater than 0)")
+		})
+	}
+}
+
 func TestMatcherGroups(t *testing.T) {
 	for i, tc := range []struct {
 		query string

@@ -3,7 +3,7 @@ package manifests_test
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -14,10 +14,10 @@ func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -40,10 +40,10 @@ func TestNewRulerStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	sts := manifests.NewRulerStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -61,10 +61,10 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 	sts := manifests.NewRulerStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
+		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},

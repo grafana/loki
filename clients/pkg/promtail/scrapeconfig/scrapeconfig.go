@@ -33,20 +33,22 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName          string                     `yaml:"job_name,omitempty"`
-	PipelineStages   stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
-	JournalConfig    *JournalTargetConfig       `yaml:"journal,omitempty"`
-	SyslogConfig     *SyslogTargetConfig        `yaml:"syslog,omitempty"`
-	GcplogConfig     *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
-	PushConfig       *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
-	WindowsConfig    *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
-	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
-	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
-	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
-	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	JobName           string                     `yaml:"job_name,omitempty"`
+	PipelineStages    stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
+	JournalConfig     *JournalTargetConfig       `yaml:"journal,omitempty"`
+	SyslogConfig      *SyslogTargetConfig        `yaml:"syslog,omitempty"`
+	GcplogConfig      *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
+	PushConfig        *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
+	WindowsConfig     *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	KafkaConfig       *KafkaTargetConfig         `yaml:"kafka,omitempty"`
+	GelfConfig        *GelfTargetConfig          `yaml:"gelf,omitempty"`
+	CloudflareConfig  *CloudflareConfig          `yaml:"cloudflare,omitempty"`
+	HerokuDrainConfig *HerokuDrainTargetConfig   `yaml:"heroku_drain,omitempty"`
+	RelabelConfigs    []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+	Encoding               string                 `yaml:"encoding,omitempty"`
 }
 
 type ServiceDiscoveryConfig struct {
@@ -158,6 +160,10 @@ type JournalTargetConfig struct {
 	// Path to a directory to read journal entries from. Defaults to system path
 	// if empty.
 	Path string `yaml:"path"`
+
+	// Journal matches to filter. Character (+) is not supported, only logical AND
+	// matches will be added.
+	Matches string `yaml:"matches"`
 }
 
 // SyslogTargetConfig describes a scrape config that listens for log lines over syslog.
@@ -346,7 +352,7 @@ type GcplogTargetConfig struct {
 	// ProjectID is the Cloud project id
 	ProjectID string `yaml:"project_id"`
 
-	// Subscription is the scription name we use to pull logs from a pubsub topic.
+	// Subscription is the subscription name we use to pull logs from a pubsub topic.
 	Subscription string `yaml:"subscription"`
 
 	// Labels are the additional labels to be added to log entry while pushing it to Loki server.
@@ -355,6 +361,26 @@ type GcplogTargetConfig struct {
 	// UseIncomingTimestamp represents whether to keep the timestamp same as actual log entry coming in or replace it with
 	// current timestamp at the time of processing.
 	// Its default value(`false`) denotes, replace it with current timestamp at the time of processing.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// SubscriptionType decides if the target works with a `pull` or `push` subscription type.
+	// Defaults to `pull` for backwards compatibility reasons.
+	SubscriptionType string `yaml:"subscription_type"`
+
+	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
+	Server server.Config `yaml:"server"`
+}
+
+// HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.
+type HerokuDrainTargetConfig struct {
+	// Server is the weaveworks server config for listening connections
+	Server server.Config `yaml:"server"`
+
+	// Labels optionally holds labels to associate with each record received on the push api.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming heroku log entry timestamp. If false,
+	// promtail will assign the current timestamp to the log entry when it was processed.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 

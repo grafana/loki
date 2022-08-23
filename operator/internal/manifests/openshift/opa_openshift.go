@@ -35,6 +35,7 @@ func newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile string
 	uriScheme = corev1.URISchemeHTTP
 	args = []string{
 		"--log.level=warn",
+		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
 		fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatcher),
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),

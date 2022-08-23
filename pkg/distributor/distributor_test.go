@@ -265,6 +265,33 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
+		"incrementing enabled, multiple repeated-timestamps": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "hi"},
+							{Timestamp: time.Unix(123456, 0), Line: "hey there"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 1), Line: "hi"},
+							{Timestamp: time.Unix(123456, 2), Line: "hey there"},
+						},
+					},
+				},
+			},
+		},
 		"incrementing enabled, multiple subsequent increments": {
 			limits: incrementingEnabled,
 			push: &logproto.PushRequest{
@@ -493,7 +520,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 			// If the distributors ring is setup, wait until the first distributor
 			// updates to the expected size
-			if distributors[0].distributorsRing != nil {
+			if distributors[0].distributorsLifecycler != nil {
 				test.Poll(t, time.Second, testData.distributors, func() interface{} {
 					return distributors[0].distributorsLifecycler.HealthyInstancesCount()
 				})

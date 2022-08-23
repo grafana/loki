@@ -23,7 +23,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/wal"
 )
@@ -138,7 +137,11 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 func (m *HeadManager) Stop() error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	return m.active.Stop()
+	if err := m.active.Stop(); err != nil {
+		return err
+	}
+
+	return m.buildTSDBFromWAL(m.active.initialized)
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
@@ -272,34 +275,41 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	// build tsdb from rotated-out period
 	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
 	if m.prev != nil {
-		level.Debug(m.log).Log("msg", "combining tsdb WALs")
-		grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(m.prev.initialized))
-		if err != nil {
-			return errors.Wrap(err, "listing wals")
+		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			return errors.Wrap(err, "building tsdb from rotated out period")
 		}
-		level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
-
-		// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
-		// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
-		// TSDBs from orphaned WALs of previous periods during startup.
-		// we use the m.prev.initialized timestamp here for the filename to ensure it can't clobber
-		// an existing file from a previous cycle. I don't think this is possible, but
-		// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
-		if err := m.tsdbManager.BuildFromWALs(m.prev.initialized, grp.wals); err != nil {
-			return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
-		}
-
-		// Now that a TSDB has been created from this group, it's safe to remove them
-		if err := m.removeWALGroup(grp); err != nil {
-			return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
-		}
-		level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
-
 	}
 
 	// Now that the tsdbManager has the updated TSDBs, we can remove our references
 	m.prevHeads = nil
 	m.prev = nil
+	return nil
+}
+
+func (m *HeadManager) buildTSDBFromWAL(t time.Time) error {
+	level.Debug(m.log).Log("msg", "combining tsdb WALs")
+	grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(t))
+	if err != nil {
+		return errors.Wrap(err, "listing wals")
+	}
+	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
+
+	// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
+	// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
+	// TSDBs from orphaned WALs of previous periods during startup.
+	// we use the same timestamp as wal here for the filename to ensure it can't clobber
+	// an existing file from a previous cycle. I don't think this is possible, but
+	// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
+	if err := m.tsdbManager.BuildFromWALs(t, grp.wals); err != nil {
+		return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
+	}
+
+	// Now that a TSDB has been created from this group, it's safe to remove them
+	if err := m.removeWALGroup(grp); err != nil {
+		return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+	}
+	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
+
 	return nil
 }
 
@@ -486,8 +496,6 @@ func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Lo
 }
 
 func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMetas) *WALRecord {
-	idx := t.shardForTenant(userID)
-
 	var mint, maxt int64
 	for _, chk := range chks {
 		if chk.MinTime < mint || mint == 0 {
@@ -500,25 +508,8 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	}
 	updateMintMaxt(mint, maxt, &t.mint, &t.maxt)
 
-	// First, check if this tenant has been created
-	var (
-		mtx       = &t.locks[idx]
-		newStream bool
-		refID     uint64
-	)
-	mtx.RLock()
-	if head, ok := t.tenants[idx][userID]; ok {
-		newStream, refID = head.Append(ls, chks)
-		mtx.RUnlock()
-	} else {
-		// tenant does not exist, so acquire write lock to insert it
-		mtx.RUnlock()
-		mtx.Lock()
-		head := NewHead(userID, t.metrics, t.log)
-		t.tenants[idx][userID] = head
-		newStream, refID = head.Append(ls, chks)
-		mtx.Unlock()
-	}
+	head := t.getOrCreateTenantHead(userID)
+	newStream, refID := head.Append(ls, chks)
 
 	rec := &WALRecord{
 		UserID: userID,
@@ -536,6 +527,32 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	}
 
 	return rec
+}
+
+func (t *tenantHeads) getOrCreateTenantHead(userID string) *Head {
+	idx := t.shardForTenant(userID)
+	mtx := &t.locks[idx]
+
+	// return existing tenant head if it exists
+	mtx.RLock()
+	head, ok := t.tenants[idx][userID]
+	mtx.RUnlock()
+	if ok {
+		return head
+	}
+
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	// tenant head was not found before.
+	// Check again if a competing request created the head already, don't create it again if so.
+	head, ok = t.tenants[idx][userID]
+	if !ok {
+		head = NewHead(userID, t.metrics, t.log)
+		t.tenants[idx][userID] = head
+	}
+
+	return head
 }
 
 func (t *tenantHeads) shardForTenant(userID string) uint64 {
@@ -606,16 +623,16 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
-		return blooms, nil
+		return nil
 	}
-	return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
 }
 
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas)) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
@@ -639,7 +656,9 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.C
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
-				fn(user, ls, chks)
+				if err := fn(user, ls, chks); err != nil {
+					return err
+				}
 			}
 		}
 	}

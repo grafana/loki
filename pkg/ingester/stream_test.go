@@ -77,8 +77,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
 					time.Unix(int64(i), 0).String(),
+					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
@@ -242,7 +243,7 @@ func TestUnorderedPush(t *testing.T) {
 			entries: []logproto.Entry{
 				{Timestamp: time.Unix(2, 0), Line: "x"},
 				{Timestamp: time.Unix(1, 0), Line: "x"},
-				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(10, 0), Line: "x"},
 			},
@@ -285,8 +286,6 @@ func TestUnorderedPush(t *testing.T) {
 
 	exp := []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "x"},
-		{Timestamp: time.Unix(2, 0), Line: "x"},
-		// duplicate was allowed here b/c it wasnt written sequentially
 		{Timestamp: time.Unix(2, 0), Line: "x"},
 		{Timestamp: time.Unix(7, 0), Line: "x"},
 		{Timestamp: time.Unix(8, 0), Line: "x"},

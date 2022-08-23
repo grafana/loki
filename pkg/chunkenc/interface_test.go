@@ -2,6 +2,7 @@ package chunkenc
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +31,7 @@ func TestParseEncoding(t *testing.T) {
 }
 
 func TestIsOutOfOrderErr(t *testing.T) {
-	for _, err := range []error{ErrOutOfOrder, ErrTooFarBehind} {
+	for _, err := range []error{ErrOutOfOrder, ErrTooFarBehind(time.Now())} {
 		require.Equal(t, true, IsOutOfOrderErr(err))
 	}
 }

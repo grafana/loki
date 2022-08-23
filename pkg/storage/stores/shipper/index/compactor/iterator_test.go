@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 )
 
 func Test_ChunkIterator(t *testing.T) {
@@ -42,7 +42,7 @@ func Test_ChunkIterator(t *testing.T) {
 			require.Len(t, tables, 1)
 			var actual []retention.ChunkEntry
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
 					actual = append(actual, entry)
 					return len(actual) == 2, nil
 				})
@@ -56,7 +56,7 @@ func Test_ChunkIterator(t *testing.T) {
 			// second pass we delete c2
 			actual = actual[:0]
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
 					actual = append(actual, entry)
 					return false, nil
 				})
@@ -67,6 +67,37 @@ func Test_ChunkIterator(t *testing.T) {
 			}, actual)
 		})
 	}
+}
+
+func Test_ChunkIteratorContextCancelation(t *testing.T) {
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(t, cm)
+
+	from := schemaCfg.Configs[0].From.Time
+	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, from, from.Add(1*time.Hour))
+	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, from, from.Add(1*time.Hour))
+
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c1, c2}))
+	store.Stop()
+
+	tables := store.indexTables()
+	require.Len(t, tables, 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var actual []retention.ChunkEntry
+	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
+		return ForEachChunk(ctx, tx.Bucket(local.IndexBucketName), schemaCfg.Configs[0], func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+			actual = append(actual, entry)
+			cancel()
+			return len(actual) == 2, nil
+		})
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, actual, 1)
 }
 
 func Test_SeriesCleaner(t *testing.T) {
@@ -91,7 +122,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			require.Len(t, tables, 1)
 			// remove c1, c2 chunk
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				return ForEachChunk(tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
 					return entry.Labels.Get("bar") == "foo", nil
 				})
 			})
@@ -213,7 +244,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	_ = store.indexTables()[0].Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(local.IndexBucketName)
 		for n := 0; n < b.N; n++ {
-			err := ForEachChunk(bucket, allSchemas[0].config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
+			err := ForEachChunk(context.Background(), bucket, allSchemas[0].config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
 				chunkEntry = entry
 				total++
 				return true, nil

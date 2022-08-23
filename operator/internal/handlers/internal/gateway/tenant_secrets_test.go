@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests"
 
@@ -26,20 +26,20 @@ func TestGetTenantSecrets_StaticMode(t *testing.T) {
 		},
 	}
 
-	s := &lokiv1beta1.LokiStack{
+	s := &lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "mystack",
 			Namespace: "some-ns",
 		},
-		Spec: lokiv1beta1.LokiStackSpec{
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.Static,
-				Authentication: []lokiv1beta1.AuthenticationSpec{
+		Spec: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+				Authentication: []lokiv1.AuthenticationSpec{
 					{
 						TenantName: "test",
 						TenantID:   "test",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							Secret: &lokiv1beta1.TenantSecretSpec{
+						OIDC: &lokiv1.OIDCSpec{
+							Secret: &lokiv1.TenantSecretSpec{
 								Name: "test",
 							},
 						},
@@ -89,20 +89,20 @@ func TestGetTenantSecrets_DynamicMode(t *testing.T) {
 		},
 	}
 
-	s := &lokiv1beta1.LokiStack{
+	s := &lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "mystack",
 			Namespace: "some-ns",
 		},
-		Spec: lokiv1beta1.LokiStackSpec{
-			Tenants: &lokiv1beta1.TenantsSpec{
-				Mode: lokiv1beta1.Dynamic,
-				Authentication: []lokiv1beta1.AuthenticationSpec{
+		Spec: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Dynamic,
+				Authentication: []lokiv1.AuthenticationSpec{
 					{
 						TenantName: "test",
 						TenantID:   "test",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							Secret: &lokiv1beta1.TenantSecretSpec{
+						OIDC: &lokiv1.OIDCSpec{
+							Secret: &lokiv1.TenantSecretSpec{
 								Name: "test",
 							},
 						},

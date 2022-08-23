@@ -196,6 +196,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# TLS configuration for serving over HTTPS
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
 [grpc_listen_address: <string>]
@@ -203,6 +218,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # gRPC server listen port
 # CLI flag: -server.grpc-listen-port
 [grpc_listen_port: <int> | default = 9095]
+
+# TLS configuration for serving over gRPC
+grpc_tls_config:
+  # gRPC server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # gRPC server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+  # gRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # gRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 # Register instrumentation handlers (/metrics, etc.)
 # CLI flag: -server.register-instrumentation
@@ -1828,10 +1858,6 @@ to wait before saving them to the backing store.
 # The CLI flags prefix for this block config is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
-# The minimum time between a chunk update and being saved
-# to the store.
-[min_chunk_age: <duration>]
-
 # Cache index entries older than this period. Default is disabled.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration>]
@@ -2109,16 +2135,27 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# The max number of delete requests to run per compaction cycle.
+# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+[delete_batch_size: <duration> | default = 70]
+
+# The maximum amount of time to spend running retention and deletion
+# on any given table in the index. 0 is no timeout
+#
+# NOTE: This timeout prioritizes runtime over completeness of retention/deletion.
+# It may take several compaction runs to fully perform retention and process
+# all outstanding delete requests
+# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+[retention_table_timeout: <duration> | default = 0]
+
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
-# Deletion mode.
-# Can be one of "disabled", "filter-only", or "filter-and-delete".
-# When set to "filter-only" or "filter-and-delete", and if
-# retention_enabled is true, then the log entry deletion API endpoints are available.
+# Deprecated: Deletion mode.
+# Use deletion_mode per tenant configuration instead.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "disabled"]
 
@@ -2389,9 +2426,16 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
 
-# When true, access to the deletion API is enabled.
+# Deprecated: Use deletion_mode per tenant configuration instead.
 # CLI flag: -compactor.allow_deletes
 [allow_deletes: <boolean> | default = false]
+
+# Deletion mode.
+# Can be one of "disabled", "filter-only", or "filter-and-delete".
+# When set to "filter-only" or "filter-and-delete", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "filter-and-delete"]
 ```
 
 ## sigv4_config
@@ -2660,6 +2704,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
+
+# Groupcache is an in-process, distributed cache that behaves similarly to memcached but is built-in to Loki
+groupcache:
+  # Enable groupcache
+  # CLI flag: -common.groupcache.enabled
+  [enabled: <boolean>: default = false]
+  # Set the maximum available memory to use for each groupcache group
+  # NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.
+  # CLI flag: -common.groupcache.capacity-per-cache-mb
+  [capacity_per_cache_mb: <int>: default = 100]
 ```
 
 ## analytics

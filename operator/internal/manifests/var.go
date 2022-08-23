@@ -25,6 +25,8 @@ const (
 	lokiLivenessPath  = "/loki/api/v1/status/buildinfo"
 	lokiReadinessPath = "/ready"
 
+	lokiFrontendContainerName = "loki-query-frontend"
+
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
 	gatewayInternalPort     = 8081
@@ -46,7 +48,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.5.0"
+	DefaultContainerImage = "docker.io/grafana/loki:2.6.1"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"

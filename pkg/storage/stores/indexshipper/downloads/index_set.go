@@ -16,11 +16,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -187,7 +185,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	for _, idx := range t.index {
-		if err := callback(idx); err != nil {
+		if err := callback(t.userID == "", idx); err != nil {
 			return err
 		}
 	}
@@ -366,64 +364,20 @@ func (t *indexSet) AwaitReady(ctx context.Context) error {
 }
 
 func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) (string, error) {
-	decompress := shipper_util.IsCompressedFile(fileName)
+	decompress := storage.IsCompressedFile(fileName)
 	dst := filepath.Join(folderPathForTable, fileName)
 	if decompress {
 		dst = strings.Trim(dst, gzipExtension)
 	}
-	return filepath.Base(dst), downloadFileFromStorage(
+	return filepath.Base(dst), storage.DownloadFileFromStorage(
 		dst,
 		decompress,
 		true,
-		shipper_util.LoggerWithFilename(t.logger, fileName),
+		storage.LoggerWithFilename(t.logger, fileName),
 		func() (io.ReadCloser, error) {
 			return t.baseIndexSet.GetFile(ctx, t.tableName, t.userID, fileName)
 		},
 	)
-}
-
-// DownloadFileFromStorage downloads a file from storage to given location.
-func downloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc shipper_util.GetFileFunc) error {
-	start := time.Now()
-	readCloser, err := getFileFunc()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := f.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
-		}
-	}()
-	var objectReader io.Reader = readCloser
-	if decompressFile {
-		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-		defer chunkenc.Gzip.PutReader(decompressedReader)
-
-		objectReader = decompressedReader
-	}
-
-	_, err = io.Copy(f, objectReader)
-	if err != nil {
-		return err
-	}
-
-	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
-	if sync {
-		return f.Sync()
-	}
-	return nil
 }
 
 // doConcurrentDownload downloads objects(files) concurrently. It ignores only missing file errors caused by removal of file by compaction.
