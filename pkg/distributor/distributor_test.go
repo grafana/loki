@@ -615,10 +615,12 @@ func TestStreamShard(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			streamSharder := NewStreamSharderMock(tc.shards)
+			d := Distributor{
+				streamSharder: NewStreamSharderMock(tc.shards),
+			}
 			baseStream.Entries = tc.entries
 
-			_, derivedStreams := shardStream(baseStream, Config{}, streamSharder, "fake")
+			_, derivedStreams := d.shardStream(baseStream, "fake")
 
 			require.Equal(t, tc.wantDerivedStream, derivedStreams)
 		})
@@ -650,34 +652,54 @@ func BenchmarkShardStream(b *testing.B) {
 		Debug: false,
 	}}
 	b.Run("high number of entries, low number of shards", func(b *testing.B) {
-		streamSharder := NewStreamSharderMock(1)
+		d := Distributor{
+			cfg:           cfg,
+			streamSharder: NewStreamSharderMock(1),
+		}
 		stream.Entries = allEntries
+
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			shardStream(stream, cfg, streamSharder, "fake")
+			d.shardStream(stream, "fake")
 		}
 	})
 
 	b.Run("low number of entries, low number of shards", func(b *testing.B) {
-		streamSharder := NewStreamSharderMock(1)
+		d := Distributor{
+			cfg:           cfg,
+			streamSharder: NewStreamSharderMock(1),
+		}
 		stream.Entries = nil
+
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			shardStream(stream, cfg, streamSharder, "fake")
+			d.shardStream(stream, "fake")
 		}
 	})
 
 	b.Run("high number of entries, high number of shards", func(b *testing.B) {
-		streamSharder := NewStreamSharderMock(64)
+		d := Distributor{
+			cfg:           cfg,
+			streamSharder: NewStreamSharderMock(64),
+		}
 		stream.Entries = allEntries
+
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			shardStream(stream, cfg, streamSharder, "fake")
+			d.shardStream(stream, "fake")
 		}
 	})
 
 	b.Run("low number of entries, high number of shards", func(b *testing.B) {
-		streamSharder := NewStreamSharderMock(64)
+		d := Distributor{
+			cfg:           cfg,
+			streamSharder: NewStreamSharderMock(64),
+		}
 		stream.Entries = nil
+
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			shardStream(stream, cfg, streamSharder, "fake")
+			d.shardStream(stream, "fake")
 		}
 	})
 }

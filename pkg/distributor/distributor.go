@@ -452,7 +452,7 @@ func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, shardNumber
 
 	fIdx := float64(shardNumber)
 	lowerBound := int(fIdx * entriesPerWindow)
-	upperBound := min(int(entriesPerWindow*(1+fIdx)), totalShards)
+	upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
 
 	if lowerBound > upperBound {
 		if d.cfg.ShardStreams.Debug {
