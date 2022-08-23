@@ -7,7 +7,7 @@ import (
 )
 
 type streamSharder struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	streams map[string]int
 }
 
@@ -18,8 +18,8 @@ func NewStreamSharder() StreamSharder {
 }
 
 func (s *streamSharder) ShardsFor(stream logproto.Stream) (int, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	shards := s.streams[stream.Labels]
 	if shards > 0 {
@@ -36,8 +36,7 @@ func (s *streamSharder) IncreaseShardsFor(stream logproto.Stream) {
 
 	shards := s.streams[stream.Labels]
 
-	// Since the number of shards of a stream that is being sharded for the first time is 0,
-	// we assign to it shards = max(shards*2, 2) such that its number of shards will be no less than 2.
+	// Ensure the number of shards is at least 2
 	s.streams[stream.Labels] = max(shards*2, 2)
 }
 
