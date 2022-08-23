@@ -114,6 +114,7 @@ type Distributor struct {
 	validator        *Validator
 	pool             *ring_client.Pool
 	streamSharder    StreamSharder
+	labelsRegex      *regexp.Regexp
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -193,6 +194,7 @@ func New(
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:             labelCache,
 		rateLimitStrat:         rateLimitStrat,
+		labelsRegex:            regexp.MustCompile("\\{(.*?)\\}"),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -556,15 +558,14 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 	// TODO: look for a better way to recognize a per-stream rate limit.
 	if errMsg := err.Error(); strings.Contains(errMsg, "Per stream rate limit exceeded (limit") {
 		d.streamSharding.Inc()
-		shardLimitedStream(errMsg, d.streamSharder)
+		shardLimitedStream(errMsg, d.streamSharder, d.labelsRegex)
 	}
 	return err
 }
 
 // shardLimitedStream shards limited stream based on the given per-stream rate limited message.
-func shardLimitedStream(perStreamErrorMsg string, sharder StreamSharder) {
-	re := regexp.MustCompile("\\{(.*?)\\}")
-	matches := re.FindAllStringSubmatch(perStreamErrorMsg, 1)
+func shardLimitedStream(perStreamErrorMsg string, sharder StreamSharder, labelsRegex *regexp.Regexp) {
+	matches := labelsRegex.FindAllStringSubmatch(perStreamErrorMsg, 1)
 	if len(matches) < 1 {
 		return
 	}
