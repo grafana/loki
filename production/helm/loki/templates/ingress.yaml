@@ -1,45 +1,55 @@
-{{- if .Values.ingress.enabled -}}
-{{- $fullName := include "loki.fullname" . -}}
-{{- $svcPort := .Values.service.port -}}
-{{- if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
-apiVersion: networking.k8s.io/v1beta1
-{{- else -}}
-apiVersion: extensions/v1beta1
-{{- end }}
+{{- if .Values.ingress.enabled }}
+{{- $ingressApiIsStable := eq (include "loki.ingress.isStable" .) "true" -}}
+{{- $ingressSupportsIngressClassName := eq (include "loki.ingress.supportsIngressClassName" .) "true" -}}
+{{- $ingressSupportsPathType := eq (include "loki.ingress.supportsPathType" .) "true" -}}
+apiVersion: {{ include "loki.ingress.apiVersion" . }}
 kind: Ingress
 metadata:
-  name: {{ $fullName }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "loki.fullname" . }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-{{- if .Values.ingress.tls }}
+  {{- if and $ingressSupportsIngressClassName .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end -}}
+  {{- if .Values.ingress.tls }}
   tls:
-  {{- range .Values.ingress.tls }}
+    {{- range .Values.ingress.tls }}
     - hosts:
-      {{- range .hosts }}
+        {{- range .hosts }}
         - {{ . | quote }}
+        {{- end }}
+      {{- with .secretName }}
+      secretName: {{ . }}
       {{- end }}
-      secretName: {{ .secretName }}
+    {{- end }}
   {{- end }}
-{{- end }}
   rules:
-  {{- range .Values.ingress.hosts }}
-    - host: {{ .host | quote }}
+    {{- range $.Values.ingress.hosts }}
+    - host: {{ . | quote }}
       http:
         paths:
-        {{- range .paths }}
+          {{- range $svcName, $paths := $.Values.ingress.paths }}
+            {{- range $paths }}
           - path: {{ . }}
+            {{- if $ingressSupportsPathType }}
+            pathType: Prefix
+            {{- end }}
             backend:
-              serviceName: {{ $fullName }}
-              servicePort: {{ $svcPort }}
-        {{- end }}
-  {{- end }}
+              {{- if $ingressApiIsStable }}
+              service:
+                name: {{ include "loki.fullname" $ }}-{{ $svcName }}
+                port:
+                  number: 3100
+              {{- else }}
+              serviceName: {{ include "loki.fullname" $ }}-{{ $svcName }}
+              servicePort: 3100
+              {{- end }}
+              {{- end }}
+           {{- end }}
+    {{- end }}
 {{- end }}

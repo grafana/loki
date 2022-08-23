@@ -14,9 +14,12 @@
 *.swp
 *.bak
 *.tmp
+*.orig
 *~
 # Various IDEs
 .project
 .idea/
 *.tmproj
 .vscode/
+doc.yaml
+README.tpl

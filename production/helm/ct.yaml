@@ -1,6 +1,11 @@
+---
+remote: origin
+target-branch: main
 chart-repos:
   - elastic=https://helm.elastic.co
   - grafana=https://grafana.github.io/helm-charts
   - prometheus=https://prometheus-community.github.io/helm-charts
+  - minio=https://helm.min.io
+helm-extra-args: --timeout 600s
 check-version-increment: false
 validate-maintainers: false
