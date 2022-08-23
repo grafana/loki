@@ -5,6 +5,7 @@ import (
 	"flag"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -39,7 +40,8 @@ import (
 const (
 	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
 	// Possible values are only increasing integers starting from 0.
-	ShardLbName = "__stream_shard__"
+	ShardLbName        = "__stream_shard__"
+	ShardLbPlaceholder = "__placeholder__"
 
 	ringKey = "distributor"
 )
@@ -397,10 +399,13 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels)
 	}
 
+	streamLabels := labelTemplate(stream.Labels)
+	streamPattern := streamLabels.String()
+
 	derivedKeys := make([]uint32, 0, shards)
 	derivedStreams := make([]streamTracker, 0, shards)
 	for i := 0; i < shards; i++ {
-		shard, ok := d.createShard(stream, shards, i)
+		shard, ok := d.createShard(stream, streamLabels, streamPattern, shards, i)
 		if !ok {
 			continue
 		}
@@ -416,32 +421,37 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 	return derivedKeys, derivedStreams
 }
 
-func (d *Distributor) createShard(stream logproto.Stream, totalShards, shardNumber int) (logproto.Stream, bool) {
+// labelTemplate returns a label set that includes the dummy label to be replaced
+// To avoid allocations, this slice is reused when we know the stream value
+func labelTemplate(lbls string) labels.Labels {
+	baseLbls, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
+		return nil
+	}
+
+	streamLabels := make([]labels.Label, len(baseLbls)+1)
+	for i := 0; i < len(baseLbls); i++ {
+		streamLabels[i] = baseLbls[i]
+	}
+	streamLabels[len(baseLbls)] = labels.Label{Name: ShardLbName, Value: ShardLbPlaceholder}
+
+	return streamLabels
+}
+
+func (d *Distributor) createShard(stream logproto.Stream, lbls labels.Labels, streamPattern string, totalShards, shardNumber int) (logproto.Stream, bool) {
 	lowerBound, upperBound, ok := d.boundsFor(stream, totalShards, shardNumber)
 	if !ok {
 		return logproto.Stream{}, false
 	}
 
-	lbs, ok := d.labelsFor(stream, shardNumber)
-	if !ok {
-		return logproto.Stream{}, false
-	}
-
+	shardLabel := strconv.Itoa(shardNumber)
+	lbls[len(lbls)-1] = labels.Label{Name: ShardLbName, Value: shardLabel}
 	return logproto.Stream{
-		Labels:  lbs.String(),
-		Hash:    lbs.Hash(),
+		Labels:  strings.Replace(streamPattern, ShardLbPlaceholder, shardLabel, 1),
+		Hash:    lbls.Hash(),
 		Entries: stream.Entries[lowerBound:upperBound],
 	}, true
-}
-
-func (d *Distributor) labelsFor(stream logproto.Stream, shardNumber int) (labels.Labels, bool) {
-	lbs, err := syntax.ParseLabels(stream.Labels)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", stream.Labels)
-		return nil, false
-	}
-
-	return append(lbs, labels.Label{Name: ShardLbName, Value: strconv.Itoa(shardNumber)}), true
 }
 
 func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, shardNumber int) (int, int, bool) {

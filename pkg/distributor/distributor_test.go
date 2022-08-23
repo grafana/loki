@@ -650,7 +650,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("high number of entries, low number of shards", func(b *testing.B) {
 		d := Distributor{
-			streamSharder: NewStreamSharderMock(1),
+			streamSharder: NewStreamSharderMock(2),
 		}
 		stream.Entries = allEntries
 
@@ -662,7 +662,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("low number of entries, low number of shards", func(b *testing.B) {
 		d := Distributor{
-			streamSharder: NewStreamSharderMock(1),
+			streamSharder: NewStreamSharderMock(2),
 		}
 		stream.Entries = nil
 
