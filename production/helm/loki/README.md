@@ -137,6 +137,7 @@ monitoring:
           - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
             expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
 ```
+
 ## Values
 
 | Key | Type | Default | Description |
