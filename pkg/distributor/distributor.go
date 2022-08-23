@@ -427,7 +427,7 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 	derivedStreams := make([]streamTracker, 0, shards)
 
 	if cfg.ShardStreams.Debug {
-		level.Warn(logger).Log("msg", "sharding request with mode", "mode", cfg.ShardStreams.Mode)
+		level.Info(logger).Log("msg", "sharding request with mode", "mode", cfg.ShardStreams.Mode)
 	}
 
 	entriesPerWindow := float64(len(stream.Entries)) / float64(shards) // divide and keep decimal value.
@@ -436,6 +436,9 @@ func shardStream(stream logproto.Stream, cfg Config, streamSharder StreamSharder
 		lowerBound := int(fIdx * entriesPerWindow)
 		upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
 		if lowerBound > upperBound {
+			if cfg.ShardStreams.Debug {
+				level.Warn(logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", shards, "labels", stream.Labels)
+			}
 			continue
 		}
 
