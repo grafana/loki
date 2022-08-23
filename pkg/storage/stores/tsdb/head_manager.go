@@ -30,7 +30,7 @@ import (
 /*
 period is a duration which the ingesters use to group index writes into a (WAL,TenantHeads) pair.
 After each period elapses, a set of zero or more multitenant TSDB indices are built (one per
-index bucket, generally 24h).
+index bucket, generally 15m).
 
 It's important to note that this cycle occurs in real time as opposed to the timestamps of
 chunk entries. Index writes during the `period` may span multiple index buckets. Periods
@@ -39,7 +39,11 @@ which we use in file creation/etc.
 */
 type period time.Duration
 
-const defaultRotationPeriod = period(15 * time.Minute)
+const (
+	defaultRotationPeriod = period(15 * time.Minute)
+	// defines interval to check for rotated heads and build TSDB for that period
+	defaultBuildRotatedHeadsInterval = 1 * time.Minute
+)
 
 func (p period) PeriodFor(t time.Time) int {
 	return int(t.UnixNano() / int64(p))
@@ -101,6 +105,9 @@ type HeadManager struct {
 	activeHeads, prevHeads *tenantHeads
 
 	Index
+
+	loopWg   sync.WaitGroup
+	loopQuit chan struct{}
 }
 
 func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
@@ -113,6 +120,8 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 
 		period: defaultRotationPeriod,
 		shards: shards,
+
+		loopQuit: make(chan struct{}),
 	}
 
 	m.Index = LazyIndex(func() (Index, error) {
@@ -131,10 +140,47 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 
 	})
 
+	go m.loop()
+
 	return m
 }
 
+func (m *HeadManager) loop() {
+	m.loopWg.Add(1)
+	defer m.loopWg.Done()
+
+	ticker := time.NewTicker(defaultBuildRotatedHeadsInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.mtx.Lock()
+			if m.prev != nil {
+				if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+					level.Error(m.log).Log(
+						"msg", "failed building tsdb from rotated out period",
+						"period", m.period.PeriodFor(m.prev.initialized),
+						"err", err,
+					)
+					// keeps retrying on tick until it gets rotated out
+					// should we be worried about this?
+				} else {
+					m.prevHeads = nil
+					m.prev = nil
+				}
+			}
+			m.mtx.Unlock()
+		case <-m.loopQuit:
+			return
+		}
+	}
+}
+
 func (m *HeadManager) Stop() error {
+	close(m.loopQuit)
+	m.loopWg.Wait()
+
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	if err := m.active.Stop(); err != nil {
@@ -272,17 +318,6 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	m.activeHeads = nextHeads
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
 
-	// build tsdb from rotated-out period
-	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
-	if m.prev != nil {
-		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
-			return errors.Wrap(err, "building tsdb from rotated out period")
-		}
-	}
-
-	// Now that the tsdbManager has the updated TSDBs, we can remove our references
-	m.prevHeads = nil
-	m.prev = nil
 	return nil
 }
 
