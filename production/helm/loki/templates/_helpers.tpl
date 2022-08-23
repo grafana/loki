@@ -6,12 +6,48 @@ Expand the name of the chart.
 {{- coalesce .Values.nameOverride $default | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+
+{{/*
+Return if deployment mode is simple scalable
+*/}}
+{{- define "loki.deployment.isSimpleScalable" -}}
+  {{- eq .Values.loki.deploymentMode "simple-scalable" }}
+{{- end -}}
+
+{{/*
+Return if deployment mode is single binary
+*/}}
+{{- define "loki.deployment.isSingleBinary" -}}
+  {{- eq .Values.loki.deploymentMode "single-binary" }}
+{{- end -}}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "loki.single-binary.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{/*
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "loki.fullname" -}}
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+{{- include "loki.single-binary.fullname" . }}
+{{- else }}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -20,6 +56,7 @@ If release name contains chart name it will be used as a full name.
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -241,16 +278,3 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 
 
-{{/*
-Return if deployment mode is simple scalable
-*/}}
-{{- define "loki.deployment.isSimpleScalable" -}}
-  {{- eq .Values.loki.deploymentMode "simple-scalable" }}
-{{- end -}}
-
-{{/*
-Return if deployment mode is single binary
-*/}}
-{{- define "loki.deployment.isSingleBinary" -}}
-  {{- eq .Values.loki.deploymentMode "single-binary" }}
-{{- end -}}
