@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -39,15 +40,34 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
 type prometheusLogger struct {
 	logger      log.Logger
 	logMessages *prometheus.CounterVec
+	logFlushes  prometheus.Histogram
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
 func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer) log.Logger {
 
+	// buffer up to 64 log lines in memory before flushing to a write(2) syscall
+	var logBufferSize uint32 = 64
+
+	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "log_messages_total",
+		Help:      "Total number of log messages.",
+	}, []string{"level"})
+	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki",
+		Name:      "log_flushes",
+		Help:      "Histogram of log flushes using the line-buffered logger.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logBufferSize)))+1),
+	})
+
 	// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
 	// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
-	buf := log.NewLineBufferedLogger(os.Stderr, 32, 100*time.Millisecond)
+	buf := log.NewLineBufferedLogger(os.Stderr, logBufferSize, 100*time.Millisecond)
+	buf.OnFlush(func(bufLen uint32) {
+		logFlushes.Observe(float64(bufLen))
+	})
 
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(buf))
 	if format.String() == "json" {
@@ -56,12 +76,9 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
 	plogger := &prometheusLogger{
-		logger: logger,
-		logMessages: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "log_messages_total",
-			Help:      "Total number of log messages.",
-		}, []string{"level"}),
+		logger:      logger,
+		logMessages: logMessages,
+		logFlushes:  logFlushes,
 	}
 	// Initialise counters for all supported levels:
 	supportedLevels := []level.Value{

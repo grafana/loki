@@ -15,6 +15,8 @@ type LineBufferedLogger struct {
 	entries uint32
 	cap     uint32
 	w       io.Writer
+
+	onFlush func(bufLen uint32)
 }
 
 // Size returns the number of entries in the buffer.
@@ -26,9 +28,10 @@ func (l *LineBufferedLogger) Size() uint32 {
 // If the buffer is full (entries == cap), it will be flushed, and the entries counter reset.
 func (l *LineBufferedLogger) Write(p []byte) (n int, err error) {
 	// when we've filled the buffer, flush it
-	if l.Size() == l.cap {
+	if l.Size() >= l.cap {
 		// Flush resets the size to 0
 		if err := l.Flush(); err != nil {
+			l.buf.Reset()
 			return 0, err
 		}
 	}
@@ -40,15 +43,29 @@ func (l *LineBufferedLogger) Write(p []byte) (n int, err error) {
 
 // Flush forces the buffer to be written to the underlying writer.
 func (l *LineBufferedLogger) Flush() error {
-	if l.Size() <= 0 {
+	sz := l.Size()
+	if sz <= 0 {
 		return nil
 	}
 
 	// reset the counter
 	atomic.StoreUint32(&l.entries, 0)
 
+	// WriteTo() calls Reset() on the underlying buffer, so it's not needed here
 	_, err := l.buf.WriteTo(l.w)
+
+	// only call OnFlush callback if write was successful
+	if err == nil && l.onFlush != nil {
+		l.onFlush(sz)
+	}
+
 	return err
+}
+
+// OnFlush allows for a callback function to be executed when Flush() is called.
+// The length of the buffer at the time of the Flush() will be passed to the function.
+func (l *LineBufferedLogger) OnFlush(fn func(bufLen uint32)) {
+	l.onFlush = fn
 }
 
 // NewLineBufferedLogger creates a new LineBufferedLogger with a configured capacity and flush period.
@@ -65,13 +82,9 @@ func NewLineBufferedLogger(w io.Writer, cap uint32, flushPeriod time.Duration) *
 		tick := time.NewTicker(flushPeriod)
 		defer tick.Stop()
 
-		for {
-			select {
-			case <-tick.C:
-				l.Flush()
-			}
+		for range tick.C {
+			l.Flush()
 		}
-
 	}()
 
 	return l
@@ -106,6 +119,16 @@ func (t *threadsafeBuffer) WriteTo(w io.Writer) (n int64, err error) {
 	defer t.Unlock()
 
 	return t.buf.WriteTo(w)
+}
+
+// Reset resets the buffer to be empty,
+// but it retains the underlying storage for use by future writes.
+// Reset is the same as Truncate(0).
+func (t *threadsafeBuffer) Reset() {
+	t.Lock()
+	defer t.Unlock()
+
+	t.buf.Reset()
 }
 
 // newThreadsafeBuffer returns a new threadsafeBuffer wrapping the given bytes.Buffer.
