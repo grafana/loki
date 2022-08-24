@@ -39,6 +39,11 @@ We introduced a new cache called `embedded-cache` which is an in-process cache s
 
 Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
 
+#### Evenly spread distributors across kubernetes nodes
+
+We now evenly spread distributors across the available kubernetes nodes, but allowing more than one distributors to be scheduled into the same node.
+If you want to run at most a single distributors per node, set `$._config.distributors.use_topology_spread` to false.
+
 #### Evenly spread queriers across kubernetes nodes
 
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
