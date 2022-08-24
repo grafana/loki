@@ -60,18 +60,8 @@ only want a single instance of each.
 
 ## Configuration
 
-By default, this chart configures Loki to run `read` and `write` targets in a scalable architecture
-designed to work with object storage. This configuration has been tested to work with [boltdb-shipper](https://grafana.com/docs/loki/latest/operations/storage/boltdb-shipper/)
-and [memberlist](https://grafana.com/docs/loki/latest/configuration/#memberlist_config) while other storage and discovery options should work as well.
-
-If this chart is configured to run with a filesystem backend, it will assume you only want a single instance of Loki deployed
-in "Single Binary" mode.
-
-However, the chart does not support setting up Consul or Etcd for discovery,
-and it is not intended to support these going forward.
-They would have to be set up separately.
-Instead, memberlist can be used which does not require a separate key/value store.
-The chart creates a headless service for the memberlist which read and write nodes are part of.
+By default, this chart configures Loki to run `read` and `write` targets in a scalable, highly available architecture (3 replicas of each) designed to work with object storage. If this chart is configured to run with a filesystem backend, it will assume you only want a single instance of Loki deployed
+in "Single Binary" mode (see "Upgrading from `filesystem` storage"). This chart does not support a scalable single binary mode, with multiple single binary instances communicating with shared object storage. For that we recommend using a single read and write instance with shared object storage if replication is not desired, or the default configuration of 3 read and 3 write instances if replication is desired.
 
 You can find some working examples of this Helm Chart within the [docs/examples](/docs/examples) directory of this repo.
 
