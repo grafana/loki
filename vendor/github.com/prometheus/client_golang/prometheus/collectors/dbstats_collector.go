@@ -101,7 +101,7 @@ func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.waitDuration
 	ch <- c.maxIdleClosed
 	ch <- c.maxLifetimeClosed
-	c.describeNewInGo115(ch)
+	ch <- c.maxIdleTimeClosed
 }
 
 // Collect implements Collector.
@@ -115,5 +115,5 @@ func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.waitDuration, prometheus.CounterValue, stats.WaitDuration.Seconds())
 	ch <- prometheus.MustNewConstMetric(c.maxIdleClosed, prometheus.CounterValue, float64(stats.MaxIdleClosed))
 	ch <- prometheus.MustNewConstMetric(c.maxLifetimeClosed, prometheus.CounterValue, float64(stats.MaxLifetimeClosed))
-	c.collectNewInGo115(ch, stats)
+	ch <- prometheus.MustNewConstMetric(c.maxIdleTimeClosed, prometheus.CounterValue, float64(stats.MaxIdleTimeClosed))
 }

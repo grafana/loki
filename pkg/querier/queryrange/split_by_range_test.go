@@ -18,7 +18,8 @@ import (
 
 func Test_RangeVectorSplit(t *testing.T) {
 	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), fakeLimits{
-		maxSeries: 10000,
+		maxSeries:    10000,
+		queryTimeout: time.Second,
 		splits: map[string]time.Duration{
 			"tenant": time.Minute,
 		},

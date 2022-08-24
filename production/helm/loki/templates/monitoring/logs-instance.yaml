@@ -1,0 +1,30 @@
+{{- if .Values.monitoring.selfMonitoring.enabled }}
+{{- with .Values.monitoring.selfMonitoring.logsInstance }}
+apiVersion: monitoring.grafana.com/v1alpha1
+kind: LogsInstance
+metadata:
+  name: {{ include "loki.fullname" $ }}
+  namespace: {{ .namespace | default $.Release.Namespace }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  clients:
+    #TODO: need to support auth here
+    {{- include "loki.logsInstanceClient" $ | nindent 4}}
+
+  # Supply an empty namespace selector to look in all namespaces. Remove
+  # this to only look in the same namespace as the LogsInstance CR
+  podLogsNamespaceSelector: { }
+
+  podLogsSelector:
+    matchLabels:
+      instance: primary
+{{- end -}}
+{{- end -}}

@@ -23,7 +23,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/wal"
 )
@@ -624,12 +623,12 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
-		return blooms, nil
+		return nil
 	}
-	return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
 }
 
 // helper only used in building TSDBs

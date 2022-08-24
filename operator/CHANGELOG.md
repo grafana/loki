@@ -1,5 +1,6 @@
 ## Main
 
+- [6923](https://github.com/grafana/loki/pull/6923) **xperimental**: Reconcile owner reference for existing objects
 - [6907](https://github.com/grafana/loki/pull/6907) **Red-GV**: Adding valid subscription annotation to operator metadata
 - [6479](https://github.com/grafana/loki/pull/6749) **periklis**: Update Loki operand to v2.6.1
 - [6748](https://github.com/grafana/loki/pull/6748) **periklis**: Update go4.org/unsafe/assume-no-moving-gc to latest

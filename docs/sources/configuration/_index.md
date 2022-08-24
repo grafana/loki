@@ -196,6 +196,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# TLS configuration for serving over HTTPS
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
 [grpc_listen_address: <string>]
@@ -203,6 +218,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # gRPC server listen port
 # CLI flag: -server.grpc-listen-port
 [grpc_listen_port: <int> | default = 9095]
+
+# TLS configuration for serving over gRPC
+grpc_tls_config:
+  # gRPC server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # gRPC server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+  # gRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # gRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 # Register instrumentation handlers (/metrics, etc.)
 # CLI flag: -server.register-instrumentation
@@ -276,6 +306,20 @@ ring:
   # reading and writing.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+# Configures the distributor to shard streams that are too big
+shard_streams:
+  # Whether to enable stream sharding
+  #
+  # CLI flag: -distributor.stream-sharding.enabled
+  [enabled: <boolean> | default = false]
+
+  # Enable logging when sharding streams because logging on the read path may
+  # impact performance. When disabled, stream sharding will emit no logs 
+  # regardless of log level
+  #
+  # CLI flag: -distributor.stream-sharding.logging-enabled
+  [logging_enabled: <boolean> | default = false]
 ```
 
 ## querier
@@ -321,7 +365,8 @@ The `querier` block configures the Loki Querier.
 
 # Configuration options for the LogQL engine.
 engine:
-  # Timeout for query execution
+  # Timeout for query execution.
+  # Deprecated: use querier.query-timeout instead.
   # CLI flag: -querier.engine.timeout
   [timeout: <duration> | default = 3m]
 
@@ -2105,6 +2150,13 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# Constrain the size a delete request. When a delete request that spans > delete_max_query_range
+# is input, the request is sharded into smaller requests of no more than delete_max_query_range.
+#
+# 0 means no max_query_period.
+# CLI flag: -boltdb.shipper.compactor.delete-max-interval
+[delete_max_interval: <duration> | default = 0]
+
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
 [delete_batch_size: <duration> | default = 70]
@@ -2124,10 +2176,8 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
-# Deletion mode.
-# Can be one of "disabled", "filter-only", or "filter-and-delete".
-# When set to "filter-only" or "filter-and-delete", and if
-# retention_enabled is true, then the log entry deletion API endpoints are available.
+# Deprecated: Deletion mode.
+# Use deletion_mode per tenant configuration instead.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "disabled"]
 
@@ -2397,6 +2447,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
+
+# Deprecated: Use deletion_mode per tenant configuration instead.
+# CLI flag: -compactor.allow_deletes
+[allow_deletes: <boolean> | default = false]
+
+# Deletion mode.
+# Can be one of "disabled", "filter-only", or "filter-and-delete".
+# When set to "filter-only" or "filter-and-delete", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "filter-and-delete"]
 ```
 
 ## sigv4_config

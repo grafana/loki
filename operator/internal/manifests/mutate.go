@@ -37,6 +37,10 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 		}
 		existing.SetLabels(existingLabels)
 
+		if ownerRefs := desired.GetOwnerReferences(); len(ownerRefs) > 0 {
+			existing.SetOwnerReferences(ownerRefs)
+		}
+
 		switch existing.(type) {
 		case *corev1.ConfigMap:
 			cm := existing.(*corev1.ConfigMap)

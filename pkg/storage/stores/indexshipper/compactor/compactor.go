@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -81,9 +82,13 @@ type Config struct {
 	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
 	RunOnce                   bool            `yaml:"-"`
+
+	// Deprecated
+	DeletionMode string `yaml:"deletion_mode"`
 }
 
 // RegisterFlags registers flags.
@@ -98,9 +103,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.IntVar(&cfg.DeleteBatchSize, "boltdb.shipper.compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.DurationVar(&cfg.DeleteMaxInterval, "boltdb.shipper.compactor.delete-max-interval", 0, "Constrain the size of any single delete request. When a delete request > delete_max_query_range is input, the request is sharded into smaller requests of no more than delete_max_interval")
 	f.DurationVar(&cfg.RetentionTableTimeout, "boltdb.shipper.compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
+
+	// Deprecated
+	flagext.DeprecatedFlag(f, "boltdb.shipper.compactor.deletion-mode", "Deprecated. This has been moved to the deletion_mode per tenant configuration.", util_log.Logger)
+
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 }
 
@@ -113,7 +123,15 @@ func (cfg *Config) Validate() error {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
 	}
 
-	return shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+	if err := shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix); err != nil {
+		return err
+	}
+
+	if cfg.DeletionMode != "" {
+		level.Warn(util_log.Logger).Log("msg", "boltdb.shipper.compactor.deletion-mode has been deprecated and will be ignored. This has been moved to the deletion_mode per tenant configuration.")
+	}
+
+	return nil
 }
 
 type Compactor struct {
@@ -255,7 +273,7 @@ func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Over
 
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
-		c.cfg.DeleteRequestCancelPeriod,
+		c.cfg.DeleteMaxInterval,
 		r,
 	)
 
