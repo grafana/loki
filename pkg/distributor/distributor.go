@@ -52,8 +52,8 @@ var (
 )
 
 type ShardStreamsConfig struct {
-	Enabled             bool `yaml:"enabled"`
-	DebugLoggingEnabled bool `yaml:"debug_logging_enabled"`
+	Enabled        bool `yaml:"enabled"`
+	LoggingEnabled bool `yaml:"logging_enabled"`
 }
 
 // Config for a Distributor.
@@ -72,12 +72,12 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	fs.BoolVar(&cfg.ShardStreams.Enabled, "distributor.stream-sharding.enabled", false, "Automatically shard streams to keep them under the per-stream rate limit")
-	fs.BoolVar(&cfg.ShardStreams.DebugLoggingEnabled, "distributor.stream-sharding.debug-logging-enabled", false, "Enable debug logging when sharding streams")
+	fs.BoolVar(&cfg.ShardStreams.LoggingEnabled, "distributor.stream-sharding.logging-enabled", false, "Enable logging when sharding streams")
 }
 
 // StreamSharder manages the state necessary to shard streams.
 type StreamSharder interface {
-	ShardsFor(stream logproto.Stream) (int, bool)
+	ShardCountFor(stream logproto.Stream) (int, bool)
 	IncreaseShardsFor(stream logproto.Stream)
 }
 
@@ -386,26 +386,26 @@ func min(x1, x2 int) int {
 	return x2
 }
 
-// shardStream shards (divides) the given stream into smaller streams.
-//
-// It will derive N streams (and its entries) from the given stream, where N is the sharding size for the given stream.
+// shardStream shards (divides) the given stream into N smaller streams, where
+// N is the sharding size for the given stream. shardSteam returns the smaller
+// streams and their associated keys for hashing to ingesters.
 func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker) {
-	shards, ok := d.streamSharder.ShardsFor(stream)
-	if !ok || shards <= 1 {
+	shardCount, ok := d.streamSharder.ShardCountFor(stream)
+	if !ok || shardCount <= 1 {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
-	if d.cfg.ShardStreams.DebugLoggingEnabled {
+	if d.cfg.ShardStreams.LoggingEnabled {
 		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels)
 	}
 
 	streamLabels := labelTemplate(stream.Labels)
 	streamPattern := streamLabels.String()
 
-	derivedKeys := make([]uint32, 0, shards)
-	derivedStreams := make([]streamTracker, 0, shards)
-	for i := 0; i < shards; i++ {
-		shard, ok := d.createShard(stream, streamLabels, streamPattern, shards, i)
+	derivedKeys := make([]uint32, 0, shardCount)
+	derivedStreams := make([]streamTracker, 0, shardCount)
+	for i := 0; i < shardCount; i++ {
+		shard, ok := d.createShard(stream, streamLabels, streamPattern, shardCount, i)
 		if !ok {
 			continue
 		}
@@ -413,7 +413,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 		derivedKeys = append(derivedKeys, util.TokenFor(userID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
-		if d.cfg.ShardStreams.DebugLoggingEnabled {
+		if d.cfg.ShardStreams.LoggingEnabled {
 			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
@@ -462,7 +462,7 @@ func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, shardNumber
 	upperBound := min(int(entriesPerWindow*(1+fIdx)), len(stream.Entries))
 
 	if lowerBound > upperBound {
-		if d.cfg.ShardStreams.DebugLoggingEnabled {
+		if d.cfg.ShardStreams.LoggingEnabled {
 			level.Warn(util_log.Logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", totalShards, "labels", stream.Labels)
 		}
 		return 0, 0, false

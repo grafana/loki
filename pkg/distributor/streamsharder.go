@@ -17,7 +17,7 @@ func NewStreamSharder() StreamSharder {
 	}
 }
 
-func (s *streamSharder) ShardsFor(stream logproto.Stream) (int, bool) {
+func (s *streamSharder) ShardCountFor(stream logproto.Stream) (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

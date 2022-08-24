@@ -408,7 +408,7 @@ func TestStreamShard(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		entries           []logproto.Entry
-		shards            int // stub call to ShardsFor.
+		shards            int // stub call to ShardCountFor.
 		wantDerivedStream []streamTracker
 	}{
 		{

@@ -284,11 +284,12 @@ shard_streams:
   # CLI flag: -distributor.stream-sharding.enabled
   [enabled: <boolean> | default = false]
 
-  # Enable debug logging when sharding streams apart from log
-  # levels because logging on the read path may impact performance
+  # Enable logging when sharding streams because logging on the read path may
+  # impact performance. When disabled, stream sharding will emit no logs 
+  # regardless of log level
   #
-  # CLI flag: -distributor.stream-sharding.debug-logging-enabled
-  [debug_logging_enabled: <boolean> | default = false]
+  # CLI flag: -distributor.stream-sharding.logging-enabled
+  [logging_enabled: <boolean> | default = false]
 ```
 
 ## querier
