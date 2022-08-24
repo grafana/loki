@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	gzipExtension              = ".gz"
+	gzipExtension = ".gz"
 )
 
 var errRetentionFileCountNotOne = fmt.Errorf("can't apply retention when index file count is not one")
