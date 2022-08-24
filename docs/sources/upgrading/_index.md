@@ -33,6 +33,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+### Engine query timeout is deprecated
+
+Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
+As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
+we're deprecating it in favor of relying on `engine.query-timeout` only.
+
 #### Fifocache is deprecated
 
 We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.

@@ -321,7 +321,8 @@ The `querier` block configures the Loki Querier.
 
 # Configuration options for the LogQL engine.
 engine:
-  # Timeout for query execution
+  # Timeout for query execution.
+  # This configuration is deprecated in favor of querier.query-timeout.
   # CLI flag: -querier.engine.timeout
   [timeout: <duration> | default = 3m]
 
