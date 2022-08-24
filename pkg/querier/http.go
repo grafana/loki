@@ -490,6 +490,8 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 			userID, err := tenant.TenantID(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
+				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+				return
 			}
 
 			// Enforce the query timeout while querying backends

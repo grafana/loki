@@ -96,12 +96,18 @@ type Querier interface {
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
+	// TODO: remove this after next release.
+	// Timeout for queries execution
+	Timeout time.Duration `yaml:"timeout"`
+
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	// TODO: remove this configuration after next release.
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
@@ -216,7 +222,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	queryTimeout := time.Minute * 2
+	queryTimeout := time.Minute * 5
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)

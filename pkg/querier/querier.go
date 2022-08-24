@@ -53,12 +53,14 @@ type Config struct {
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
+	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
+	f.DurationVar(&cfg.QueryTimeout, "querier.query-timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request. Deprecated in favor of its per-tenant version. (deprecated)")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
