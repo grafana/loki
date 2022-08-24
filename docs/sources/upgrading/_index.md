@@ -44,10 +44,18 @@ Currently `embedded-cache` with `distributed: true` can be enabled only for resu
 We now evenly spread distributors across the available kubernetes nodes, but allowing more than one distributors to be scheduled into the same node.
 If you want to run at most a single distributors per node, set `$._config.distributors.use_topology_spread` to false.
 
+While we attempt to schedule at most 1 distributor per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple distributors will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
+
 #### Evenly spread queriers across kubernetes nodes
 
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
 If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
+
+While we attempt to schedule at most 1 querier per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple queriers will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
 
 #### Default value for `server.http-listen-port` changed
 
