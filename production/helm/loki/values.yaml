@@ -21,9 +21,6 @@ fullnameOverride: null
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
 
-# -- Upgrade from V2: set to true of upgrading from v2.x of the grafana/loki chart
-upgradeFromV2: false
-
 loki:
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:

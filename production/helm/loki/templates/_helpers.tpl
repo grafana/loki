@@ -41,28 +41,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "loki.single-binary.fullname" -}}
-{{- if .Values.fullnameOverride -}}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- $name := default .Chart.Name .Values.nameOverride -}}
-{{- if contains $name .Release.Name -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-If release name contains chart name it will be used as a full name.
-*/}}
 {{- define "loki.fullname" -}}
-{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
-{{- include "loki.single-binary.fullname" . }}
-{{- else }}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -71,7 +50,6 @@ If release name contains chart name it will be used as a full name.
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -297,17 +275,8 @@ Create the service endpoint including port for MinIO.
 {{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") -}}
 {{- end -}}
 
-{{/* Determine if upgrade requires multi-stage upgrade process */}}
-{{- define "loki.requiresMultiStageUpgrade" -}}
-{{- and .Values.upgradeFromV2 (eq (include "loki.isUsingObjectStorage" . ) "true" ) }}
-{{- end }}
-
 {{/* Configure the correct name for the memberlist service */}}
 {{- define "loki.memberlist" -}}
-{{- if eq (include "loki.requiresMultiStageUpgrade" . ) "true" }}
-{{ include "loki.singleBinaryFullname" . }}-memberlist
-{{- else -}}
 {{ include "loki.name" . }}-memberlist
-{{- end -}}
 {{- end -}}
 

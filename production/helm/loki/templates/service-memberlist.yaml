@@ -14,9 +14,5 @@ spec:
       targetPort: http-memberlist
       protocol: TCP
   selector:
-    {{- if eq (include "loki.requiresMultiStageUpgrade" . ) "true" }}
-    {{- include "loki.legacy.singleBinarySelectorLabels" . | nindent 4 }}
-    {{- else -}}
     {{- include "loki.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-    {{- end }}
