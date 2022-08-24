@@ -31,7 +31,8 @@ type indexSetState struct {
 }
 
 func TestTable_Compaction(t *testing.T) {
-	for _, numUsers := range []int{uploadIndexSetsConcurrency / 2, uploadIndexSetsConcurrency, uploadIndexSetsConcurrency * 2} {
+	// user counts are aligned with default upload parallelism
+	for _, numUsers := range []int{5, 10, 20} {
 		t.Run(fmt.Sprintf("numUsers=%d", numUsers), func(t *testing.T) {
 			for _, tc := range []struct {
 				numUnCompactedCommonDBs  int
