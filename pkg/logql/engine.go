@@ -219,7 +219,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	queryTimeout := time.Minute * 2
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		level.Warn(q.logger).Log("msg", "couldn't fetch tenantID to evaluate query timeout, using default value of 2m", "err", err)
+		level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
 	} else {
 		queryTimeout = q.limits.QueryTimeout(userID)
 	}
