@@ -46,7 +46,6 @@ When Loki is backed by `filesystem` storage, we assume a single instance of Loki
 To upgrade, you will need at least the following in your `values.yaml`:
 
 ```yaml
-upgradeFromV2: true,
 loki:
   commonConfig:
     replication_factor: 1
@@ -381,7 +380,6 @@ monitoring:
 | singleBinary.terminationGracePeriodSeconds | int | `30` | Grace period to allow the single binary to shutdown before it is killed |
 | singleBinary.tolerations | list | `[]` | Tolerations for single binary pods |
 | tracing.jaegerAgentHost | string | `""` |  |
-| upgradeFromV2 | bool | `false` | Upgrade from V2: set to true of upgrading from v2.x of the grafana/loki chart |
 | write.affinity | string | Hard node and soft zone anti-affinity | Affinity for write pods. Passed through `tpl` and, thus, to be configured as string |
 | write.extraArgs | list | `[]` | Additional CLI args for the write |
 | write.extraEnv | list | `[]` | Environment variables to add to the write pods |
