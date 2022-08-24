@@ -41,7 +41,7 @@ As a result of this major change, upgrades from the charts this replaces might b
 
 #### Upgrading from `filesystem` storage
 
-When Loki is backed by `filesystem` storage, we assume a single instance of Loki that is not HA. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, the running the `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still highly recommend backing up all data before conducting the upgrade.
+When Loki is backed by `filesystem` storage, we assume a single instance of Loki that is not HA. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed Loki stateful set, running the `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still recommend backing up all data before conducting the upgrade.
 
 To upgrade, you will need at least the following in your `values.yaml`:
 
