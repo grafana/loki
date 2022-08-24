@@ -494,7 +494,7 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 
 			// Enforce the query timeout while querying backends
 			queryTimeout := q.limits.QueryTimeout(userID)
-			ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+			_, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 			defer cancel()
 
 			next.ServeHTTP(w, req)
