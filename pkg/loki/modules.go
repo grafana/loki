@@ -324,18 +324,31 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
 	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
-		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
-		"/loki/api/v1/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/loki/api/v1/labels":              http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/loki/api/v1/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
-		"/loki/api/v1/index/stats":         http.HandlerFunc(t.querierAPI.IndexStatsHandler),
+		"/loki/api/v1/query_range": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.RangeQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
 
-		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
-		"/api/prom/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/api/prom/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/api/prom/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
+		"/loki/api/v1/query": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
+
+		"/loki/api/v1/label":               querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/loki/api/v1/labels":              querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/loki/api/v1/label/{name}/values": querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+
+		"/loki/api/v1/series":      querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
+		"/loki/api/v1/index/stats": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+
+		"/api/prom/query": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.LogQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
+
+		"/api/prom/label":               querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/api/prom/label/{name}/values": querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/api/prom/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
