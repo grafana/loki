@@ -486,8 +486,6 @@ func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, li
 func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := req.Context()
-
 			log, ctx := spanlogger.New(req.Context(), call)
 			userID, err := tenant.TenantID(ctx)
 			if err != nil {
