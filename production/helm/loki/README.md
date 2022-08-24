@@ -69,7 +69,7 @@ By default, this chart configures Loki to run `read` and `write` targets in a sc
 designed to work with object storage. This configuration has been tested to work with [boltdb-shipper](https://grafana.com/docs/loki/latest/operations/storage/boltdb-shipper/)
 and [memberlist](https://grafana.com/docs/loki/latest/configuration/#memberlist_config) while other storage and discovery options should work as well.
 
-If this chart is configured to run with a filesystem backend, it will assume you only want a single instance of Loki deployed
+If this chart is configured to run with a `filesystem` backend, it will assume you only want a single instance of Loki deployed
 in "Single Binary" mode.
 
 However, the chart does not support setting up Consul or Etcd for discovery,
