@@ -126,14 +126,14 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	f.lastQueryID.Store(rand.Uint64())
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_queries_in_progress",
+		Name: "loki_query_frontend_queries_in_progress",
 		Help: "Number of queries in progress handled by this frontend.",
 	}, func() float64 {
 		return float64(f.requests.count())
 	})
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_connected_schedulers",
+		Name: "loki_query_frontend_connected_schedulers",
 		Help: "Number of schedulers this frontend is connected to.",
 	}, func() float64 {
 		return float64(f.schedulerWorkers.getWorkersCount())

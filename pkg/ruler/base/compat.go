@@ -191,7 +191,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 			logMessage := []interface{}{
 				"msg", "query stats",
 				"component", "ruler",
-				"cortex_ruler_query_seconds_total", querySeconds,
+				"loki_ruler_query_seconds_total", querySeconds,
 				"query", qs,
 			}
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
@@ -222,26 +222,26 @@ type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.
 
 func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
 	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_total",
+		Name: "loki_ruler_write_requests_total",
 		Help: "Number of write requests to ingesters.",
 	})
 	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_failed_total",
+		Name: "loki_ruler_write_requests_failed_total",
 		Help: "Number of failed write requests to ingesters.",
 	})
 
 	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_total",
+		Name: "loki_ruler_queries_total",
 		Help: "Number of queries executed by ruler.",
 	})
 	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_failed_total",
+		Name: "loki_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
 	})
 	var rulerQuerySeconds *prometheus.CounterVec
 	if cfg.EnableQueryStats {
 		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_query_seconds_total",
+			Name: "loki_ruler_query_seconds_total",
 			Help: "Total amount of wall clock time spent processing queries by the ruler.",
 		}, []string{"user"})
 	}

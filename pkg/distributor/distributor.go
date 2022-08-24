@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -70,6 +71,7 @@ type Distributor struct {
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
 	distributorsLifecycler *ring.Lifecycler
+	ringStore              kv.Client
 
 	rateLimitStrat string
 
@@ -112,7 +114,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
 
-		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", registerer))
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor lifecycler")
 		}
