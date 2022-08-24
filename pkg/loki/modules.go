@@ -97,23 +97,14 @@ const (
 	UsageReport              string = "usage-report"
 )
 
-func (t *Loki) initRegisterer() prometheus.Registerer {
-	registry := prometheus.NewRegistry()
-	registry.MustRegister(version.NewCollector("loki"))
-	registry.MustRegister(collectors.NewGoCollector(
-		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsScheduler),
-	))
-
-	// override default registerer & gatherer since we refer to these global variables in several places
-	// TODO: refactor the rest of the codebase to decouple from these global variables
-	prometheus.DefaultRegisterer = registry
-	prometheus.DefaultGatherer = registry
-
-	return registry
-}
-
 func (t *Loki) initServer() (services.Service, error) {
-	t.initRegisterer()
+	prometheus.MustRegister(version.NewCollector("loki"))
+	// unregister default go collector
+	prometheus.Unregister(collectors.NewGoCollector())
+	// register collector with additional metrics
+	prometheus.MustRegister(collectors.NewGoCollector(
+		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
+	))
 
 	// Loki handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
