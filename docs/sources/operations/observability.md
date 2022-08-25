@@ -59,7 +59,7 @@ The Loki compactor exposes the following metrics:
 | `loki_compactor_load_pending_requests_attempts_total`         | Counter     | Number of attempts that were made to load pending requests with status.                                 |
 | `loki_compactor_oldest_pending_delete_request_age_seconds`    | Gauge       | Age of oldest pending delete request in seconds, since they are over their cancellation period.         |
 | `loki_compactor_pending_delete_requests_count`                | Gauge       | Count of delete requests which are over their cancellation period and have not finished processing yet. |
-| `loki_compactor_deleted_lines`                                | Counter     | Number of deleted lines per user                                                                        |
+| `loki_compactor_deleted_lines`                                | Counter     | Number of deleted lines per user.                                                                       |
 
 Promtail exposes these metrics:
 
