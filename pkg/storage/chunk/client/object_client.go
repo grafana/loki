@@ -168,6 +168,9 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
+	if readCloser == nil {
+		return chunk.Chunk{}, errors.New("objct client getChunk fail, object == nil")
+	}
 	defer readCloser.Close()
 
 	// adds bytes.MinRead to avoid allocations when the size is known.
