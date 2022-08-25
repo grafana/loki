@@ -1036,7 +1036,7 @@ Query parameters:
 * `query=<series_selector>`: query argument that identifies the streams from which to delete with optional line filters.
 * `start=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. This parameter is required.
 * `end=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
-* `max_interval=<duration>`: The maximum time period the delete request can span. If the request is larger than this value, it is split into several requests of <= `max_interval`. Valid time units are "s", "m", "h".
+* `max_interval=<duration>`: The maximum time period the delete request can span. If the request is larger than this value, it is split into several requests of <= `max_interval`. Valid time units are `s`, `m`, and `h`.
 
 A 204 response indicates success.
 
