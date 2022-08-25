@@ -496,6 +496,12 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 
 			// Enforce the query timeout while querying backends
 			queryTimeout := q.limits.QueryTimeout(userID)
+			// TODO: remove this clause once we remove the deprecated query-timeout flag.
+			if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout")
+				queryTimeout = q.cfg.QueryTimeout
+			}
+
 			_, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 			defer cancel()
 
