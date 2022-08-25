@@ -7,6 +7,36 @@ Expand the name of the chart.
 {{- end }}
 
 {{/*
+singleBinary fullname
+*/}}
+{{- define "loki.singleBinaryFullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return if deployment mode is simple scalable
+*/}}
+{{- define "loki.deployment.isScalable" -}}
+  {{- eq (include "loki.isUsingObjectStorage" . ) "true" }}
+{{- end -}}
+
+{{/*
+Return if deployment mode is single binary
+*/}}
+{{- define "loki.deployment.isSingleBinary" -}}
+  {{- eq (include "loki.isUsingObjectStorage" . ) "false" }}
+{{- end -}}
+
+{{/*
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
@@ -151,7 +181,7 @@ gcs:
   enable_http2: {{ .enableHttp2}}
 {{- end -}}
 {{- else -}}
-{{- with .Values.loki.storage.local }}
+{{- with .Values.loki.storage.filesystem }}
 filesystem:
   chunks_directory: {{ .chunks_directory }}
   rules_directory: {{ .rules_directory }}
@@ -240,17 +270,13 @@ Create the service endpoint including port for MinIO.
   {{- end -}}
 {{- end -}}
 
-
-{{/*
-Return if deployment mode is simple scalable
-*/}}
-{{- define "loki.deployment.isSimpleScalable" -}}
-  {{- eq .Values.loki.deploymentMode "simple-scalable" }}
+{{/* Determine if deployment is using object storage */}}
+{{- define "loki.isUsingObjectStorage" -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") -}}
 {{- end -}}
 
-{{/*
-Return if deployment mode is single binary
-*/}}
-{{- define "loki.deployment.isSingleBinary" -}}
-  {{- eq .Values.loki.deploymentMode "single-binary" }}
+{{/* Configure the correct name for the memberlist service */}}
+{{- define "loki.memberlist" -}}
+{{ include "loki.name" . }}-memberlist
 {{- end -}}
+
