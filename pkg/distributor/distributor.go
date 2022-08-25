@@ -264,11 +264,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
-				validationErr = err
-				continue
-			}
-
 			if DefaultLogPipeline != nil {
 				pass, pipelineErr := DefaultLogPipeline.Pipeline(ctx, userID, stream.Labels, entry)
 				if pipelineErr != nil {
