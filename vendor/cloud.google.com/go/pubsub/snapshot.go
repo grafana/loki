@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	pb "google.golang.org/genproto/googleapis/pubsub/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Snapshot is a reference to a PubSub snapshot.
@@ -100,11 +100,8 @@ func (s *Snapshot) Delete(ctx context.Context) error {
 // creation time), only retained messages will be marked as unacknowledged,
 // and already-expunged messages will not be restored.
 func (s *Subscription) SeekToTime(ctx context.Context, t time.Time) error {
-	ts, err := ptypes.TimestampProto(t)
-	if err != nil {
-		return err
-	}
-	_, err = s.c.subc.Seek(ctx, &pb.SeekRequest{
+	ts := timestamppb.New(t)
+	_, err := s.c.subc.Seek(ctx, &pb.SeekRequest{
 		Subscription: s.name,
 		Target:       &pb.SeekRequest_Time{Time: ts},
 	})
@@ -116,11 +113,12 @@ func (s *Subscription) SeekToTime(ctx context.Context, t time.Time) error {
 // If the name is empty string, a unique name is assigned.
 //
 // The created snapshot is guaranteed to retain:
-//  (a) The existing backlog on the subscription. More precisely, this is
-//      defined as the messages in the subscription's backlog that are
-//      unacknowledged when Snapshot returns without error.
-//  (b) Any messages published to the subscription's topic following
-//      Snapshot returning without error.
+//
+//	(a) The existing backlog on the subscription. More precisely, this is
+//	    defined as the messages in the subscription's backlog that are
+//	    unacknowledged when Snapshot returns without error.
+//	(b) Any messages published to the subscription's topic following
+//	    Snapshot returning without error.
 func (s *Subscription) CreateSnapshot(ctx context.Context, name string) (*SnapshotConfig, error) {
 	if name != "" {
 		name = fmt.Sprintf("projects/%s/snapshots/%s", strings.Split(s.name, "/")[1], name)
@@ -148,10 +146,7 @@ func (s *Subscription) SeekToSnapshot(ctx context.Context, snap *Snapshot) error
 }
 
 func toSnapshotConfig(snap *pb.Snapshot, c *Client) (*SnapshotConfig, error) {
-	exp, err := ptypes.Timestamp(snap.ExpireTime)
-	if err != nil {
-		return nil, err
-	}
+	exp := snap.ExpireTime.AsTime()
 	return &SnapshotConfig{
 		Snapshot:   &Snapshot{c: c, name: snap.Name},
 		Topic:      newTopic(c, snap.Topic),
