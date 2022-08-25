@@ -174,3 +174,14 @@ func Test_schemaPeriodForTable(t *testing.T) {
 		})
 	}
 }
+
+func Test_tableSort(t *testing.T) {
+	intervals := []string{
+		"index_19191",
+		"index_19195",
+		"index_19192",
+	}
+
+	sortTablesByRange(intervals)
+	require.Equal(t, []string{"index_19195", "index_19192", "index_19191"}, intervals)
+}
