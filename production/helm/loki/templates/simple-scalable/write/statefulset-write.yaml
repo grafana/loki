@@ -111,28 +111,6 @@ spec:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
           configMap:
-            name: {{ include "loki.name" . }}
-          {{- end }}
-        {{- if .Values.enterprise.enabled }}
-        - name: license
-          secret:
-          {{- if .Values.useExternalLicense }}
-            secretName: {{ .Values.externalLicenseName }}
-          {{- else }}
-            secretName: enterprise-logs-license
-          {{- end }}
-        {{- end }}
-        {{- with .Values.write.extraVolumes }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        {{- with .Values.write.persistence.storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
         resources:
           requests:
