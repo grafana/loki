@@ -30,7 +30,7 @@ import (
 /*
 period is a duration which the ingesters use to group index writes into a (WAL,TenantHeads) pair.
 After each period elapses, a set of zero or more multitenant TSDB indices are built (one per
-index bucket, generally 15m).
+index bucket, generally 24h).
 
 It's important to note that this cycle occurs in real time as opposed to the timestamps of
 chunk entries. Index writes during the `period` may span multiple index buckets. Periods
@@ -106,8 +106,8 @@ type HeadManager struct {
 
 	Index
 
-	loopWg   sync.WaitGroup
-	loopQuit chan struct{}
+	wg     sync.WaitGroup
+	cancel chan struct{}
 }
 
 func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
@@ -121,7 +121,7 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 		period: defaultRotationPeriod,
 		shards: shards,
 
-		loopQuit: make(chan struct{}),
+		cancel: make(chan struct{}),
 	}
 
 	m.Index = LazyIndex(func() (Index, error) {
@@ -140,14 +140,11 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 
 	})
 
-	go m.loop()
-
 	return m
 }
 
 func (m *HeadManager) loop() {
-	m.loopWg.Add(1)
-	defer m.loopWg.Done()
+	defer m.wg.Done()
 
 	ticker := time.NewTicker(defaultBuildRotatedHeadsInterval)
 	defer ticker.Stop()
@@ -155,31 +152,25 @@ func (m *HeadManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			m.mtx.Lock()
-			if m.prev != nil {
-				if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			now := time.Now()
+			if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
+				if err := m.Rotate(now); err != nil {
 					level.Error(m.log).Log(
-						"msg", "failed building tsdb from rotated out period",
+						"msg", "failed rotating tsdb head",
 						"period", m.period.PeriodFor(m.prev.initialized),
 						"err", err,
 					)
-					// keeps retrying on tick until it gets rotated out
-					// should we be worried about this?
-				} else {
-					m.prevHeads = nil
-					m.prev = nil
 				}
 			}
-			m.mtx.Unlock()
-		case <-m.loopQuit:
+		case <-m.cancel:
 			return
 		}
 	}
 }
 
 func (m *HeadManager) Stop() error {
-	close(m.loopQuit)
-	m.loopWg.Wait()
+	close(m.cancel)
+	m.wg.Wait()
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -199,15 +190,8 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	ls = b.Labels()
 
 	m.mtx.RLock()
-	now := time.Now()
-	if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
-		m.mtx.RUnlock()
-		if err := m.Rotate(now); err != nil {
-			return errors.Wrap(err, "rotating TSDB Head")
-		}
-		m.mtx.RLock()
-	}
 	defer m.mtx.RUnlock()
+
 	rec := m.activeHeads.Append(userID, ls, chks)
 	return m.active.Log(rec)
 }
@@ -252,7 +236,15 @@ func (m *HeadManager) Start() error {
 		return errors.New("cleaning (removing) wal dir")
 	}
 
-	return m.Rotate(now)
+	err = m.Rotate(now)
+	if err != nil {
+		return errors.Wrap(err, "rotating tsdb head")
+	}
+
+	m.wg.Add(1)
+	go m.loop()
+
+	return nil
 }
 
 func managerRequiredDirs(parent string) []string {
@@ -279,15 +271,9 @@ func managerPerTenantDir(parent string) string {
 	return filepath.Join(parent, "per_tenant")
 }
 
+// Rotate rotates head/wal and builds TSDB from the prev head
+// This method is not thread-safe and assumes that heads/wal fields are not mutated elsewhere
 func (m *HeadManager) Rotate(t time.Time) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if m.activeHeads != nil && m.period.PeriodFor(t) == m.period.PeriodFor(m.activeHeads.start) {
-		// no-op, we've already rotated to the desired period
-		return nil
-	}
-
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -312,11 +298,27 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	}
 
 	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
+
+	m.mtx.Lock()
 	m.prev = m.active
 	m.prevHeads = m.activeHeads
 	m.active = nextWAL
 	m.activeHeads = nextHeads
+	m.mtx.Unlock()
+
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
+
+	if m.prev != nil {
+		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			return errors.Wrap(err, "building tsdb from rotated out period")
+		}
+	}
+
+	// Now that the tsdbManager has the updated TSDBs, we can remove our references
+	m.mtx.Lock()
+	m.prevHeads = nil
+	m.prev = nil
+	m.mtx.Unlock()
 
 	return nil
 }
