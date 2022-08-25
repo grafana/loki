@@ -77,6 +77,11 @@
 
     ruler_enabled: false,
 
+    distributor: {
+      use_topology_spread: true,
+      topology_spread_max_skew: 1,
+    },
+
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',

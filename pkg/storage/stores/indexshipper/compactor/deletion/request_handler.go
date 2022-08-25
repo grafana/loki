@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/grafana/loki/pkg/util"
@@ -21,17 +23,17 @@ import (
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteRequestsStore       DeleteRequestsStore
-	metrics                   *deleteRequestHandlerMetrics
-	deleteRequestCancelPeriod time.Duration
+	deleteRequestsStore DeleteRequestsStore
+	metrics             *deleteRequestHandlerMetrics
+	maxInterval         time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxInterval time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore:       deleteStore,
-		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
-		metrics:                   newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore: deleteStore,
+		maxInterval:         maxInterval,
+		metrics:             newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -65,7 +67,14 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), query); err != nil {
+	interval, err := dm.interval(params, startTime, endTime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, interval)
+	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -81,6 +90,58 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func shardDeleteRequestsByInterval(startTime, endTime model.Time, query, userID string, interval time.Duration) []DeleteRequest {
+	deleteRequests := make([]DeleteRequest, 0, endTime.Sub(startTime)/interval)
+	for start := startTime; start.Before(endTime); start = start.Add(interval) + 1 {
+		end := start.Add(interval)
+		if end.After(endTime) {
+			end = endTime
+		}
+
+		deleteRequests = append(deleteRequests,
+			DeleteRequest{
+				StartTime: start,
+				EndTime:   end,
+				Query:     query,
+				UserID:    userID,
+			})
+	}
+	return deleteRequests
+}
+
+func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
+	qr := params.Get("max_interval")
+	if qr == "" {
+		if dm.maxInterval == 0 {
+			return endTime.Sub(startTime), nil
+		}
+
+		return min(endTime.Sub(startTime), dm.maxInterval), nil
+	}
+
+	interval, err := time.ParseDuration(qr)
+	if err != nil || interval < time.Second {
+		return 0, errors.New("invalid max_interval: valid time units are 's', 'm', 'h'")
+	}
+
+	if interval > dm.maxInterval && dm.maxInterval != 0 {
+		return 0, fmt.Errorf("max_interval can't be greater than %s", dm.maxInterval.String())
+	}
+
+	if interval > endTime.Sub(startTime) {
+		return 0, fmt.Errorf("max_interval can't be greater than the interval to be deleted (%s)", endTime.Sub(startTime))
+	}
+
+	return interval, nil
+}
+
+func min(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // GetAllDeleteRequestsHandler handles get all delete requests
 func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -90,17 +151,75 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		return
 	}
 
-	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
+	deleteGroups, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	deletesPerRequest := partitionByRequestID(deleteGroups)
+	deleteRequests := mergeDeletes(deletesPerRequest)
+
+	sort.Slice(deleteRequests, func(i, j int) bool {
+		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt
+	})
+
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
+}
+
+func mergeDeletes(groups map[string][]DeleteRequest) []DeleteRequest {
+	mergedRequests := []DeleteRequest{} // Declare this way so the return value is [] rather than null
+	for _, deletes := range groups {
+		startTime, endTime, status := mergeData(deletes)
+		newDelete := deletes[0]
+		newDelete.StartTime = startTime
+		newDelete.EndTime = endTime
+		newDelete.Status = status
+
+		mergedRequests = append(mergedRequests, newDelete)
+	}
+	return mergedRequests
+}
+
+func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestStatus) {
+	var (
+		startTime    = model.Time(math.MaxInt64)
+		endTime      = model.Time(0)
+		numProcessed = 0
+	)
+
+	for _, del := range deletes {
+		if del.StartTime < startTime {
+			startTime = del.StartTime
+		}
+
+		if del.EndTime > endTime {
+			endTime = del.EndTime
+		}
+
+		if del.Status == StatusProcessed {
+			numProcessed++
+		}
+	}
+
+	return startTime, endTime, deleteRequestStatus(numProcessed, len(deletes))
+}
+
+func deleteRequestStatus(processed, total int) DeleteRequestStatus {
+	if processed == 0 {
+		return StatusReceived
+	}
+
+	if processed == total {
+		return StatusProcessed
+	}
+
+	percentCompleted := float64(processed) / float64(total)
+	return DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted*100)))
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
@@ -114,31 +233,46 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
-
-	deleteRequest, err := dm.deleteRequestsStore.GetDeleteRequest(ctx, userID, requestID)
+	deleteRequests, err := dm.deleteRequestsStore.GetDeleteRequestGroup(ctx, userID, requestID)
 	if err != nil {
+		if errors.Is(err, ErrDeleteRequestNotFound) {
+			http.Error(w, "could not find delete request with given id", http.StatusNotFound)
+			return
+		}
+
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if deleteRequest == nil {
-		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
-		return
-	}
-
-	if deleteRequest.Status != StatusReceived {
+	toDelete := filterProcessed(deleteRequests)
+	if len(toDelete) == 0 {
 		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
 		return
 	}
 
-	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
+	if len(toDelete) != len(deleteRequests) && params.Get("force") != "true" {
+		http.Error(w, "Unable to cancel partially completed delete request. To force, use the ?force query parameter", http.StatusBadRequest)
+		return
+	}
+
+	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, toDelete); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func filterProcessed(reqs []DeleteRequest) []DeleteRequest {
+	var unprocessed []DeleteRequest
+	for _, r := range reqs {
+		if r.Status == StatusReceived {
+			unprocessed = append(unprocessed, r)
+		}
+	}
+	return unprocessed
 }
 
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number
@@ -176,7 +310,7 @@ func query(params url.Values) (string, error) {
 	return query, nil
 }
 
-func startTime(params url.Values) (int64, error) {
+func startTime(params url.Values) (model.Time, error) {
 	startParam := params.Get("start")
 	if startParam == "" {
 		return 0, errors.New("start time not set")
@@ -187,10 +321,10 @@ func startTime(params url.Values) (int64, error) {
 		return 0, errors.New("invalid start time: require unix seconds or RFC3339 format")
 	}
 
-	return st, nil
+	return model.Time(st), nil
 }
 
-func endTime(params url.Values, startTime int64) (int64, error) {
+func endTime(params url.Values, startTime model.Time) (model.Time, error) {
 	endParam := params.Get("end")
 	endTime, err := parseTime(endParam)
 	if err != nil {
@@ -201,11 +335,11 @@ func endTime(params url.Values, startTime int64) (int64, error) {
 		return 0, errors.New("deletes in the future are not allowed")
 	}
 
-	if startTime > endTime {
+	if int64(startTime) > endTime {
 		return 0, errors.New("start time can't be greater than end time")
 	}
 
-	return endTime, nil
+	return model.Time(endTime), nil
 }
 
 func parseTime(in string) (int64, error) {
