@@ -1,4 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isSimpleScalable" .) "true" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and $isSimpleScalable .Values.gateway.enabled -}}
 {{- if .Values.gateway.ingress.enabled -}}
 {{- $ingressApiIsStable := eq (include "loki.ingress.isStable" .) "true" -}}

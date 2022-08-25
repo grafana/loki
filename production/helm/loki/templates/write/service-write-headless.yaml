@@ -1,4 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isSimpleScalable" .) "true" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if $isSimpleScalable }}
 ---
 apiVersion: v1
