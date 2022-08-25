@@ -41,7 +41,7 @@ As a result of this major change, upgrades from the charts this replaces might b
 
 #### Upgrading from `filesystem` storage
 
-When Loki is backed by `filesystem` storage, we assume a single instance of Loki that is not HA. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed Loki stateful set, running the `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still recommend backing up all data before conducting the upgrade.
+When Loki is backed by `filesystem` storage, we assume a single instance of Loki that is not HA. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, then running `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still highly recommend backing up all data before conducting the upgrade.
 
 To upgrade, you will need at least the following in your `values.yaml`:
 
@@ -53,30 +53,27 @@ loki:
     type: 'filesystem'
 ```
 
-Assuming you installed `grafana/loki` as `loki` in namespace `loki`, your upgrade command might look like:
+You will need to 1. Update the grafana helm repo, 2. delete the exsiting stateful set, and 3. updgrade making sure to have the values above included in your `values.yaml`. If you installed `grafana/loki` as `loki` in namespace `loki`, the commands would be:
 
 ```console
-helm upgrade loki ~/workspace/grafana/loki/production/helm/loki --values environments/loki-migration-test/values-new.yaml --namespace loki
+helm repo update grafana
+kubectl -n loki delete statefulsets.apps loki
+helm upgrade loki grafana/loki \
+  --values values.yaml \
+  --namespace loki
 ```
 
 You will need to manually delete the existing stateful set for the above command to work.
 
 ### Upgrading from `grafana/loki-simple-scalable`
 
+TODO: there will be downtime, and they will be forced into a read/write deployment, but probably
+only want a single instance of each.
+
 ## Configuration
 
-By default, this chart configures Loki to run `read` and `write` targets in a scalable architecture
-designed to work with object storage. This configuration has been tested to work with [boltdb-shipper](https://grafana.com/docs/loki/latest/operations/storage/boltdb-shipper/)
-and [memberlist](https://grafana.com/docs/loki/latest/configuration/#memberlist_config) while other storage and discovery options should work as well.
-
-If this chart is configured to run with a `filesystem` backend, it will assume you only want a single instance of Loki deployed
-in "Single Binary" mode.
-
-However, the chart does not support setting up Consul or Etcd for discovery,
-and it is not intended to support these going forward.
-They would have to be set up separately.
-Instead, memberlist can be used which does not require a separate key/value store.
-The chart creates a headless service for the memberlist which read and write nodes are part of.
+By default, this chart configures Loki to run `read` and `write` targets in a scalable, highly available architecture (3 replicas of each) designed to work with object storage. If this chart is configured to run with a filesystem backend, it will assume you only want a single instance of Loki deployed
+in "Single Binary" mode (see "Upgrading from `filesystem` storage"). This chart does not support a scalable single binary mode, with multiple single binary instances communicating with shared object storage. For that we recommend using a single read and write instance with shared object storage if replication is not desired, or the default configuration of 3 read and 3 write instances if replication is desired.
 
 You can find some working examples of this Helm Chart within the [docs/examples](/docs/examples) directory of this repo.
 
