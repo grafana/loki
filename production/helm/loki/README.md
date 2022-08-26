@@ -34,14 +34,11 @@ In addition to moving the source code for this helm chart into the Loki repo its
 As a result of this major change, upgrades from the charts this replaces might be difficult. We are attempting to support the 3 most common upgrade paths.
 
   1. Upgrade from `grafana/loki` using local `filesystem` storage
-  1. Upgrade from `grafana/loki` using a cloud based object storage such as S3 or GCS, or an api compatible equivilent like MinIO.
   1. Upgrade from `grafana/loki-simple-scalable` using a cloud based object storage such as S3 or GCS, or an api compatible equivilent like MinIO.
 
 ### Upgrading from `grafana/loki`
 
-#### Upgrading from `filesystem` storage
-
-When Loki is backed by `filesystem` storage, we assume a single instance of Loki that is not HA. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, then running `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still highly recommend backing up all data before conducting the upgrade.
+The default installation of `grafana/loki` is a single instance backed by `filesystem` storage that is not highly available. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, the running the `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still highly recommend backing up all data before conducting the upgrade.
 
 To upgrade, you will need at least the following in your `values.yaml`:
 
@@ -67,8 +64,14 @@ You will need to manually delete the existing stateful set for the above command
 
 ### Upgrading from `grafana/loki-simple-scalable`
 
-TODO: there will be downtime, and they will be forced into a read/write deployment, but probably
-only want a single instance of each.
+As this chart is largely based off the `grafana/loki-simple-scalable` chart, you should be able to use your existing `values.yaml` file and just upgrade to the new chart name. For example, if you installed the `grafana/loki-simple-scalable` chart as `loki` in the namespace `loki`, your upgrade would be:
+
+```console
+helm repo update grafana
+helm upgrade loki grafana/loki \
+  --values values.yaml \
+  --namespace loki
+```
 
 ## Configuration
 
