@@ -2,7 +2,7 @@
 remote: origin
 target-branch: main
 chart-dirs:
-  - production/helm/loki
+  - production/helm
 chart-repos:
   - grafana=https://grafana.github.io/helm-charts
   - minio=https://helm.min.io

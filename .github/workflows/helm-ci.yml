@@ -6,7 +6,7 @@ jobs:
   call-lint:
     uses: grafana/helm-charts/.github/workflows/linter.yml@main
     with:
-      filter_regex_include: .*production/helm/loki/.*
+      filter_regex_include: .*production/helm/.*
 
   call-lint-test:
     uses: grafana/helm-charts/.github/workflows/lint-test.yaml@main
