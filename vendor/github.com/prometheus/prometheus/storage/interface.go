@@ -27,9 +27,10 @@ import (
 // The errors exposed.
 var (
 	ErrNotFound                    = errors.New("not found")
-	ErrOutOfOrderSample            = errors.New("out of order sample")
-	ErrDuplicateSampleForTimestamp = errors.New("duplicate sample for timestamp")
-	ErrOutOfBounds                 = errors.New("out of bounds")
+	ErrOutOfOrderSample            = errors.New("out of order sample")            // OOO support disabled and sample is OOO
+	ErrTooOldSample                = errors.New("too old sample")                 // OOO support enabled, but sample outside of tolerance
+	ErrDuplicateSampleForTimestamp = errors.New("duplicate sample for timestamp") // WARNING: this is only reported if value differs. equal values get silently dropped
+	ErrOutOfBounds                 = errors.New("out of bounds")                  // OOO support disabled and t < minValidTime
 	ErrOutOfOrderExemplar          = errors.New("out of order exemplar")
 	ErrDuplicateExemplar           = errors.New("duplicate exemplar")
 	ErrExemplarLabelLength         = fmt.Errorf("label length for exemplar exceeds maximum of %d UTF-8 characters", exemplar.ExemplarMaxLabelSetLength)
@@ -180,6 +181,9 @@ type SelectHints struct {
 	Grouping []string // List of label names used in aggregation.
 	By       bool     // Indicate whether it is without or by.
 	Range    int64    // Range vector selector range in milliseconds.
+
+	ShardIndex uint64 // Current shard index (starts from 0 and up to ShardCount-1).
+	ShardCount uint64 // Total number of shards (0 means sharding is disabled).
 
 	// DisableTrimming allows to disable trimming of matching series chunks based on query Start and End time.
 	// When disabled, the result may contain samples outside the queried time range but Select() performances

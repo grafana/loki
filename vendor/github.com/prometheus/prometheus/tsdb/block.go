@@ -75,12 +75,23 @@ type IndexReader interface {
 	// during background garbage collections. Input values must be sorted.
 	Postings(name string, values ...string) (index.Postings, error)
 
+	// PostingsForMatchers assembles a single postings iterator based on the given matchers.
+	// The resulting postings are not ordered by series.
+	// If concurrent hint is set to true, call will be optimized for a (most likely) concurrent call with same matchers,
+	// avoiding same calculations twice, however this implementation may lead to a worse performance when called once.
+	PostingsForMatchers(concurrent bool, ms ...*labels.Matcher) (index.Postings, error)
+
 	// SortedPostings returns a postings list that is reordered to be sorted
 	// by the label set of the underlying series.
 	SortedPostings(index.Postings) index.Postings
 
+	// ShardedPostings returns a postings list filtered by the provided shardIndex
+	// out of shardCount. For a given posting, its shard MUST be computed hashing
+	// the series labels mod shardCount (eg. `labels.Hash() % shardCount == shardIndex`).
+	ShardedPostings(p index.Postings, shardIndex, shardCount uint64) index.Postings
+
 	// Series populates the given labels and chunk metas for the series identified
-	// by the reference.
+	// by the reference. Chunks are skipped if chks is nil.
 	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
 	Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]chunks.Meta) error
 
@@ -116,7 +127,7 @@ type ChunkWriter interface {
 // ChunkReader provides reading access of serialized time series data.
 type ChunkReader interface {
 	// Chunk returns the series data chunk with the given reference.
-	Chunk(ref chunks.ChunkRef) (chunkenc.Chunk, error)
+	Chunk(ref chunks.Meta) (chunkenc.Chunk, error)
 
 	// Close releases all underlying resources of the reader.
 	Close() error
@@ -158,6 +169,9 @@ type BlockMeta struct {
 
 	// Version of the index format.
 	Version int `json:"version"`
+
+	// OutOfOrder is true if the block was directly created from out-of-order samples.
+	OutOfOrder bool `json:"out_of_order"`
 }
 
 // BlockStats contains stats about contents of a block.
@@ -281,6 +295,11 @@ type Block struct {
 // OpenBlock opens the block in the directory. It can be passed a chunk pool, which is used
 // to instantiate chunk structs.
 func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, err error) {
+	return OpenBlockWithCache(logger, dir, pool, nil)
+}
+
+// OpenBlockWithCache is like OpenBlock but allows to pass a cache provider.
+func OpenBlockWithCache(logger log.Logger, dir string, pool chunkenc.Pool, cache index.ReaderCacheProvider) (pb *Block, err error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -301,10 +320,12 @@ func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, er
 	}
 	closers = append(closers, cr)
 
-	ir, err := index.NewFileReader(filepath.Join(dir, indexFilename))
+	indexReader, err := index.NewFileReaderWithCache(filepath.Join(dir, indexFilename), cache)
 	if err != nil {
 		return nil, err
 	}
+	pfmc := NewPostingsForMatchersCache(defaultPostingsForMatchersCacheTTL, defaultPostingsForMatchersCacheSize)
+	ir := indexReaderWithPostingsForMatchers{indexReader, pfmc}
 	closers = append(closers, ir)
 
 	tr, sizeTomb, err := tombstones.ReadTombstones(dir)
@@ -468,8 +489,16 @@ func (r blockIndexReader) Postings(name string, values ...string) (index.Posting
 	return p, nil
 }
 
+func (r blockIndexReader) PostingsForMatchers(concurrent bool, ms ...*labels.Matcher) (index.Postings, error) {
+	return r.ir.PostingsForMatchers(concurrent, ms...)
+}
+
 func (r blockIndexReader) SortedPostings(p index.Postings) index.Postings {
 	return r.ir.SortedPostings(p)
+}
+
+func (r blockIndexReader) ShardedPostings(p index.Postings, shardIndex, shardCount uint64) index.Postings {
+	return r.ir.ShardedPostings(p, shardIndex, shardCount)
 }
 
 func (r blockIndexReader) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]chunks.Meta) error {
@@ -524,7 +553,7 @@ func (pb *Block) Delete(mint, maxt int64, ms ...*labels.Matcher) error {
 		return ErrClosing
 	}
 
-	p, err := PostingsForMatchers(pb.indexr, ms...)
+	p, err := pb.indexr.PostingsForMatchers(false, ms...)
 	if err != nil {
 		return errors.Wrap(err, "select series")
 	}

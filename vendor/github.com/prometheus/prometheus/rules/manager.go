@@ -15,6 +15,8 @@ package rules
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"net/url"
 	"sort"
@@ -23,7 +25,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
@@ -213,8 +214,9 @@ type Rule interface {
 	Name() string
 	// Labels of the rule.
 	Labels() labels.Labels
-	// eval evaluates the rule, including any associated recording or alerting actions.
-	Eval(context.Context, time.Time, QueryFunc, *url.URL, int) (promql.Vector, error)
+	// Eval evaluates the rule, including any associated recording or alerting actions.
+	// The duration passed is the evaluation delay.
+	Eval(context.Context, time.Duration, time.Time, QueryFunc, *url.URL, int) (promql.Vector, error)
 	// String returns a human-readable string representation of the rule.
 	String() string
 	// Query returns the rule query expression.
@@ -242,8 +244,10 @@ type Group struct {
 	name                 string
 	file                 string
 	interval             time.Duration
+	evaluationDelay      *time.Duration
 	limit                int
 	rules                []Rule
+	sourceTenants        []string
 	seriesInPreviousEval []map[string]labels.Labels // One per Rule.
 	staleSeries          []labels.Labels
 	opts                 *ManagerOptions
@@ -274,8 +278,10 @@ type GroupOptions struct {
 	Interval                 time.Duration
 	Limit                    int
 	Rules                    []Rule
+	SourceTenants            []string
 	ShouldRestore            bool
 	Opts                     *ManagerOptions
+	EvaluationDelay          *time.Duration
 	done                     chan struct{}
 	RuleGroupPostProcessFunc RuleGroupPostProcessFunc
 }
@@ -302,10 +308,12 @@ func NewGroup(o GroupOptions) *Group {
 		name:                     o.Name,
 		file:                     o.File,
 		interval:                 o.Interval,
+		evaluationDelay:          o.EvaluationDelay,
 		limit:                    o.Limit,
 		rules:                    o.Rules,
 		shouldRestore:            o.ShouldRestore,
 		opts:                     o.Opts,
+		sourceTenants:            o.SourceTenants,
 		seriesInPreviousEval:     make([]map[string]labels.Labels, len(o.Rules)),
 		done:                     make(chan struct{}),
 		managerDone:              o.done,
@@ -336,6 +344,10 @@ func (g *Group) Interval() time.Duration { return g.interval }
 
 // Limit returns the group's limit.
 func (g *Group) Limit() int { return g.limit }
+
+// SourceTenants returns the source tenants for the group.
+// If it's empty or nil, then the owning user/tenant is considered to be the source tenant.
+func (g *Group) SourceTenants() []string { return g.sourceTenants }
 
 func (g *Group) run(ctx context.Context) {
 	defer close(g.terminated)
@@ -600,6 +612,7 @@ func (g *Group) CopyState(from *Group) {
 // Eval runs a single evaluation cycle in which all rules are evaluated sequentially.
 func (g *Group) Eval(ctx context.Context, ts time.Time) {
 	var samplesTotal float64
+	evaluationDelay := g.EvaluationDelay()
 	for i, rule := range g.rules {
 		select {
 		case <-g.done:
@@ -621,7 +634,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 
 			g.metrics.EvalTotal.WithLabelValues(GroupKey(g.File(), g.Name())).Inc()
 
-			vector, err := rule.Eval(ctx, ts, g.opts.QueryFunc, g.opts.ExternalURL, g.Limit())
+			vector, err := rule.Eval(ctx, evaluationDelay, ts, g.opts.QueryFunc, g.opts.ExternalURL, g.Limit())
 			if err != nil {
 				rule.SetHealth(HealthBad)
 				rule.SetLastError(err)
@@ -630,7 +643,8 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 
 				// Canceled queries are intentional termination of queries. This normally
 				// happens on shutdown and thus we skip logging of any errors here.
-				if _, ok := err.(promql.ErrQueryCanceled); !ok {
+				var eqc promql.ErrQueryCanceled
+				if !errors.As(err, &eqc) {
 					level.Warn(g.logger).Log("name", rule.Name(), "index", i, "msg", "Evaluating rule failed", "rule", rule, "err", err)
 				}
 				return
@@ -667,12 +681,12 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 					rule.SetHealth(HealthBad)
 					rule.SetLastError(err)
 					sp.SetStatus(codes.Error, err.Error())
-
-					switch errors.Cause(err) {
-					case storage.ErrOutOfOrderSample:
+					unwrappedErr := errors.Unwrap(err)
+					switch {
+					case errors.Is(unwrappedErr, storage.ErrOutOfOrderSample):
 						numOutOfOrder++
 						level.Debug(g.logger).Log("name", rule.Name(), "index", i, "msg", "Rule evaluation result discarded", "err", err, "sample", s)
-					case storage.ErrDuplicateSampleForTimestamp:
+					case errors.Is(unwrappedErr, storage.ErrDuplicateSampleForTimestamp):
 						numDuplicates++
 						level.Debug(g.logger).Log("name", rule.Name(), "index", i, "msg", "Rule evaluation result discarded", "err", err, "sample", s)
 					default:
@@ -693,10 +707,11 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			for metric, lset := range g.seriesInPreviousEval[i] {
 				if _, ok := seriesReturned[metric]; !ok {
 					// Series no longer exposed, mark it stale.
-					_, err = app.Append(0, lset, timestamp.FromTime(ts), math.Float64frombits(value.StaleNaN))
-					switch errors.Cause(err) {
-					case nil:
-					case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
+					_, err = app.Append(0, lset, timestamp.FromTime(ts.Add(-evaluationDelay)), math.Float64frombits(value.StaleNaN))
+					unwrappedErr := errors.Unwrap(err)
+					switch {
+					case unwrappedErr == nil:
+					case errors.Is(unwrappedErr, storage.ErrOutOfOrderSample), errors.Is(unwrappedErr, storage.ErrDuplicateSampleForTimestamp):
 						// Do not count these in logging, as this is expected if series
 						// is exposed from a different rule.
 					default:
@@ -712,17 +727,29 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 	g.cleanupStaleSeries(ctx, ts)
 }
 
+func (g *Group) EvaluationDelay() time.Duration {
+	if g.evaluationDelay != nil {
+		return *g.evaluationDelay
+	}
+	if g.opts.DefaultEvaluationDelay != nil {
+		return g.opts.DefaultEvaluationDelay()
+	}
+	return time.Duration(0)
+}
+
 func (g *Group) cleanupStaleSeries(ctx context.Context, ts time.Time) {
 	if len(g.staleSeries) == 0 {
 		return
 	}
 	app := g.opts.Appendable.Appender(ctx)
+	evaluationDelay := g.EvaluationDelay()
 	for _, s := range g.staleSeries {
 		// Rule that produced series no longer configured, mark it stale.
-		_, err := app.Append(0, s, timestamp.FromTime(ts), math.Float64frombits(value.StaleNaN))
-		switch errors.Cause(err) {
-		case nil:
-		case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
+		_, err := app.Append(0, s, timestamp.FromTime(ts.Add(-evaluationDelay)), math.Float64frombits(value.StaleNaN))
+		unwrappedErr := errors.Unwrap(err)
+		switch {
+		case unwrappedErr == nil:
+		case errors.Is(unwrappedErr, storage.ErrOutOfOrderSample), errors.Is(unwrappedErr, storage.ErrDuplicateSampleForTimestamp):
 			// Do not count these in logging, as this is expected if series
 			// is exposed from a different rule.
 		default:
@@ -873,6 +900,28 @@ func (g *Group) Equals(ng *Group) bool {
 			return false
 		}
 	}
+	{
+		// compare source tenants
+		if len(g.sourceTenants) != len(ng.sourceTenants) {
+			return false
+		}
+
+		copyAndSort := func(x []string) []string {
+			copied := make([]string, len(x))
+			copy(copied, x)
+			sort.Strings(copied)
+			return copied
+		}
+
+		ngSourceTenantsCopy := copyAndSort(ng.sourceTenants)
+		gSourceTenantsCopy := copyAndSort(g.sourceTenants)
+
+		for i := range ngSourceTenantsCopy {
+			if gSourceTenantsCopy[i] != ngSourceTenantsCopy[i] {
+				return false
+			}
+		}
+	}
 
 	return true
 }
@@ -892,20 +941,26 @@ type Manager struct {
 // NotifyFunc sends notifications about a set of alerts generated by the given expression.
 type NotifyFunc func(ctx context.Context, expr string, alerts ...*Alert)
 
+type ContextWrapFunc func(ctx context.Context, g *Group) context.Context
+
 // ManagerOptions bundles options for the Manager.
 type ManagerOptions struct {
-	ExternalURL     *url.URL
-	QueryFunc       QueryFunc
-	NotifyFunc      NotifyFunc
-	Context         context.Context
-	Appendable      storage.Appendable
-	Queryable       storage.Queryable
-	Logger          log.Logger
-	Registerer      prometheus.Registerer
-	OutageTolerance time.Duration
-	ForGracePeriod  time.Duration
-	ResendDelay     time.Duration
-	GroupLoader     GroupLoader
+	ExternalURL *url.URL
+	QueryFunc   QueryFunc
+	NotifyFunc  NotifyFunc
+	Context     context.Context
+	// GroupEvaluationContextFunc will be called to wrap Context based on the group being evaluated.
+	// Will be skipped if nil.
+	GroupEvaluationContextFunc ContextWrapFunc
+	Appendable                 storage.Appendable
+	Queryable                  storage.Queryable
+	Logger                     log.Logger
+	Registerer                 prometheus.Registerer
+	OutageTolerance            time.Duration
+	ForGracePeriod             time.Duration
+	ResendDelay                time.Duration
+	GroupLoader                GroupLoader
+	DefaultEvaluationDelay     func() time.Duration
 
 	Metrics *Metrics
 }
@@ -999,11 +1054,16 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 				newg.CopyState(oldg)
 			}
 			wg.Done()
+
+			ctx := m.opts.Context
+			if m.opts.GroupEvaluationContextFunc != nil {
+				ctx = m.opts.GroupEvaluationContextFunc(ctx, newg)
+			}
 			// Wait with starting evaluation until the rule manager
 			// is told to run. This is necessary to avoid running
 			// queries against a bootstrapping storage.
 			<-m.block
-			newg.run(m.opts.Context)
+			newg.run(ctx)
 		}(newg)
 	}
 
@@ -1074,7 +1134,7 @@ func (m *Manager) LoadGroups(
 			for _, r := range rg.Rules {
 				expr, err := m.opts.GroupLoader.Parse(r.Expr.Value)
 				if err != nil {
-					return nil, []error{errors.Wrap(err, fn)}
+					return nil, []error{fmt.Errorf("%s: %w", fn, err)}
 				}
 
 				if r.Alert.Value != "" {
@@ -1104,8 +1164,10 @@ func (m *Manager) LoadGroups(
 				Interval:                 itv,
 				Limit:                    rg.Limit,
 				Rules:                    rules,
+				SourceTenants:            rg.SourceTenants,
 				ShouldRestore:            shouldRestore,
 				Opts:                     m.opts,
+				EvaluationDelay:          (*time.Duration)(rg.EvaluationDelay),
 				done:                     m.done,
 				RuleGroupPostProcessFunc: ruleGroupPostProcessFunc,
 			})

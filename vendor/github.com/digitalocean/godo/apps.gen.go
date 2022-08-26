@@ -324,7 +324,7 @@ type AppLogDestinationSpecPapertrail struct {
 type AppRouteSpec struct {
 	// An HTTP path prefix. Paths must start with / and must be unique across all components within an app.
 	Path string `json:"path,omitempty"`
-	// An optional flag to preserve the path that is forwarded to the backend service. By default, the HTTP request path will be trimmed from the left when forwarded to the component. For example, a component with `path=/api` will have requests to `/api/list` trimmed to `/list`. If this value is `true`, the path will remain `/api/list`.
+	// An optional flag to preserve the path that is forwarded to the backend service. By default, the HTTP request path will be trimmed from the left when forwarded to the component. For example, a component with `path=/api` will have requests to `/api/list` trimmed to `/list`. If this value is `true`, the path will remain `/api/list`. Note: this is not applicable for Functions Components.
 	PreservePathPrefix bool `json:"preserve_path_prefix,omitempty"`
 }
 
@@ -395,7 +395,8 @@ type AppSpec struct {
 	// Workloads which do not expose publicly-accessible HTTP services.
 	Workers []*AppWorkerSpec `json:"workers,omitempty"`
 	// Pre and post deployment workloads which do not expose publicly-accessible HTTP routes.
-	Jobs      []*AppJobSpec       `json:"jobs,omitempty"`
+	Jobs []*AppJobSpec `json:"jobs,omitempty"`
+	// Workloads which expose publicly-accessible HTTP services via Functions Components.
 	Functions []*AppFunctionsSpec `json:"functions,omitempty"`
 	// Database instances which can provide persistence to workloads within the application.
 	Databases []*AppDatabaseSpec `json:"databases,omitempty"`
@@ -511,7 +512,7 @@ type AppCORSPolicy struct {
 	AllowHeaders []string `json:"allow_headers,omitempty"`
 	// The set of HTTP response headers that browsers are allowed to access. This configures the Access-Control-Expose-Headers  header.
 	ExposeHeaders []string `json:"expose_headers,omitempty"`
-	// An optional duration specifiying how long browsers can cache the results of a preflight request. This configures the Access-Control-Max-Age header. Example: `5h30m`.
+	// An optional duration specifying how long browsers can cache the results of a preflight request. This configures the Access-Control-Max-Age header. Example: `5h30m`.
 	MaxAge string `json:"max_age,omitempty"`
 	// Whether browsers should expose the response to the client-side JavaScript code when the request's credentials mode is `include`. This configures the Access-Control-Allow-Credentials header.
 	AllowCredentials bool `json:"allow_credentials,omitempty"`
@@ -804,20 +805,29 @@ type AppProposeRequest struct {
 
 // AppProposeResponse struct for AppProposeResponse
 type AppProposeResponse struct {
-	AppIsStatic      bool `json:"app_is_static,omitempty"`
+	// Deprecated. Please use AppIsStarter instead.
+	AppIsStatic bool `json:"app_is_static,omitempty"`
+	// Indicates whether the app name is available.
 	AppNameAvailable bool `json:"app_name_available,omitempty"`
 	// If the app name is unavailable, this will be set to a suggested available name.
 	AppNameSuggestion string `json:"app_name_suggestion,omitempty"`
-	// The number of existing static apps the account has.
+	// Deprecated. Please use ExistingStarterApps instead.
 	ExistingStaticApps string `json:"existing_static_apps,omitempty"`
-	// The maximum number of free static apps the account can have. Any additional static apps will be charged for.
+	// Deprecated. Please use MaxFreeStarterApps instead.
 	MaxFreeStaticApps string   `json:"max_free_static_apps,omitempty"`
 	Spec              *AppSpec `json:"spec,omitempty"`
-	AppCost           float32  `json:"app_cost,omitempty"`
-	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `app_tier_upgrade_cost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
+	// The monthly cost of the proposed app in USD.
+	AppCost float32 `json:"app_cost,omitempty"`
+	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `AppTierUpgradeCost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
 	AppTierUpgradeCost float32 `json:"app_tier_upgrade_cost,omitempty"`
-	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `app_tier_downgrade_cost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
+	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `AppTierDowngradeCost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
 	AppTierDowngradeCost float32 `json:"app_tier_downgrade_cost,omitempty"`
+	// The number of existing starter tier apps the account has.
+	ExistingStarterApps string `json:"existing_starter_apps,omitempty"`
+	// The maximum number of free starter apps the account can have. Any additional starter apps will be charged for. These include apps with only static sites, functions, and databases.
+	MaxFreeStarterApps string `json:"max_free_starter_apps,omitempty"`
+	// Indicates whether the app is a starter tier app.
+	AppIsStarter bool `json:"app_is_starter,omitempty"`
 }
 
 // AppRegion struct for AppRegion

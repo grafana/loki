@@ -53,7 +53,7 @@ const (
 )
 
 type ident struct {
-	pkg  string
+	pkg  *types.Package
 	name string
 }
 
@@ -100,7 +100,9 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 	if !debug {
 		defer func() {
 			if e := recover(); e != nil {
-				if version > currentVersion {
+				if bundle {
+					err = fmt.Errorf("%v", e)
+				} else if version > currentVersion {
 					err = fmt.Errorf("cannot import %q (%v), export data is newer version - update tool", path, e)
 				} else {
 					err = fmt.Errorf("cannot import %q (%v), possibly version skew - reinstall package", path, e)
@@ -461,7 +463,7 @@ func (r *importReader) obj(name string) {
 
 		// To handle recursive references to the typeparam within its
 		// bound, save the partial type in tparamIndex before reading the bounds.
-		id := ident{r.currPkg.Name(), name}
+		id := ident{r.currPkg, name}
 		r.p.tparamIndex[id] = t
 		var implicit bool
 		if r.p.version >= iexportVersionGo1_18 {
@@ -777,7 +779,7 @@ func (r *importReader) doType(base *types.Named) (res types.Type) {
 			errorf("unexpected type param type")
 		}
 		pkg, name := r.qualifiedIdent()
-		id := ident{pkg.Name(), name}
+		id := ident{pkg, name}
 		if t, ok := r.p.tparamIndex[id]; ok {
 			// We're already in the process of importing this typeparam.
 			return t

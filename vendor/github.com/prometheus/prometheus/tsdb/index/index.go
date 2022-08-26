@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+	"github.com/prometheus/prometheus/tsdb/hashcache"
 )
 
 const (
@@ -1058,6 +1059,10 @@ type StringIter interface {
 	Err() error
 }
 
+type ReaderCacheProvider interface {
+	SeriesHashCache() *hashcache.BlockSeriesHashCache
+}
+
 type Reader struct {
 	b   ByteSlice
 	toc *TOC
@@ -1078,6 +1083,9 @@ type Reader struct {
 	dec *Decoder
 
 	version int
+
+	// Provides a cache mapping series labels hash by series ID.
+	cacheProvider ReaderCacheProvider
 }
 
 type postingOffset struct {
@@ -1108,16 +1116,26 @@ func (b realByteSlice) Sub(start, end int) ByteSlice {
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
-	return newReader(b, io.NopCloser(nil))
+	return newReader(b, io.NopCloser(nil), nil)
+}
+
+// NewReaderWithCache is like NewReader but allows to pass a cache provider.
+func NewReaderWithCache(b ByteSlice, cacheProvider ReaderCacheProvider) (*Reader, error) {
+	return newReader(b, io.NopCloser(nil), cacheProvider)
 }
 
 // NewFileReader returns a new index reader against the given index file.
 func NewFileReader(path string) (*Reader, error) {
+	return NewFileReaderWithCache(path, nil)
+}
+
+// NewFileReaderWithCache is like NewFileReader but allows to pass a cache provider.
+func NewFileReaderWithCache(path string, cacheProvider ReaderCacheProvider) (*Reader, error) {
 	f, err := fileutil.OpenMmapFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(realByteSlice(f.Bytes()), f)
+	r, err := newReader(realByteSlice(f.Bytes()), f, cacheProvider)
 	if err != nil {
 		return nil, tsdb_errors.NewMulti(
 			err,
@@ -1128,11 +1146,12 @@ func NewFileReader(path string) (*Reader, error) {
 	return r, nil
 }
 
-func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
+func newReader(b ByteSlice, c io.Closer, cacheProvider ReaderCacheProvider) (*Reader, error) {
 	r := &Reader{
-		b:        b,
-		c:        c,
-		postings: map[string][]postingOffset{},
+		b:             b,
+		c:             c,
+		postings:      map[string][]postingOffset{},
+		cacheProvider: cacheProvider,
 	}
 
 	// Verify header.
@@ -1603,6 +1622,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
+// Chunks will be skipped if chks is nil.
 func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]chunks.Meta) error {
 	offset := id
 	// In version 2 series IDs are no longer exact references but series are 16-byte padded
@@ -1721,6 +1741,57 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 // are sorted.
 func (r *Reader) SortedPostings(p Postings) Postings {
 	return p
+}
+
+// ShardedPostings returns a postings list filtered by the provided shardIndex out of shardCount.
+func (r *Reader) ShardedPostings(p Postings, shardIndex, shardCount uint64) Postings {
+	var (
+		out     = make([]storage.SeriesRef, 0, 128)
+		bufLbls = make(labels.Labels, 0, 10)
+	)
+
+	// Request the cache each time because the cache implementation requires
+	// that the cache reference is retained for a short period.
+	var seriesHashCache *hashcache.BlockSeriesHashCache
+	if r.cacheProvider != nil {
+		seriesHashCache = r.cacheProvider.SeriesHashCache()
+	}
+
+	for p.Next() {
+		id := p.At()
+
+		var (
+			hash uint64
+			ok   bool
+		)
+
+		// Check if the hash is cached.
+		if seriesHashCache != nil {
+			hash, ok = seriesHashCache.Fetch(id)
+		}
+
+		if !ok {
+			// Get the series labels (no chunks).
+			err := r.Series(id, &bufLbls, nil)
+			if err != nil {
+				return ErrPostings(errors.Errorf("series %d not found", id))
+			}
+
+			hash = bufLbls.Hash()
+			if seriesHashCache != nil {
+				seriesHashCache.Store(id, hash)
+			}
+		}
+
+		// Check if the series belong to the shard.
+		if hash%shardCount != shardIndex {
+			continue
+		}
+
+		out = append(out, id)
+	}
+
+	return NewListPostings(out)
 }
 
 // Size returns the size of an index file.
@@ -1842,9 +1913,12 @@ func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
+// Skips reading chunks metadata if chks is nil.
 func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) error {
 	*lbls = (*lbls)[:0]
-	*chks = (*chks)[:0]
+	if chks != nil {
+		*chks = (*chks)[:0]
+	}
 
 	d := encoding.Decbuf{B: b}
 
@@ -1868,6 +1942,11 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) e
 		}
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+	}
+
+	// Skip reading chunks metadata if chks is nil.
+	if chks == nil {
+		return d.Err()
 	}
 
 	// Read the chunks meta data.
