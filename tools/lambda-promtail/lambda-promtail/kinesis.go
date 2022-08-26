@@ -9,7 +9,11 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func parseKinesisEvent(ctx context.Context, b *batch, ev *events.KinesisEvent) error {
+func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) error {
+	if ev == nil {
+		return nil
+	}
+
 	for _, record := range ev.Records {
 		timestamp := time.UnixMilli(record.Kinesis.ApproximateArrivalTimestamp.Unix())
 
