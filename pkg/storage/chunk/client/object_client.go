@@ -169,7 +169,7 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 
 	if readCloser == nil {
-		return chunk.Chunk{}, errors.New("objct client getChunk fail, object == nil")
+		return chunk.Chunk{}, errors.New("object client getChunk fail because object is nil")
 	}
 	defer readCloser.Close()
 
