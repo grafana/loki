@@ -17,6 +17,9 @@ type MockBatch struct {
 }
 
 func (b *MockBatch) add(ctx context.Context, e entry) error {
+	b.streams[e.labels.String()] = &logproto.Stream{
+		Labels: e.labels.String(),
+	}
 	return nil
 }
 
@@ -57,6 +60,8 @@ func TestLambdaPromtail_KinesisParseEvents(t *testing.T) {
 	}
 
 	err = parseKinesisEvent(ctx, b, &testEvent)
-
 	require.Nil(t, err)
+
+	labels_str := "{__aws_kinesis_event_source_arn=\"arn:aws:kinesis:us-east-1:123456789012:stream/simple-stream\", __aws_log_type=\"kinesis\"}"
+	require.Contains(t, b.streams, labels_str)
 }
