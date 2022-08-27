@@ -69,14 +69,12 @@ const (
 type compactedIndexSet struct {
 	compactor.IndexSet
 	compactedIndex *CompactedIndex
-	needsUpload    bool
 }
 
-func newCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex, needsUpload bool) *compactedIndexSet {
+func newCompactedIndexSet(indexSet compactor.IndexSet, compactedIndex *CompactedIndex) *compactedIndexSet {
 	return &compactedIndexSet{
 		IndexSet:       indexSet,
 		compactedIndex: compactedIndex,
-		needsUpload:    needsUpload,
 	}
 }
 
@@ -180,7 +178,6 @@ func (t *tableCompactor) CompactTable() error {
 				level.Error(indexSet.GetLogger()).Log("msg", "unable to fetch a non-updated compacted index. skipping", "err", err)
 				continue
 			}
-			userCompactedIndexSet.needsUpload = true
 			t.userCompactedIndexSet[userID] = userCompactedIndexSet
 
 			if mustRecreateCompactedDB(sourceFiles) {
@@ -193,41 +190,12 @@ func (t *tableCompactor) CompactTable() error {
 	}
 
 	for _, userCompactedIndexSet := range t.userCompactedIndexSet {
-		// Inform higher level abstraction of the index files
-		// that were fetched/parsed. The index set is going to
-		// call cleanup even if it doesn't upload the contents of
-		// the compacted index
-		if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, userCompactedIndexSet.needsUpload); err != nil {
+		if err := userCompactedIndexSet.SetCompactedIndex(userCompactedIndexSet.compactedIndex, true); err != nil {
 			return err
 		}
 	}
 
 	return nil
-}
-
-func (t *tableCompactor) prefetchExistingUserIndexFile(userID string) error {
-	if _, ok := t.existingUserIndexSet[userID]; !ok {
-		return nil
-	}
-
-	t.userCompactedIndexSetMtx.RLock()
-	_, ok := t.userCompactedIndexSet[userID]
-	t.userCompactedIndexSetMtx.RUnlock()
-	if ok {
-		return nil
-	}
-
-	compactedIndex, err := t.fetchUserCompactedIndexSet(userID)
-	if err != nil {
-		return err
-	}
-
-	t.userCompactedIndexSetMtx.Lock()
-	defer t.userCompactedIndexSetMtx.Unlock()
-
-	t.userCompactedIndexSet[userID] = compactedIndex
-	return nil
-
 }
 
 func (t *tableCompactor) fetchUserCompactedIndexSet(userID string) (*compactedIndexSet, error) {
@@ -242,7 +210,7 @@ func (t *tableCompactor) fetchUserCompactedIndexSet(userID string) (*compactedIn
 		if err != nil {
 			return nil, err
 		}
-		return newCompactedIndexSet(userIndexSet, compactedIndex, true), nil
+		return newCompactedIndexSet(userIndexSet, compactedIndex), nil
 	} else if len(sourceFiles) == 1 {
 		indexFile, err := userIndexSet.GetSourceFile(sourceFiles[0])
 		if err != nil {
@@ -253,54 +221,51 @@ func (t *tableCompactor) fetchUserCompactedIndexSet(userID string) (*compactedIn
 			return nil, err
 		}
 
-		return newCompactedIndexSet(userIndexSet, newCompactedIndex(boltdb, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger()), false), nil
+		return newCompactedIndexSet(userIndexSet, newCompactedIndex(boltdb, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger())), nil
 	}
 	return nil, errors.New("attempted to fetch empty index set")
 
 }
 
-func (t *tableCompactor) getOrCreateUserCompactedIndexSet(userID string) (*compactedIndexSet, error) {
+// This function should be safe to call from multiple concurrent
+// goroutines. However, the caller should guarantee that only a single
+// call is made per userID. This function does not guarantee that two
+// concurrent invocations will not fetch/create the same index twice.
+func (t *tableCompactor) fetchOrCreateUserCompactedIndexSet(userID string) error {
 	t.userCompactedIndexSetMtx.RLock()
-	indexSet, ok := t.userCompactedIndexSet[userID]
-	needsUpload := ok && indexSet.needsUpload
+	_, ok := t.userCompactedIndexSet[userID]
 	t.userCompactedIndexSetMtx.RUnlock()
 	if ok {
-		if !needsUpload {
-			t.userCompactedIndexSetMtx.Lock()
-			defer t.userCompactedIndexSetMtx.Unlock()
-			indexSet.needsUpload = true
-
-		}
-		return indexSet, nil
-	}
-
-	t.userCompactedIndexSetMtx.Lock()
-	defer t.userCompactedIndexSetMtx.Unlock()
-
-	indexSet, ok = t.userCompactedIndexSet[userID]
-	if ok {
-		return indexSet, nil
+		return nil
 	}
 
 	userIndexSet, ok := t.existingUserIndexSet[userID]
+	var result *compactedIndexSet
 	if !ok {
 		var err error
 		userIndexSet, err = t.userIndexSetFactoryFunc(userID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		compactedFile, err := openBoltdbFileWithNoSync(filepath.Join(userIndexSet.GetWorkingDir(), fmt.Sprint(time.Now().Unix())))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		compactedIndex := newCompactedIndex(compactedFile, userIndexSet.GetTableName(), userIndexSet.GetWorkingDir(), t.periodConfig, userIndexSet.GetLogger())
-		t.userCompactedIndexSet[userID] = newCompactedIndexSet(userIndexSet, compactedIndex, true)
+		result = newCompactedIndexSet(userIndexSet, compactedIndex)
 	} else {
-		return nil, errors.New("an existing user index was not prefetched before starting compaction")
+		r, err := t.fetchUserCompactedIndexSet(userID)
+		result = r
+		if err != nil {
+			return err
+		}
 	}
 
-	return t.userCompactedIndexSet[userID], nil
+	t.userCompactedIndexSetMtx.Lock()
+	defer t.userCompactedIndexSetMtx.Unlock()
+	t.userCompactedIndexSet[userID] = result
+	return nil
 }
 
 // Specialized compaction for index files produced by the compactor
@@ -397,18 +362,20 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 			return err
 		}
 
-		fetchStateMx.Lock()
+		// We're updating the list of dbs to read in paralle,
+		// however the array's pre-allocated so this access is
+		// threadsafe
+		// NB: It is also important for the updates to happen as
+		// we fetch/open. In an error condition, this ensures
+		// cleanup happens
 		dbsToRead[idx].path = downloadAt
-		fetchStateMx.Unlock()
 
 		db, err := openBoltdbFileWithNoSync(downloadAt)
 		if err != nil {
 			return err
 		}
 
-		fetchStateMx.Lock()
 		dbsToRead[idx].db = db
-		fetchStateMx.Unlock()
 
 		return db.View(func(tx *bbolt.Tx) error {
 			return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
@@ -436,7 +403,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 
 	err = concurrency.ForEachJob(ctx, len(tenantIdsSlice), readDBsConcurrency, func(ctx context.Context, idx int) error {
 		userID := tenantIdsSlice[idx]
-		return t.prefetchExistingUserIndexFile(userID)
+		return t.fetchOrCreateUserCompactedIndexSet(userID)
 	})
 
 	if err != nil {
@@ -456,12 +423,11 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 		err = readFile(idxSet.GetLogger(), downloadedDB, func(bucketName string, batch []indexEntry) error {
 			indexFile := compactedFile
 			if bucketName != shipper_util.GetUnsafeString(local.IndexBucketName) {
-				userIndexSet, err := t.getOrCreateUserCompactedIndexSet(bucketName)
-				if userIndexSet.compactedIndex == nil {
-					err = errors.New("unable to retrieve per-user index")
-				}
-				if err != nil {
-					return err
+				t.userCompactedIndexSetMtx.RLock()
+				userIndexSet, ok := t.userCompactedIndexSet[bucketName]
+				t.userCompactedIndexSetMtx.RUnlock()
+				if !ok || userIndexSet.compactedIndex == nil {
+					return errors.New("unable to retrieve per-user index")
 				}
 
 				indexFile = userIndexSet.compactedIndex.compactedFile

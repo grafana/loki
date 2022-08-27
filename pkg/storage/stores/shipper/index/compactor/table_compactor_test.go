@@ -448,9 +448,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				require.Nil(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex)
 				uploadedCompactedIndexSets := make([]*compactedIndexSet, 0, len(tCompactor.userCompactedIndexSet))
 				for _, is := range tCompactor.userCompactedIndexSet {
-					if is.needsUpload {
-						uploadedCompactedIndexSets = append(uploadedCompactedIndexSets, is)
-					}
+					uploadedCompactedIndexSets = append(uploadedCompactedIndexSets, is)
 				}
 				require.Len(t, uploadedCompactedIndexSets, 0)
 			} else {
@@ -499,9 +497,6 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 	}
 
 	for userID, compactedIndex := range tableCompactor.userCompactedIndexSet {
-		if !compactedIndex.needsUpload {
-			continue
-		}
 		for _, userRecords := range readDB(t, compactedIndex.IndexSet.(*mockIndexSet).compactedIndex.(*CompactedIndex).compactedFile) {
 			if _, ok := compactedRecords[userID]; !ok {
 				compactedRecords[userID] = make(map[string]string)
