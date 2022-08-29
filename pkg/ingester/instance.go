@@ -197,7 +197,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
-		appendErr = mountGRPCError(s, failedEntriesWithError, len(reqStream.Entries))
+		appendErr = errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
 
 		s.chunkMtx.Unlock()
 	}
@@ -221,12 +221,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-// mountGRPCError mounts an error to be returned in a GRPC call.
+// errorForFailedEntries mounts an error to be returned in a GRPC call based on entries that couldn't be ingested.
 //
 // The returned error is enriched with the gRPC error status and with a list of details.
 // As of now, the list of details is a list of all streams that were rate-limited. This list can be used
-//   by the distributor to fine tune streams that were limited.
-func mountGRPCError(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
+// by the distributor to fine tune streams that were limited.
+func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
 	if len(failedEntriesWithError) == 0 {
 		return nil
 	}
