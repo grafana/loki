@@ -2972,7 +2972,7 @@ configure a runtime configuration file:
 
 How far into the past accepted out-of-order log entries may be
 is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 1 hour.
+`max_chunk_age` defaults to 2 hour.
 Loki calculates the earliest time that out-of-order entries may have
 and be accepted with
 
