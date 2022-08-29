@@ -25,6 +25,115 @@ Add the following repo to use the chart:
 helm repo add grafana https://grafana.github.io/helm-charts
 ```
 
+## Upgrading from v2.x
+
+v3.x represents a major milestone for this chart, showing a committment by the Loki team to provide a better supported, scalable helm chart.
+In addition to moving the source code for this helm chart into the Loki repo itself, it also combines what were previously two separate charts,
+[`grafana/loki`](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [`grafana/loki-simple-scalable`](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable) into one chart. This chart will automatically assume the "Single Binary" mode previously deployed by the `grafana/loki` chart if you are using a filesystem backend, and will assume the "Scalable" mode previoulsy deployed by the `grafana/loki-simple-scalable` chart if you are using an object storage backend.
+
+As a result of this major change, upgrades from the charts this replaces might be difficult. We are attempting to support the 3 most common upgrade paths.
+
+  1. Upgrade from `grafana/loki` using local `filesystem` storage
+  1. Upgrade from `grafana/loki` using a cloud based object storage such as S3 or GCS, or an api compatible equivilent like MinIO.
+  1. Upgrade from `grafana/loki-simple-scalable` using a cloud based object storage such as S3 or GCS, or an api compatible equivilent like MinIO.
+
+### Upgrading from `grafana/loki`
+
+#### Upgrading from `filesystem` storage
+
+When Loki is backed by `filesystem` storage, we assume a single instance of Loki that is not HA. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, then running `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still highly recommend backing up all data before conducting the upgrade.
+
+To upgrade, you will need at least the following in your `values.yaml`:
+
+```yaml
+loki:
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: 'filesystem'
+```
+
+You will need to 1. Update the grafana helm repo, 2. delete the exsiting stateful set, and 3. updgrade making sure to have the values above included in your `values.yaml`. If you installed `grafana/loki` as `loki` in namespace `loki`, the commands would be:
+
+```console
+helm repo update grafana
+kubectl -n loki delete statefulsets.apps loki
+helm upgrade loki grafana/loki \
+  --values values.yaml \
+  --namespace loki
+```
+
+You will need to manually delete the existing stateful set for the above command to work.
+
+### Upgrading from `grafana/loki-simple-scalable`
+
+TODO: there will be downtime, and they will be forced into a read/write deployment, but probably
+only want a single instance of each.
+
+## Configuration
+
+By default, this chart configures Loki to run `read` and `write` targets in a scalable, highly available architecture (3 replicas of each) designed to work with object storage. If this chart is configured to run with a filesystem backend, it will assume you only want a single instance of Loki deployed
+in "Single Binary" mode (see "Upgrading from `filesystem` storage"). This chart does not support a scalable single binary mode, with multiple single binary instances communicating with shared object storage. For that we recommend using a single read and write instance with shared object storage if replication is not desired, or the default configuration of 3 read and 3 write instances if replication is desired.
+
+You can find some working examples of this Helm Chart within the [docs/examples](/docs/examples) directory of this repo.
+
+## Gateway
+
+By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/loki/tree/master/production/ksonnet/loki), the chart
+installs the gateway component which is an NGINX that exposes Loki's API and automatically proxies requests to the correct
+Loki components (read or write, or single instance in the case of filesystem storage).
+The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.
+If the gateway is enabled, Grafana and log shipping agents, such as Promtail, should be configured to use the gateway.
+If NetworkPolicies are enabled, they are more restrictive if the gateway is enabled.
+
+## Caching
+
+By default, this chart configures in-memory caching. If that caching does not work for your deployment, take a look at the [distributed chart](https://github.com/grafana/helm-charts/tree/main/charts/loki-distributed) for how to setup memcache.
+
+## Monitoring
+
+**This feature is currently a work in process. Many of the dashboards are only partially functional. We are actively working on improving them**
+
+This chart includes a set of dashboards and custom resources that enable monitoring of the deployed Loki cluster. The dashboards are deployed via a set of config maps that can be mounted to a Grafana instance. The dashboards expect a certain set of labels, which will be correct if you also use the provided `ServiceMonitor`, `GrafanaAgent`, `LogsInstance`, and `PodLogs` custom resources
+
+### Dashboards
+
+This chart includes dashboards for monitoring Loki. These are a work in progress, and require the scrape configs defined in the `monitoring.serviceMonitor` and `monitoring.selfMonitoring` sections described below. The dashboards are deployed via a config map which can be mounted on a Grafana instance. To deploy the dashboards, set `monitoring.dashboards.enabled = true`. If your Grafana instance is in a different namespace than this Loki cluster, you may want to set `monitoring.dashboards.namespace` to the namespace of the Grafana instance.
+
+### Service Monitor
+
+The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. The resource can be deployed by setting:
+
+```yaml
+serviceMonitor:
+  enabled: true
+```
+
+Scraping this Loki cluster using the scrape config defined in the `SerivceMonitor` resource is required for the included dashboards to work.
+
+### Self Monitoring
+
+Self monitoring can be enabled by setting `selfMonitoring.enable = true`. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed seperately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
+
+#### Rules and Alerts
+
+If self monitoring is enabled, a default set of rules and alerts will be deployed. It is possible to add additional Prometheus rules
+as well:
+
+```yaml
+monitoring:
+  rules:
+    additionalGroups:
+      - name: loki-rules
+        rules:
+          - record: job:loki_request_duration_seconds_bucket:sum_rate
+            expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job)
+          - record: job_route:loki_request_duration_seconds_bucket:sum_rate
+            expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
+          - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
+            expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
+```
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -125,7 +234,6 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | loki.commonConfig | object | `{"path_prefix":"/var/loki","replication_factor":3}` | Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration |
 | loki.config | string | See values.yaml | Config file contents for Loki |
 | loki.containerSecurityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true}` | The SecurityContext for Loki containers |
-| loki.deploymentMode | string | `"simple-scalable"` |  |
 | loki.existingSecretForConfig | string | `""` | Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config` |
 | loki.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
 | loki.image.registry | string | `"docker.io"` | The Docker registry |
@@ -144,11 +252,11 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | loki.storage.bucketNames.admin | string | `"admin"` |  |
 | loki.storage.bucketNames.chunks | string | `"chunks"` |  |
 | loki.storage.bucketNames.ruler | string | `"ruler"` |  |
+| loki.storage.filesystem.chunks_directory | string | `"/var/loki/chunks"` |  |
+| loki.storage.filesystem.rules_directory | string | `"/var/loki/rules"` |  |
 | loki.storage.gcs.chunkBufferSize | int | `0` |  |
 | loki.storage.gcs.enableHttp2 | bool | `true` |  |
 | loki.storage.gcs.requestTimeout | string | `"0s"` |  |
-| loki.storage.local.chunks_directory | string | `"/var/loki/chunks"` |  |
-| loki.storage.local.rules_directory | string | `"/var/loki/rules"` |  |
 | loki.storage.s3.accessKeyId | string | `nil` |  |
 | loki.storage.s3.endpoint | string | `nil` |  |
 | loki.storage.s3.insecure | bool | `false` |  |
@@ -250,7 +358,7 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | singleBinary.autoscaling.minReplicas | int | `1` | Minimum autoscaling replicas for the single binary |
 | singleBinary.autoscaling.targetCPUUtilizationPercentage | int | `60` | Target CPU utilisation percentage for the single binary |
 | singleBinary.autoscaling.targetMemoryUtilizationPercentage | string | `nil` | Target memory utilisation percentage for the single binary |
-| singleBinary.extraArgs | list | `[]` | Additional CLI args for the single binary |
+| singleBinary.extraArgs | list | `[]` | Labels for single binary service |
 | singleBinary.extraEnv | list | `[]` | Environment variables to add to the single binary pods |
 | singleBinary.extraEnvFrom | list | `[]` | Environment variables from secrets or configmaps to add to the single binary pods |
 | singleBinary.extraVolumeMounts | list | `[]` | Volume mounts to add to the single binary pods |
@@ -263,10 +371,9 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | singleBinary.persistence.storageClass | string | `nil` | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). |
 | singleBinary.podAnnotations | object | `{}` | Annotations for single binary pods |
 | singleBinary.priorityClassName | string | `nil` | The name of the PriorityClass for single binary pods |
-| singleBinary.replicas | int | `3` | Number of replicas for the single binary |
+| singleBinary.replicas | int | `1` | Number of replicas for the single binary |
 | singleBinary.resources | object | `{}` | Resource requests and limits for the single binary |
 | singleBinary.selectorLabels | object | `{}` | Additional selecto labels for each `single binary` pod |
-| singleBinary.serviceLabels | object | `{}` | Labels for single binary service |
 | singleBinary.terminationGracePeriodSeconds | int | `30` | Grace period to allow the single binary to shutdown before it is killed |
 | singleBinary.tolerations | list | `[]` | Tolerations for single binary pods |
 | tracing.jaegerAgentHost | string | `""` |  |
@@ -290,156 +397,3 @@ helm repo add grafana https://grafana.github.io/helm-charts
 | write.serviceLabels | object | `{}` | Labels for ingestor service |
 | write.terminationGracePeriodSeconds | int | `300` | Grace period to allow the write to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown. |
 | write.tolerations | list | `[]` | Tolerations for write pods |
-
-## Components
-
-The chart supports the components shown in the following table.
-Ingester, distributor, querier, and query-frontend are always installed.
-The other components are optional.
-
-| Component | Optional | Enabled by default |
-| --- | --- | --- |
-| gateway |  ✅ |  ✅ |
-| write |  ❎ | n/a |
-| read |  ❎ | n/a |
-
-## Configuration
-
-This chart configures Loki in simple, scalable mode.
-It has been tested to work with [boltdb-shipper](https://grafana.com/docs/loki/latest/operations/storage/boltdb-shipper/)
-and [memberlist](https://grafana.com/docs/loki/latest/configuration/#memberlist_config) while other storage and discovery options should work as well.
-However, the chart does not support setting up Consul or Etcd for discovery,
-and it is not intended to support these going forward.
-They would have to be set up separately.
-Instead, memberlist can be used which does not require a separate key/value store.
-The chart creates a headless service for the memberlist which read and write nodes are part of.
-
-You can find some working examples of this Helm Chart within the [docs/examples](/docs/examples) directory of this repo.
-
-----
-
-**NOTE:**
-In its default configuration, the chart uses `boltdb-shipper` and `filesystem` as storage.
-The reason for this is that the chart can be validated and installed in a CI pipeline.
-However, this setup is not fully functional.
-Querying will not be possible (or limited to the write nodes' in-memory caches) because that would otherwise require shared storage between read and write nodes
-which the chart does not support and would require a volume that supports `ReadWriteMany` access mode anyways.
-The recommendation is to use object storage, such as S3, GCS, MinIO, etc., or one of the other options documented at https://grafana.com/docs/loki/latest/storage/.
-In order to do this, please override the `loki.config` value with a valid object storage configuration. This means overriding
-the `common.storage` section, as well as the `object_store` in your `schema_config`. Please note that because of the way
-helm deep merges values, you will need to explicitly `null` out the default `filesystem` configuration.
-
-For example, to use MinIO (deployed separately) as your backend, provide the following values when installing this chart:
-
-```yaml
-loki:
-  config:
-    common:
-      storage:
-        filesystem: null
-        s3:
-          endpoint: minio.minio.svc.cluster.local:9000
-          insecure: true
-          bucketnames: loki-data
-          access_key_id: loki
-          secret_access_key: supersecret
-          s3forcepathstyle: true
-    schema_config:
-      configs:
-        - from: "2020-09-07"
-          store: boltdb-shipper
-          object_store: s3
-          schema: v11
-          index:
-            period: 24h
-            prefix: loki_index_
-```
-
-Alternatively, in order to quickly test Loki using the filestore, the [single binary chart](https://github.com/grafana/helm-charts/tree/main/charts/loki) can be used.
-
-----
-
-### Directory and File Locations
-
-* Volumes are mounted to `/var/loki`. The various directories Loki needs should be configured as subdirectories (e. g. `/var/loki/index`, `/var/loki/cache`). Loki will create the directories automatically.
-  * Persistence is require to use this chart, and PVCs will be created and mapped to `/var/loki`
-* The config file is mounted to `/etc/loki/config/config.yaml` and passed as CLI arg.
-
-### Example configuration using memberlist, boltdb-shipper, and S3 for storage
-
-If using the default config values, queries will not work. At a minimum you need to provide:
-  * `loki.config.common.storage` (with `filesystem` set to `null`, and valid cloud storage provided)
-  * `loki.config.schema_config.configs` (with at least one config that has an `object_store` that matches the the `loki.config.common.storage` config)
-values, you must provide an entire `loki.config` value.
-
-`loki.config` is passed through the `tpl` function, meaning it is also possible to e.g. externalize S3 bucket names:
-
-```yaml
-loki:
-  config:
-    common:
-      storage:
-        s3:
-          s3: s3://eu-central-1
-          bucketnames: {{ .values.bucketnames }}
-```
-
-```console
-helm upgrade loki --install -f values.yaml --set bucketnames=my-loki-bucket
-```
-
-## Gateway
-
-By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/loki/tree/master/production/ksonnet/loki), the chart installs the gateway component which is an NGINX that exposes Loki's API
-and automatically proxies requests to the correct Loki components (read or write).
-The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.
-If the gateway is enabled, Grafana and log shipping agents, such as Promtail, should be configured to use the gateway.
-If NetworkPolicies are enabled, they are more restrictive if the gateway is enabled.
-
-## Metrics
-
-Loki exposes Prometheus metrics.
-The chart can create ServiceMonitor objects for all Loki components.
-
-```yaml
-serviceMonitor:
-  enabled: true
-```
-
-Furthermore, it is possible to add Prometheus rules:
-
-```yaml
-prometheusRule:
-  enabled: true
-  groups:
-    - name: loki-rules
-      rules:
-        - record: job:loki_request_duration_seconds_bucket:sum_rate
-          expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job)
-        - record: job_route:loki_request_duration_seconds_bucket:sum_rate
-          expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
-        - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
-          expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-```
-
-## Caching
-
-By default, this chart configures in-memory caching. If that caching does not work for your deployment, take a look at the [distributed chart](https://github.com/grafana/helm-charts/tree/main/charts/loki-distributed) for how to setup memcache.
-
-## Monitoring
-
-**This feature is currently a work in process. Many of the dashboards are only partially functional. We are actively working on improving them**
-
-This chart includes a set of dashboards and custom resources that enable monitoring of the deployed Loki cluster. The dashboards are deployed via a set of config maps that can be mounted to a Grafana instance. The dashboards expect a certain set of labels, which will be correct if you also use the provided `ServiceMonitor`, `GrafanaAgent`, `LogsInstance`, and `PodLogs` custom resources
-
-### Dashboards
-
-This chart includes dashboards for monitoring Loki. These are a work in progress, and require the scrape configs defined in the `monitoring.serviceMonitor` and `monitoring.selfMonitoring` sections described below. The dashboards are deployed via a config map which can be mounted on a Grafana instance. To deploy the dashboards, set `monitoring.dashboards.enabled = true`. If your Grafana instance is in a different namespace than this Loki cluster, you may want to set `monitoring.dashboards.namespace` to the namespace of the Grafana instance.
-
-### Service Monitor
-
-The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. The resource can be deployed by setting `serviceMonitor.enable = true`. Scraping this Loki cluster using the scrape config defined in the `SerivceMonitor` resource is required for the included dashboards to work.
-
-### Self Monitoring
-
-Self monitoring can be enabled by setting `selfMonitoring.enable = true`. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed seperately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.

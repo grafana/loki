@@ -49,6 +49,18 @@ The Loki Ingesters expose the following metrics:
 | `loki_ingester_streams_created_total`        | Counter     | The total number of streams created per tenant.                                                           |
 | `loki_ingester_streams_removed_total`        | Counter     | The total number of streams removed per tenant.                                                           |
 
+The Loki compactor exposes the following metrics:
+
+| Metric Name                                                   | Metric Type | Description                                                                                             |
+| ------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `loki_compactor_delete_requests_processed_total`              | Counter     | Number of delete requests processed per user.                                                           |
+| `loki_compactor_delete_requests_chunks_selected_total`        | Counter     | Number of chunks selected while building delete plans per user.                                         |
+| `loki_compactor_delete_processing_fails_total`                | Counter     | Number of times the delete phase of compaction has failed.                                                 |
+| `loki_compactor_load_pending_requests_attempts_total`         | Counter     | Number of attempts that were made to load pending requests with status.                                 |
+| `loki_compactor_oldest_pending_delete_request_age_seconds`    | Gauge       | Age of oldest pending delete request in seconds since they are over their cancellation period.         |
+| `loki_compactor_pending_delete_requests_count`                | Gauge       | Count of delete requests which are over their cancellation period and have not finished processing yet. |
+| `loki_compactor_deleted_lines`                                | Counter     | Number of deleted lines per user.                                                                       |
+
 Promtail exposes these metrics:
 
 | Metric Name                               | Metric Type | Description                                                                                |
