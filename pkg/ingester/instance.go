@@ -288,9 +288,9 @@ func mountPerStreamDetails(streamLabels string) []*types.Any {
 	marshalledStream, err := types.MarshalAny(&rls)
 	if err == nil {
 		return []*types.Any{marshalledStream}
-	} else {
-		level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
 	}
+
+	level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
 	return []*types.Any{}
 }
 
