@@ -142,14 +142,14 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 const (
 	// Just some observed values to get us started on better query planning.
-	p90BytesPerSecond = 300 << 20 // 300MB/s/core
+	maxBytesPerShard = 600 << 20 // 600MB/s/core
 )
 
 func guessShardFactor(stats stats.Stats) int {
-	expectedSeconds := float64(stats.Bytes) / float64(p90BytesPerSecond)
-	power := math.Ceil(math.Log2(expectedSeconds)) // round up to nearest power of 2
+	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
 
-	// Parallelize down to 1s queries
+	power := math.Ceil(math.Log2(minShards)) // round up to nearest power of 2
+
 	// Since x^0 == 1 and we only support factors of 2
 	// reset this edge case manually
 	factor := int(math.Pow(2, power))
