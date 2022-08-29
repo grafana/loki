@@ -289,7 +289,7 @@ func populateErrorWithPerStreamDetails(streamLabels string, details []*types.Any
 	if err == nil {
 		details = append(details, marshalledStream)
 	} else {
-		level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamName)
+		level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
 	}
 }
 
