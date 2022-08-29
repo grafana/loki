@@ -1062,7 +1062,7 @@ tracing:
 # Configuration for `minio` child chart
 # -------------------------------------
 minio:
-  enabled: true
+  enabled: false 
   accessKey: enterprise-logs
   secretKey: supersecret
   buckets:
