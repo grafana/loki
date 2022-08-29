@@ -12,6 +12,7 @@ Parsing stages:
   - [cri](cri/): Extract data by parsing the log line using the standard CRI format.
   - [regex](regex/): Extract data using a regular expression.
   - [json](json/): Extract data by parsing the log line as JSON.
+  - [logfmt](logfmt/): Extract data by parsing the log line as logfmt.
   - [replace](replace/): Replace data using a regular expression.
   - [multiline](multiline/): Merge multiple lines into a multiline block.
 
@@ -27,6 +28,7 @@ Action stages:
   - [labeldrop](labeldrop/): Drop label set for the log entry.
   - [labelallow](labelallow/): Allow label set for the log entry.
   - [labels](labels/): Update the label set for the log entry.
+  - [limit](limit/): Limit the rate lines will be sent to Loki.
   - [static_labels](static_labels/): Add static-labels to the log entry. 
   - [metrics](metrics/): Calculate metrics based on extracted data.
   - [tenant](tenant/): Set the tenant ID value to use for the log entry.
