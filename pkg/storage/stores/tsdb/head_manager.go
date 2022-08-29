@@ -146,26 +146,26 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 func (m *HeadManager) loop() {
 	defer m.wg.Done()
 
+	buildPrev := func() error {
+		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			return errors.Wrap(err, "building tsdb head")
+		}
+
+		// Now that the tsdbManager has the updated TSDBs, we can remove our references
+		m.mtx.Lock()
+		defer m.mtx.Unlock()
+		m.prevHeads = nil
+		m.prev = nil
+
+		return nil
+	}
+
 	ticker := time.NewTicker(defaultRotationCheckPeriod)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			buildPrev := func() error {
-				if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
-					return errors.Wrap(err, "building tsdb head")
-				}
-
-				// Now that the tsdbManager has the updated TSDBs, we can remove our references
-				m.mtx.Lock()
-				defer m.mtx.Unlock()
-				m.prevHeads = nil
-				m.prev = nil
-
-				return nil
-			}
-
 			// retry tsdb build failures from previous run
 			if m.prev != nil {
 				err := buildPrev()
