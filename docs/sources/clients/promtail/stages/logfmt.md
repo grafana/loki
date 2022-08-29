@@ -1,5 +1,7 @@
 ---
 title: logfmt
+menuTitle: logfmt
+description: The logfmt parsing stage reads logfmt log lines and extracts the data into labels.
 ---
 # `logfmt` stage
 
