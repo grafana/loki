@@ -31,7 +31,8 @@ type indexSetState struct {
 }
 
 func TestTable_Compaction(t *testing.T) {
-	for _, numUsers := range []int{uploadIndexSetsConcurrency / 2, uploadIndexSetsConcurrency, uploadIndexSetsConcurrency * 2} {
+	// user counts are aligned with default upload parallelism
+	for _, numUsers := range []int{5, 10, 20} {
 		t.Run(fmt.Sprintf("numUsers=%d", numUsers), func(t *testing.T) {
 			for _, tc := range []struct {
 				numUnCompactedCommonDBs  int
@@ -199,7 +200,7 @@ func TestTable_Compaction(t *testing.T) {
 					require.NoError(t, err)
 
 					table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -236,7 +237,7 @@ func TestTable_Compaction(t *testing.T) {
 
 					// running compaction again should not do anything.
 					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -379,7 +380,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					newTestIndexCompactor(), config.PeriodConfig{},
 					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
 						return true
-					}))
+					}), 10)
 				require.NoError(t, err)
 
 				require.NoError(t, table.compact(true))
@@ -452,7 +453,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
@@ -470,7 +471,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.gz")))
 
 	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 	require.NoError(t, err)
 	require.NoError(t, table.compact(false))
 

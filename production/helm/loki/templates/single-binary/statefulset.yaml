@@ -80,7 +80,7 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
-            - name: data
+            - name: storage
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
             - name: license
@@ -126,7 +126,7 @@ spec:
         {{- end }}
   volumeClaimTemplates:
     - metadata:
-        name: data
+        name: storage
       spec:
         accessModes:
           - ReadWriteOnce

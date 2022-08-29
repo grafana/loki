@@ -5,6 +5,9 @@
 ***********************************************************************
 
 Installed components:
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+* loki 
+{{- else -}}
 {{- if .Values.gateway.enabled }}
 * gateway
 {{- end }}
@@ -13,11 +16,4 @@ Installed components:
 {{- end }}
 * read
 * write
-
-{{- if eq .Values.loki.storage.type "filesystem" }}
-This chart requires persistence and object storage to work correctly.
-Queries will not work unless you provide a `loki.config.common.storage` section with
-a valid object storage (and the default `filesystem` storage set to `null`), as well
-as a valid `loki.config.schema_config.configs` with an `object_store` that
-matches the common storage section. See the Loki Helm documentation for details.
 {{- end }}

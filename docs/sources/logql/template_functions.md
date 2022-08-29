@@ -13,7 +13,7 @@ All labels are added as variables in the template engine. They can be referenced
 {{ .path }}
 ```
 
-Additionally you can also access the log line using the [`__line__`](#__line__) function.
+Additionally you can also access the log line using the [`__line__`](#__line__) function and the timestamp using the [`__timestamp__`](#__timestamp__) function.
 
 You can take advantage of [pipeline](https://golang.org/pkg/text/template/#hdr-Pipelines) to join together multiple functions.
 In a chained pipeline, the result of each command is passed as the last argument of the following command.
