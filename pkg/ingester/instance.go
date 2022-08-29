@@ -273,7 +273,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 	var details []*types.Any
 
 	if hadPerStreamError {
-		populateErrorWithPerStreamDetails(streamName, details)
+		details = append(details, mountPerStreamDetails(streamName)...)
 	}
 
 	return status.ErrorProto(&spb.Status{
@@ -283,14 +283,15 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 	})
 }
 
-func populateErrorWithPerStreamDetails(streamLabels string, details []*types.Any) {
+func mountPerStreamDetails(streamLabels string) []*types.Any {
 	rls := logproto.RateLimitedStream{Labels: streamLabels}
 	marshalledStream, err := types.MarshalAny(&rls)
 	if err == nil {
-		details = append(details, marshalledStream)
+		return []*types.Any{marshalledStream}
 	} else {
 		level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
 	}
+	return []*types.Any{}
 }
 
 func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
