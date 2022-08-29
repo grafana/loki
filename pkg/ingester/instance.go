@@ -167,8 +167,8 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
 //
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
-//   happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
-//   and all three failed, the returned error only describes what happened to the last processed stream.
+// happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
+// and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
