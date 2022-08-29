@@ -290,6 +290,7 @@ clean:
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
+	rm -rf cmd/logql-analyzer/logql-analyzer
 	go clean ./...
 
 #########
@@ -543,6 +544,12 @@ loki-querytee-push: loki-querytee-image-cross
 # migrate-image
 migrate-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+
+# LogQL Analyzer
+logql-analyzer-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
+logql-analyzer-push: logql-analyzer-image
+	$(call push-image,logql-analyzer)
 
 
 # build-image (only amd64)
