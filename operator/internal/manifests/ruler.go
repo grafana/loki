@@ -42,6 +42,7 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 // NewRulerStatefulSet creates a statefulset object for an ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
