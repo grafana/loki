@@ -1,0 +1,646 @@
+# https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.57.0/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.8.0
+  creationTimestamp: null
+  name: servicemonitors.monitoring.coreos.com
+spec:
+  group: monitoring.coreos.com
+  names:
+    categories:
+    - prometheus-operator
+    kind: ServiceMonitor
+    listKind: ServiceMonitorList
+    plural: servicemonitors
+    shortNames:
+    - smon
+    singular: servicemonitor
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: ServiceMonitor defines monitoring for a set of services.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Specification of desired Service selection for target discovery
+              by Prometheus.
+            properties:
+              endpoints:
+                description: A list of endpoints allowed as part of this ServiceMonitor.
+                items:
+                  description: Endpoint defines a scrapeable endpoint serving Prometheus
+                    metrics.
+                  properties:
+                    authorization:
+                      description: Authorization section for this endpoint
+                      properties:
+                        credentials:
+                          description: The secret's key that contains the credentials
+                            of the request
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                TODO: Add other useful fields. apiVersion, kind, uid?'
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                        type:
+                          description: Set the authentication type. Defaults to Bearer,
+                            Basic will cause an error
+                          type: string
+                      type: object
+                    basicAuth:
+                      description: 'BasicAuth allow an endpoint to authenticate over
+                        basic authentication More info: https://prometheus.io/docs/operating/configuration/#endpoints'
+                      properties:
+                        password:
+                          description: The secret in the service monitor namespace
+                            that contains the password for authentication.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                TODO: Add other useful fields. apiVersion, kind, uid?'
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                        username:
+                          description: The secret in the service monitor namespace
+                            that contains the username for authentication.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                TODO: Add other useful fields. apiVersion, kind, uid?'
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                      type: object
+                    bearerTokenFile:
+                      description: File to read bearer token for scraping targets.
+                      type: string
+                    bearerTokenSecret:
+                      description: Secret to mount to read bearer token for scraping
+                        targets. The secret needs to be in the same namespace as the
+                        service monitor and accessible by the Prometheus Operator.
+                      properties:
+                        key:
+                          description: The key of the secret to select from.  Must
+                            be a valid secret key.
+                          type: string
+                        name:
+                          description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            TODO: Add other useful fields. apiVersion, kind, uid?'
+                          type: string
+                        optional:
+                          description: Specify whether the Secret or its key must
+                            be defined
+                          type: boolean
+                      required:
+                      - key
+                      type: object
+                    followRedirects:
+                      description: FollowRedirects configures whether scrape requests
+                        follow HTTP 3xx redirects.
+                      type: boolean
+                    honorLabels:
+                      description: HonorLabels chooses the metric's labels on collisions
+                        with target labels.
+                      type: boolean
+                    honorTimestamps:
+                      description: HonorTimestamps controls whether Prometheus respects
+                        the timestamps present in scraped data.
+                      type: boolean
+                    interval:
+                      description: Interval at which metrics should be scraped If
+                        not specified Prometheus' global scrape interval is used.
+                      pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
+                      type: string
+                    metricRelabelings:
+                      description: MetricRelabelConfigs to apply to samples before
+                        ingestion.
+                      items:
+                        description: 'RelabelConfig allows dynamic rewriting of the
+                          label set, being applied to samples before ingestion. It
+                          defines `<metric_relabel_configs>`-section of Prometheus
+                          configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                        properties:
+                          action:
+                            default: replace
+                            description: Action to perform based on regex matching.
+                              Default is 'replace'
+                            enum:
+                            - replace
+                            - keep
+                            - drop
+                            - hashmod
+                            - labelmap
+                            - labeldrop
+                            - labelkeep
+                            type: string
+                          modulus:
+                            description: Modulus to take of the hash of the source
+                              label values.
+                            format: int64
+                            type: integer
+                          regex:
+                            description: Regular expression against which the extracted
+                              value is matched. Default is '(.*)'
+                            type: string
+                          replacement:
+                            description: Replacement value against which a regex replace
+                              is performed if the regular expression matches. Regex
+                              capture groups are available. Default is '$1'
+                            type: string
+                          separator:
+                            description: Separator placed between concatenated source
+                              label values. default is ';'.
+                            type: string
+                          sourceLabels:
+                            description: The source labels select values from existing
+                              labels. Their content is concatenated using the configured
+                              separator and matched against the configured regular
+                              expression for the replace, keep, and drop actions.
+                            items:
+                              description: LabelName is a valid Prometheus label name
+                                which may only contain ASCII letters, numbers, as
+                                well as underscores.
+                              pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+                              type: string
+                            type: array
+                          targetLabel:
+                            description: Label to which the resulting value is written
+                              in a replace action. It is mandatory for replace actions.
+                              Regex capture groups are available.
+                            type: string
+                        type: object
+                      type: array
+                    oauth2:
+                      description: OAuth2 for the URL. Only valid in Prometheus versions
+                        2.27.0 and newer.
+                      properties:
+                        clientId:
+                          description: The secret or configmap containing the OAuth2
+                            client id
+                          properties:
+                            configMap:
+                              description: ConfigMap containing data to use for the
+                                targets.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    TODO: Add other useful fields. apiVersion, kind,
+                                    uid?'
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                            secret:
+                              description: Secret containing data to use for the targets.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    TODO: Add other useful fields. apiVersion, kind,
+                                    uid?'
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                          type: object
+                        clientSecret:
+                          description: The secret containing the OAuth2 client secret
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                TODO: Add other useful fields. apiVersion, kind, uid?'
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                        endpointParams:
+                          additionalProperties:
+                            type: string
+                          description: Parameters to append to the token URL
+                          type: object
+                        scopes:
+                          description: OAuth2 scopes used for the token request
+                          items:
+                            type: string
+                          type: array
+                        tokenUrl:
+                          description: The URL to fetch the token from
+                          minLength: 1
+                          type: string
+                      required:
+                      - clientId
+                      - clientSecret
+                      - tokenUrl
+                      type: object
+                    params:
+                      additionalProperties:
+                        items:
+                          type: string
+                        type: array
+                      description: Optional HTTP URL parameters
+                      type: object
+                    path:
+                      description: HTTP path to scrape for metrics.
+                      type: string
+                    port:
+                      description: Name of the service port this endpoint refers to.
+                        Mutually exclusive with targetPort.
+                      type: string
+                    proxyUrl:
+                      description: ProxyURL eg http://proxyserver:2195 Directs scrapes
+                        to proxy through this endpoint.
+                      type: string
+                    relabelings:
+                      description: 'RelabelConfigs to apply to samples before scraping.
+                        Prometheus Operator automatically adds relabelings for a few
+                        standard Kubernetes fields. The original scrape job''s name
+                        is available via the `__tmp_prometheus_job_name` label. More
+                        info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config'
+                      items:
+                        description: 'RelabelConfig allows dynamic rewriting of the
+                          label set, being applied to samples before ingestion. It
+                          defines `<metric_relabel_configs>`-section of Prometheus
+                          configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                        properties:
+                          action:
+                            default: replace
+                            description: Action to perform based on regex matching.
+                              Default is 'replace'
+                            enum:
+                            - replace
+                            - keep
+                            - drop
+                            - hashmod
+                            - labelmap
+                            - labeldrop
+                            - labelkeep
+                            type: string
+                          modulus:
+                            description: Modulus to take of the hash of the source
+                              label values.
+                            format: int64
+                            type: integer
+                          regex:
+                            description: Regular expression against which the extracted
+                              value is matched. Default is '(.*)'
+                            type: string
+                          replacement:
+                            description: Replacement value against which a regex replace
+                              is performed if the regular expression matches. Regex
+                              capture groups are available. Default is '$1'
+                            type: string
+                          separator:
+                            description: Separator placed between concatenated source
+                              label values. default is ';'.
+                            type: string
+                          sourceLabels:
+                            description: The source labels select values from existing
+                              labels. Their content is concatenated using the configured
+                              separator and matched against the configured regular
+                              expression for the replace, keep, and drop actions.
+                            items:
+                              description: LabelName is a valid Prometheus label name
+                                which may only contain ASCII letters, numbers, as
+                                well as underscores.
+                              pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+                              type: string
+                            type: array
+                          targetLabel:
+                            description: Label to which the resulting value is written
+                              in a replace action. It is mandatory for replace actions.
+                              Regex capture groups are available.
+                            type: string
+                        type: object
+                      type: array
+                    scheme:
+                      description: HTTP scheme to use for scraping.
+                      type: string
+                    scrapeTimeout:
+                      description: Timeout after which the scrape is ended If not
+                        specified, the Prometheus global scrape timeout is used unless
+                        it is less than `Interval` in which the latter is used.
+                      pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
+                      type: string
+                    targetPort:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: Name or number of the target port of the Pod behind
+                        the Service, the port must be specified with container port
+                        property. Mutually exclusive with port.
+                      x-kubernetes-int-or-string: true
+                    tlsConfig:
+                      description: TLS configuration to use when scraping the endpoint
+                      properties:
+                        ca:
+                          description: Struct containing the CA cert to use for the
+                            targets.
+                          properties:
+                            configMap:
+                              description: ConfigMap containing data to use for the
+                                targets.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    TODO: Add other useful fields. apiVersion, kind,
+                                    uid?'
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                            secret:
+                              description: Secret containing data to use for the targets.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    TODO: Add other useful fields. apiVersion, kind,
+                                    uid?'
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                          type: object
+                        caFile:
+                          description: Path to the CA cert in the Prometheus container
+                            to use for the targets.
+                          type: string
+                        cert:
+                          description: Struct containing the client cert file for
+                            the targets.
+                          properties:
+                            configMap:
+                              description: ConfigMap containing data to use for the
+                                targets.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    TODO: Add other useful fields. apiVersion, kind,
+                                    uid?'
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                            secret:
+                              description: Secret containing data to use for the targets.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    TODO: Add other useful fields. apiVersion, kind,
+                                    uid?'
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                          type: object
+                        certFile:
+                          description: Path to the client cert file in the Prometheus
+                            container for the targets.
+                          type: string
+                        insecureSkipVerify:
+                          description: Disable target certificate validation.
+                          type: boolean
+                        keyFile:
+                          description: Path to the client key file in the Prometheus
+                            container for the targets.
+                          type: string
+                        keySecret:
+                          description: Secret containing the client key file for the
+                            targets.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                TODO: Add other useful fields. apiVersion, kind, uid?'
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                        serverName:
+                          description: Used to verify the hostname for the targets.
+                          type: string
+                      type: object
+                  type: object
+                type: array
+              jobLabel:
+                description: "Chooses the label of the Kubernetes `Endpoints`. Its
+                  value will be used for the `job`-label's value of the created metrics.
+                  \n Default & fallback value: the name of the respective Kubernetes
+                  `Endpoint`."
+                type: string
+              labelLimit:
+                description: Per-scrape limit on number of labels that will be accepted
+                  for a sample. Only valid in Prometheus versions 2.27.0 and newer.
+                format: int64
+                type: integer
+              labelNameLengthLimit:
+                description: Per-scrape limit on length of labels name that will be
+                  accepted for a sample. Only valid in Prometheus versions 2.27.0
+                  and newer.
+                format: int64
+                type: integer
+              labelValueLengthLimit:
+                description: Per-scrape limit on length of labels value that will
+                  be accepted for a sample. Only valid in Prometheus versions 2.27.0
+                  and newer.
+                format: int64
+                type: integer
+              namespaceSelector:
+                description: Selector to select which namespaces the Kubernetes Endpoints
+                  objects are discovered from.
+                properties:
+                  any:
+                    description: Boolean describing whether all namespaces are selected
+                      in contrast to a list restricting them.
+                    type: boolean
+                  matchNames:
+                    description: List of namespace names to select from.
+                    items:
+                      type: string
+                    type: array
+                type: object
+              podTargetLabels:
+                description: PodTargetLabels transfers labels on the Kubernetes `Pod`
+                  onto the created metrics.
+                items:
+                  type: string
+                type: array
+              sampleLimit:
+                description: SampleLimit defines per-scrape limit on number of scraped
+                  samples that will be accepted.
+                format: int64
+                type: integer
+              selector:
+                description: Selector to select Endpoints objects.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: A label selector requirement is a selector that
+                        contains values, a key, and an operator that relates the key
+                        and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: operator represents a key's relationship to
+                            a set of values. Valid operators are In, NotIn, Exists
+                            and DoesNotExist.
+                          type: string
+                        values:
+                          description: values is an array of string values. If the
+                            operator is In or NotIn, the values array must be non-empty.
+                            If the operator is Exists or DoesNotExist, the values
+                            array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: matchLabels is a map of {key,value} pairs. A single
+                      {key,value} in the matchLabels map is equivalent to an element
+                      of matchExpressions, whose key field is "key", the operator
+                      is "In", and the values array contains only "value". The requirements
+                      are ANDed.
+                    type: object
+                type: object
+              targetLabels:
+                description: TargetLabels transfers labels from the Kubernetes `Service`
+                  onto the created metrics.
+                items:
+                  type: string
+                type: array
+              targetLimit:
+                description: TargetLimit defines a limit on the number of scraped
+                  targets that will be accepted.
+                format: int64
+                type: integer
+            required:
+            - endpoints
+            - selector
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

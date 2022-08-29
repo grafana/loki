@@ -29,6 +29,7 @@ func (b *BucketHandle) IAM() *iam.Handle {
 	return iam.InternalNewHandleClient(&iamClient{
 		raw:         b.c.raw,
 		userProject: b.userProject,
+		retry:       b.retry,
 	}, b.name)
 }
 
@@ -36,6 +37,7 @@ func (b *BucketHandle) IAM() *iam.Handle {
 type iamClient struct {
 	raw         *raw.Service
 	userProject string
+	retry       *retryConfig
 }
 
 func (c *iamClient) Get(ctx context.Context, resource string) (p *iampb.Policy, err error) {
@@ -52,10 +54,10 @@ func (c *iamClient) GetWithVersion(ctx context.Context, resource string, request
 		call.UserProject(c.userProject)
 	}
 	var rp *raw.Policy
-	err = runWithRetry(ctx, func() error {
+	err = run(ctx, func() error {
 		rp, err = call.Context(ctx).Do()
 		return err
-	})
+	}, c.retry, true, setRetryHeaderHTTP(call))
 	if err != nil {
 		return nil, err
 	}
@@ -72,10 +74,11 @@ func (c *iamClient) Set(ctx context.Context, resource string, p *iampb.Policy) (
 	if c.userProject != "" {
 		call.UserProject(c.userProject)
 	}
-	return runWithRetry(ctx, func() error {
+	isIdempotent := len(p.Etag) > 0
+	return run(ctx, func() error {
 		_, err := call.Context(ctx).Do()
 		return err
-	})
+	}, c.retry, isIdempotent, setRetryHeaderHTTP(call))
 }
 
 func (c *iamClient) Test(ctx context.Context, resource string, perms []string) (permissions []string, err error) {
@@ -88,10 +91,10 @@ func (c *iamClient) Test(ctx context.Context, resource string, perms []string) (
 		call.UserProject(c.userProject)
 	}
 	var res *raw.TestIamPermissionsResponse
-	err = runWithRetry(ctx, func() error {
+	err = run(ctx, func() error {
 		res, err = call.Context(ctx).Do()
 		return err
-	})
+	}, c.retry, true, setRetryHeaderHTTP(call))
 	if err != nil {
 		return nil, err
 	}

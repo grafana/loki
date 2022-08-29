@@ -1,13 +1,25 @@
-apiVersion: "v1"
-# This Chart was moved to https://github.com/grafana/helm-charts
-deprecated: true
+apiVersion: v2
 name: loki
-version: 2.1.1
-appVersion: v2.0.0
-kubeVersion: "^1.10.0-0"
-description: "DEPRECATED Loki: like Prometheus, but for logs."
-home: https://grafana.com/loki
-icon: https://raw.githubusercontent.com/grafana/loki/master/docs/sources/logo.png
+description: Helm chart for Grafana Loki in simple, scalable mode
+type: application
+appVersion: 2.6.1
+version: 3.0.0
+home: https://grafana.github.io/helm-charts
 sources:
   - https://github.com/grafana/loki
-engine: gotpl
+  - https://grafana.com/oss/loki/
+  - https://grafana.com/docs/loki/latest/
+icon: https://grafana.com/docs/loki/latest/logo_and_name.png
+dependencies:
+  - name: minio
+    alias: minio
+    version: 8.0.9
+    repository: https://helm.min.io/
+    condition: minio.enabled
+  - name: grafana-agent-operator
+    alias: grafana-agent-operator
+    version: 0.2.3
+    repository: https://grafana.github.io/helm-charts
+    condition: monitoring.selfMonitoring.grafanaAgent.installOperator
+maintainers:
+  - name: trevorwhitney

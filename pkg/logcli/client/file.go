@@ -190,6 +190,10 @@ func (l *limiter) MaxQuerySeries(userID string) int {
 	return l.n
 }
 
+func (l *limiter) QueryTimeout(userID string) time.Duration {
+	return time.Minute * 5
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels

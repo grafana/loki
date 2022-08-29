@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -98,6 +99,12 @@ const (
 
 func (t *Loki) initServer() (services.Service, error) {
 	prometheus.MustRegister(version.NewCollector("loki"))
+	// unregister default go collector
+	prometheus.Unregister(collectors.NewGoCollector())
+	// register collector with additional metrics
+	prometheus.MustRegister(collectors.NewGoCollector(
+		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
+	))
 
 	// Loki handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
@@ -253,7 +260,14 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 
 func (t *Loki) initDistributor() (services.Service, error) {
 	var err error
-	t.distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.tenantConfigs, t.ring, t.overrides, prometheus.DefaultRegisterer)
+	t.distributor, err = distributor.New(
+		t.Cfg.Distributor,
+		t.Cfg.IngesterClient,
+		t.tenantConfigs,
+		t.ring,
+		t.overrides,
+		prometheus.DefaultRegisterer,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -324,18 +338,31 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
 	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
-		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
-		"/loki/api/v1/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/loki/api/v1/labels":              http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/loki/api/v1/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
-		"/loki/api/v1/index/stats":         http.HandlerFunc(t.querierAPI.IndexStatsHandler),
+		"/loki/api/v1/query_range": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.RangeQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
 
-		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
-		"/api/prom/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/api/prom/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
-		"/api/prom/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
+		"/loki/api/v1/query": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
+
+		"/loki/api/v1/label":               querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/loki/api/v1/labels":              querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/loki/api/v1/label/{name}/values": querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+
+		"/loki/api/v1/series":      querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
+		"/loki/api/v1/index/stats": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+
+		"/api/prom/query": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.LogQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
+
+		"/api/prom/label":               querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/api/prom/label/{name}/values": querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
+		"/api/prom/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
@@ -781,15 +808,9 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+	if (t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read)) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.")
 		return
-	}
-
-	// Loki doesn't support the configdb backend, but without excessive mangling/refactoring
-	// it's hard to enforce this at validation time. Therefore detect this and fail early.
-	if t.Cfg.Ruler.StoreConfig.Type == "configdb" {
-		return nil, errors.New("configdb is not supported as a Loki rules backend type")
 	}
 
 	// Make sure storage directory exists if using filesystem store

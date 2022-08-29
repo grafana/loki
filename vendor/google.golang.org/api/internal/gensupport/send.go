@@ -8,9 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2"
 )
 
@@ -71,6 +74,9 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 
 	var resp *http.Response
 	var err error
+	attempts := 1
+	invocationID := uuid.New().String()
+	baseXGoogHeader := req.Header.Get("X-Goog-Api-Client")
 
 	// Loop to retry the request, up to the context deadline.
 	var pause time.Duration
@@ -109,6 +115,9 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 			}
 			return resp, err
 		}
+		invocationHeader := fmt.Sprintf("gccl-invocation-id/%s gccl-attempt-count/%d", invocationID, attempts)
+		xGoogHeader := strings.Join([]string{invocationHeader, baseXGoogHeader}, " ")
+		req.Header.Set("X-Goog-Api-Client", xGoogHeader)
 
 		resp, err = client.Do(req.WithContext(ctx))
 
@@ -123,6 +132,7 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 		if req.GetBody == nil || !errorFunc(status, err) {
 			break
 		}
+		attempts++
 		var errBody error
 		req.Body, errBody = req.GetBody()
 		if errBody != nil {

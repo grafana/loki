@@ -139,7 +139,7 @@ func CompactorName(stackName string) string {
 	return fmt.Sprintf("%s-compactor", stackName)
 }
 
-// DistributorName is the name of the distibutor deployment
+// DistributorName is the name of the distributor deployment
 func DistributorName(stackName string) string {
 	return fmt.Sprintf("%s-distributor", stackName)
 }
