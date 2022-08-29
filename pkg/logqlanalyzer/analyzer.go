@@ -2,6 +2,8 @@ package logqlanalyzer
 
 import (
 	"fmt"
+	"time"
+	"unsafe"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -31,7 +33,7 @@ func (a logQLAnalyzer) analyze(query string, logs []string) (*Result, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "can not parse labels from stream selector")
 	}
-	analyzer := log.NewPipelineAnalyzer(pipeline, streamLabels)
+	analyzer := NewPipelineAnalyzer(pipeline, streamLabels)
 	response := &Result{StreamSelector: streamSelector, Stages: stages, Results: make([]LineResult, 0, len(logs))}
 	for _, line := range logs {
 		analysisRecords := analyzer.AnalyzeLine(line)
@@ -57,7 +59,7 @@ func (a logQLAnalyzer) extractExpressionParts(expr syntax.LogSelectorExpr) (stri
 
 }
 
-func mapAllToLineResult(originLine string, analysisRecords []log.StageAnalysisRecord) LineResult {
+func mapAllToLineResult(originLine string, analysisRecords []StageAnalysisRecord) LineResult {
 	stageRecords := make([]StageRecord, 0, len(analysisRecords))
 	for _, record := range analysisRecords {
 		if !record.Processed {
@@ -80,4 +82,83 @@ func mapAllToLabelsResponse(labels labels.Labels) []Label {
 		result = append(result, Label{Name: label.Name, Value: label.Value})
 	}
 	return result
+}
+
+type PipelineAnalyzer interface {
+	AnalyzeLine(line string) []StageAnalysisRecord
+}
+type noopPipelineAnalyzer struct {
+}
+
+func (n noopPipelineAnalyzer) AnalyzeLine(_ string) []StageAnalysisRecord {
+	return []StageAnalysisRecord{}
+}
+
+type streamPipelineAnalyzer struct {
+	origin       log.AnalyzablePipeline
+	stagesCount  int
+	streamLabels labels.Labels
+}
+
+func NewPipelineAnalyzer(origin log.Pipeline, streamLabels labels.Labels) PipelineAnalyzer {
+	if o, ok := origin.(log.AnalyzablePipeline); ok {
+		stagesCount := len(o.Stages())
+		return &streamPipelineAnalyzer{o, stagesCount, streamLabels}
+	}
+	return &noopPipelineAnalyzer{}
+}
+
+func (p streamPipelineAnalyzer) AnalyzeLine(line string) []StageAnalysisRecord {
+	stages := p.origin.Stages()
+	stageRecorders := make([]log.Stage, 0, len(stages))
+	records := make([]StageAnalysisRecord, len(stages))
+	for i, stage := range stages {
+		stageRecorders = append(stageRecorders, StageAnalysisRecorder{origin: stage,
+			records:    records,
+			stageIndex: i,
+		})
+	}
+	stream := log.NewStreamPipeline(stageRecorders, p.origin.LabelsBuilder().ForLabels(p.streamLabels, p.streamLabels.Hash()))
+	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
+	return records
+}
+
+type StageAnalysisRecorder struct {
+	log.Stage
+	origin     log.Stage
+	stageIndex int
+	records    []StageAnalysisRecord
+}
+
+func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBuilder) ([]byte, bool) {
+	lineBefore := unsafeGetString(line)
+	labelsBefore := lbs.UnsortedLabels(nil)
+
+	lineResult, ok := s.origin.Process(ts, line, lbs)
+
+	s.records[s.stageIndex] = StageAnalysisRecord{
+		Processed:    true,
+		LabelsBefore: labelsBefore,
+		LineBefore:   lineBefore,
+		LabelsAfter:  lbs.UnsortedLabels(nil),
+		LineAfter:    unsafeGetString(lineResult),
+		FilteredOut:  !ok,
+	}
+	return lineResult, ok
+}
+func (s StageAnalysisRecorder) RequiredLabelNames() []string {
+	return s.origin.RequiredLabelNames()
+}
+
+type StageAnalysisRecord struct {
+	Processed    bool
+	LineBefore   string
+	LabelsBefore labels.Labels
+	LineAfter    string
+	LabelsAfter  labels.Labels
+	FilteredOut  bool
+}
+
+func unsafeGetString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

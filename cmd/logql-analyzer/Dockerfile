@@ -10,4 +10,4 @@ RUN apk add --no-cache ca-certificates
 
 COPY --from=build /src/loki/logql-analyzer /usr/bin/logql-analyzer
 
-ENTRYPOINT [ "/usr/bin/logql-analyzer", "--server.http-listen-port=3001" ]
+ENTRYPOINT [ "/usr/bin/logql-analyzer" ]

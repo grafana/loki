@@ -2,7 +2,6 @@ package log
 
 import (
 	"reflect"
-	"time"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -101,10 +100,25 @@ func (fn StageFunc) RequiredLabelNames() []string {
 // pipeline is a combinations of multiple stages.
 // It can also be reduced into a single stage for convenience.
 type pipeline struct {
+	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
 
 	streamPipelines map[uint64]StreamPipeline
+}
+
+func (p *pipeline) Stages() []Stage {
+	return p.stages
+}
+
+func (p *pipeline) LabelsBuilder() *BaseLabelsBuilder {
+	return p.baseBuilder
+}
+
+type AnalyzablePipeline interface {
+	Pipeline
+	Stages() []Stage
+	LabelsBuilder() *BaseLabelsBuilder
 }
 
 // NewPipeline creates a new pipeline for a given set of stages.
@@ -119,88 +133,13 @@ func NewPipeline(stages []Stage) Pipeline {
 	}
 }
 
-type PipelineAnalyzer interface {
-	AnalyzeLine(line string) []StageAnalysisRecord
-}
-type noopPipelineAnalyzer struct {
-	_ *pipeline
-}
-
-func (n noopPipelineAnalyzer) AnalyzeLine(_ string) []StageAnalysisRecord {
-	return []StageAnalysisRecord{}
-}
-
-type streamPipelineAnalyzer struct {
-	origin       *pipeline
-	stagesCount  int
-	streamLabels labels.Labels
-}
-
-func NewPipelineAnalyzer(origin Pipeline, streamLabels labels.Labels) PipelineAnalyzer {
-	if o, ok := origin.(*pipeline); ok {
-		stagesCount := len(o.stages)
-		return &streamPipelineAnalyzer{o, stagesCount, streamLabels}
-	}
-	return &noopPipelineAnalyzer{}
-}
-
-func (p streamPipelineAnalyzer) AnalyzeLine(line string) []StageAnalysisRecord {
-	stages := p.origin.stages
-	stageRecorders := make([]Stage, 0, len(stages))
-	records := make([]StageAnalysisRecord, len(stages))
-	for i, stage := range stages {
-		stageRecorders = append(stageRecorders, StageAnalysisRecorder{origin: stage,
-			records:    records,
-			stageIndex: i,
-		})
-	}
-	stream := streamPipeline{
-		stages:  stageRecorders,
-		builder: p.origin.baseBuilder.ForLabels(p.streamLabels, p.streamLabels.Hash()),
-	}
-	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
-	return records
-}
-
-type StageAnalysisRecorder struct {
-	Stage
-	origin     Stage
-	stageIndex int
-	records    []StageAnalysisRecord
-}
-
-func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	lineBefore := unsafeGetString(line)
-	labelsBefore := lbs.unsortedLabels(nil)
-
-	lineResult, ok := s.origin.Process(ts, line, lbs)
-
-	s.records[s.stageIndex] = StageAnalysisRecord{
-		Processed:    true,
-		LabelsBefore: labelsBefore,
-		LineBefore:   lineBefore,
-		LabelsAfter:  lbs.unsortedLabels(nil),
-		LineAfter:    unsafeGetString(lineResult),
-		FilteredOut:  !ok,
-	}
-	return lineResult, ok
-}
-func (s StageAnalysisRecorder) RequiredLabelNames() []string {
-	return s.origin.RequiredLabelNames()
-}
-
-type StageAnalysisRecord struct {
-	Processed    bool
-	LineBefore   string
-	LabelsBefore labels.Labels
-	LineAfter    string
-	LabelsAfter  labels.Labels
-	FilteredOut  bool
-}
-
 type streamPipeline struct {
 	stages  []Stage
 	builder *LabelsBuilder
+}
+
+func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
+	return &streamPipeline{stages, labelsBuilder}
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -209,10 +148,7 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 		return res
 	}
 
-	res := &streamPipeline{
-		stages:  p.stages,
-		builder: p.baseBuilder.ForLabels(labels, hash),
-	}
+	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
 	p.streamPipelines[hash] = res
 	return res
 }

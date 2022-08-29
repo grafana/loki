@@ -4,6 +4,7 @@ services:
     build:
       context: ../../
       dockerfile: ./cmd/logql-analyzer/Dockerfile
+    entrypoint: [ "/usr/bin/logql-analyzer", "--server.http-listen-port=3001" ]
     ports:
       - "3001:3001"
 
