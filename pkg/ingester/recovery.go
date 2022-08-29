@@ -169,7 +169,7 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		r.ing.replayController.Add(int64(bytesAdded))
 		if len(entriesWithErrors) > 0 {
 			lastEntryWithError := entriesWithErrors[len(entriesWithErrors)-1]
-			if lastEntryWithError.e == ErrEntriesExist {
+			if errors.Is(lastEntryWithError.e, ErrEntriesExist) {
 				r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
 			}
 		}
