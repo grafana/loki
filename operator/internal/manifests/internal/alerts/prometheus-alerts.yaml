@@ -10,16 +10,39 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
     expr: |
       sum(
-          rate(
-              loki_request_duration_seconds_count{status_code=~"5.."}[1m]
-          )
+        rate(
+          loki_request_duration_seconds_count{status_code=~"5.."}[1m]
+        )
       ) by (namespace, job, route)
       /
       sum(
-          rate(
-              loki_request_duration_seconds_count[1m]
-          )
+        rate(
+          loki_request_duration_seconds_count[1m]
+        )
       ) by (namespace, job, route)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokistackGatewayRequestErrors
+    annotations:
+      message: |-
+        {{ printf "%.2f" $value }}% of {{ $labels.method }} requests from {{ $labels.job }} are returned with server errors.
+      summary: "At least 10% of requests to the lokistack-gateway are responded with 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Gateway-Request-Errors"
+    expr: |
+      sum(
+        rate(
+          http_request_duration_seconds_count{code=~"5..", group="logsv1"}[1m]
+        )
+      ) by (namespace, job, method, tenant)
+      /
+      sum(
+        rate(
+          http_request_duration_seconds_count{group="logsv1"}[1m]
+        )
+      ) by (namespace, job, method, tenant)
       * 100
       > 10
     for: 15m
@@ -33,9 +56,9 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
     expr: |
       sum(
-          increase(
-              loki_panic_total[10m]
-          )
+        increase(
+          loki_panic_total[10m]
+        )
       ) by (namespace, job)
       > 0
     labels:
