@@ -64,10 +64,10 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				NilMetrics,
 			)
 
-			_, err := s.Push(context.Background(), []logproto.Entry{
+			_, entriesWithErrors := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
 			}, recordPool.GetRecord(), 0, true)
-			require.NoError(t, err)
+			require.Empty(t, entriesWithErrors)
 
 			newLines := make([]logproto.Entry, numLogs)
 			for i := 0; i < numLogs; i++ {
@@ -86,9 +86,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
-			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true)
-			require.Error(t, err)
-			require.Equal(t, expectErr.Error(), err.Error())
+			_, entriesWithErrors = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true)
+			finalErr := mountGRPCError(s, entriesWithErrors, len(newLines))
+			require.Equal(t, expectErr.Error(), finalErr.Error())
 		})
 	}
 }
@@ -110,12 +110,12 @@ func TestPushDeduplication(t *testing.T) {
 		NilMetrics,
 	)
 
-	written, err := s.Push(context.Background(), []logproto.Entry{
+	written, entriesWithErrors := s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
 	}, recordPool.GetRecord(), 0, true)
-	require.NoError(t, err)
+	require.Empty(t, entriesWithErrors)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
@@ -140,27 +140,28 @@ func TestPushRejectOldCounter(t *testing.T) {
 	)
 
 	// counter should be 2 now since the first line will be deduped
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, entriesWithErrors := s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
 	}, recordPool.GetRecord(), 0, true)
-	require.NoError(t, err)
+	require.Empty(t, entriesWithErrors)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
 
 	// fail to push with a counter <= the streams internal counter
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, entriesWithErrors = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 	}, recordPool.GetRecord(), 2, true)
-	require.Equal(t, ErrEntriesExist, err)
+	require.Len(t, entriesWithErrors, 1)
+	require.Equal(t, entriesWithErrors[0].e, ErrEntriesExist)
 
 	// succeed with a greater counter
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	_, entriesWithErrors = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 	}, recordPool.GetRecord(), 3, true)
-	require.Nil(t, err)
+	require.Empty(t, entriesWithErrors)
 
 }
 
@@ -273,11 +274,11 @@ func TestUnorderedPush(t *testing.T) {
 		if x.cutBefore {
 			_ = s.cutChunk(context.Background())
 		}
-		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true)
+		written, entriesWithErrors := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true)
 		if x.err {
-			require.NotNil(t, err)
+			require.NotEmpty(t, entriesWithErrors)
 		} else {
-			require.Nil(t, err)
+			require.Empty(t, entriesWithErrors)
 		}
 		require.Equal(t, x.written, written)
 	}
@@ -334,8 +335,9 @@ func TestPushRateLimit(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 	}
 	// Counter should be 2 now since the first line will be deduped.
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
-	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+	_, entriesWithErrors := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	require.Len(t, entriesWithErrors, 1)
+	require.Contains(t, entriesWithErrors[0].e.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
@@ -365,8 +367,8 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Push a first entry (it doesn't matter if we look like we're replaying or not)
-	_, err = s.Push(context.Background(), entries, nil, 1, true)
-	require.Nil(t, err)
+	_, entriesWithErrors := s.Push(context.Background(), entries, nil, 1, true)
+	require.Empty(t, entriesWithErrors)
 
 	// Create a sample outside the validity window
 	entries = []logproto.Entry{
@@ -374,12 +376,12 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Pretend it's not a replay, ensure we error
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
-	require.NotNil(t, err)
+	_, entriesWithErrors = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	require.NotEmpty(t, entriesWithErrors)
 
 	// Now pretend it's a replay. The same write should succeed.
-	_, err = s.Push(context.Background(), entries, nil, 2, true)
-	require.Nil(t, err)
+	_, entriesWithErrors = s.Push(context.Background(), entries, nil, 2, true)
+	require.Empty(t, entriesWithErrors)
 
 }
 
@@ -420,8 +422,8 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, rec, 0, true)
-		require.NoError(b, err)
+		_, entriesWithErrors := s.Push(ctx, e, rec, 0, true)
+		require.Empty(b, entriesWithErrors)
 		recordPool.PutRecord(rec)
 	}
 }
