@@ -1,7 +1,9 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
+	fmt "fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -9,6 +11,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	spb "github.com/gogo/googleapis/google/rpc"
+	"github.com/gogo/protobuf/types"
+	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,6 +24,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -158,6 +164,11 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	return err
 }
 
+// Push will iterate over the given streams present in the PushRequest and attempt to store them.
+//
+// Although multiple streams are part of the PushRequest, the returned error only reflects what
+//   happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
+//   and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
@@ -185,10 +196,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, err = s.Push(ctx, reqStream.Entries, record, 0, false)
-		if err != nil {
-			appendErr = err
-		}
+		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
+		appendErr = mountGRPCError(s, failedEntriesWithError, len(reqStream.Entries))
+
 		s.chunkMtx.Unlock()
 	}
 
@@ -209,6 +219,73 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	}
 
 	return appendErr
+}
+
+// mountGRPCError mounts an error to be returned in a GRPC call.
+//
+// The returned error is enriched with the gRPC error status and with a list of details.
+// As of now, the list of details is a list of all streams that were rate-limited. This list can be used
+//   by the distributor to fine tune streams that were limited.
+func mountGRPCError(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
+	if len(failedEntriesWithError) == 0 {
+		return nil
+	}
+
+	lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
+	_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+	outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
+	if !outOfOrder && !ok {
+		return lastEntryWithErr.e
+	}
+
+	var statusCode int
+	if outOfOrder {
+		statusCode = http.StatusBadRequest
+	}
+	if ok {
+		// per-stream or ingestion limited.
+		statusCode = http.StatusTooManyRequests
+	}
+
+	// Return a http status 4xx request response with all failed entries.
+	buf := bytes.Buffer{}
+	streamName := s.labelsString
+
+	limitedFailedEntries := failedEntriesWithError
+	if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+		limitedFailedEntries = limitedFailedEntries[:maxIgnore]
+	}
+
+	hadPerStreamError := false
+	for _, entryWithError := range limitedFailedEntries {
+		if !hadPerStreamError {
+			if _, ok := entryWithError.e.(*validation.ErrStreamRateLimit); ok {
+				hadPerStreamError = true
+			}
+		}
+		fmt.Fprintf(&buf,
+			"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+	}
+
+	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
+
+	var details []*types.Any
+
+	// Populate error details with the current stream.
+	if hadPerStreamError {
+		rls := logproto.RateLimitedStream{Labels: streamName}
+		marshalledStream, err := types.MarshalAny(&rls)
+		if err == nil {
+			details = append(details, marshalledStream)
+		}
+	}
+
+	return status.ErrorProto(&spb.Status{
+		Code:    int32(statusCode),
+		Message: buf.String(),
+		Details: details,
+	})
 }
 
 func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
