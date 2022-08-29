@@ -11,9 +11,9 @@ The `logfmt` stage is a parsing stage that reads the log line as [logfmt](https:
 
 ```yaml
 logfmt:
-  # Set of key/value pairs for mapping of logfmt fieds to extracted labels. The key will be
-  # the key in the extracted data while the expression will be the value. If the value
-  # is empty then the logfmt field with the same name is extracted.
+  # Set of key/value pairs for mapping of logfmt fields to extracted labels. The YAML key will be
+  # the key in the extracted data, while the expression will be the YAML value. If the value
+  # is empty, then the logfmt field with the same name is extracted.
   mapping:
     [ <string>: <string> ... ]
 
