@@ -278,6 +278,8 @@ func mountGRPCError(s *stream, failedEntriesWithError []entryWithError, totalEnt
 		marshalledStream, err := types.MarshalAny(&rls)
 		if err == nil {
 			details = append(details, marshalledStream)
+		} else {
+			level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamName)
 		}
 	}
 
