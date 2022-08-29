@@ -72,7 +72,7 @@ For the given pipeline:
 And the given log line:
 
 ```
-time=2012-11-01T22:08:41+00:00 app=loki level=WARN duration=125 message="this is a log line" extra="user=foo""
+time=2012-11-01T22:08:41+00:00 app=loki level=WARN duration=125 message="this is a log line" extra="user=foo"
 ```
 
 The first stage would create the following key-value pairs in the set of
