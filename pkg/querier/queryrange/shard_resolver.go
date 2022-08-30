@@ -142,13 +142,19 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 const (
 	// Just some observed values to get us started on better query planning.
-	maxBytesPerShard = 600 << 20 // 600MB/s/core
+	maxBytesPerShard = 600 << 20
 )
 
+// Since we shard by powers of two and we increase shard factor
+// once each shard surpasses maxBytesPerShard, if the shard factor
+// is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
+// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards off 500MB.
+// If there are 10004MB, we split into four shards of 251MB
 func guessShardFactor(stats stats.Stats) int {
 	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
 
-	power := math.Ceil(math.Log2(minShards)) // round up to nearest power of 2
+	// round up to nearest power of 2
+	power := math.Ceil(math.Log2(minShards))
 
 	// Since x^0 == 1 and we only support factors of 2
 	// reset this edge case manually
