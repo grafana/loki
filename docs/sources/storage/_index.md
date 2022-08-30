@@ -312,7 +312,9 @@ storage_config:
     use_managed_identity: <true|false>
     # Providing a user assigned ID will override use_managed_identity
     user_assigned_id: <user-assigned-identity-id>
-    request_timeout: 0    
+    request_timeout: 0
+    # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container & blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
+    endpoint_suffix: <endpoint-suffix>
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache

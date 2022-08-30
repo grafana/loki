@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -91,4 +92,30 @@ func Test_Hedging(t *testing.T) {
 			require.Equal(t, tc.expectedCalls, count.Load())
 		})
 	}
+}
+
+func Test_EndpointSuffixWithContainer(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.test.com/foo")
+	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_EndpointSuffixWithBlob(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.test.com/foo/blob")
+	bloburl, err := c.getBlobURL("blob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, bloburl.URL())
 }
