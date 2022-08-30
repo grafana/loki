@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor"
+
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -446,14 +448,20 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
+
 		names, err := i.index.LabelNames(*req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
-		labels = make([]string, len(names))
-		for i := 0; i < len(names); i++ {
-			labels[i] = names[i]
+
+		labels = make([]string, 0, len(names))
+		for _, n := range names {
+			if n == distributor.ShardLbName {
+				continue
+			}
+			labels = append(labels, n)
 		}
+
 		return &logproto.LabelResponse{
 			Values: labels,
 		}, nil
@@ -515,13 +523,14 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
-					key := stream.labels.Hash()
+					labels := stream.labels
+					key := labels.Hash()
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
 
 					dedupedSeries[key] = logproto.SeriesIdentifier{
-						Labels: stream.labels.Map(),
+						Labels: labels.Map(),
 					}
 				}
 				return nil
@@ -644,6 +653,10 @@ outer:
 		if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
 			continue
 		}
+
+		// To Enable downstream deduplication of sharded streams, remove the shard label
+		stream.labels = labels.NewBuilder(stream.labels).Del(distributor.ShardLbName).Labels()
+
 		err := fn(stream)
 		if err != nil {
 			return err
