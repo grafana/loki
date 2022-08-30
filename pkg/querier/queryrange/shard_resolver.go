@@ -148,8 +148,8 @@ const (
 // Since we shard by powers of two and we increase shard factor
 // once each shard surpasses maxBytesPerShard, if the shard factor
 // is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
-// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards off 500MB.
-// If there are 10004MB, we split into four shards of 251MB
+// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards of 500MB.
+// If there are 1004MB, we split into four shards of 251MB.
 func guessShardFactor(stats stats.Stats) int {
 	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
 
