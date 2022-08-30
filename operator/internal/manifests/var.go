@@ -302,7 +302,11 @@ func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS b
 	}
 }
 
-func defaultAffinity() *corev1.Affinity {
+func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+	if !enableNodeAffinity {
+		return nil
+	}
+
 	return &corev1.Affinity{
 		NodeAffinity: &corev1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
