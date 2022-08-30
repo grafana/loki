@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+	openshiftv1 "github.com/openshift/api/config/v1"
 )
 
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
@@ -18,6 +19,7 @@ type Options struct {
 	GatewayImage      string
 	GatewayBaseDomain string
 	ConfigSHA1        string
+	TLSProfile        *openshiftv1.TLSSecurityProfile
 
 	Gates                configv1.FeatureGates
 	Stack                lokiv1.LokiStackSpec

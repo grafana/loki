@@ -14,6 +14,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -28,6 +29,8 @@ type config struct {
 
 	crFilepath string
 	writeToDir string
+
+	tlsProfile string
 }
 
 func (c *config) registerFlags(f *flag.FlagSet) {
@@ -58,6 +61,8 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	// Input and output file/dir options
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
+	// TLS profile option
+	f.StringVar(&c.tlsProfile, "tls-profile", string(openshiftv1.TLSProfileIntermediateType), "The TLS security Profile configuration.")
 }
 
 func (c *config) validateFlags(log logr.Logger) {
@@ -126,6 +131,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.tlsProfile != string(openshiftv1.TLSProfileOldType) &&
+		cfg.tlsProfile != string(openshiftv1.TLSProfileIntermediateType) &&
+		cfg.tlsProfile != string(openshiftv1.TLSProfileModernType) {
+		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.tlsProfile)
+		os.Exit(1)
+	}
+
 	// Convert config to manifest.Options
 	opts := manifests.Options{
 		Name:          cfg.Name,
@@ -134,6 +146,9 @@ func main() {
 		Stack:         ls.Spec,
 		Gates:         cfg.featureFlags,
 		ObjectStorage: cfg.objectStorage,
+		TLSProfile: &openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileType(cfg.tlsProfile),
+		},
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
@@ -141,7 +156,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	objects, err := manifests.BuildAll(opts, nil)
+	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		logger.Error(err, "failed to build manifests")
 		os.Exit(1)

@@ -253,7 +253,11 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup apiServer")
 	}
 
-	objects, err := manifests.BuildAll(opts, apiServer.Spec.TLSSecurityProfile)
+	if !fg.OpenShift.DisableAPIServerTLSProfile {
+		opts.TLSProfile = apiServer.Spec.TLSSecurityProfile
+	}
+
+	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
 		return err
