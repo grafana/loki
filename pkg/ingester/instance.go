@@ -256,13 +256,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 		limitedFailedEntries = limitedFailedEntries[:maxIgnore]
 	}
 
-	hadPerStreamError := false
 	for _, entryWithError := range limitedFailedEntries {
-		if !hadPerStreamError {
-			if _, ok := entryWithError.e.(*validation.ErrStreamRateLimit); ok {
-				hadPerStreamError = true
-			}
-		}
 		fmt.Fprintf(&buf,
 			"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
 			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
@@ -272,7 +266,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 
 	var details []*types.Any
 
-	if hadPerStreamError {
+	if statusCode == http.StatusTooManyRequests {
 		details = append(details, mountPerStreamDetails(streamName)...)
 	}
 
