@@ -754,7 +754,7 @@ func BenchmarkSortIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
 			for it.Next() {
-				_ = it.Entry()
+				it.Entry()
 			}
 			it.Close()
 		}
@@ -772,7 +772,7 @@ func BenchmarkSortIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewSortEntryIterator(itrs, logproto.BACKWARD)
 			for it.Next() {
-				_ = it.Entry()
+				it.Entry()
 			}
 			it.Close()
 		}

@@ -523,14 +523,13 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
-					labels := stream.labels
-					key := labels.Hash()
+					key := stream.labels.Hash()
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
 
 					dedupedSeries[key] = logproto.SeriesIdentifier{
-						Labels: labels.Map(),
+						Labels: stream.labels.Map(),
 					}
 				}
 				return nil
