@@ -146,8 +146,8 @@ Generated storage config for loki common config
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
-  secret_access_key: supersecret
-  access_key_id: enterprise-logs
+  secret_access_key: {{ $.Values.minio.secretKey }}
+  access_key_id: {{ $.Values.minio.accessKey }}
   s3forcepathstyle: true
   insecure: true
 {{- else if eq .Values.loki.storage.type "s3" -}}
