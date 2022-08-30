@@ -187,11 +187,8 @@ func (m *HeadManager) loop() {
 						"msg", "failed rotating tsdb head",
 						"err", err,
 					)
-					m.metrics.tsdbHeadRotationsFailedTotal.Inc()
 					continue
 				}
-
-				m.metrics.tsdbHeadRotationsTotal.Inc()
 			}
 
 			// build tsdb from rotated-out period
@@ -314,7 +311,14 @@ func managerPerTenantDir(parent string) string {
 	return filepath.Join(parent, "per_tenant")
 }
 
-func (m *HeadManager) Rotate(t time.Time) error {
+func (m *HeadManager) Rotate(t time.Time) (err error) {
+	defer func() {
+		m.metrics.tsdbHeadRotationsTotal.Inc()
+		if err != nil {
+			m.metrics.tsdbHeadRotationsFailedTotal.Inc()
+		}
+	}()
+
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
