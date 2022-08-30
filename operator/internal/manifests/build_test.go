@@ -810,7 +810,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureGates_NodeAffinity(t *testing.T) {
+func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
 	tt := []struct {
 		desc         string
 		nodeAffinity bool
