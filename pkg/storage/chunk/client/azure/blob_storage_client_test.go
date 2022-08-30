@@ -94,6 +94,17 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+func Test_DefaultContainerURL(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo")
+	require.Equal(t, *expect, c.containerURL.URL())
+}
+
 func Test_EndpointSuffixWithContainer(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",
@@ -104,6 +115,19 @@ func Test_EndpointSuffixWithContainer(t *testing.T) {
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.test.com/foo")
 	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_DefaultBlobURL(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo/blob")
+	bloburl, err := c.getBlobURL("blob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, bloburl.URL())
 }
 
 func Test_EndpointSuffixWithBlob(t *testing.T) {
