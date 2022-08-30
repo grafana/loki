@@ -34,8 +34,8 @@ A service(s) is failing to process at least 10% of all incoming requests.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (Lokistack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
@@ -46,15 +46,15 @@ A service(s) is failing to process at least 10% of all incoming requests.
     - `loki_ingester_wal_disk_full_failures_total`
     - `loki_ingester_wal_corruptions_total`
 
-## Lokistack Gateway Request Errors
+## Lokistack Write Request Errors
 
 ### Impact
 
-The Lokistack Gateway component is unable to perform its duties for a number of requests, resulting in potential loss of data.
+The Lokistack Gateway component is unable to perform its duties for a number of write requests, resulting in potential loss of data.
 
 ### Summary
 
-The Lokistack Gateway is failing to process at least 10% of all incoming requests.
+The Lokistack Gateway is failing to process at least 10% of all incoming write requests.
 
 ### Severity
 
@@ -65,12 +65,45 @@ The Lokistack Gateway is failing to process at least 10% of all incoming request
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (Lokistack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
-- Ensure that the deployed Loki components are ready and available
+- Ensure that the Lokistack Gateway component is ready and available
+- Ensure that the `distributor`, `ingester`, and `index-gateway` components are ready and available
+- Ensure that store services (`ingester`, `querier`, `index-gateway`, `compactor`) can communicate with backend storage
+- Examine metrics for signs of failure
+  - WAL Complications
+    - `loki_ingester_wal_disk_full_failures_total`
+    - `loki_ingester_wal_corruptions_total`
+
+## Lokistack Read Request Errors
+
+### Impact
+
+The Lokistack Gateway component is unable to perform its duties for a number of query requests, resulting in a potential disruption.
+
+### Summary
+
+The Lokistack Gateway is failing to process at least 10% of all incoming query requests.
+
+### Severity
+
+`Critical`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging` (Lokistack)
+    - `openshift-operators-redhat` (Loki Operator)
+
+### Steps
+
+- Ensure that the Lokistack Gateway component is ready and available
+- Ensure that the `query-frontend`, `querier`, `ingester`, and `index-gateway` components are ready and available
 - Ensure that store services (`ingester`, `querier`, `index-gateway`, `compactor`) can communicate with backend storage
 - Examine metrics for signs of failure
   - WAL Complications
@@ -96,8 +129,8 @@ A service(s) has crashed.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (Lokistack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
