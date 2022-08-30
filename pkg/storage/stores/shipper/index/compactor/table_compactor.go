@@ -131,8 +131,7 @@ func (t *tableCompactor) CompactTable() error {
 	// if the files are already compacted we need to see if we need to recreate the compacted DB to reduce its space.
 	if len(commonIndexes) > 1 || (len(commonIndexes) == 1 && !strings.HasPrefix(commonIndexes[0].Name, uploaderName)) || mustRecreateCompactedDB(commonIndexes) {
 		var err error
-		compactCtx := t.ctx
-		commonIndex, err := t.compactCommonIndexes(compactCtx)
+		commonIndex, err := t.compactCommonIndexes(t.ctx)
 		if err != nil {
 			return err
 		}
@@ -206,7 +205,7 @@ func (t *tableCompactor) fetchUserCompactedIndexSet(userID string) (*compactedIn
 
 	sourceFiles := userIndexSet.ListSourceFiles()
 	if len(sourceFiles) > 1 {
-		compactedIndex, err := t.compactCompactorIndexes(userIndexSet)
+		compactedIndex, err := t.compactUserIndexes(userIndexSet)
 		if err != nil {
 			return nil, err
 		}
@@ -268,8 +267,8 @@ func (t *tableCompactor) fetchOrCreateUserCompactedIndexSet(userID string) error
 	return nil
 }
 
-// Specialized compaction for index files produced by the compactor
-func (t *tableCompactor) compactCompactorIndexes(idxSet compactor.IndexSet) (*CompactedIndex, error) {
+// Specialized compaction for user index files produced by the compactor
+func (t *tableCompactor) compactUserIndexes(idxSet compactor.IndexSet) (*CompactedIndex, error) {
 	indexes := idxSet.ListSourceFiles()
 	workingDir := idxSet.GetWorkingDir()
 	compactedDBName := filepath.Join(workingDir, fmt.Sprint(time.Now().Unix()))
@@ -427,7 +426,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 				userIndexSet, ok := t.userCompactedIndexSet[bucketName]
 				t.userCompactedIndexSetMtx.RUnlock()
 				if !ok || userIndexSet.compactedIndex == nil {
-					return errors.New("unable to retrieve per-user index")
+					return fmt.Errorf("index set for user %s is not initialized", bucketName)
 				}
 
 				indexFile = userIndexSet.compactedIndex.compactedFile
