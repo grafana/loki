@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -559,11 +558,11 @@ func Test_IteratorFiltersStreamLabels(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// All of the streams a returned but none have the shard label
+	// All of the streams are returned but none have the shard label
 	var count int
 	for it.Next() {
 		count++
-		require.False(t, strings.Contains(it.Labels(), distributor.ShardLbName))
+		require.NotContains(t, it.Labels(), distributor.ShardLbName)
 	}
 	require.Equal(t, 11, count)
 }
@@ -595,11 +594,11 @@ func Test_SamplesIteratorFiltersStreamLabels(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// All of the streams a returned but none have the shard label
+	// All of the streams are returned but none have the shard label
 	var count int
 	for it.Next() {
 		count++
-		require.False(t, strings.Contains(it.Labels(), distributor.ShardLbName))
+		require.NotContains(t, it.Labels(), distributor.ShardLbName)
 	}
 	require.Equal(t, 11, count)
 }
