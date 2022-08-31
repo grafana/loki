@@ -655,25 +655,21 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	compactorAddress, err := t.compactorAddress()
-	if err != nil {
-		return nil, err
-	}
-
+	compactorAddress := t.compactorAddress()
 	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
-func (t *Loki) compactorAddress() (string, error) {
+func (t *Loki) compactorAddress() string {
 	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
 		// In single binary or read modes, this module depends on Server
-		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
+		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" {
-		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
 	}
 
-	return t.Cfg.Common.CompactorAddress, nil
+	return t.Cfg.Common.CompactorAddress
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -1072,10 +1068,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overri
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	compactorAddress, err := t.compactorAddress()
-	if err != nil {
-		return nil, err
-	}
+	compactorAddress := t.compactorAddress()
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 250
