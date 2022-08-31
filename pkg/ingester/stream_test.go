@@ -87,7 +87,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
 			_, entriesWithErrors = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true)
-			finalErr := errorForFailedEntries(s, entriesWithErrors, len(newLines))
+			_, finalErr := errorForFailedEntries(s, entriesWithErrors, len(newLines))
 			require.Equal(t, expectErr.Error(), finalErr.Error())
 		})
 	}

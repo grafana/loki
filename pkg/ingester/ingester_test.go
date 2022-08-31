@@ -100,9 +100,7 @@ func TestRateLimitedStreamsReturn(t *testing.T) {
 		rateLimitedLabels = append(rateLimitedLabels, rls.Labels)
 	}
 
-	// note that streams[0], although rate-limited, isn't present in the details.
-	// that's because push as of now is only returning the last errored stream.
-	require.EqualValues(t, []string{req.Streams[1].Labels}, rateLimitedLabels)
+	require.EqualValues(t, []string{req.Streams[0].Labels, req.Streams[1].Labels}, rateLimitedLabels)
 }
 
 func TestIngester(t *testing.T) {

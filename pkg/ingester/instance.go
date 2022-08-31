@@ -169,14 +169,19 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
+//
+// The returned error, if not nil, will follow the gRPC error structure, including a gRPC status code
+// and error details.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
 
+	statusCode := spb.OK
 	var appendErr error
-	for _, reqStream := range req.Streams {
+	var details []*types.Any
 
+	for _, reqStream := range req.Streams {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				s, err := i.createStream(reqStream, record)
@@ -193,11 +198,15 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		)
 		if err != nil {
 			appendErr = err
+			statusCode = http.StatusPreconditionRequired
 			continue
 		}
 
 		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
-		appendErr = errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
+		statusCode, appendErr = errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
+		if statusCode == http.StatusTooManyRequests {
+			details = append(details, mountPerStreamDetails(s.labelsString)...)
+		}
 
 		s.chunkMtx.Unlock()
 	}
@@ -218,27 +227,33 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 	}
 
-	return appendErr
+	if appendErr == nil {
+		return nil
+	}
+
+	return status.ErrorProto(&spb.Status{
+		Code:    int32(statusCode),
+		Message: appendErr.Error(),
+		Details: details,
+	})
 }
 
-// errorForFailedEntries mounts an error to be returned in a GRPC call based on entries that couldn't be ingested.
+// errorForFailedEntries mounts an error message and a status code based on entries that couldn't be ingested.
 //
-// The returned error is enriched with the gRPC error status and with a list of details.
-// As of now, the list of details is a list of all streams that were rate-limited. This list can be used
-// by the distributor to fine tune streams that were limited.
-func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
+// The returned error has an error line for every entry that failed to be ingested.
+func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) (spb.Code, error) {
 	if len(failedEntriesWithError) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
 	_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
 	outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
 	if !outOfOrder && !ok {
-		return lastEntryWithErr.e
+		return 0, lastEntryWithErr.e
 	}
 
-	var statusCode int
+	statusCode := spb.OK
 	if outOfOrder {
 		statusCode = http.StatusBadRequest
 	}
@@ -263,20 +278,13 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 	}
 
 	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
-
-	var details []*types.Any
-
-	if statusCode == http.StatusTooManyRequests {
-		details = append(details, mountPerStreamDetails(streamName)...)
-	}
-
-	return status.ErrorProto(&spb.Status{
-		Code:    int32(statusCode),
-		Message: buf.String(),
-		Details: details,
-	})
+	return statusCode, fmt.Errorf(buf.String())
 }
 
+// mountPerStreamDetails returns a list of details with the given stream as its rate-limited version.
+//
+// It returns a slice of details instead of its marshalled version because if marshallings we can still
+// just append the returned value as it would be an empty slice. Appending a nil wouldn't work, though.
 func mountPerStreamDetails(streamLabels string) []*types.Any {
 	rls := logproto.RateLimitedStream{Labels: streamLabels}
 	marshalledStream, err := types.MarshalAny(&rls)
