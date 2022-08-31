@@ -33,6 +33,7 @@ pkgs.stdenv.mkDerivation {
     make clean loki logcli loki-canary promtail
   '';
 
+  doCheck = true;
   checkPhase = ''
     make lint test
   '';
