@@ -8,8 +8,6 @@ import (
 	"sync"
 
 	"github.com/bmatcuk/doublestar"
-	"gopkg.in/fsnotify.v1"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -273,7 +272,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 	targets := map[string]struct{}{}
 	dropped := []target.Target{}
 
-	// process target removal first to avoid cleaning up fileEventWatchers that are needed by a new target
+	// process target removal first to avoid cleaning up fileEventWatchers that are needed by a new or modified target
 	for key, target := range s.targets {
 		if _, ok := targets[key]; !ok {
 			level.Info(s.log).Log("msg", "Removing target", "key", key)
