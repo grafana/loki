@@ -15,7 +15,11 @@ let
     (strings.concatStrings
       (lists.take 7 (strings.stringToCharacters gitRevision)));
 
-  imageTag = "${buildVars.gitBranch}-${imageTagVersion}";
+  imageTag =
+    if (self ? rev) then
+      "${buildVars.gitBranch}-${imageTagVersion}"
+    else
+      "${buildVars.gitBranch}-${imageTagVersion}-WIP";
 in
 {
   loki = import ./loki.nix {
