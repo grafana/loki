@@ -5,7 +5,7 @@ chart-dirs:
   - production/helm
 chart-repos:
   - grafana=https://grafana.github.io/helm-charts
-  - minio=https://helm.min.io
+  - minio=https://charts.min.io
 helm-extra-args: --timeout 600s
 check-version-increment: false
 validate-maintainers: false
