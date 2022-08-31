@@ -34,7 +34,7 @@ pkgs.stdenv.mkDerivation {
   '';
 
   checkPhase = ''
-    make test
+    make lint test
   '';
 
   installPhase = ''

@@ -10,7 +10,7 @@ Nix is a package manager that can aide in reproducible builds.
 
 Using `nix` with this repository is entirely optional. You are welcome to just use the `Makefile` and maintain versions of dependent binaries in your own way.
 
-Nix ships with commands such as `nix build` which will run our build (as defined in the `Makefile`) in a shell where the `$PATH` has been configured to have the specified version of all dependent binaries required to build and test our software (ie. `go`, `golangci-lint`, `jq`, `jsonnet`, etc), and but the resulting binary in a `result` folder. It also has a command `nix develop` which will dump you into a bash shell with a similarly configured `$PATH`. 
+Nix ships with commands such as `nix build` which will run our build (as defined in the `Makefile`) in a shell where the `$PATH` has been configured to have the specified version of all dependent binaries required to build and test our software (ie. `go`, `golangci-lint`, `jq`, `jsonnet`, etc), and put the resulting binary in a `result` folder. It also has a command `nix develop` which will dump you into a bash shell with a similarly configured `$PATH`. 
 
 So, for example, if the CI lint job fails, but it's passing locally, you could run the following to make sure it's not a problem with the version of the linter installed locally on you machine:
 

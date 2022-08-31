@@ -18,11 +18,6 @@
 
   outputs =
     { self, nixpkgs, flake-utils, helm-docs-nixpkgs, golangci-lint-nixpkgs }:
-    let
-      buildVars = import ./nix/build-vars.nix;
-      # self.rev is only set on a clean git tree
-      version = if (self ? rev) then self.rev else buildVars.gitRevision;
-    in
     flake-utils.lib.eachDefaultSystem (system:
     let
       pkgs = import nixpkgs {
@@ -39,22 +34,18 @@
         config = { allowUnfree = true; };
       };
 
-      shortVersion = with pkgs.lib;
-        (strings.concatStrings
-          (lists.take 8 (strings.stringToCharacters version)));
-
-      loki = pkgs.callPackage ./nix/loki.nix {
+      nix = import ./nix {
         inherit (pkgs) pkgs;
-        inherit version shortVersion buildVars;
+        inherit self;
       };
     in
     {
       # The default package for 'nix build'. This makes sense if the
       # flake provides only one package or there is a clear "main"
       # package.
-      defaultPackage = loki;
+      defaultPackage = nix.loki;
 
-      packages = { inherit loki; };
+      packages = { inherit (nix) loki; };
 
       devShell = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
@@ -66,7 +57,7 @@
           golangci-lint
           helm-docs
 
-          loki
+          nix.loki
         ];
 
         shellHook = ''
