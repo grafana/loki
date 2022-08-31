@@ -1,7 +1,7 @@
 #!/bin/bash
 
-current_dir=$(cd "$(dirname $0)" && pwd)
-root_dir=$(cd "$current_dir/.." && pwd)
+current_dir=$(cd "$(dirname "$0")" && pwd)
+root_dir=$(cd "${current_dir}/.." && pwd)
 
 pushd "${root_dir}" > /dev/null || exit 1;
 cat <<NIX >"${current_dir}/build-vars.nix"
@@ -11,7 +11,7 @@ cat <<NIX >"${current_dir}/build-vars.nix"
 # not copied to the nix store when building. See the README for
 # more details.
 {
-  imageTag = "$(${root_dir}/tools/image-tag)";
+  imageTag = "$("${root_dir}"/tools/image-tag)";
   gitRevision = "$(git rev-parse --short HEAD)";
   gitBranch = "$(git rev-parse --abbrev-ref HEAD)";
 }

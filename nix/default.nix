@@ -3,10 +3,17 @@ let
   buildVars = import ./build-vars.nix;
 
   # self.rev is only set on a clean git tree
-  version = if (self ? rev) then self.rev else buildVars.gitRevision;
-  shortVersion = with pkgs.lib;
-    (strings.concatStrings (lists.take 8 (strings.stringToCharacters version)));
+  gitRevision = if (self ? rev) then self.rev else buildVars.gitRevision;
+  version = with pkgs.lib;
+    (strings.concatStrings (lists.take 8 (strings.stringToCharacters gitRevision)));
+
+  imageTag = "${buildVars.gitBranch}-${
+      if (self ? rev) then gitRevision else buildVars.gitRevision
+    }";
 in
 {
-  loki = import ./loki.nix { inherit pkgs version shortVersion buildVars; };
+  loki = import ./loki.nix {
+    inherit pkgs version imageTag;
+    inherit (buildVars) gitBranch;
+  };
 }
