@@ -25,22 +25,22 @@ groups:
     for: 15m
     labels:
       severity: critical
-  - alert: LokistackWriteRequestErrors
+  - alert: LokiStackWriteRequestErrors
     annotations:
       message: |-
         {{ printf "%.2f" $value }}% of write requests from {{ $labels.job }} are returned with server errors.
       summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
-      runbook_url: "[[ .RunbookURL ]]#Lokistack-Write-Request-Errors"
+      runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
     expr: |
       sum(
         rate(
-          http_request_duration_seconds_count{code=~"5..", group="logsv1", handler="push"}[1m]
+          http_requests_total{code=~"5..", group="logsv1", handler="push"}[1m]
         )
       ) by (namespace, job, tenant)
       /
       sum(
         rate(
-          http_request_duration_seconds_count{group="logsv1", handler="push"}[1m]
+          http_requests_total{group="logsv1", handler="push"}[1m]
         )
       ) by (namespace, job, tenant)
       * 100
@@ -48,22 +48,22 @@ groups:
     for: 15m
     labels:
       severity: critical
-  - alert: LokistackReadRequestErrors
+  - alert: LokiStackReadRequestErrors
     annotations:
       message: |-
         {{ printf "%.2f" $value }}% of query requests from {{ $labels.job }} are returned with server errors.
       summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
-      runbook_url: "[[ .RunbookURL ]]#Lokistack-Read-Request-Errors"
+      runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
     expr: |
       sum(
         rate(
-          http_request_duration_seconds_count{code=~"5..", group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
+          http_requests_total{code=~"5..", group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
         )
       ) by (namespace, job, tenant)
       /
       sum(
         rate(
-          http_request_duration_seconds_count{group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
+          http_requests_total{group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
         )
       ) by (namespace, job, tenant)
       * 100

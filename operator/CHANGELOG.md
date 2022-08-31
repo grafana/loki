@@ -1,6 +1,6 @@
 ## Main
 
-- [6999](https://github.com/grafana/loki/pull/6999) **Red-GV**: Adding Lokistack Gateway Request Errors alert
+- [6999](https://github.com/grafana/loki/pull/6999) **Red-GV**: Adding LokiStack Gateway alerts
 - [6923](https://github.com/grafana/loki/pull/6923) **xperimental**: Reconcile owner reference for existing objects
 - [6907](https://github.com/grafana/loki/pull/6907) **Red-GV**: Adding valid subscription annotation to operator metadata
 - [6479](https://github.com/grafana/loki/pull/6749) **periklis**: Update Loki operand to v2.6.1
