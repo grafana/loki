@@ -228,17 +228,6 @@ func (i *mergeSampleIterator) Next() bool {
 		return false
 	}
 
-	// shortcut for the last iterator.
-	if i.heap.Len() == 1 {
-		i.curr.Sample = i.heap.Peek().Sample()
-		i.curr.labels = i.heap.Peek().Labels()
-		i.curr.streamHash = i.heap.Peek().StreamHash()
-		if !i.heap.Peek().Next() {
-			i.heap.Pop()
-		}
-		return true
-	}
-
 	// We support multiple entries with the same timestamp, and we want to
 	// preserve their original order. We look at all the top entries in the
 	// heap with the same timestamp, and pop the ones whose common value
@@ -251,9 +240,8 @@ Outer:
 			break
 		}
 		heap.Pop(i.heap)
-		previous := i.buffer
 		var dupe bool
-		for _, t := range previous {
+		for _, t := range i.buffer {
 			if t.Sample.Hash == sample.Hash {
 				i.stats.AddDuplicates(1)
 				dupe = true
@@ -277,7 +265,7 @@ Outer:
 				sample.Timestamp != i.buffer[0].Timestamp {
 				break
 			}
-			for _, t := range previous {
+			for _, t := range i.buffer {
 				if t.Hash == sample.Hash {
 					i.stats.AddDuplicates(1)
 					continue inner

@@ -700,10 +700,12 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	if err != nil {
 		return err
 	}
+	var iters []iter.SampleIterator
 	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
 	}
+	iters = append(iters, it)
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
@@ -718,13 +720,12 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
-
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		iters = append(iters, storeItr)
 	}
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendSampleBatches(ctx, it, queryServer)
+	return sendSampleBatches(ctx, iter.NewMergeSampleIterator(ctx, iters), queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
