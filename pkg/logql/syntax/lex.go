@@ -91,6 +91,7 @@ var functionTokens = map[string]int{
 	OpRangeTypeFirst:       FIRST_OVER_TIME,
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
+	OpTypeVector:           VECTOR,
 
 	// vec ops
 	OpTypeSum:      SUM,
