@@ -687,7 +687,7 @@ func (t *Loki) compactorAddress() (string, error) {
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" {
-		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
 	}
 
 	return t.Cfg.Common.CompactorAddress, nil
