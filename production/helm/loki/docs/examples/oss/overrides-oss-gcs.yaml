@@ -1,9 +1,9 @@
-enterprise: 
+enterprise:
   enabled: false
   adminApi:
     enabled: false
   useExternalLicense: false
- 
+
   config: |
     admin_client:
       storage:
