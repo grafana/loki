@@ -5,9 +5,21 @@ import (
 	cfg "sigs.k8s.io/controller-runtime/pkg/config/v1alpha1"
 )
 
+// BuiltInCertManagement is the configuration for the built-in facility to generate and rotate
+// TLS client and serving certificates for all LokiStack services and internal clients except
+// for the lokistack-gateway.
+type BuiltInCertManagement struct {
+	Enabled                bool   `json:"enabled,omitempty"`
+	CACertValidity         string `json:"caValidity,omitempty"`
+	CACertRefresh          string `json:"caRefresh,omitempty"`
+	CertValidity           string `json:"certValidity,omitempty"`
+	CertRefresh            string `json:"certRefresh,omitempty"`
+	RefreshOnlyWhenExpired bool   `json:"refreshOnlyWhenExpired,omitempty"`
+}
+
 // OpenShiftFeatureGates is the supported set of all operator features gates on OpenShift.
 type OpenShiftFeatureGates struct {
-	// ServingCertsService enables OpenShift service-ca annotations on Services
+	// ServingCertsService enables OpenShift service-ca annotations on the lokistack-gateway service only
 	// to use the in-platform CA and generate a TLS cert/key pair per service for
 	// in-cluster data-in-transit encryption.
 	// More details: https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html
@@ -54,6 +66,17 @@ type FeatureGates struct {
 	// suffix `-ca-bundle`, e.g. `lokistack-dev-ca-bundle` and the following data:
 	// - `service-ca.crt`: The CA signing the service certificate in `tls.crt`.
 	GRPCEncryption bool `json:"grpcEncryption,omitempty"`
+	// BuiltInCertManagement enables the built-in facility for generating and rotating
+	// TLS client and serving certificates for all LokiStack services and internal clients except
+	// for the lokistack-gateway, In detail all internal Loki HTTP and GRPC communication is lifted
+	// to require mTLS. For the lokistack-gateay you need to provide a secret with or use the `ServingCertsService`
+	// on OpenShift:
+	// - `tls.crt`: The TLS server side certificate.
+	// - `tls.key`: The TLS key for server-side encryption.
+	// In addition each service requires a configmap named as the LokiStack CR with the
+	// suffix `-ca-bundle`, e.g. `lokistack-dev-ca-bundle` and the following data:
+	// - `service-ca.crt`: The CA signing the service certificate in `tls.crt`.
+	BuiltInCertManagement BuiltInCertManagement `json:"builtInCertManagement,omitempty"`
 
 	// LokiStackGateway enables reconciling the reverse-proxy lokistack-gateway
 	// component for multi-tenant authentication/authorization traffic control

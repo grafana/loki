@@ -320,20 +320,6 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 			require.NoError(t, err)
 
 			svcs := []*corev1.Service{
-				NewDistributorGRPCService(tst.BuildOptions),
-				NewDistributorHTTPService(tst.BuildOptions),
-				NewIngesterGRPCService(tst.BuildOptions),
-				NewIngesterHTTPService(tst.BuildOptions),
-				NewQuerierGRPCService(tst.BuildOptions),
-				NewQuerierHTTPService(tst.BuildOptions),
-				NewQueryFrontendGRPCService(tst.BuildOptions),
-				NewQueryFrontendHTTPService(tst.BuildOptions),
-				NewCompactorGRPCService(tst.BuildOptions),
-				NewCompactorHTTPService(tst.BuildOptions),
-				NewIndexGatewayGRPCService(tst.BuildOptions),
-				NewIndexGatewayHTTPService(tst.BuildOptions),
-				NewRulerHTTPService(tst.BuildOptions),
-				NewRulerGRPCService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
@@ -421,14 +407,14 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/var/run/tls/http",
+			MountPath: "/var/run/tls/http/server",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
 		require.Contains(t, args, "-server.tls-min-version=VersionTLS12")
 		require.Contains(t, args, fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers))
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/server/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/server/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -500,12 +486,12 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/var/run/tls/http",
+			MountPath: "/var/run/tls/http/server",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/server/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/server/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -658,8 +644,8 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					secretName := secretsMap[name]
 					args := []string{
-						"-server.grpc-tls-cert-path=/var/run/tls/grpc/tls.crt",
-						"-server.grpc-tls-key-path=/var/run/tls/grpc/tls.key",
+						"-server.grpc-tls-cert-path=/var/run/tls/grpc/server/tls.crt",
+						"-server.grpc-tls-key-path=/var/run/tls/grpc/server/tls.key",
 						"-server.tls-min-version=VersionTLS12",
 						fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers),
 					}
@@ -667,7 +653,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 					vm := corev1.VolumeMount{
 						Name:      secretName,
 						ReadOnly:  false,
-						MountPath: "/var/run/tls/grpc",
+						MountPath: "/var/run/tls/grpc/server",
 					}
 
 					v := corev1.Volume{
