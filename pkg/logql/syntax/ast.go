@@ -1576,7 +1576,6 @@ func NewVectorExpr(scalar string) *VectorExpr {
 	if err != nil {
 		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0))
 	}
-	//fmt.Println("vector new scalar:", scalar)
 	return &VectorExpr{
 		Val: n,
 	}
