@@ -273,6 +273,25 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 	targets := map[string]struct{}{}
 	dropped := []target.Target{}
 
+	// process target removal first to avoid cleaning up fileEventWatchers that are needed by a new target
+	for key, target := range s.targets {
+		if _, ok := targets[key]; !ok {
+			level.Info(s.log).Log("msg", "Removing target", "key", key)
+			target.Stop()
+			s.metrics.targetsActive.Add(-1.)
+			delete(s.targets, key)
+
+			// close related file event watcher
+			k := target.path
+			if _, ok := s.fileEventWatchers[k]; ok {
+				close(s.fileEventWatchers[k])
+				delete(s.fileEventWatchers, k)
+			} else {
+				level.Warn(s.log).Log("msg", "failed to remove file event watcher", "path", k)
+			}
+		}
+	}
+
 	for _, group := range groups {
 		for _, t := range group.Targets {
 			level.Debug(s.log).Log("msg", "new target", "labels", t)
@@ -356,23 +375,6 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 		}
 	}
 
-	for key, target := range s.targets {
-		if _, ok := targets[key]; !ok {
-			level.Info(s.log).Log("msg", "Removing target", "key", key)
-			target.Stop()
-			s.metrics.targetsActive.Add(-1.)
-			delete(s.targets, key)
-
-			// close related file event watcher
-			k := target.path
-			if _, ok := s.fileEventWatchers[k]; ok {
-				close(s.fileEventWatchers[k])
-				delete(s.fileEventWatchers, k)
-			} else {
-				level.Warn(s.log).Log("msg", "failed to remove file event watcher", "path", k)
-			}
-		}
-	}
 	s.droppedTargets = dropped
 }
 

@@ -527,3 +527,53 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 	ftm.Stop()
 	ps.Stop()
 }
+
+func TestLabelSetUpdate(t *testing.T) {
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	targetEventHandler := make(chan fileTargetEvent)
+	defer func() {
+		close(targetEventHandler)
+	}()
+
+	syncer := &targetSyncer{
+		metrics:           NewMetrics(nil),
+		log:               log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
+		positions:         nil,
+		entryHandler:      client,
+		hostname:          "localhost",
+		fileEventWatchers: make(map[string]chan fsnotify.Event),
+		targets:           make(map[string]*FileTarget),
+		targetConfig: &Config{
+			SyncPeriod: time.Hour,
+		},
+	}
+
+	var target = model.LabelSet{
+		hostLabel: "localhost",
+		pathLabel: "baz",
+		"job":     "foo",
+	}
+
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{target},
+		},
+	}, targetEventHandler)
+	syncer.sendFileCreateEvent(fsnotify.Event{Name: "baz"})
+
+	require.Equal(t, 1, len(syncer.targets))
+	require.Equal(t, 1, len(syncer.fileEventWatchers))
+
+	target["job"] = "bar"
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{target},
+		},
+	}, targetEventHandler)
+
+	require.Equal(t, 1, len(syncer.targets))
+	require.Equal(t, 1, len(syncer.fileEventWatchers))
+
+}
