@@ -12,6 +12,7 @@ import (
 
 	"github.com/gogo/protobuf/types"
 	"github.com/gogo/status"
+
 	"github.com/grafana/loki/pkg/distributor"
 
 	"github.com/grafana/dskit/flagext"
