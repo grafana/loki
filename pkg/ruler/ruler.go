@@ -14,7 +14,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 	// For backward compatibility, client and clients are defined in the remote_write config.
 	// When both are present, an error is thrown.
 	if len(cfg.RemoteWrite.Clients) > 0 && cfg.RemoteWrite.Client != nil {
-		return nil, errors.New("Both Client and Clients are defined! Please use one or the other")
+		return nil, errors.New("ruler remote write config: both 'client' and 'clients' options are defined; 'client' is deprecated, please only use 'clients'")
 	}
 
 	if len(cfg.RemoteWrite.Clients) == 0 && cfg.RemoteWrite.Client != nil {
