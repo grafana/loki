@@ -7,11 +7,15 @@ let
 
   # version is the "short" git sha
   version = with pkgs.lib;
-    (strings.concatStrings (lists.take 8 (strings.stringToCharacters gitRevision)));
+    (strings.concatStrings
+      (lists.take 8 (strings.stringToCharacters gitRevision)));
 
-  imageTag = "${buildVars.gitBranch}-${
-      if (self ? rev) then version else buildVars.gitRevision
-    }";
+  # the image tag script is hard coded to take only 7 characters
+  imageTagVersion = with pkgs.lib;
+    (strings.concatStrings
+      (lists.take 7 (strings.stringToCharacters gitRevision)));
+
+  imageTag = "${buildVars.gitBranch}-${imageTagVersion}";
 in
 {
   loki = import ./loki.nix {
