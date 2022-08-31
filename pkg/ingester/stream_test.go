@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/types"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -87,7 +88,8 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
 			_, entriesWithErrors = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true)
-			_, finalErr := errorForFailedEntries(s, entriesWithErrors, len(newLines))
+			statusCode, finalErr := errorForFailedEntries(s, entriesWithErrors, len(newLines))
+			finalErr = mountPushGRPCError(finalErr, statusCode, []*types.Any{})
 			require.Equal(t, expectErr.Error(), finalErr.Error())
 		})
 	}

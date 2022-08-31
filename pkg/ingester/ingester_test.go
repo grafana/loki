@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
@@ -319,9 +318,10 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	req.Streams[0].Labels = `{foo="bar",bar="baz2"}`
 
 	_, err = i.Push(ctx, &req)
-	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
-	}
+	require.Error(t, err)
+	s, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, int(s.Code()), http.StatusTooManyRequests)
 }
 
 type mockStore struct {

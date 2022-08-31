@@ -196,9 +196,15 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				return nil
 			},
 		)
+
 		if err != nil {
-			appendErr = err
-			statusCode = http.StatusPreconditionRequired
+			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+				statusCode = spb.Code(resp.Code)
+				appendErr = fmt.Errorf("%v", string(resp.Body))
+			} else {
+				statusCode = http.StatusPreconditionRequired
+				appendErr = err
+			}
 			continue
 		}
 
@@ -227,13 +233,20 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 	}
 
-	if appendErr == nil {
+	return mountPushGRPCError(appendErr, statusCode, details)
+}
+
+// mountPushGRPCError returns an enriched gRPC error or nil if no error is given.
+//
+// This is in its own function to be reused by tests.
+func mountPushGRPCError(err error, statusCode spb.Code, details []*types.Any) error {
+	if err == nil {
 		return nil
 	}
 
 	return status.ErrorProto(&spb.Status{
 		Code:    int32(statusCode),
-		Message: appendErr.Error(),
+		Message: err.Error(),
 		Details: details,
 	})
 }
