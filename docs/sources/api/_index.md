@@ -1036,6 +1036,7 @@ Query parameters:
 * `query=<series_selector>`: query argument that identifies the streams from which to delete with optional line filters.
 * `start=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. This parameter is required.
 * `end=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
+* `max_interval=<duration>`: The maximum time period the delete request can span. If the request is larger than this value, it is split into several requests of <= `max_interval`. Valid time units are `s`, `m`, and `h`.
 
 A 204 response indicates success.
 
@@ -1102,10 +1103,13 @@ curl -u "Tenant1:$API_TOKEN" \
 DELETE /loki/api/v1/delete
 ```
 
+Query Parameters:
+* `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted.
+
 Remove a delete request for the authenticated tenant.
 The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
-Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
+Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 

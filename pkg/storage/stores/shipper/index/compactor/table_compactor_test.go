@@ -446,7 +446,11 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				compareCompactedTable(t, tablePathInStorage, tCompactor)
 			} else if tt.dbCount <= 1 {
 				require.Nil(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex)
-				require.Len(t, tCompactor.userCompactedIndexSet, 0)
+				uploadedCompactedIndexSets := make([]*compactedIndexSet, 0, len(tCompactor.userCompactedIndexSet))
+				for _, is := range tCompactor.userCompactedIndexSet {
+					uploadedCompactedIndexSets = append(uploadedCompactedIndexSets, is)
+				}
+				require.Len(t, uploadedCompactedIndexSets, 0)
 			} else {
 				require.False(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex.(*CompactedIndex).compactedFileRecreated)
 				for _, userCompactedIndexSet := range tCompactor.userCompactedIndexSet {

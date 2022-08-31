@@ -311,6 +311,31 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
+local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'logql-analyzer') {
+      depends_on: ['image-tag'],
+      when: onPRs,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/logql-analyzer',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'logql-analyzer') {
+      depends_on: ['image-tag'],
+      when: onTagOrMain,
+      settings+: {
+        repo: 'grafana/logql-analyzer',
+      },
+    },
+  ],
+  depends_on: ['check'],
+};
+
+
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -577,6 +602,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
   },
   promtail_win(),
+  logql_analyzer(),
   pipeline('release') {
     trigger+: {
       event: ['pull_request', 'tag'],

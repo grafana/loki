@@ -19,14 +19,8 @@ Google Cloud Storage stores data in named objects, which are grouped into bucket
 More information about Google Cloud Storage is available at
 https://cloud.google.com/storage/docs.
 
-See https://godoc.org/cloud.google.com/go for authentication, timeouts,
+See https://pkg.go.dev/cloud.google.com/go for authentication, timeouts,
 connection pooling and similar aspects of this package.
-
-All of the methods of this package use exponential backoff to retry calls that fail
-with certain errors, as described in
-https://cloud.google.com/storage/docs/exponential-backoff. Retrying continues
-indefinitely unless the controlling context is canceled or the client is closed. See
-context.WithTimeout and context.WithCancel.
 
 
 Creating a Client
@@ -39,12 +33,39 @@ To start working with this package, create a client:
         // TODO: Handle error.
     }
 
-The client will use your default application credentials.
+The client will use your default application credentials. Clients should be
+reused instead of created as needed. The methods of Client are safe for
+concurrent use by multiple goroutines.
 
 If you only wish to access public data, you can create
 an unauthenticated client with
 
     client, err := storage.NewClient(ctx, option.WithoutAuthentication())
+
+To use an emulator with this library, you can set the STORAGE_EMULATOR_HOST
+environment variable to the address at which your emulator is running. This will
+send requests to that address instead of to Cloud Storage. You can then create
+and use a client as usual:
+
+    // Set STORAGE_EMULATOR_HOST environment variable.
+    err := os.Setenv("STORAGE_EMULATOR_HOST", "localhost:9000")
+    if err != nil {
+        // TODO: Handle error.
+    }
+
+    // Create client as usual.
+    client, err := storage.NewClient(ctx)
+    if err != nil {
+        // TODO: Handle error.
+    }
+
+    // This request is now directed to http://localhost:9000/storage/v1/b
+    // instead of https://storage.googleapis.com/storage/v1/b
+    if err := client.Bucket("my-bucket").Create(ctx, projectID, nil); err != nil {
+        // TODO: Handle error.
+    }
+
+Please note that there is no official emulator for Cloud Storage.
 
 Buckets
 
@@ -136,6 +157,17 @@ Listing objects in a bucket is done with the Bucket.Objects method:
         names = append(names, attrs.Name)
     }
 
+Objects are listed lexicographically by name. To filter objects
+lexicographically, Query.StartOffset and/or Query.EndOffset can be used:
+
+    query := &storage.Query{
+        Prefix: "",
+        StartOffset: "bar/",  // Only list objects lexicographically >= "bar/"
+        EndOffset: "foo/",    // Only list objects lexicographically < "foo/"
+    }
+
+    // ... as before
+
 If only a subset of object attributes is needed when listing, specifying this
 subset using Query.SetAttrSelection may speed up the listing process:
 
@@ -182,7 +214,17 @@ since you read it. Here is how to express that:
 Signed URLs
 
 You can obtain a URL that lets anyone read or write an object for a limited time.
-You don't need to create a client to do this. See the documentation of
+Signing a URL requires credentials authorized to sign a URL. To use the same
+authentication that was used when instantiating the Storage client, use the
+BucketHandle.SignedURL method.
+
+    url, err := client.Bucket(bucketName).SignedURL(objectName, opts)
+    if err != nil {
+        // TODO: Handle error.
+    }
+    fmt.Println(url)
+
+You can also sign a URL wihout creating a client. See the documentation of
 SignedURL for details.
 
     url, err := storage.SignedURL(bucketName, "shared-object", opts)
@@ -198,9 +240,9 @@ temporary permission. Conditions can be applied to restrict how the HTML form is
 by a user.
 
 For more information, please see https://cloud.google.com/storage/docs/xml-api/post-object as well
-as the documentation of GenerateSignedPostPolicyV4.
+as the documentation of BucketHandle.GenerateSignedPostPolicyV4.
 
-    pv4, err := storage.GenerateSignedPostPolicyV4(bucketName, objectName, opts)
+    pv4, err := client.Bucket(bucketName).GenerateSignedPostPolicyV4(objectName, opts)
     if err != nil {
         // TODO: Handle error.
     }
@@ -208,11 +250,52 @@ as the documentation of GenerateSignedPostPolicyV4.
 
 Errors
 
-Errors returned by this client are often of the type [`googleapi.Error`](https://godoc.org/google.golang.org/api/googleapi#Error).
-These errors can be introspected for more information by type asserting to the richer `googleapi.Error` type. For example:
+Errors returned by this client are often of the type googleapi.Error.
+These errors can be introspected for more information by using errors.As
+with the richer googleapi.Error type. For example:
 
-	if e, ok := err.(*googleapi.Error); ok {
+	var e *googleapi.Error
+	if ok := errors.As(err, &e); ok {
 		  if e.Code == 409 { ... }
+	}
+
+See https://pkg.go.dev/google.golang.org/api/googleapi#Error for more information.
+
+Retrying failed requests
+
+Methods in this package may retry calls that fail with transient errors.
+Retrying continues indefinitely unless the controlling context is canceled, the
+client is closed, or a non-transient error is received. To stop retries from
+continuing, use context timeouts or cancellation.
+
+The retry strategy in this library follows best practices for Cloud Storage. By
+default, operations are retried only if they are idempotent, and exponential
+backoff with jitter is employed. In addition, errors are only retried if they
+are defined as transient by the service. See
+https://cloud.google.com/storage/docs/retry-strategy for more information.
+
+Users can configure non-default retry behavior for a single library call (using
+BucketHandle.Retryer and ObjectHandle.Retryer) or for all calls made by a
+client (using Client.SetRetry). For example:
+
+	o := client.Bucket(bucket).Object(object).Retryer(
+		// Use WithBackoff to change the timing of the exponential backoff.
+		storage.WithBackoff(gax.Backoff{
+			Initial:    2 * time.Second,
+		}),
+		// Use WithPolicy to configure the idempotency policy. RetryAlways will
+		// retry the operation even if it is non-idempotent.
+		storage.WithPolicy(storage.RetryAlways),
+	)
+
+	// Use a context timeout to set an overall deadline on the call, including all
+	// potential retries.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Delete an object using the specified strategy and timeout.
+	if err := o.Delete(ctx); err != nil {
+		// Handle err.
 	}
 */
 package storage // import "cloud.google.com/go/storage"

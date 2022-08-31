@@ -60,7 +60,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 	}
 }
 
-// ValidateEntry returns an error if the entry is invalid
+// ValidateEntry returns an error if the entry is invalid and report metrics for invalid entries accordingly.
 func (v Validator) ValidateEntry(ctx validationContext, labels string, entry logproto.Entry) error {
 	ts := entry.Timestamp.UnixNano()
 	validation.LineLengthHist.Observe(float64(len(entry.Line)))

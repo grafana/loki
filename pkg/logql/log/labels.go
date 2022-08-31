@@ -229,7 +229,7 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
 func (b *LabelsBuilder) labels() labels.Labels {
-	b.buf = b.unsortedLabels(b.buf)
+	b.buf = b.UnsortedLabels(b.buf)
 	sort.Sort(b.buf)
 	return b.buf
 }
@@ -244,7 +244,7 @@ func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
 	return buf
 }
 
-func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
+func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels) labels.Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		if buf == nil {
 			buf = make(labels.Labels, 0, len(b.base)+1)
@@ -287,7 +287,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 		}
 		return b.baseMap
 	}
-	b.buf = b.unsortedLabels(b.buf)
+	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := make(map[string]string, len(b.buf))

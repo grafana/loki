@@ -381,7 +381,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		if resp.ContentLength != nil {
 			size = *resp.ContentLength
 		}
-		if err == nil {
+		if err == nil && resp.Body != nil {
 			return resp.Body, size, nil
 		}
 		retries.Wait()

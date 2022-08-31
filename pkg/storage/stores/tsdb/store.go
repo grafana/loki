@@ -26,6 +26,18 @@ type store struct {
 	stopOnce     sync.Once
 }
 
+var storeInstance *store
+
+// This must only be called in test cases where a new store instances
+// cannot be explicitly created.
+func ResetStoreInstance() {
+	if storeInstance == nil {
+		return
+	}
+	storeInstance.Stop()
+	storeInstance = nil
+}
+
 type newStoreFactoryFunc func(
 	indexShipperCfg indexshipper.Config,
 	p config.PeriodConfig,
@@ -50,7 +62,6 @@ type newStoreFactoryFunc func(
 // If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
 // running multiple head managers would be complicated and wasteful.
 var NewStore = func() newStoreFactoryFunc {
-	var storeInstance *store
 	return func(
 		indexShipperCfg indexshipper.Config,
 		p config.PeriodConfig,
@@ -95,8 +106,20 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 	}
 
 	var indices []Index
+	opts := DefaultIndexClientOptions()
+
+	if indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
+		// We disable bloom filters on write nodes
+		// for the Stats() methods as it's of relatively little
+		// benefit when compared to the memory cost. The bloom filters
+		// help detect duplicates with some probability, but this
+		// is only relevant across index bucket boundaries
+		// & pre-compacted indices (replication, not valid on a single ingester).
+		opts.UseBloomFilters = false
+	}
 
 	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
+
 		var (
 			nodeName = indexShipperCfg.IngesterName
 			dir      = indexShipperCfg.ActiveIndexDirectory
@@ -134,7 +157,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		return err
 	}
 
-	s.indexStore = NewIndexClient(multiIndex)
+	s.indexStore = NewIndexClient(multiIndex, opts)
 
 	return nil
 }

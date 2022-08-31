@@ -13,7 +13,6 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
@@ -264,10 +263,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
-	if blooms == nil {
-		blooms = stats.BloomPool.Get()
-	}
+func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	queryBounds := newBounds(from, through)
 
 	if err := i.forSeries(ctx, shard,
@@ -277,16 +273,16 @@ func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through mode
 			for _, chk := range chks {
 				if Overlap(queryBounds, chk) {
 					if !addedStream {
-						blooms.AddStream(fp)
+						acc.AddStream(fp)
 						addedStream = true
 					}
-					blooms.AddChunk(fp, chk)
+					acc.AddChunk(fp, chk)
 				}
 			}
 		},
 		matchers...); err != nil {
-		return blooms, err
+		return err
 	}
 
-	return blooms, nil
+	return nil
 }

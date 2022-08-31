@@ -33,16 +33,35 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+### Engine query timeout is deprecated
+
+Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
+As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
+we're deprecating it in favor of relying on `engine.query-timeout` only.
+
 #### Fifocache is deprecated
 
 We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
 
 Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
 
+#### Evenly spread distributors across kubernetes nodes
+
+We now evenly spread distributors across the available kubernetes nodes, but allowing more than one distributors to be scheduled into the same node.
+If you want to run at most a single distributors per node, set `$._config.distributors.use_topology_spread` to false.
+
+While we attempt to schedule at most 1 distributor per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple distributors will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
+
 #### Evenly spread queriers across kubernetes nodes
 
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
 If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
+
+While we attempt to schedule at most 1 querier per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple queriers will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
 
 #### Default value for `server.http-listen-port` changed
 

@@ -116,6 +116,7 @@ func Test_shardSplitter(t *testing.T) {
 				now:  func() time.Time { return end },
 				limits: fakeLimits{
 					minShardingLookback: tc.lookback,
+					queryTimeout:        time.Minute,
 					maxQueryParallelism: 1,
 				},
 			}
@@ -156,7 +157,7 @@ func Test_astMapper(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 	)
 
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
@@ -257,6 +258,7 @@ func Test_InstantSharding(t *testing.T) {
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
 			maxQueryParallelism: 10,
+			queryTimeout:        time.Second,
 		})
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()

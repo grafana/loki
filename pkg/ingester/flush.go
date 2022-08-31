@@ -314,8 +314,6 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		}
 		level.Debug(util_log.Logger).Log("index", j, "msg", "flush Chunk", "userid", userID, "labels", labelPairs)
 
-		i.markChunkAsFlushed(cs[j], chunkMtx)
-
 		reason := func() string {
 			chunkMtx.Lock()
 			defer chunkMtx.Unlock()
@@ -324,6 +322,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		}()
 
 		i.reportFlushedChunkStatistics(&ch, c, sizePerTenant, countPerTenant, reason)
+		i.markChunkAsFlushed(cs[j], chunkMtx)
 	}
 
 	return nil

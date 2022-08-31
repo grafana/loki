@@ -40,6 +40,9 @@ var boltDBIndexClientWithShipper index.Client
 // ResetBoltDBIndexClientWithShipper allows to reset the singleton.
 // MUST ONLY BE USED IN TESTS
 func ResetBoltDBIndexClientWithShipper() {
+	if boltDBIndexClientWithShipper == nil {
+		return
+	}
 	boltDBIndexClientWithShipper.Stop()
 	boltDBIndexClientWithShipper = nil
 }

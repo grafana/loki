@@ -378,21 +378,15 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "Deletes are limited by batch size",
+			name:         "Deletes are sorted by start time and limited by batch size",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
-					StartTime: now.Add(-13 * time.Hour),
-					EndTime:   now.Add(-11 * time.Hour),
-				},
-				{
-					UserID:    testUserID,
-					Query:     lblFoo.String(),
-					StartTime: now.Add(-10 * time.Hour),
-					EndTime:   now.Add(-8 * time.Hour),
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
 				},
 				{
 					UserID:    testUserID,
@@ -403,8 +397,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
-					StartTime: now.Add(-2 * time.Hour),
-					EndTime:   now,
+					StartTime: now.Add(-10 * time.Hour),
+					EndTime:   now.Add(-8 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     lblFoo.String(),
+					StartTime: now.Add(-13 * time.Hour),
+					EndTime:   now.Add(-11 * time.Hour),
 				},
 			},
 			expectedResp: resp{
@@ -486,21 +486,43 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests []DeleteRequest
-	addedUser      string
-	addedStartTime model.Time
-	addedEndTime   model.Time
-	addedQuery     string
+	addReqs        []DeleteRequest
 	addErr         error
+
+	removeReqs []DeleteRequest
+	removeErr  error
+
+	getUser   string
+	getID     string
+	getResult []DeleteRequest
+	getErr    error
+
+	getAllUser   string
+	getAllResult []DeleteRequest
+	getAllErr    error
 }
 
 func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
-	m.addedUser = userID
-	m.addedStartTime = startTime
-	m.addedEndTime = endTime
-	m.addedQuery = query
-	return m.addErr
+func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
+	m.addReqs = reqs
+	return nil, m.addErr
+}
+
+func (m *mockDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+	m.removeReqs = reqs
+	return m.removeErr
+}
+
+func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
+	m.getUser = userID
+	m.getID = requestID
+	return m.getResult, m.getErr
+}
+
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+	m.getAllUser = userID
+	return m.getAllResult, m.getAllErr
 }
