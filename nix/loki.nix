@@ -1,0 +1,47 @@
+{ pkgs, version, shortVersion, buildVars }:
+pkgs.stdenv.mkDerivation {
+  inherit version;
+
+  pname = "loki";
+
+  src = ./..;
+
+  buildInputs = with pkgs; [
+    bash
+    gcc
+    go
+    git
+    bash
+    systemd
+    yamllint
+
+    golangci-lint
+  ];
+
+  configurePhase = with pkgs; ''
+    patchShebangs scripts
+    patchShebangs tools
+
+    substituteInPlace Makefile \
+      --replace "SHELL = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail" \
+      --replace "IMAGE_TAG := \$(shell ./tools/image-tag)" "IMAGE_TAG := ${buildVars.imageTag}" \
+      --replace "GIT_REVISION := \$(shell git rev-parse --short HEAD)" "GIT_REVISION := ${shortVersion}" \
+      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := ${buildVars.gitBranch}" \
+  '';
+
+  buildPhase = ''
+    make clean loki logcli loki-canary promtail
+  '';
+
+  checkPhase = ''
+    make test
+  '';
+
+  installPhase = ''
+    mkdir -p $out/bin
+    install -m755 cmd/loki/loki $out/bin/loki
+    install -m755 cmd/logcli/logcli $out/bin/logcli
+    install -m755 cmd/loki-canary/loki-canary $out/bin/loki-canary
+    install -m755 clients/cmd/promtail/promtail $out/bin/promtail
+  '';
+}
