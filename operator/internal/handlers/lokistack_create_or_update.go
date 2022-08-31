@@ -226,6 +226,7 @@ func CreateOrUpdateLokiStack(
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
+		TLSProfileType: manifests.TLSProfileType(fg.TLSProfile),
 	}
 
 	ll.Info("begin building manifests")

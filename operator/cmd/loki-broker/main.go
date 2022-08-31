@@ -14,7 +14,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -29,8 +28,6 @@ type config struct {
 
 	crFilepath string
 	writeToDir string
-
-	tlsProfile string
 }
 
 func (c *config) registerFlags(f *flag.FlagSet) {
@@ -62,7 +59,7 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
 	// TLS profile option
-	f.StringVar(&c.tlsProfile, "tls-profile", "", "The TLS security Profile configuration.")
+	f.StringVar(&c.featureFlags.TLSProfile, "tls-profile", "", "The TLS security Profile configuration.")
 }
 
 func (c *config) validateFlags(log logr.Logger) {
@@ -131,11 +128,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.tlsProfile != "" &&
-		cfg.tlsProfile != string(openshiftv1.TLSProfileOldType) &&
-		cfg.tlsProfile != string(openshiftv1.TLSProfileIntermediateType) &&
-		cfg.tlsProfile != string(openshiftv1.TLSProfileModernType) {
-		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.tlsProfile)
+	if cfg.featureFlags.TLSProfile != "" &&
+		cfg.featureFlags.TLSProfile != string(manifests.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(manifests.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(manifests.TLSProfileModernType) {
+		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
 		os.Exit(1)
 	}
 
@@ -147,7 +144,7 @@ func main() {
 		Stack:          ls.Spec,
 		Gates:          cfg.featureFlags,
 		ObjectStorage:  cfg.objectStorage,
-		TLSProfileType: manifests.TLSProfileType(cfg.tlsProfile),
+		TLSProfileType: manifests.TLSProfileType(cfg.featureFlags.TLSProfile),
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {

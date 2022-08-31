@@ -73,6 +73,9 @@ type FeatureGates struct {
 
 	// OpenShift contains a set of feature gates supported only on OpenShift.
 	OpenShift OpenShiftFeatureGates `json:"openshift,omitempty"`
+
+	// TLSProfile allows to chose a TLS security profile.
+	TLSProfile string `json:"tlsProfile,omitempty"`
 }
 
 //+kubebuilder:object:root=true
