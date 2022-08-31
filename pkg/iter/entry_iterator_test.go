@@ -499,6 +499,23 @@ func Test_DuplicateCount(t *testing.T) {
 		},
 	}
 
+	dupeStream := logproto.Stream{
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(0, 0),
+				Line:      "foo",
+			},
+			{
+				Timestamp: time.Unix(0, 0),
+				Line:      "foo",
+			},
+			{
+				Timestamp: time.Unix(0, 0),
+				Line:      "foo",
+			},
+		},
+	}
+
 	for _, test := range []struct {
 		name               string
 		iters              []EntryIterator
@@ -525,6 +542,14 @@ func Test_DuplicateCount(t *testing.T) {
 			},
 			logproto.BACKWARD,
 			3,
+		},
+		{
+			"stream with duplicates",
+			[]EntryIterator{
+				NewStreamIterator(dupeStream),
+			},
+			logproto.BACKWARD,
+			2,
 		},
 		{
 			"replication 2 f",
@@ -897,4 +922,30 @@ func TestDedupeMergeEntryIterator(t *testing.T) {
 	require.True(t, it.Next())
 	require.Equal(t, "3", it.Entry().Line)
 	require.Equal(t, time.Unix(2, 0), it.Entry().Timestamp)
+}
+
+func TestSingleStreamDedupeMergeEntryIterator(t *testing.T) {
+	it := NewMergeEntryIterator(context.Background(),
+		[]EntryIterator{
+			NewStreamIterator(logproto.Stream{
+				Labels: ``,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "0",
+					},
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "0",
+					},
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "0",
+					},
+				},
+			}),
+		}, logproto.FORWARD)
+	require.True(t, it.Next())
+	require.Equal(t, "0", it.Entry().Line)
+	require.False(t, it.Next())
 }

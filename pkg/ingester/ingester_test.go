@@ -12,6 +12,9 @@ import (
 
 	"github.com/gogo/protobuf/types"
 	"github.com/gogo/status"
+
+	"github.com/grafana/loki/pkg/distributor"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
@@ -849,7 +852,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 	defer closer()
 
 	for i := 0; i < streamCount; i++ {
-		streams = append(streams, labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i)))
+		streams = append(streams, labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i), distributor.ShardLbName, fmt.Sprint(i%2)))
 	}
 
 	for i := 0; i < requests; i++ {
