@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	openshiftv1 "github.com/openshift/api/config/v1"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -59,7 +58,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 func configureGatewayDeploymentForMode(
 	d *appsv1.Deployment, mode lokiv1.ModeType,
 	fg configv1.FeatureGates, stackName, stackNs string,
-	profile *openshiftv1.TLSSecurityProfile,
+	minTLSVersion string, ciphers []string,
 ) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
@@ -84,7 +83,8 @@ func configureGatewayDeploymentForMode(
 			secretName,
 			serverName,
 			gatewayHTTPPort,
-			profile,
+			minTLSVersion,
+			ciphers,
 		)
 	}
 

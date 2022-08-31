@@ -50,7 +50,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace, opts.TLSProfile); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace,
+			opts.TLSProfileSpec.MinTLSVersion, opts.TLSProfileSpec.Ciphers); err != nil {
 			return nil, err
 		}
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-	openshiftv1 "github.com/openshift/api/config/v1"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -47,11 +46,9 @@ func ConfigureGatewayDeployment(
 	withTLS, withCertSigningService bool,
 	secretName, serverName string,
 	gatewayHTTPPort int,
-	profile *openshiftv1.TLSSecurityProfile,
+	minTLSVersion string,
+	ciphers []string,
 ) error {
-	// Get TLS profile info.
-	minTLSVersion, ciphers := getSecurityProfileInfo(profile)
-
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
 		if c.Name == gwContainerName {

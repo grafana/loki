@@ -17,9 +17,6 @@ type OpenShiftFeatureGates struct {
 	// gateway to expose the service to public internet access.
 	// More details: https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html
 	GatewayRoute bool `json:"gatewayRoute,omitempty"`
-
-	// DisableAPIServerTLSProfile disables getting the TLS Profile form the API server.
-	DisableAPIServerTLSProfile bool `json:"disableAPIServerTLSProfile,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.

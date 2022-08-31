@@ -62,7 +62,7 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
 	// TLS profile option
-	f.StringVar(&c.tlsProfile, "tls-profile", string(openshiftv1.TLSProfileIntermediateType), "The TLS security Profile configuration.")
+	f.StringVar(&c.tlsProfile, "tls-profile", "", "The TLS security Profile configuration.")
 }
 
 func (c *config) validateFlags(log logr.Logger) {
@@ -131,7 +131,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.tlsProfile != string(openshiftv1.TLSProfileOldType) &&
+	if cfg.tlsProfile != "" &&
+		cfg.tlsProfile != string(openshiftv1.TLSProfileOldType) &&
 		cfg.tlsProfile != string(openshiftv1.TLSProfileIntermediateType) &&
 		cfg.tlsProfile != string(openshiftv1.TLSProfileModernType) {
 		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.tlsProfile)
@@ -140,15 +141,13 @@ func main() {
 
 	// Convert config to manifest.Options
 	opts := manifests.Options{
-		Name:          cfg.Name,
-		Namespace:     cfg.Namespace,
-		Image:         cfg.Image,
-		Stack:         ls.Spec,
-		Gates:         cfg.featureFlags,
-		ObjectStorage: cfg.objectStorage,
-		TLSProfile: &openshiftv1.TLSSecurityProfile{
-			Type: openshiftv1.TLSProfileType(cfg.tlsProfile),
-		},
+		Name:           cfg.Name,
+		Namespace:      cfg.Namespace,
+		Image:          cfg.Image,
+		Stack:          ls.Spec,
+		Gates:          cfg.featureFlags,
+		ObjectStorage:  cfg.objectStorage,
+		TLSProfileType: manifests.TLSProfileType(cfg.tlsProfile),
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {

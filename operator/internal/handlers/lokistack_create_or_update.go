@@ -21,6 +21,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	openshiftv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/crypto"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -241,20 +242,33 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	var apiServer openshiftv1.APIServer
-	if err = k.Get(ctx, client.ObjectKey{Name: "cluster"}, &apiServer); err != nil {
-		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: "Missing apiserver object",
-				Reason:  lokiv1.ReasonMissingOpenShiftAPIServer,
-				Requeue: false,
+	var tlsProfile openshiftv1.TLSSecurityProfile
+
+	if opts.TLSProfileType != "" {
+		tlsProfile = openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileType(opts.TLSProfileType),
+		}
+	} else {
+		tlsProfile = openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileIntermediateType,
+		}
+
+		var apiServer openshiftv1.APIServer
+		if err = k.Get(ctx, client.ObjectKey{Name: "cluster"}, &apiServer); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return kverrors.Wrap(err, "failed to lookup apiServer")
 			}
 		}
-		return kverrors.Wrap(err, "failed to lookup apiServer")
+
+		if apiServer.Spec.TLSSecurityProfile != nil {
+			tlsProfile = *apiServer.Spec.TLSSecurityProfile
+		}
 	}
 
-	if !fg.OpenShift.DisableAPIServerTLSProfile {
-		opts.TLSProfile = apiServer.Spec.TLSSecurityProfile
+	tlsMinVersion, ciphers := getSecurityProfileInfo(&tlsProfile)
+	opts.TLSProfileSpec = manifests.TLSProfileSpec{
+		MinTLSVersion: tlsMinVersion,
+		Ciphers:       ciphers,
 	}
 
 	objects, err := manifests.BuildAll(opts)
@@ -326,4 +340,30 @@ func isNamespaceScoped(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+func getSecurityProfileInfo(profile *openshiftv1.TLSSecurityProfile) (string, []string) {
+	var profileType openshiftv1.TLSProfileType
+	if profile == nil {
+		profileType = openshiftv1.TLSProfileIntermediateType
+	} else {
+		profileType = profile.Type
+	}
+
+	var profileSpec *openshiftv1.TLSProfileSpec
+	if profileType == openshiftv1.TLSProfileCustomType {
+		if profile.Custom != nil {
+			profileSpec = &profile.Custom.TLSProfileSpec
+		}
+	} else {
+		profileSpec = openshiftv1.TLSProfiles[profileType]
+	}
+
+	// nothing found / custom type set but no actual custom spec
+	if profileSpec == nil {
+		profileSpec = openshiftv1.TLSProfiles[openshiftv1.TLSProfileIntermediateType]
+	}
+
+	// need to remap all Ciphers to their respective IANA names used by Go
+	return string(profileSpec.MinTLSVersion), crypto.OpenSSLToIANACipherSuites(profileSpec.Ciphers)
 }

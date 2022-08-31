@@ -698,8 +698,6 @@ const (
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
-	// ReasonMissingOpenShiftAPIServer when the reconciler cannot lookup the OpenShift apiserver.
-	ReasonMissingOpenShiftAPIServer LokiStackConditionReason = "ReasonMissingOpenShiftAPIServer"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

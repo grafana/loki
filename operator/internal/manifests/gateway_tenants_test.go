@@ -258,8 +258,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.write.endpoint=http://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--tls.client-auth-type=NoClientCert",
-										"--tls.min-version=VersionTLS12",
-										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+										"--tls.min-version=min-version",
+										"--tls.cipher-suites=cipher1,cipher2",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -292,8 +292,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--tls.min-version=VersionTLS12",
-										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+										"--tls.min-version=min-version",
+										"--tls.cipher-suites=cipher1,cipher2",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
@@ -434,8 +434,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.write.endpoint=http://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--tls.client-auth-type=NoClientCert",
-										"--tls.min-version=VersionTLS12",
-										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+										"--tls.min-version=min-version",
+										"--tls.cipher-suites=cipher1,cipher2",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -468,8 +468,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--tls.min-version=VersionTLS12",
-										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+										"--tls.min-version=min-version",
+										"--tls.cipher-suites=cipher1,cipher2",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
@@ -623,8 +623,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
 										"--tls.client-auth-type=NoClientCert",
-										"--tls.min-version=VersionTLS12",
-										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+										"--tls.min-version=min-version",
+										"--tls.cipher-suites=cipher1,cipher2",
 										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
 										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
@@ -662,8 +662,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--tls.min-version=VersionTLS12",
-										"--tls.cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+										"--tls.min-version=min-version",
+										"--tls.cipher-suites=cipher1,cipher2",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
@@ -747,7 +747,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "test", "test-ns", nil)
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "test", "test-ns", "min-version", []string{"cipher1", "cipher2"})
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
