@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
@@ -105,7 +107,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 			// Since the push target underlying http server registers metrics in the default registerer, we have to override it to prevent duplicate metrics errors.
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
-			got, err := NewGCPLogTarget(tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config)
+			got, err := NewGCPLogTarget(tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config, option.WithCredentials(&google.Credentials{}))
 			// If the target was started, stop it after test
 			if got != nil {
 				defer func() { _ = got.Stop() }()
