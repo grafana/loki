@@ -44,12 +44,16 @@ func BenchmarkReadlines(b *testing.B) {
 		file string
 	}{
 		{
-			name: "2000 lines of log compressed",
+			name: "2000 lines of log .tar.gz compressed",
 			file: "test_fixtures/short-access.tar.gz",
 		},
 		{
-			name: "100000 lines of log compressed",
+			name: "100000 lines of log .tar.gz compressed",
 			file: "test_fixtures/long-access.tar.gz",
+		},
+		{
+			name: "100000 lines of log .zip compressed",
+			file: "test_fixtures/long-access.zip",
 		},
 	}
 
