@@ -119,6 +119,7 @@ require (
 	github.com/prometheus/alertmanager v0.24.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/willf/bloom v2.0.3+incompatible
+	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2
 	golang.org/x/text v0.3.7
 )
 
@@ -265,7 +266,6 @@ require (
 	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
-	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/tools v0.1.10 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
