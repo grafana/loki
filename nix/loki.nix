@@ -14,12 +14,15 @@ pkgs.stdenv.mkDerivation {
     bash
     systemd
     yamllint
+    nettools
 
     golangci-lint
+    (import ./faillint.nix {
+      inherit (pkgs) lib buildGoModule fetchFromGitHub;
+    })
   ];
 
   configurePhase = with pkgs; ''
-    patchShebangs scripts
     patchShebangs tools
 
     substituteInPlace Makefile \
@@ -30,11 +33,14 @@ pkgs.stdenv.mkDerivation {
   '';
 
   buildPhase = ''
+    export GOCACHE=$TMPDIR/go-cache
     make clean loki logcli loki-canary promtail
   '';
 
+  
   doCheck = true;
   checkPhase = ''
+    export GOCACHE=$TMPDIR/go-cache
     make lint test
   '';
 

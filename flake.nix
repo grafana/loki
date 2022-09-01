@@ -1,70 +1,94 @@
 {
   description = "Grafana Loki";
 
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    flake-utils.inputs.nixpkgs.follows = "nixpkgs";
+
+    rnix-parser.url = "github:nix-community/rnix-parser";
+    rnix-parser.inputs.nixpkgs.follows = "nixpkgs";
+
+    # helm-docs @ 1.8.1
+    helm-docs-nixpkgs.url = "nixpkgs/bf972dc380f36a3bf83db052380e55f0eaa7dcb6";
+  };
+
   # Nixpkgs / NixOS version to use.
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-  inputs.flake-utils.url = "github:numtide/flake-utils";
 
-  # find historical versions here: https://lazamar.co.uk/nix-versions or
-  # check git history of NixOS/nixpkgs
-
-  # # golang-ci @ 1.47.1
-  inputs.golangci-lint-nixpkgs.url =
-    "nixpkgs/87dc446e3d0e1d56bdd435268a9cb8596314ad81";
-
-  # helm-docs @ 1.8.1
-  inputs.helm-docs-nixpkgs.url =
-    "nixpkgs/bf972dc380f36a3bf83db052380e55f0eaa7dcb6";
-
-  outputs =
-    { self, nixpkgs, flake-utils, helm-docs-nixpkgs, golangci-lint-nixpkgs }:
+  outputs = { self, nixpkgs, flake-utils, rnix-parser, helm-docs-nixpkgs }:
     flake-utils.lib.eachDefaultSystem (system:
-    let
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [
-          (final: prev: {
-            inherit (import golangci-lint-nixpkgs { inherit system; })
-              golangci-lint;
-          })
-          (final: prev: {
-            inherit (import helm-docs-nixpkgs { inherit system; }) helm-docs;
-          })
-        ];
-        config = { allowUnfree = true; };
-      };
+      let
+        golangci-lint-overlay = final: prev: {
+          golangci-lint = prev.callPackage
+            "${prev.path}/pkgs/development/tools/golangci-lint"
+            {
+              buildGoModule = args:
+                prev.buildGoModule (args // rec {
+                  version = "1.45.2";
 
-      nix = import ./nix {
-        inherit (pkgs) pkgs;
-        inherit self;
-      };
-    in
-    {
-      # The default package for 'nix build'. This makes sense if the
-      # flake provides only one package or there is a clear "main"
-      # package.
-      defaultPackage = nix.loki;
+                  src = prev.fetchFromGitHub rec {
+                    owner = "golangci";
+                    repo = "golangci-lint";
+                    rev = "v${version}";
+                    sha256 =
+                      "sha256-Mr45nJbpyzxo0ZPwx22JW2WrjyjI9FPpl+gZ7NIc6WQ=";
+                  };
 
-      packages = { inherit (nix) loki; };
+                  vendorSha256 =
+                    "sha256-pcbKg1ePN8pObS9EzP3QYjtaty27L9sroKUs/qEPtJo=";
+                });
+            };
+        };
 
-      devShell = pkgs.mkShell {
-        nativeBuildInputs = with pkgs; [
-          gcc
-          go
-          systemd
-          yamllint
+        nix = import ./nix { inherit self nixpkgs system; };
 
-          golangci-lint
-          helm-docs
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [
+            rnix-parser.overlay
+            golangci-lint-overlay
+            nix.overlay
+            (final: prev: {
+              inherit (import helm-docs-nixpkgs { inherit system; }) helm-docs;
+            })
+          ];
+          config = { allowUnfree = true; };
+        };
+      in
+      with pkgs; {
+        # The default package for 'nix build'. This makes sense if the
+        # flake provides only one package or there is a clear "main"
+        # package.
+        defaultPackage = loki;
 
-          nix.loki
-        ];
+        packages = { inherit loki; };
 
-        shellHook = ''
-          pushd $(git rev-parse --show-toplevel) > /dev/null || exit 1
-          ./nix/generate-build-vars.sh
-          popd > /dev/null || exit 1
-        '';
-      };
-    });
+        checks = {
+          format = runCommand "check-format" {
+            buildInputs = [ nixfmt ];
+          } ''nixfmt'';
+        };
+
+        devShell = pkgs.mkShell {
+          nativeBuildInputs = [
+            gcc
+            go
+            systemd
+            yamllint
+            nixfmt
+            /* rnix-parser */
+            nettools
+
+            golangci-lint
+            helm-docs
+            faillint
+          ];
+
+          shellHook = ''
+            pushd $(git rev-parse --show-toplevel) > /dev/null || exit 1
+            ./nix/generate-build-vars.sh
+            popd > /dev/null || exit 1
+          '';
+        };
+      });
 }
