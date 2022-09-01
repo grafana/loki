@@ -595,6 +595,14 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			promql.Scalar{T: 60 * 1000, V: 2},
 		},
 		{
+			// vector instant
+			`vector(2)`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			nil,
+			nil,
+			promql.Scalar{T: 60 * 1000, V: 2},
+		},
+		{
 			// single comparison
 			`1 == 1`,
 			time.Unix(60, 0), logproto.FORWARD, 100,
@@ -1911,6 +1919,18 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`2`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			nil,
+			nil,
+			promql.Matrix{
+				promql.Series{
+					Points: []promql.Point{{T: 60 * 1000, V: 2}, {T: 90 * 1000, V: 2}, {T: 120 * 1000, V: 2}, {T: 150 * 1000, V: 2}, {T: 180 * 1000, V: 2}},
+				},
+			},
+		},
+		// vector query range
+		{
+			`vector(2)`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			nil,
 			nil,
