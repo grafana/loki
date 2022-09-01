@@ -30,21 +30,6 @@
         "type": "indirect"
       }
     },
-    "import-cargo": {
-      "locked": {
-        "lastModified": 1594305518,
-        "narHash": "sha256-frtArgN42rSaEcEOYWg8sVPMUK+Zgch3c+wejcpX3DY=",
-        "owner": "edolstra",
-        "repo": "import-cargo",
-        "rev": "25d40be4a73d40a2572e0cc233b83253554f06c5",
-        "type": "github"
-      },
-      "original": {
-        "owner": "edolstra",
-        "repo": "import-cargo",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1661931183,
@@ -61,49 +46,11 @@
         "type": "github"
       }
     },
-    "rnix-parser": {
-      "inputs": {
-        "import-cargo": "import-cargo",
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "utils": "utils"
-      },
-      "locked": {
-        "lastModified": 1661516911,
-        "narHash": "sha256-uPpLOb67qXN69R9Put6PpUy8jp4qJjtyKMRssoV7qLU=",
-        "owner": "nix-community",
-        "repo": "rnix-parser",
-        "rev": "97b438e34be5211a4b48aeed9cc3ded489b4d6da",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-community",
-        "repo": "rnix-parser",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
         "helm-docs-nixpkgs": "helm-docs-nixpkgs",
-        "nixpkgs": "nixpkgs",
-        "rnix-parser": "rnix-parser"
-      }
-    },
-    "utils": {
-      "locked": {
-        "lastModified": 1656065134,
-        "narHash": "sha256-oc6E6ByIw3oJaIyc67maaFcnjYOz1mMcOtHxbEf9NwQ=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "bee6a7250dd1b01844a2de7e02e4df7d8a0a206c",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
+        "nixpkgs": "nixpkgs"
       }
     }
   },

@@ -6,16 +6,13 @@
     flake-utils.url = "github:numtide/flake-utils";
     flake-utils.inputs.nixpkgs.follows = "nixpkgs";
 
-    rnix-parser.url = "github:nix-community/rnix-parser";
-    rnix-parser.inputs.nixpkgs.follows = "nixpkgs";
-
     # helm-docs @ 1.8.1
     helm-docs-nixpkgs.url = "nixpkgs/bf972dc380f36a3bf83db052380e55f0eaa7dcb6";
   };
 
   # Nixpkgs / NixOS version to use.
 
-  outputs = { self, nixpkgs, flake-utils, rnix-parser, helm-docs-nixpkgs }:
+  outputs = { self, nixpkgs, flake-utils, helm-docs-nixpkgs }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         golangci-lint-overlay = final: prev: {
@@ -45,7 +42,6 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            rnix-parser.overlay
             golangci-lint-overlay
             nix.overlay
             (final: prev: {
@@ -63,10 +59,16 @@
 
         packages = { inherit loki; };
 
-        checks = {
-          format = runCommand "check-format" {
-            buildInputs = [ nixfmt ];
-          } ''nixfmt'';
+        apps = {
+          lint = {
+            type = "app";
+            program = "${
+                (writeShellScriptBin "lint.sh" ''
+                  ${nixpkgs-fmt}/bin/nixpkgs-fmt --check ${self}/flake.nix ${self}/nix/*.nix
+                  ${statix}/bin/statix check ${self}
+                '')
+              }/bin/lint.sh";
+          };
         };
 
         devShell = pkgs.mkShell {
@@ -75,8 +77,8 @@
             go
             systemd
             yamllint
-            nixfmt
-            /* rnix-parser */
+            nixpkgs-fmt
+            statix
             nettools
 
             golangci-lint

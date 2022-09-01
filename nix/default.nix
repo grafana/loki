@@ -1,7 +1,6 @@
 { self, nixpkgs, system }:
 let buildVars = import ./build-vars.nix;
-in
-{
+in {
   overlay = final: prev: rec {
     loki =
       let
