@@ -16,11 +16,11 @@ type noopClient struct {
 	once     sync.Once
 }
 
-func (n noopClient) Chan() chan<- api.Entry {
+func (n noopClient) Chan() chan<- api.Entry { //nolint:copylocks
 	return n.noopChan
 }
 
-func (n noopClient) Stop() {
+func (n noopClient) Stop() { //nolint:copylocks
 	n.once.Do(func() { close(n.noopChan) })
 }
 
