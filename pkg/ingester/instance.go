@@ -448,7 +448,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	return iter.NewSortEntryIterator(iters, req.Direction), nil
+	return iter.NewMergeEntryIterator(ctx, iters, req.Direction), nil
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -500,7 +500,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
 
 // Label returns the label names or values depending on the given request
