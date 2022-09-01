@@ -24,8 +24,8 @@ func TestLazyChunkIterator(t *testing.T) {
 	}{
 		{
 			newLazyChunk(logproto.Stream{
-				Labels: fooLabelsWithName.String(),
-				Hash:   fooLabelsWithName.Hash(),
+				Labels: fooLabelsWithNameAndShard.String(),
+				Hash:   fooLabelsWithNameAndShard.Hash(),
 				Entries: []logproto.Entry{
 					{
 						Timestamp: from,

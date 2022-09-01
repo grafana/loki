@@ -1,6 +1,9 @@
 ---
 name: helm-ci
-on: pull_request
+on:
+  pull_request:
+    paths:
+      - 'production/helm/**'
 
 jobs:
   call-lint:

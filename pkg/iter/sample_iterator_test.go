@@ -501,3 +501,35 @@ func TestDedupeMergeSampleIterator(t *testing.T) {
 	require.Equal(t, 1., it.Sample().Value)
 	require.Equal(t, xxhash.Sum64String("3"), it.Sample().Hash)
 }
+
+func TestSingleStreamDedupeMergeSampleIterator(t *testing.T) {
+	it := NewMergeSampleIterator(context.Background(),
+		[]SampleIterator{
+			NewSeriesIterator(logproto.Series{
+				Labels: ``,
+				Samples: []logproto.Sample{
+					{
+						Timestamp: time.Unix(1, 0).UnixNano(),
+						Value:     1.,
+						Hash:      xxhash.Sum64String("1"),
+					},
+					{
+						Timestamp: time.Unix(1, 0).UnixNano(),
+						Value:     1.,
+						Hash:      xxhash.Sum64String("1"),
+					},
+					{
+						Timestamp: time.Unix(1, 0).UnixNano(),
+						Value:     1.,
+						Hash:      xxhash.Sum64String("1"),
+					},
+				},
+				StreamHash: 0,
+			}),
+		})
+
+	require.True(t, it.Next())
+	require.Equal(t, time.Unix(1, 0).UnixNano(), it.Sample().Timestamp)
+	require.Equal(t, 1., it.Sample().Value)
+	require.False(t, it.Next())
+}
