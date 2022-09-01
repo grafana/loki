@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"sync"
@@ -11,8 +12,10 @@ import (
 
 	"crypto/tls"
 	"net/http"
+	"net/url"
 	"os/signal"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
@@ -46,6 +49,7 @@ func main() {
 	user := flag.String("user", "", "Loki username.")
 	pass := flag.String("pass", "", "Loki password.")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
+	writeTimeout := flag.Duration("write-timeout", 10*time.Second, "How long to wait write response from Loki")
 	queryTimeout := flag.Duration("query-timeout", 10*time.Second, "How long to wait for a query response from Loki")
 
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
@@ -119,8 +123,36 @@ func main() {
 		c.lock.Lock()
 		defer c.lock.Unlock()
 
-		var err error
-		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)
+		var (
+			err error
+			w   io.Writer
+		)
+
+		scheme := "http"
+		if *useTLS {
+			scheme = "https"
+		}
+
+		httpListen, err := url.ParseRequestURI(fmt.Sprintf("%s://%s", scheme, *addr))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "given loki URL is invalid: %s", err)
+		}
+
+		w, err = writer.NewPush(
+			httpListen.String(),
+			*tenantID,
+			*writeTimeout,
+			config.DefaultHTTPClientConfig,
+			*lName, *lVal,
+			*sName, *sValue,
+			log.NewLogfmtLogger(os.Stdout),
+		)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Unable to create writer for Loki, check config: %s", err)
+			os.Exit(1)
+		}
+
+		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)
 		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)

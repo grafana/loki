@@ -83,7 +83,10 @@ func (w *Writer) run() {
 				w.prevTsLen = tsLen
 			}
 
-			fmt.Fprintf(w.w, LogEntry, ts, w.pad)
+			_, err := fmt.Fprintf(w.w, LogEntry, ts, w.pad)
+			if err != nil {
+				panic(err)
+			}
 			w.sent <- t
 		case <-w.quit:
 			return
