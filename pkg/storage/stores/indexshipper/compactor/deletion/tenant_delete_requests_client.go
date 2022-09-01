@@ -2,16 +2,20 @@ package deletion
 
 import (
 	"context"
-
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 )
+
+const deletionNotAvailableMsg = "deletion is not available for this tenant"
+
+type Limits interface {
+	DeletionMode(userID string) string
+}
 
 type perTenantDeleteRequestsClient struct {
 	client DeleteRequestsClient
-	limits retention.Limits
+	limits Limits
 }
 
-func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l retention.Limits) DeleteRequestsClient {
+func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l Limits) DeleteRequestsClient {
 	return &perTenantDeleteRequestsClient{
 		client: c,
 		limits: l,
@@ -19,18 +23,14 @@ func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l retention.Limits
 }
 
 func (c *perTenantDeleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	allLimits := c.limits.AllByUserID()
-	if userLimits, ok := allLimits[userID]; ok {
-		if userLimits.CompactorDeletionEnabled {
-			return c.client.GetAllDeleteRequestsForUser(ctx, userID)
-		}
-		return nil, nil
+	hasDelete, err := validDeletionLimit(c.limits, userID)
+	if err != nil {
+		return nil, err
 	}
 
-	if c.limits.DefaultLimits().CompactorDeletionEnabled {
+	if hasDelete {
 		return c.client.GetAllDeleteRequestsForUser(ctx, userID)
 	}
-
 	return nil, nil
 }
 

@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -135,7 +136,7 @@ func (c *CompactedIndex) setupIndexProcessors() error {
 	return nil
 }
 
-func (c *CompactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) error {
+func (c *CompactedIndex) ForEachChunk(ctx context.Context, callback retention.ChunkEntryCallback) error {
 	if err := c.setupIndexProcessors(); err != nil {
 		return err
 	}
@@ -145,7 +146,7 @@ func (c *CompactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) err
 		return fmt.Errorf("required boltdb bucket not found")
 	}
 
-	return ForEachChunk(bucket, c.periodConfig, callback)
+	return ForEachChunk(ctx, bucket, c.periodConfig, callback)
 }
 
 func (c *CompactedIndex) IndexChunk(chunk chunk.Chunk) (bool, error) {

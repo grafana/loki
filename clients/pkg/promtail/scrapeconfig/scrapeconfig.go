@@ -160,6 +160,10 @@ type JournalTargetConfig struct {
 	// Path to a directory to read journal entries from. Defaults to system path
 	// if empty.
 	Path string `yaml:"path"`
+
+	// Journal matches to filter. Character (+) is not supported, only logical AND
+	// matches will be added.
+	Matches string `yaml:"matches"`
 }
 
 // SyslogTargetConfig describes a scrape config that listens for log lines over syslog.

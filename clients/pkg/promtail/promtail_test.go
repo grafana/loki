@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,14 +37,13 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
+	pserver "github.com/grafana/loki/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
-
-const httpTestPort = 9080
 
 var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
 
@@ -121,6 +121,10 @@ func TestPromtail(t *testing.T) {
 		}
 	}()
 	defer p.Shutdown() // In case the test fails before the call to Shutdown below.
+
+	svr := p.server.(*pserver.PromtailServer)
+
+	httpListenAddr := svr.Server.HTTPListenAddr()
 
 	expectedCounts := map[string]int{}
 
@@ -202,7 +206,7 @@ func TestPromtail(t *testing.T) {
 	<-time.After(500 * time.Millisecond)
 
 	// Pull out some prometheus metrics before shutting down
-	metricsBytes, contentType := getPromMetrics(t)
+	metricsBytes, contentType := getPromMetrics(t, httpListenAddr)
 
 	p.Shutdown()
 
@@ -496,8 +500,8 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.recMtx.Unlock()
 }
 
-func getPromMetrics(t *testing.T) ([]byte, string) {
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", httpTestPort))
+func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/metrics", httpListenAddr))
 	if err != nil {
 		t.Fatal("Could not query metrics endpoint", err)
 	}
@@ -561,7 +565,11 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	cfg.ServerConfig.HTTPListenAddress = hostname
 	cfg.ServerConfig.ExternalURL = hostname
 	cfg.ServerConfig.GRPCListenAddress = hostname
-	cfg.ServerConfig.HTTPListenPort = httpTestPort
+
+	// NOTE: setting port to `0` makes it bind to some unused random port.
+	// enabling tests run more self contained and easy to run tests in parallel.
+	cfg.ServerConfig.HTTPListenPort = 0
+	cfg.ServerConfig.GRPCListenPort = 0
 
 	// Override some of those defaults
 	cfg.ClientConfig.URL = clientURL

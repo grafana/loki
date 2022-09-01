@@ -456,6 +456,22 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 	}
 }
 
+func mockStreamWithDupes() logproto.Stream {
+	entries := make([]logproto.Entry, 0, 5)
+
+	for i := 0; i < 5; i++ {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      "line",
+		})
+	}
+
+	return logproto.Stream{
+		Entries: entries,
+		Labels:  `{type="test"}`,
+	}
+}
+
 type querierMock struct {
 	util.ExtendedMock
 }

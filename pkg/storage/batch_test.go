@@ -26,7 +26,7 @@ var NilMetrics = NewChunkMetrics(nil, 0)
 
 func Test_batchIterSafeStart(t *testing.T) {
 	stream := logproto.Stream{
-		Labels: fooLabelsWithName.String(),
+		Labels: fooLabelsWithNameAndShard.String(),
 		Entries: []logproto.Entry{
 			{
 				Timestamp: from,
@@ -76,7 +76,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"forward with overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -89,7 +89,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -102,7 +102,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -115,7 +115,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -128,7 +128,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -141,7 +141,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -177,7 +177,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(4 * time.Millisecond),
 			logproto.FORWARD,
 			2,
@@ -185,7 +185,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"forward all overlap and all chunks have a from time less than query from time": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -198,24 +198,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -232,7 +215,24 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -249,7 +249,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -266,7 +266,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -306,7 +306,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from.Add(1 * time.Millisecond), from.Add(5 * time.Millisecond),
 			logproto.FORWARD,
 			2,
@@ -314,7 +314,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"forward with overlapping non-continuous entries": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -331,7 +331,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -344,7 +344,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -357,7 +357,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -389,7 +389,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(3 * time.Millisecond),
 			logproto.FORWARD,
 			2,
@@ -397,7 +397,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"backward with overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -410,7 +410,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -423,7 +423,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -436,7 +436,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -449,7 +449,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -462,7 +462,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -498,7 +498,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(4 * time.Millisecond),
 			logproto.BACKWARD,
 			2,
@@ -506,7 +506,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"backward all overlap and all chunks have a through time greater than query through time": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -523,7 +523,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -540,7 +540,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -557,7 +557,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -574,7 +574,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -591,7 +591,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -627,7 +627,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(4 * time.Millisecond),
 			logproto.BACKWARD,
 			2,
@@ -635,7 +635,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"backward with overlapping non-continuous entries": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(0 * time.Millisecond),
@@ -648,7 +648,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(1 * time.Millisecond),
@@ -661,7 +661,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -674,7 +674,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(4 * time.Millisecond),
@@ -726,7 +726,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(8 * time.Millisecond),
 			logproto.BACKWARD,
 			2,
@@ -734,7 +734,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"forward without overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -747,7 +747,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -756,7 +756,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -784,7 +784,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(3 * time.Millisecond),
 			logproto.FORWARD,
 			2,
@@ -792,7 +792,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"backward without overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -805,7 +805,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -814,7 +814,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -842,7 +842,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(3 * time.Millisecond),
 			logproto.BACKWARD,
 			2,
@@ -858,7 +858,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		"forward identicals": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -867,7 +867,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -876,7 +876,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -889,7 +889,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -898,7 +898,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -907,7 +907,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -916,7 +916,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -944,7 +944,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(4 * time.Millisecond),
 			logproto.FORWARD,
 			1,
@@ -988,7 +988,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		"forward with overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -1001,7 +1001,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -1014,7 +1014,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -1027,7 +1027,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -1040,7 +1040,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -1053,7 +1053,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -1093,14 +1093,14 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(4 * time.Millisecond),
 			2,
 		},
 		"forward with overlapping non-continuous entries": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -1117,7 +1117,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -1130,7 +1130,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(time.Millisecond),
@@ -1143,7 +1143,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -1178,14 +1178,14 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(3 * time.Millisecond),
 			2,
 		},
 		"forward last chunk boundaries equal to end": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(1, 0),
@@ -1198,7 +1198,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(2, 0),
@@ -1211,7 +1211,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(3, 0),
@@ -1241,14 +1241,14 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			time.Unix(1, 0), time.Unix(3, 0),
 			2,
 		},
 		"forward last chunk boundaries equal to end and start": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(1, 0),
@@ -1261,7 +1261,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(1, 0),
@@ -1291,14 +1291,14 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			time.Unix(1, 0), time.Unix(1, 0),
 			2,
 		},
 		"forward without overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -1311,7 +1311,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
@@ -1320,7 +1320,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				}),
 				newLazyChunk(logproto.Stream{
-					Labels: fooLabelsWithName.String(),
+					Labels: fooLabelsWithNameAndShard.String(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -1351,7 +1351,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					},
 				},
 			},
-			fooLabelsWithName.String(),
+			fooLabelsWithNameAndShard.String(),
 			from, from.Add(3 * time.Millisecond),
 			2,
 		},
@@ -1389,7 +1389,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 func TestPartitionOverlappingchunks(t *testing.T) {
 	var (
 		oneThroughFour = newLazyChunk(logproto.Stream{
-			Labels: fooLabelsWithName.String(),
+			Labels: fooLabelsWithNameAndShard.String(),
 			Entries: []logproto.Entry{
 				{
 					Timestamp: from,
@@ -1402,7 +1402,7 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 			},
 		})
 		two = newLazyChunk(logproto.Stream{
-			Labels: fooLabelsWithName.String(),
+			Labels: fooLabelsWithNameAndShard.String(),
 			Entries: []logproto.Entry{
 				{
 					Timestamp: from.Add(1 * time.Millisecond),
@@ -1411,7 +1411,7 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 			},
 		})
 		three = newLazyChunk(logproto.Stream{
-			Labels: fooLabelsWithName.String(),
+			Labels: fooLabelsWithNameAndShard.String(),
 			Entries: []logproto.Entry{
 				{
 					Timestamp: from.Add(2 * time.Millisecond),
@@ -1634,7 +1634,7 @@ func Test_IsInvalidChunkError(t *testing.T) {
 func TestBatchCancel(t *testing.T) {
 	createChunk := func(from time.Time) *LazyChunk {
 		return newLazyChunk(logproto.Stream{
-			Labels: fooLabelsWithName.String(),
+			Labels: fooLabelsWithNameAndShard.String(),
 			Entries: []logproto.Entry{
 				{
 					Timestamp: from,

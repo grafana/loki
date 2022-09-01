@@ -26,6 +26,7 @@ type ExpirationChecker interface {
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
+	MarkPhaseTimedOut()
 	MarkPhaseFinished()
 	DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool
 }
@@ -71,6 +72,7 @@ func (e *expirationChecker) MarkPhaseStarted() {
 }
 
 func (e *expirationChecker) MarkPhaseFailed()   {}
+func (e *expirationChecker) MarkPhaseTimedOut() {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
@@ -105,6 +107,7 @@ func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval m
 }
 func (e *neverExpiringExpirationChecker) MarkPhaseStarted()  {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFailed()   {}
+func (e *neverExpiringExpirationChecker) MarkPhaseTimedOut() {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFinished() {}
 func (e *neverExpiringExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
 	return false

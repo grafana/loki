@@ -51,7 +51,7 @@ func TestGroupCache(t *testing.T) {
 	assert.Equal(t, c1.(*group).cacheBytes, int64(1*1e6))
 
 	// pass explicitly capacity per group should take preference.
-	c2 := gc.NewGroup("test-group2", &GroupConfig{CapacityMB: 6}, "test2")
+	c2 := gc.NewGroup("test-group2", &GroupConfig{MaxSizeMB: 6}, "test2")
 	defer c.Stop()
 
 	assert.Equal(t, c2.(*group).cacheBytes, int64(6*1e6))
@@ -60,8 +60,8 @@ func TestGroupCache(t *testing.T) {
 
 func setupGroupCache() (*GroupCache, error) {
 	return NewGroupCache(&mockRingManager{}, GroupCacheConfig{
-		Enabled:    true,
-		CapacityMB: 1,
+		Enabled:   true,
+		MaxSizeMB: 1,
 	}, log.NewNopLogger(), nil)
 }
 

@@ -287,10 +287,10 @@ func (w withClientCertSource) Apply(o *internal.DialSettings) {
 // service account SA2 while using delegate service accounts DSA1 and DSA2,
 // the following must be true:
 //
-//   1. Base service account SA1 has roles/iam.serviceAccountTokenCreator on
-//      DSA1.
-//   2. DSA1 has roles/iam.serviceAccountTokenCreator on DSA2.
-//   3. DSA2 has roles/iam.serviceAccountTokenCreator on target SA2.
+//  1. Base service account SA1 has roles/iam.serviceAccountTokenCreator on
+//     DSA1.
+//  2. DSA1 has roles/iam.serviceAccountTokenCreator on DSA2.
+//  3. DSA2 has roles/iam.serviceAccountTokenCreator on target SA2.
 //
 // The resulting impersonated credential will either have the default scopes of
 // the client being instantiating or the scopes from WithScopes if provided.

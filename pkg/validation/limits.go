@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-kit/log/level"
+	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
@@ -16,7 +18,9 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -81,6 +85,7 @@ type Limits struct {
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
+	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -111,7 +116,8 @@ type Limits struct {
 	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 	RulerRemoteWriteSigV4Config            *sigv4.SigV4Config           `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
 
-	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
+	// Global and per tenant deletion mode
+	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -120,6 +126,9 @@ type Limits struct {
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
+
+	// Deprecated
+	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
 }
 
 type StreamRetention struct {
@@ -163,6 +172,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
+	_ = l.QueryTimeout.Set("1m")
+	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
@@ -196,7 +207,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("30m")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 
-	f.BoolVar(&l.CompactorDeletionEnabled, "compactor.allow-deletes", false, "Enable access to the deletion API.")
+	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Set the deletion mode for the user. Options are: disabled, filter-only, and filter-and-delete")
+
+	// Deprecated
+	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -234,6 +248,15 @@ func (l *Limits) Validate() error {
 			l.StreamRetention[i].Matchers = matchers
 		}
 	}
+
+	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
+		return err
+	}
+
+	if l.CompactorDeletionEnabled {
+		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
+	}
+
 	return nil
 }
 
@@ -423,6 +446,10 @@ func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
+func (o *Overrides) QueryTimeout(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
+}
+
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
 }
@@ -536,8 +563,8 @@ func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
 }
 
-func (o *Overrides) CompactorDeletionEnabled(userID string) bool {
-	return o.getOverridesForUser(userID).CompactorDeletionEnabled
+func (o *Overrides) DeletionMode(userID string) string {
+	return o.getOverridesForUser(userID).DeletionMode
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

@@ -869,8 +869,12 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		if params == nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
-		if p, err = strconv.Atoi(*params); err != nil {
+		p, err = strconv.Atoi(*params)
+		if err != nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
+		}
+		if p <= 0 {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0))
 		}
 
 	default:
@@ -924,10 +928,16 @@ func canInjectVectorGrouping(vecOp, rangeOp string) bool {
 
 func (e *VectorAggregationExpr) String() string {
 	var params []string
-	if e.Params != 0 {
+	switch e.Operation {
+	// bottomK and topk can have first parameter as 0
+	case OpTypeBottomK, OpTypeTopK:
 		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
-	} else {
-		params = []string{e.Left.String()}
+	default:
+		if e.Params != 0 {
+			params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
+		} else {
+			params = []string{e.Left.String()}
+		}
 	}
 	return formatOperation(e.Operation, e.Grouping, params...)
 }

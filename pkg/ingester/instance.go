@@ -1,14 +1,21 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
+	fmt "fmt"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor"
+
 	"github.com/go-kit/log/level"
+	spb "github.com/gogo/googleapis/google/rpc"
+	"github.com/gogo/protobuf/types"
+	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,6 +26,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -158,6 +166,11 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	return err
 }
 
+// Push will iterate over the given streams present in the PushRequest and attempt to store them.
+//
+// Although multiple streams are part of the PushRequest, the returned error only reflects what
+// happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
+// and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
@@ -185,10 +198,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, err = s.Push(ctx, reqStream.Entries, record, 0, false)
-		if err != nil {
-			appendErr = err
-		}
+		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
+		appendErr = errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
+
 		s.chunkMtx.Unlock()
 	}
 
@@ -209,6 +221,73 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	}
 
 	return appendErr
+}
+
+// errorForFailedEntries mounts an error to be returned in a GRPC call based on entries that couldn't be ingested.
+//
+// The returned error is enriched with the gRPC error status and with a list of details.
+// As of now, the list of details is a list of all streams that were rate-limited. This list can be used
+// by the distributor to fine tune streams that were limited.
+func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
+	if len(failedEntriesWithError) == 0 {
+		return nil
+	}
+
+	lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
+	_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+	outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
+	if !outOfOrder && !ok {
+		return lastEntryWithErr.e
+	}
+
+	var statusCode int
+	if outOfOrder {
+		statusCode = http.StatusBadRequest
+	}
+	if ok {
+		// per-stream or ingestion limited.
+		statusCode = http.StatusTooManyRequests
+	}
+
+	// Return a http status 4xx request response with all failed entries.
+	buf := bytes.Buffer{}
+	streamName := s.labelsString
+
+	limitedFailedEntries := failedEntriesWithError
+	if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+		limitedFailedEntries = limitedFailedEntries[:maxIgnore]
+	}
+
+	for _, entryWithError := range limitedFailedEntries {
+		fmt.Fprintf(&buf,
+			"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+	}
+
+	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
+
+	var details []*types.Any
+
+	if statusCode == http.StatusTooManyRequests {
+		details = append(details, mountPerStreamDetails(streamName)...)
+	}
+
+	return status.ErrorProto(&spb.Status{
+		Code:    int32(statusCode),
+		Message: buf.String(),
+		Details: details,
+	})
+}
+
+func mountPerStreamDetails(streamLabels string) []*types.Any {
+	rls := logproto.RateLimitedStream{Labels: streamLabels}
+	marshalledStream, err := types.MarshalAny(&rls)
+	if err == nil {
+		return []*types.Any{marshalledStream}
+	}
+
+	level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
+	return []*types.Any{}
 }
 
 func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
@@ -446,14 +525,20 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
+
 		names, err := i.index.LabelNames(*req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
-		labels = make([]string, len(names))
-		for i := 0; i < len(names); i++ {
-			labels[i] = names[i]
+
+		labels = make([]string, 0, len(names))
+		for _, n := range names {
+			if n == distributor.ShardLbName {
+				continue
+			}
+			labels = append(labels, n)
 		}
+
 		return &logproto.LabelResponse{
 			Values: labels,
 		}, nil
@@ -498,7 +583,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		series = make([]logproto.SeriesIdentifier, 0, i.streams.Len())
 		err = i.forMatchingStreams(ctx, req.Start, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
-			if shouldConsiderStream(stream, req) {
+			if shouldConsiderStream(stream, req.Start, req.End) {
 				series = append(series, logproto.SeriesIdentifier{
 					Labels: stream.labels.Map(),
 				})
@@ -513,7 +598,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		for _, matchers := range groups {
 			err = i.forMatchingStreams(ctx, req.Start, matchers, shard, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
-				if shouldConsiderStream(stream, req) {
+				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
 					key := stream.labels.Hash()
 					if _, found := dedupedSeries[key]; found {
@@ -537,6 +622,47 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	}
 
 	return &logproto.SeriesResponse{Series: series}, nil
+}
+
+func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &logproto.IndexStatsResponse{}
+	from, through := req.From.Time(), req.Through.Time()
+
+	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
+		// checks for equality against chunk flush fields
+		var zeroValueTime time.Time
+
+		// Consider streams which overlap our time range
+		if shouldConsiderStream(s, from, through) {
+			s.chunkMtx.RLock()
+			res.Streams++
+			for _, chk := range s.chunks {
+				// Consider chunks which overlap our time range
+				// and haven't been flushed.
+				// Flushed chunks will already be counted
+				// by the TSDB manager+shipper
+				chkFrom, chkThrough := chk.chunk.Bounds()
+
+				if !chk.flushed.Equal(zeroValueTime) && from.Before(chkThrough) && through.After(chkFrom) {
+					res.Chunks++
+					res.Entries += uint64(chk.chunk.Size())
+					res.Bytes += uint64(chk.chunk.UncompressedSize())
+				}
+
+			}
+			s.chunkMtx.RUnlock()
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (i *instance) numStreams() int {
@@ -603,6 +729,10 @@ outer:
 		if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
 			continue
 		}
+
+		// To Enable downstream deduplication of sharded streams, remove the shard label
+		stream.labels = labels.NewBuilder(stream.labels).Del(distributor.ShardLbName).Labels()
+
 		err := fn(stream)
 		if err != nil {
 			return err
@@ -773,10 +903,10 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	return nil
 }
 
-func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
+func shouldConsiderStream(stream *stream, reqFrom, reqThrough time.Time) bool {
 	from, to := stream.Bounds()
 
-	if req.End.UnixNano() > from.UnixNano() && req.Start.UnixNano() <= to.UnixNano() {
+	if reqThrough.UnixNano() > from.UnixNano() && reqFrom.UnixNano() <= to.UnixNano() {
 		return true
 	}
 	return false

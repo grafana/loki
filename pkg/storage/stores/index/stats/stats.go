@@ -7,13 +7,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/willf/bloom"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var BloomPool PoolBloom
 
-type Stats = indexgatewaypb.IndexStatsResponse
+type Stats = logproto.IndexStatsResponse
 
 func MergeStats(xs ...*Stats) (s Stats) {
 	for _, x := range xs {
@@ -45,7 +45,7 @@ func (p *PoolBloom) Get() *Blooms {
 func (p *PoolBloom) Put(x *Blooms) {
 	x.Streams.ClearAll()
 	x.Chunks.ClearAll()
-	x.stats = Stats{}
+	x.stats = &Stats{}
 	p.pool.Put(x)
 }
 
@@ -75,6 +75,7 @@ func newBlooms() *Blooms {
 	return &Blooms{
 		Streams: streams,
 		Chunks:  chunks,
+		stats:   &Stats{},
 	}
 }
 
@@ -86,16 +87,16 @@ func newBlooms() *Blooms {
 type Blooms struct {
 	sync.RWMutex
 	Streams, Chunks *bloom.BloomFilter
-	stats           Stats
+	stats           *Stats
 }
 
-func (b *Blooms) Stats() Stats { return b.stats }
+func (b *Blooms) Stats() Stats { return b.stats.Stats() }
 
 func (b *Blooms) AddStream(fp model.Fingerprint) {
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, uint64(fp))
 	b.add(b.Streams, key, func() {
-		b.stats.Streams++
+		b.stats.AddStream(fp)
 	})
 }
 
@@ -108,9 +109,7 @@ func (b *Blooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
 	binary.BigEndian.PutUint64(key[16:], uint64(chk.MaxTime))
 	binary.BigEndian.PutUint32(key[24:], chk.Checksum)
 	b.add(b.Chunks, key, func() {
-		b.stats.Chunks++
-		b.stats.Bytes += uint64(chk.KB << 10)
-		b.stats.Entries += uint64(chk.Entries)
+		b.stats.AddChunk(fp, chk)
 	})
 }
 

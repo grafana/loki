@@ -500,6 +500,17 @@ func (s *Server) Run() error {
 	return <-errChan
 }
 
+// HTTPListenAddr exposes `net.Addr` that `Server` is listening to for HTTP connections.
+func (s *Server) HTTPListenAddr() net.Addr {
+	return s.httpListener.Addr()
+
+}
+
+// GRPCListenAddr exposes `net.Addr` that `Server` is listening to for GRPC connections.
+func (s *Server) GRPCListenAddr() net.Addr {
+	return s.grpcListener.Addr()
+}
+
 // Stop unblocks Run().
 func (s *Server) Stop() {
 	s.handler.Stop()
