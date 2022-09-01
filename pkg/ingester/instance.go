@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor"
-
 	"github.com/go-kit/log/level"
 	spb "github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/protobuf/types"
@@ -525,20 +523,14 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
-
 		names, err := i.index.LabelNames(*req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
-
-		labels = make([]string, 0, len(names))
-		for _, n := range names {
-			if n == distributor.ShardLbName {
-				continue
-			}
-			labels = append(labels, n)
+		labels = make([]string, len(names))
+		for i := 0; i < len(names); i++ {
+			labels[i] = names[i]
 		}
-
 		return &logproto.LabelResponse{
 			Values: labels,
 		}, nil
@@ -729,10 +721,6 @@ outer:
 		if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
 			continue
 		}
-
-		// To Enable downstream deduplication of sharded streams, remove the shard label
-		stream.labels = labels.NewBuilder(stream.labels).Del(distributor.ShardLbName).Labels()
-
 		err := fn(stream)
 		if err != nil {
 			return err

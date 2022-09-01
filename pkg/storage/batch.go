@@ -5,8 +5,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor"
-
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -414,7 +412,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamPipeline := it.pipeline.ForStream(filteredLabels(chunks[0][0].Chunk.Metric))
+			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
 			iterator, err := it.buildHeapIterator(chunks, from, through, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
@@ -558,7 +556,7 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 	result := make([]iter.SampleIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamExtractor := it.extractor.ForStream(filteredLabels(chunks[0][0].Chunk.Metric))
+			streamExtractor := it.extractor.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
 			iterator, err := it.buildHeapIterator(chunks, from, through, streamExtractor, nextChunk)
 			if err != nil {
 				return nil, err
@@ -568,13 +566,6 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 	}
 
 	return result, nil
-}
-
-func filteredLabels(ls labels.Labels) labels.Labels {
-	return labels.NewBuilder(ls).
-		Del(labels.MetricName).
-		Del(distributor.ShardLbName).
-		Labels()
 }
 
 func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractor log.StreamSampleExtractor, nextChunk *LazyChunk) (iter.SampleIterator, error) {
