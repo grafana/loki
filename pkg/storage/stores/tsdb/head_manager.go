@@ -147,7 +147,16 @@ func (m *HeadManager) loop() {
 	defer m.wg.Done()
 
 	buildPrev := func() error {
+		if m.prev == nil {
+			return nil
+		}
+
 		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			level.Error(m.log).Log(
+				"msg", "failed building tsdb head",
+				"period", m.period.PeriodFor(m.prev.initialized),
+				"err", err,
+			)
 			return errors.Wrap(err, "building tsdb head")
 		}
 
@@ -167,17 +176,9 @@ func (m *HeadManager) loop() {
 		select {
 		case <-ticker.C:
 			// retry tsdb build failures from previous run
-			if m.prev != nil {
-				err := buildPrev()
-				if err != nil {
-					level.Error(m.log).Log(
-						"msg", "failed building tsdb head",
-						"period", m.period.PeriodFor(m.prev.initialized),
-						"err", err,
-					)
-					// rotating head without building prev would result in loss of index for that period (until restart)
-					continue
-				}
+			if err := buildPrev(); err != nil {
+				// rotating head without building prev would result in loss of index for that period (until restart)
+				continue
 			}
 
 			now := time.Now()
@@ -192,16 +193,7 @@ func (m *HeadManager) loop() {
 			}
 
 			// build tsdb from rotated-out period
-			if m.prev != nil {
-				err := buildPrev()
-				if err != nil {
-					level.Error(m.log).Log(
-						"msg", "failed building tsdb head",
-						"period", m.period.PeriodFor(m.prev.initialized),
-						"err", err,
-					)
-				}
-			}
+			buildPrev()
 		case <-m.cancel:
 			return
 		}
