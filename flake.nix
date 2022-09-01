@@ -1,5 +1,5 @@
 {
-  description = "Grafana Enterprise Logs";
+  description = "Grafana Loki";
 
   # Nixpkgs / NixOS version to use.
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
