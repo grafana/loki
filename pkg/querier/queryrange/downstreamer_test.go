@@ -201,7 +201,7 @@ func ensureParallelism(t *testing.T, in *instance, n int) {
 	for i := 0; i < n; i++ {
 		select {
 		case <-in.locks:
-		case <-time.After(time.Millisecond):
+		case <-time.After(time.Second):
 			require.FailNow(t, "lock couldn't be acquired")
 		}
 	}
