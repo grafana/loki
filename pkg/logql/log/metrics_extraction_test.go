@@ -179,14 +179,30 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 }
 
 func Test_Extract_ExpectedLabels(t *testing.T) {
+	baseLbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}, {Name: ShardLbName, Value: "1"}}
+
 	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser()}, NoopStage))
 
-	f, lbs, ok := ex.ForStream(labels.Labels{{Name: "bar", Value: "foo"}}).ProcessString(0, `{"duration":"20ms","foo":"json"}`)
+	se := ex.ForStream(lbs)
+	require.Equal(t, baseLbs, se.BaseLabels().Labels())
+
+	f, l, ok := ex.ForStream(lbs).ProcessString(0, `{"duration":"20ms","foo":"json"}`)
 	require.True(t, ok)
 	require.Equal(t, (20 * time.Millisecond).Seconds(), f)
-	require.Equal(t, labels.Labels{{Name: "foo", Value: "json"}}, lbs.Labels())
-
+	require.Equal(t, baseLbs, l.Labels())
 }
+
+func Test_LineSampleExtractorLabels(t *testing.T) {
+	baseLbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}, {Name: ShardLbName, Value: "1"}}
+
+	ex := mustSampleExtractor(NewLineSampleExtractor(CountExtractor, []Stage{NoopStage}, nil, false, false))
+
+	se := ex.ForStream(lbs)
+	require.Equal(t, baseLbs, se.BaseLabels().Labels())
+}
+
 func TestLabelExtractorWithStages(t *testing.T) {
 
 	// A helper type to check if particular logline should be skipped

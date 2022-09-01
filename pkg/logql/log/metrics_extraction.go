@@ -59,17 +59,19 @@ func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, w
 	}, nil
 }
 
-func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
+func (l *lineSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
 	if res, ok := l.streamExtractors[hash]; ok {
 		return res
 	}
 
+	lbls = labels.NewBuilder(lbls).Del(ShardLbName).Labels()
 	res := &streamLineSampleExtractor{
 		Stage:         l.Stage,
 		LineExtractor: l.LineExtractor,
-		builder:       l.baseBuilder.ForLabels(labels, hash),
+		builder:       l.baseBuilder.ForLabels(lbls, l.baseBuilder.Hash(lbls)),
 	}
+
 	l.streamExtractors[hash] = res
 	return res
 }
@@ -154,15 +156,16 @@ type streamLabelSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
+func (l *labelSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
 	if res, ok := l.streamExtractors[hash]; ok {
 		return res
 	}
 
+	lbls = labels.NewBuilder(lbls).Del(ShardLbName).Labels()
 	res := &streamLabelSampleExtractor{
 		labelSampleExtractor: l,
-		builder:              l.baseBuilder.ForLabels(labels, hash),
+		builder:              l.baseBuilder.ForLabels(lbls, l.baseBuilder.Hash(lbls)),
 	}
 	l.streamExtractors[hash] = res
 	return res

@@ -7,6 +7,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+const (
+	ShardLbName        = "__stream_shard__"
+	ShardLbPlaceholder = "__placeholder__"
+)
+
 // NoopStage is a stage that doesn't process a log line.
 var NoopStage Stage = &noopStage{}
 
@@ -64,12 +69,15 @@ func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsR
 
 func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.LabelsResult }
 
-func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	h := labels.Hash()
+func (n *noopPipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	h := lbls.Hash()
 	if cached, ok := n.cache[h]; ok {
 		return cached
 	}
-	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
+
+	lbls = labels.NewBuilder(lbls).Del(ShardLbName).Labels()
+	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(lbls, lbls.Hash())}
+
 	n.cache[h] = sp
 	return sp
 }
@@ -142,13 +150,15 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 	return &streamPipeline{stages, labelsBuilder}
 }
 
-func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
-	hash := p.baseBuilder.Hash(labels)
+func (p *pipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	hash := p.baseBuilder.Hash(lbls)
 	if res, ok := p.streamPipelines[hash]; ok {
 		return res
 	}
 
-	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
+	lbls = labels.NewBuilder(lbls).Del(ShardLbName).Labels()
+	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(lbls, p.baseBuilder.Hash(lbls)))
+
 	p.streamPipelines[hash] = res
 	return res
 }

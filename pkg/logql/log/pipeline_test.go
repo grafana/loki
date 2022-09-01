@@ -11,32 +11,43 @@ import (
 )
 
 func TestNoopPipeline(t *testing.T) {
-	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
-	l, lbr, matches := NewNoopPipeline().ForStream(lbs).Process(0, []byte(""))
+	baseLbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}, {Name: ShardLbName, Value: "1"}}
+
+	p := NewNoopPipeline().ForStream(lbs)
+	require.Equal(t, baseLbs, p.BaseLabels().Labels())
+
+	l, lbr, matches := p.Process(0, []byte(""))
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, NewLabelsResult(baseLbs, baseLbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := NewNoopPipeline().ForStream(lbs).ProcessString(0, "")
 	require.Equal(t, "", ls)
-	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, NewLabelsResult(baseLbs, baseLbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 }
 
 func TestPipeline(t *testing.T) {
-	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	baseLbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}, {Name: ShardLbName, Value: "1"}}
+
 	p := NewPipeline([]Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		newMustLineFormatter("lbs {{.foo}}"),
 	})
-	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"))
+
+	sp := p.ForStream(lbs)
+	require.Equal(t, baseLbs, sp.BaseLabels().Labels())
+
+	l, lbr, matches := sp.Process(0, []byte("line"))
 	require.Equal(t, []byte("lbs bar"), l)
-	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, NewLabelsResult(baseLbs, baseLbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line")
 	require.Equal(t, "lbs bar", ls)
-	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, NewLabelsResult(baseLbs, baseLbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
 	l, lbr, matches = p.ForStream(labels.Labels{}).Process(0, []byte("line"))
