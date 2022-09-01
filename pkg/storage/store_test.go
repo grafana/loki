@@ -1064,7 +1064,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	// build and add chunks to the store
 	addedChunkIDs := map[string]struct{}{}
 	for _, tr := range chunksToBuildForTimeRanges {
-		chk := newChunk(buildTestStreams(fooLabelsWithName, tr))
+		chk := newChunk(buildTestStreams(fooLabelsWithNameAndShard, tr))
 
 		err := store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
@@ -1081,7 +1081,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithNameAndShard.String())...)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {

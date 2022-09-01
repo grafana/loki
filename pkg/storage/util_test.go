@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -29,8 +31,8 @@ import (
 )
 
 var (
-	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
-	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
+	fooLabelsWithNameAndShard = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}, {Name: distributor.ShardLbName, Value: "3"}}
+	fooLabels                 = labels.Labels{{Name: "foo", Value: "bar"}}
 )
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())

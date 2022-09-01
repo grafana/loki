@@ -11,6 +11,9 @@ Installed components:
 {{- if .Values.gateway.enabled }}
 * gateway
 {{- end }}
+{{- if .Values.minio.enabled }}
+* minio 
+{{- end }}
 * read
 * write
 {{- end }}

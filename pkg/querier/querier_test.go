@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/iter"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -1108,6 +1110,45 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	require.Contains(t, store.Calls[0].Arguments, logql.SelectLogParams{QueryRequest: expectedRequest})
 	require.Contains(t, ingesterClient.Calls[0].Arguments, expectedRequest)
 	require.Equal(t, "test", delGetter.user)
+}
+
+func TestQuerier_SelectLogWithDupesInStream(t *testing.T) {
+	store := newStoreMock()
+	store.On("SelectLogs", mock.Anything, mock.Anything).Return(iter.NewStreamIterator(mockStreamWithDupes()), nil)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	cfg := mockQuerierConfig()
+	cfg.QueryStoreOnly = true
+
+	q, err := newQuerier(
+		cfg,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(nil),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		store,
+		limits,
+	)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	request := logproto.QueryRequest{
+		Selector:  `{type="test"}`,
+		Limit:     10,
+		Start:     time.Unix(0, 300000000),
+		End:       time.Unix(0, 600000000),
+		Direction: logproto.FORWARD,
+	}
+
+	itr, err := q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
+	require.NoError(t, err)
+
+	require.True(t, itr.Next())
+	require.Equal(t, itr.Entry().Line, "line")
+	require.False(t, itr.Next())
 }
 
 func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
