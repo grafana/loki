@@ -67,6 +67,10 @@ type FeatureGates struct {
 	// RecordingRuleWebhook enables the RecordingRule CR validation webhook.
 	RecordingRuleWebhook bool `json:"recordingRuleWebhook,omitempty"`
 
+	// When DefaultNodeAffinity is enabled the operator will set a default node affinity on all pods.
+	// This will limit scheduling of the pods to Nodes with Linux.
+	DefaultNodeAffinity bool `json:"defaultNodeAffinity,omitempty"`
+
 	// OpenShift contains a set of feature gates supported only on OpenShift.
 	OpenShift OpenShiftFeatureGates `json:"openshift,omitempty"`
 }
