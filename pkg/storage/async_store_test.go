@@ -66,7 +66,7 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	}
 
 	for i := 0; i < num; i++ {
-		chk := newChunk(buildTestStreams(fooLabelsWithNameAndShard, timeRange{
+		chk := newChunk(buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))

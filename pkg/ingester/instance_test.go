@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor"
-
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -200,8 +198,8 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	currentTime := time.Now()
 
 	testStreams := []logproto.Stream{
-		{Labels: fmt.Sprintf("{app=\"test\",job=\"varlogs\",%s=\"1\"}", distributor.ShardLbName), Entries: entries(5, currentTime)},
-		{Labels: fmt.Sprintf("{app=\"test2\",job=\"varlogs\",%s=\"1\"}", distributor.ShardLbName), Entries: entries(5, currentTime.Add(6*time.Nanosecond))},
+		{Labels: "{app=\"test\",job=\"varlogs\"}", Entries: entries(5, currentTime)},
+		{Labels: "{app=\"test2\",job=\"varlogs\"}", Entries: entries(5, currentTime.Add(6*time.Nanosecond))},
 	}
 
 	for _, testStream := range testStreams {
@@ -333,7 +331,7 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				// Separated by shard number
-				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
+				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
 			},
 		},
 		{
@@ -528,79 +526,6 @@ func Test_Iterator(t *testing.T) {
 	})
 	require.Equal(t, int64(9), res.Streams[0].Entries[0].Timestamp.UnixNano())
 	require.Equal(t, int64(8), res.Streams[1].Entries[0].Timestamp.UnixNano())
-}
-
-func Test_IteratorFiltersStreamLabels(t *testing.T) {
-	instance := defaultInstance(t)
-
-	require.NoError(t,
-		instance.Push(context.TODO(), &logproto.PushRequest{
-			Streams: []logproto.Stream{
-				{
-					Labels: fmt.Sprintf(`{host="agent", log_stream="worker",job="3",%s="1"}`, distributor.ShardLbName),
-					Entries: []logproto.Entry{
-						{Timestamp: time.Unix(0, int64(1)), Line: fmt.Sprint(`msg="worker_1"`)},
-					},
-				},
-			},
-		}),
-	)
-
-	it, err := instance.Query(context.TODO(),
-		logql.SelectLogParams{
-			QueryRequest: &logproto.QueryRequest{
-				Selector:  `{job="3"} | logfmt`,
-				Start:     time.Unix(0, 0),
-				End:       time.Unix(0, 100000000),
-				Direction: logproto.BACKWARD,
-			},
-		},
-	)
-	require.NoError(t, err)
-
-	// All of the streams are returned but none have the shard label
-	var count int
-	for it.Next() {
-		count++
-		require.NotContains(t, it.Labels(), distributor.ShardLbName)
-	}
-	require.Equal(t, 11, count)
-}
-
-func Test_SamplesIteratorFiltersStreamLabels(t *testing.T) {
-	instance := defaultInstance(t)
-
-	require.NoError(t,
-		instance.Push(context.TODO(), &logproto.PushRequest{
-			Streams: []logproto.Stream{
-				{
-					Labels: fmt.Sprintf(`{host="agent", log_stream="worker",job="3",%s="1"}`, distributor.ShardLbName),
-					Entries: []logproto.Entry{
-						{Timestamp: time.Unix(0, int64(1)), Line: fmt.Sprint(`msg="worker_1"`)},
-					},
-				},
-			},
-		}),
-	)
-
-	it, err := instance.QuerySample(context.TODO(),
-		logql.SelectSampleParams{
-			SampleQueryRequest: &logproto.SampleQueryRequest{
-				Selector: `count_over_time({job="3"}[5m])`,
-				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, 100000000),
-			},
-		},
-	)
-	require.NoError(t, err)
-
-	// All of the streams are returned but none have the shard label
-	var count int
-	for it.Next() {
-		count++
-		require.NotContains(t, it.Labels(), distributor.ShardLbName)
-	}
-	require.Equal(t, 11, count)
 }
 
 type testFilter struct{}
