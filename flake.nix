@@ -4,15 +4,11 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    flake-utils.inputs.nixpkgs.follows = "nixpkgs";
-
-    # helm-docs @ 1.8.1
-    helm-docs-nixpkgs.url = "nixpkgs/bf972dc380f36a3bf83db052380e55f0eaa7dcb6";
   };
 
   # Nixpkgs / NixOS version to use.
 
-  outputs = { self, nixpkgs, flake-utils, helm-docs-nixpkgs }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         golangci-lint-overlay = final: prev: {
@@ -33,6 +29,40 @@
 
                   vendorSha256 =
                     "sha256-pcbKg1ePN8pObS9EzP3QYjtaty27L9sroKUs/qEPtJo=";
+
+                  ldflags = [
+                    "-s"
+                    "-w"
+                    "-X main.version=${version}"
+                    "-X main.commit=v${version}"
+                    "-X main.date=19700101-00:00:00"
+                  ];
+                });
+            };
+        };
+
+        helm-docs-overlay = final: prev: {
+          helm-docs = prev.callPackage
+            "${prev.path}/pkgs/applications/networking/cluster/helm-docs"
+            {
+              buildGoModule = args:
+                prev.buildGoModule (args // rec {
+                  version = "1.8.1";
+
+                  src = prev.fetchFromGitHub {
+                    owner = "norwoodj";
+                    repo = "helm-docs";
+                    rev = "v${version}";
+                    sha256 = "sha256-OpS/CYBb2Ll6ktvEhqkw/bWMSrFa4duidK3Glu8EnPw=";
+                  };
+
+                  vendorSha256 = "sha256-FpmeOQ8nV+sEVu2+nY9o9aFbCpwSShQUFOmyzwEQ9Pw=";
+
+                  ldflags = [
+                    "-w"
+                    "-s"
+                    "-X main.version=v${version}"
+                  ];
                 });
             };
         };
@@ -43,10 +73,8 @@
           inherit system;
           overlays = [
             golangci-lint-overlay
+            helm-docs-overlay
             nix.overlay
-            (final: prev: {
-              inherit (import helm-docs-nixpkgs { inherit system; }) helm-docs;
-            })
           ];
           config = { allowUnfree = true; };
         };
@@ -69,9 +97,26 @@
                 '')
               }/bin/lint.sh";
           };
+
+          loki = {
+            type = "app";
+            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki";
+          };
+          promtail = {
+            type = "app";
+            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
+          };
+          logcli = {
+            type = "app";
+            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
+          };
+          loki-canary = {
+            type = "app";
+            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
+          };
         };
 
-        devShell = pkgs.mkShell {
+        devShell = mkShell {
           nativeBuildInputs = [
             gcc
             go

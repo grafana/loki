@@ -15,21 +15,6 @@
         "type": "github"
       }
     },
-    "helm-docs-nixpkgs": {
-      "locked": {
-        "lastModified": 1653335222,
-        "narHash": "sha256-iB8j9wzc6e+YUGL//RCBK+uj4Ke6JbBFylKpaC+SxNE=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "bf972dc380f36a3bf83db052380e55f0eaa7dcb6",
-        "type": "github"
-      },
-      "original": {
-        "id": "nixpkgs",
-        "rev": "bf972dc380f36a3bf83db052380e55f0eaa7dcb6",
-        "type": "indirect"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1661931183,
@@ -49,7 +34,6 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "helm-docs-nixpkgs": "helm-docs-nixpkgs",
         "nixpkgs": "nixpkgs"
       }
     }
