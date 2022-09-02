@@ -6,5 +6,5 @@
 # changes to this file should not be comitted to main.
 # See the README for more details.
 {
-  gitBranch = "add-nix";
+  gitBranch = "main";
 }
