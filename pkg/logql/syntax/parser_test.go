@@ -2855,6 +2855,10 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", 1, 20),
 		},
 		{
+			in:  `vector(abc)`,
+			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8),
+		},
+		{
 			in: `{app="foo"}
 					# |= "bar"
 					| json`,

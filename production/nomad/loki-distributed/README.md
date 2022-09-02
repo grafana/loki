@@ -79,7 +79,7 @@ healthcheck:
 ```
 
 ```hcl
-    task "distibutor" {
+    task "distributor" {
       driver       = "docker"
       user         = "nobody"
       kill_timeout = "90s"
@@ -132,7 +132,7 @@ integration:
       ]
 
       check {
-        name     = "Loki distibutor"
+        name     = "Loki distributor"
         port     = "health"
         type     = "http"
         path     = "/ready"

@@ -121,7 +121,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := stores.NewCompositeStore(limits)
+	stores := stores.NewCompositeStore(limits, registerer)
 
 	s := &store{
 		Store:     stores,

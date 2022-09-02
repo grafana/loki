@@ -420,13 +420,43 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				{Name: "__error_details__", Value: "template: label:1:2: executing \"label\" at <replace>: wrong number of args for replace: want 3 got 2"},
 			},
 		},
+		{
+			"line",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("line", "{{ __line__ }}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "line", Value: "test line"},
+			},
+		},
+		{
+			"timestamp",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | date \"2006-01-02\" }}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "ts", Value: "2022-08-26"},
+			},
+		},
+		{
+			"timestamp_unix",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | unixEpoch }}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "ts", Value: "1661518453"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
 			builder.Reset()
-			_, _ = tt.fmter.Process(0, nil, builder)
+			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})

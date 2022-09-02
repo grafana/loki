@@ -20,8 +20,7 @@ import (
 )
 
 const (
-	uploadIndexSetsConcurrency = 10
-	gzipExtension              = ".gz"
+	gzipExtension = ".gz"
 )
 
 var errRetentionFileCountNotOne = fmt.Errorf("can't apply retention when index file count is not one")
@@ -71,6 +70,7 @@ type MakeEmptyUserIndexSetFunc func(userID string) (IndexSet, error)
 type table struct {
 	name               string
 	workingDirectory   string
+	uploadConcurrency  int
 	indexStorageClient storage.Client
 	indexCompactor     IndexCompactor
 	tableMarker        retention.TableMarker
@@ -89,6 +89,7 @@ type table struct {
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
 	indexCompactor IndexCompactor, periodConfig config.PeriodConfig,
 	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
+	uploadConcurrency int,
 ) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
@@ -107,6 +108,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		indexSets:          map[string]*indexSet{},
 		baseUserIndexSet:   storage.NewIndexSet(indexStorageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(indexStorageClient, false),
+		uploadConcurrency:  uploadConcurrency,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -195,7 +197,7 @@ func (t *table) done() error {
 		userIDs = append(userIDs, userID)
 	}
 
-	err := concurrency.ForEachJob(t.ctx, len(userIDs), uploadIndexSetsConcurrency, func(ctx context.Context, idx int) error {
+	err := concurrency.ForEachJob(t.ctx, len(userIDs), t.uploadConcurrency, func(ctx context.Context, idx int) error {
 		return t.indexSets[userIDs[idx]].done()
 	})
 	if err != nil {

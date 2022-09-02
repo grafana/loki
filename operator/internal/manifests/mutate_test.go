@@ -18,17 +18,6 @@ import (
 )
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
-	got := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				"test": "test",
-			},
-			Annotations: map[string]string{
-				"test": "test",
-			},
-		},
-	}
-
 	want := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
@@ -37,9 +26,20 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 			Annotations: map[string]string{
 				"test": "test",
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					BlockOwnerDeletion: pointer.Bool(true),
+					Controller:         pointer.Bool(true),
+					Kind:               "LokiStack",
+					Name:               "lokistack-testing",
+					UID:                "6128aa83-de7f-47c0-abf2-4a380713b599",
+				},
+			},
 		},
 	}
 
+	got := &corev1.ConfigMap{}
 	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
@@ -47,6 +47,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	// Partial mutation checks
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.OwnerReferences, want.OwnerReferences)
 }
 
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {

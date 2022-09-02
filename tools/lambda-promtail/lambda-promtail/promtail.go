@@ -39,6 +39,13 @@ type batch struct {
 	size    int
 }
 
+type batchIf interface {
+	add(ctx context.Context, e entry) error
+	encode() ([]byte, int, error)
+	createPushRequest() (*logproto.PushRequest, int)
+	flushBatch(ctx context.Context) error
+}
+
 func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
 	b := &batch{
 		streams: map[string]*logproto.Stream{},

@@ -17,12 +17,35 @@ import (
 
 // implements stores.Index
 type IndexClient struct {
-	idx Index
+	idx  Index
+	opts IndexClientOptions
 }
 
-func NewIndexClient(idx Index) *IndexClient {
+type IndexClientOptions struct {
+	// Whether using bloom filters in the Stats() method
+	// should be skipped. This helps probabilistically detect
+	// duplicates when chunks are written to multiple
+	// index buckets, which is of use in the (index-gateway|querier)
+	// but not worth the memory costs in the ingesters.
+	UseBloomFilters bool
+}
+
+func DefaultIndexClientOptions() IndexClientOptions {
+	return IndexClientOptions{
+		UseBloomFilters: true,
+	}
+}
+
+type IndexStatsAccumulator interface {
+	AddStream(fp model.Fingerprint)
+	AddChunk(fp model.Fingerprint, chk index.ChunkMeta)
+	Stats() stats.Stats
+}
+
+func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
 	return &IndexClient{
-		idx: idx,
+		idx:  idx,
+		opts: opts,
 	}
 }
 
@@ -148,14 +171,20 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 		return nil, err
 	}
 
-	blooms := stats.BloomPool.Get()
-	defer stats.BloomPool.Put(blooms)
-	blooms, err = c.idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+	var acc IndexStatsAccumulator
+	if c.opts.UseBloomFilters {
+		blooms := stats.BloomPool.Get()
+		defer stats.BloomPool.Put(blooms)
+		acc = blooms
+	} else {
+		acc = &stats.Stats{}
+	}
+	err = c.idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
 
 	if err != nil {
 		return nil, err
 	}
-	res := blooms.Stats()
+	res := acc.Stats()
 
 	return &res, nil
 }

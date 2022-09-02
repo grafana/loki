@@ -20,6 +20,7 @@ type DeleteRequest struct {
 	CreatedAt model.Time          `json:"created_at"`
 
 	UserID          string                 `json:"-"`
+	SequenceNum     int64                  `json:"-"`
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 

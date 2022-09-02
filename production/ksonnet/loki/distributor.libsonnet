@@ -18,11 +18,12 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    k.util.resourcesRequests('500m', '500Mi') +
-    k.util.resourcesLimits('1', '1Gi') +
+    k.util.resourcesRequests('500m', '2500Mi') +
+    k.util.resourcesLimits(null, '5Gi') +
     container.withEnvMixin($._config.commonEnvs),
 
   local deployment = k.apps.v1.deployment,
+  local topologySpreadConstraints = k.core.v1.topologySpreadConstraint,
 
   distributor_deployment:
     deployment.new('distributor', 3, [$.distributor_container]) +
@@ -32,9 +33,18 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    k.util.antiAffinity +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
-    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1) +
+    if $._config.distributor.use_topology_spread then
+      deployment.spec.template.spec.withTopologySpreadConstraints(
+        // Evenly spread queriers among available nodes.
+        topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'distributor' }) +
+        topologySpreadConstraints.withTopologyKey('kubernetes.io/hostname') +
+        topologySpreadConstraints.withWhenUnsatisfiable('ScheduleAnyway') +
+        topologySpreadConstraints.withMaxSkew($._config.distributor.topology_spread_max_skew),
+      )
+    else
+      k.util.antiAffinity,
 
   distributor_service:
     k.util.serviceFor($.distributor_deployment, $._config.service_ignored_labels),

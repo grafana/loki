@@ -44,5 +44,5 @@ prepare: create-registry create-cluster update-repos build-latest-image
 
 build-latest-image:
 	make -C $(CURDIR)/../../.. loki-image
-	docker tag grafana/loki:$(IMAGE_TAG) k3d-grafana:$(REGISTRY_PORT)/loki:latest
-	docker push k3d-grafana:$(REGISTRY_PORT)/loki:latest
+	docker tag grafana/loki:$(IMAGE_TAG) grafana.k3d.localhost:$(REGISTRY_PORT)/loki:latest
+	docker push grafana.k3d.localhost:$(REGISTRY_PORT)/loki:latest

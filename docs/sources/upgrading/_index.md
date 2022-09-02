@@ -33,10 +33,35 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+### Engine query timeout is deprecated
+
+Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
+As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
+we're deprecating it in favor of relying on `engine.query-timeout` only.
+
+#### Fifocache is deprecated
+
+We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
+
+Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
+
+#### Evenly spread distributors across kubernetes nodes
+
+We now evenly spread distributors across the available kubernetes nodes, but allowing more than one distributors to be scheduled into the same node.
+If you want to run at most a single distributors per node, set `$._config.distributors.use_topology_spread` to false.
+
+While we attempt to schedule at most 1 distributor per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple distributors will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
+
 #### Evenly spread queriers across kubernetes nodes
 
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
 If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
+
+While we attempt to schedule at most 1 querier per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple queriers will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
 
 #### Default value for `server.http-listen-port` changed
 
@@ -51,6 +76,14 @@ Notable changes include:
 - storage is now using Minio instead of local filesystem
   - move your current storage into `.data/minio` and it should work transparently
 - log-generator was added - if you don't need it, simply remove the service from `docker-compose.yaml` or don't start the service
+
+#### Configuration for deletes has changed
+
+The global `deletion_mode` option in the compactor configuration moved to runtime configurations.
+
+- The `deletion_mode` option needs to be removed from your compactor configuration
+- The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
+- Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
 ## 2.6.0
 
@@ -87,7 +120,7 @@ limits_config:
   split_queries_by_interval: 10m
 ```
 
-In 2.5.0 it can only be defined in the `limits_config` section, **Loki will fail to start if you do not remove the `split_queries_by_interval` config from the `query_range` section.** 
+In 2.5.0 it can only be defined in the `limits_config` section, **Loki will fail to start if you do not remove the `split_queries_by_interval` config from the `query_range` section.**
 
 Additionally, it has a new default value of `30m` rather than `0`.
 
@@ -130,7 +163,7 @@ Meanwhile, the legacy format is a string in the following format:
 * `parallelise_shardable_queries` under the `query_range` config now defaults to `true`.
 * `split_queries_by_interval` under the `limits_config` config now defaults to `30m`, it was `0s`.
 * `max_chunk_age` in the `ingester` config now defaults to `2h` previously it was `1h`.
-* `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters. 
+* `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters.
 * `max_concurrent` under the `querier` config now defaults to `10` instead of `20`.
 * `match_max_concurrent` under the `frontend_worker` config now defaults to true, this supersedes the `parallelism` setting which can now be removed from your config. Controlling query parallelism of a single process can now be done with the `querier` `max_concurrent` setting.
 * `flush_op_timeout` under the `ingester` configuration block now defaults to `10m`, increased from `10s`. This can help when replaying a large WAL on Loki startup, and avoid `msg="failed to flush" ... context deadline exceeded` errors.
@@ -378,7 +411,7 @@ server:
   grpc_server_ping_without_stream_allowed: true
 ```
 
-[This issue](https://github.com/grafana/loki/issues/4375) has some more information on the change. 
+[This issue](https://github.com/grafana/loki/issues/4375) has some more information on the change.
 
 #### Some metric prefixes have changed from `cortex_` to `loki_`
 

@@ -61,6 +61,8 @@ type Metrics struct {
 	tsdbCreationFailures          prometheus.Counter
 	tsdbManagerUpdatesTotal       prometheus.Counter
 	tsdbManagerUpdatesFailedTotal prometheus.Counter
+	tsdbHeadRotationsTotal        prometheus.Counter
+	tsdbHeadRotationsFailedTotal  prometheus.Counter
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -84,6 +86,14 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		tsdbManagerUpdatesFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_manager_updates_failed_total",
 			Help: "Total number of tsdb manager update failures (loading/rotating tsdbs in mem)",
+		}),
+		tsdbHeadRotationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_head_rotations_total",
+			Help: "Total number of tsdb head rotations",
+		}),
+		tsdbHeadRotationsFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_head_rotations_failed_total",
+			Help: "Total number of tsdb head rotations failed",
 		}),
 	}
 }
@@ -169,10 +179,19 @@ func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) (created bool, re
 // on top of a regular hashmap and holds a slice of series to resolve hash collisions.
 // Its methods require the hash to be submitted with it to avoid re-computations throughout
 // the code.
-type seriesHashmap map[uint64][]*memSeries
+type seriesHashmap struct {
+	sync.RWMutex
+	m map[uint64][]*memSeries
+}
 
-func (m seriesHashmap) get(hash uint64, ls labels.Labels) *memSeries {
-	for _, s := range m[hash] {
+func newSeriesHashmap() *seriesHashmap {
+	return &seriesHashmap{
+		m: map[uint64][]*memSeries{},
+	}
+}
+
+func (m *seriesHashmap) get(hash uint64, ls labels.Labels) *memSeries {
+	for _, s := range m.m[hash] {
 		if labels.Equal(s.ls, ls) {
 			return s
 		}
@@ -180,49 +199,56 @@ func (m seriesHashmap) get(hash uint64, ls labels.Labels) *memSeries {
 	return nil
 }
 
-func (m seriesHashmap) set(hash uint64, s *memSeries) {
-	l := m[hash]
+func (m *seriesHashmap) set(hash uint64, s *memSeries) {
+	l := m.m[hash]
 	for i, prev := range l {
 		if labels.Equal(prev.ls, s.ls) {
 			l[i] = s
 			return
 		}
 	}
-	m[hash] = append(l, s)
+	m.m[hash] = append(l, s)
+}
+
+type memSeriesMap struct {
+	sync.RWMutex
+	m map[uint64]*memSeries
+}
+
+func newMemseriesMap() *memSeriesMap {
+	return &memSeriesMap{
+		m: map[uint64]*memSeries{},
+	}
 }
 
 type stripeSeries struct {
 	shards int
-	locks  []sync.RWMutex
-	hashes []seriesHashmap
+	// Sharded by fingerprint.
+	hashes []*seriesHashmap
 	// Sharded by ref. A series ref is the value of `size` when the series was being newly added.
-	series []map[uint64]*memSeries
+	series []*memSeriesMap
 }
 
 func newStripeSeries() *stripeSeries {
 	s := &stripeSeries{
 		shards: defaultStripeSize,
-		locks:  make([]sync.RWMutex, defaultStripeSize),
-		hashes: make([]seriesHashmap, defaultStripeSize),
-		series: make([]map[uint64]*memSeries, defaultStripeSize),
+		hashes: make([]*seriesHashmap, defaultStripeSize),
+		series: make([]*memSeriesMap, defaultStripeSize),
 	}
 	for i := range s.hashes {
-		s.hashes[i] = seriesHashmap{}
+		s.hashes[i] = newSeriesHashmap()
 	}
 	for i := range s.series {
-		s.series[i] = map[uint64]*memSeries{}
+		s.series[i] = newMemseriesMap()
 	}
 	return s
 }
 
 func (s *stripeSeries) getByID(id uint64) *memSeries {
-	i := id & uint64(s.shards-1)
-
-	s.locks[i].RLock()
-	series := s.series[i][id]
-	s.locks[i].RUnlock()
-
-	return series
+	x := s.series[id&uint64(s.shards-1)]
+	x.RLock()
+	defer x.RUnlock()
+	return x.m[id]
 }
 
 // Append adds chunks to the correct series and returns whether a new series was added
@@ -232,21 +258,22 @@ func (s *stripeSeries) Append(
 	createFn func() *memSeries,
 ) (created bool, refID uint64) {
 	fp := ls.Hash()
-	i := fp & uint64(s.shards-1)
-	mtx := &s.locks[i]
-
-	mtx.Lock()
-	series := s.hashes[i].get(fp, ls)
+	hashes := s.hashes[fp&uint64(s.shards-1)]
+	hashes.Lock()
+	series := hashes.get(fp, ls)
 	if series == nil {
 		series = createFn()
-		s.hashes[i].set(fp, series)
+		hashes.set(fp, series)
 
 		// the series locks are determined by the ref, not fingerprint
-		refIdx := series.ref & uint64(s.shards-1)
-		s.series[refIdx][series.ref] = series
+		seriesMap := s.series[series.ref&uint64(s.shards-1)]
+		seriesMap.Lock()
+		seriesMap.m[series.ref] = series
+		seriesMap.Unlock()
+
 		created = true
 	}
-	mtx.Unlock()
+	hashes.Unlock()
 
 	series.Lock()
 	series.chks = append(series.chks, chks...)

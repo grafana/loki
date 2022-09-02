@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -344,6 +345,10 @@ func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
 func (s *testStore) Stop() {}
 
 func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
+
+func (s *testStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return &stats.Stats{}, nil
+}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}
