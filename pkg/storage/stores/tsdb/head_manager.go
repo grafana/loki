@@ -174,6 +174,7 @@ func (m *HeadManager) loop() {
 			if err := buildPrev(); err != nil {
 				level.Error(m.log).Log(
 					"msg", "failed building tsdb head",
+					"period", m.period.PeriodFor(m.prev.initialized),
 					"err", err,
 				)
 				// rotating head without building prev would result in loss of index for that period (until restart)
