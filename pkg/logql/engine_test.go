@@ -2193,6 +2193,25 @@ func TestEngine_Stats(t *testing.T) {
 	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
 }
 
+func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+
+	queueTime := 2 * time.Nanosecond
+	q := eng.Query(LiteralParams{
+		qs:        `vector(abc)`,
+		start:     time.Now(),
+		end:       time.Now(),
+		step:      time.Second * 30,
+		interval:  time.Second * 30,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+	require.EqualError(t, err, expectErr.Error())
+}
+
 type errorIteratorQuerier struct {
 	samples []iter.SampleIterator
 	entries []iter.EntryIterator
