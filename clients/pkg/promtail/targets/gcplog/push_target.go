@@ -22,13 +22,14 @@ import (
 )
 
 type pushTarget struct {
-	logger         log.Logger
-	handler        api.EntryHandler
 	config         *scrapeconfig.GcplogTargetConfig
+	entries        chan<- api.Entry
+	handler        api.EntryHandler
 	jobName        string
-	server         *server.Server
+	logger         log.Logger
 	metrics        *Metrics
 	relabelConfigs []*relabel.Config
+	server         *server.Server
 }
 
 // newPushTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
@@ -36,11 +37,12 @@ func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler
 	wrappedLogger := log.With(logger, "component", "gcp_push")
 
 	ht := &pushTarget{
-		metrics:        metrics,
-		logger:         wrappedLogger,
+		config:         config,
+		entries:        handler.Chan(),
 		handler:        handler,
 		jobName:        jobName,
-		config:         config,
+		logger:         wrappedLogger,
+		metrics:        metrics,
 		relabelConfigs: relabel,
 	}
 
@@ -96,7 +98,6 @@ func (h *pushTarget) run() error {
 }
 
 func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
-	entries := h.handler.Chan()
 	defer r.Body.Close()
 
 	pushMessage := PushMessage{}
@@ -125,7 +126,7 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 
 	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
-	entries <- entry
+	h.entries <- entry
 	h.metrics.gcpPushEntries.WithLabelValues().Inc()
 	w.WriteHeader(http.StatusNoContent)
 }
