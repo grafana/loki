@@ -14,4 +14,4 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix run .#lint
-      - run: nix build
+      - run: nix build --print-build-logs
