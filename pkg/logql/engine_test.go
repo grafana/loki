@@ -1513,6 +1513,36 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			`rate({app="foo"}[1m]) or vector(0)`,
+			time.Unix(60, 0), time.Unix(180, 0), 20 * time.Second, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(55, 0).UnixNano(), Hash: 1, Value: 1.},
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 1.},
+						{Timestamp: time.Unix(65, 0).UnixNano(), Hash: 3, Value: 1.},
+						{Timestamp: time.Unix(70, 0).UnixNano(), Hash: 4, Value: 1.},
+						{Timestamp: time.Unix(170, 0).UnixNano(), Hash: 5, Value: 1.},
+						{Timestamp: time.Unix(175, 0).UnixNano(), Hash: 6, Value: 1.},
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					//vector result
+					Metric: labels.Labels(nil),
+					Points: []promql.Point{promql.Point{T: 60000, V: 0}, promql.Point{T: 80000, V: 0}, promql.Point{T: 100000, V: 0}, promql.Point{T: 120000, V: 0}, promql.Point{T: 140000, V: 0}, promql.Point{T: 160000, V: 0}, promql.Point{T: 180000, V: 0}}},
+				promql.Series{
+					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
+					Points: []promql.Point{promql.Point{T: 60000, V: 0.03333333333333333}, promql.Point{T: 80000, V: 0.06666666666666667}, promql.Point{T: 100000, V: 0.06666666666666667}, promql.Point{T: 120000, V: 0.03333333333333333}, promql.Point{T: 180000, V: 0.03333333333333333}},
+				},
+			},
+		},
+		{
 			`
 			rate({app=~"foo|bar"}[1m]) and
 			rate({app="bar"}[1m])
