@@ -40,6 +40,7 @@ pkgs.stdenv.mkDerivation {
   doCheck = true;
   checkPhase = ''
     export GOCACHE=$TMPDIR/go-cache
+    export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache
     make lint test
   '';
 
