@@ -632,6 +632,9 @@ const (
 	OpRangeTypeLast        = "last_over_time"
 	OpRangeTypeAbsent      = "absent_over_time"
 
+	//vector
+	OpTypeVector = "vector"
+
 	// binops - logical/set
 	OpTypeOr     = "or"
 	OpTypeAnd    = "and"
@@ -1562,3 +1565,49 @@ func MatcherGroups(expr Expr) []MatcherRange {
 		return nil
 	}
 }
+
+type VectorExpr struct {
+	Val float64
+	err error
+	implicit
+}
+
+func NewVectorExpr(scalar string) *VectorExpr {
+	n, err := strconv.ParseFloat(scalar, 64)
+	if err != nil {
+		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
+	}
+	return &VectorExpr{
+		Val: n,
+		err: err,
+	}
+}
+
+func (e *VectorExpr) Err() error {
+	return e.err
+}
+
+func (e *VectorExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpTypeVector)
+	sb.WriteString("(")
+	sb.WriteString(fmt.Sprintf("%f", e.Val))
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (e *VectorExpr) Value() (float64, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	return e.Val, nil
+}
+
+func (e *VectorExpr) Selector() LogSelectorExpr               { return e }
+func (e *VectorExpr) HasFilter() bool                         { return false }
+func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
+func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
+func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *VectorExpr) MatcherGroups() []MatcherRange           { return nil }
+func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }

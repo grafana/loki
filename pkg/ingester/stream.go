@@ -1,18 +1,15 @@
 package ingester
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
@@ -148,7 +145,7 @@ func (s *stream) Push(
 	// Lock chunkMtx while pushing.
 	// If this is false, chunkMtx must be held outside Push.
 	lockChunk bool,
-) (int, error) {
+) (int, []entryWithError) {
 	if lockChunk {
 		s.chunkMtx.Lock()
 		defer s.chunkMtx.Unlock()
@@ -163,7 +160,7 @@ func (s *stream) Push(
 
 		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
 		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
-		return 0, ErrEntriesExist
+		return 0, []entryWithError{{entry: &logproto.Entry{}, e: ErrEntriesExist}}
 	}
 
 	var bytesAdded int
@@ -300,41 +297,8 @@ func (s *stream) Push(
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
-	if len(failedEntriesWithError) > 0 {
-		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
-		outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
-		if !outOfOrder && !ok {
-			return bytesAdded, lastEntryWithErr.e
-		}
-		var statusCode int
-		if outOfOrder {
-			statusCode = http.StatusBadRequest
-		}
-		if ok {
-			statusCode = http.StatusTooManyRequests
-		}
-		// Return a http status 4xx request response with all failed entries.
-		buf := bytes.Buffer{}
-		streamName := s.labelsString
+	return bytesAdded, failedEntriesWithError
 
-		limitedFailedEntries := failedEntriesWithError
-		if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
-			limitedFailedEntries = limitedFailedEntries[:maxIgnore]
-		}
-
-		for _, entryWithError := range limitedFailedEntries {
-			fmt.Fprintf(&buf,
-				"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-				entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
-		}
-
-		fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
-
-		return bytesAdded, httpgrpc.Errorf(statusCode, buf.String())
-	}
-
-	return bytesAdded, nil
 }
 
 func (s *stream) cutChunk(ctx context.Context) *chunkDesc {

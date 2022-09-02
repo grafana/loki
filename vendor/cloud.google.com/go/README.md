@@ -32,7 +32,13 @@ For an updated list of all of our released APIs please see our
 
 ## [Go Versions Supported](#supported-versions)
 
-We currently support Go versions 1.11 and newer.
+Our libraries are compatible with at least the three most recent, major Go
+releases. They are currently compatible with:
+
+- Go 1.18
+- Go 1.17
+- Go 1.16
+- Go 1.15
 
 ## Authorization
 

@@ -4,12 +4,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.singleBinaryFullname" . }}
+  name: {{ include "loki.name" . }}
   labels:
-    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
-    {{- with .Values.singleBinary.serviceLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- include "loki.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
   ports:
@@ -22,5 +19,5 @@ spec:
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" . | nindent 4 }}
 {{- end }}

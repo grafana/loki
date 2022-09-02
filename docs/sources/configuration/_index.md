@@ -2132,6 +2132,14 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
+# Number of upload/remove operations to execute in parallel when finalizing a compaction.
+# CLI flag: -boltdb.shipper.compactor.upload-parallelism
+#
+# NOTE: This setting is per compaction operation, which can be
+# executed in parallel. The upper bound on the number of concurrent
+# uploads is upload_parallelism * max_compaction_parallelism
+[upload_parallelism: <int> | default = 10]
+
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -boltdb.shipper.compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
@@ -2180,6 +2188,22 @@ compacts index shards to more performant forms.
 # Use deletion_mode per tenant configuration instead.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "disabled"]
+
+# The hash ring configuration used by compactors to elect a single instance for running compactions
+# The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
+[compactor_ring: <ring>]
+
+# Number of tables that compactor will try to compact. Newer tables
+# are chosen when this is less than the number of tables available
+# CLI flag:  -boltdb.shipper.compact.tables-to-compact
+[tables_to_compact: <int> | default: 0]
+
+# Do not compact N latest tables.  Together with
+# -boltdb.shipper.compactor.run-once and
+# -boltdb.shipper.compactor.tables-to-compact, this is useful when
+# clearing compactor backlogs.
+# CLI flag: -boltdb.shipper.compact.skip-latest-n-tables
+[skip_latest_n_tables: <int> | default: 0]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
@@ -2443,7 +2467,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Split queries by an interval and execute in parallel, any value less than zero disables it.
+# Split queries by a time interval and execute in parallel. The value 0 disables splitting by time.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
@@ -2948,7 +2972,7 @@ configure a runtime configuration file:
 
 How far into the past accepted out-of-order log entries may be
 is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 1 hour.
+`max_chunk_age` defaults to 2 hour.
 Loki calculates the earliest time that out-of-order entries may have
 and be accepted with
 

@@ -435,10 +435,16 @@ func (c *BlobStorageConfig) Validate() error {
 }
 
 func (b *BlobStorage) selectBlobURLFmt() string {
+	if b.cfg.Endpoint != "" {
+		return fmt.Sprintf("https://%%s.%s/%%s/%%s", b.cfg.Endpoint)
+	}
 	return fmt.Sprintf("https://%%s.%s/%%s/%%s", defaultEndpoints[b.cfg.Environment])
 }
 
 func (b *BlobStorage) selectContainerURLFmt() string {
+	if b.cfg.Endpoint != "" {
+		return fmt.Sprintf("https://%%s.%s/%%s", b.cfg.Endpoint)
+	}
 	return fmt.Sprintf("https://%%s.%s/%%s", defaultEndpoints[b.cfg.Environment])
 }
 

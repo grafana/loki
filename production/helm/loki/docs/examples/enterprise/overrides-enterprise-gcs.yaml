@@ -1,4 +1,4 @@
-enterprise: 
+enterprise:
   enabled: true
   adminApi:
     enabled: true

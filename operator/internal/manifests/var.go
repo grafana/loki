@@ -90,6 +90,9 @@ const (
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
 	caFile = "service-ca.crt"
+
+	kubernetesNodeOSLabel = "kubernetes.io/os"
+	kubernetesNodeOSLinux = "linux"
 )
 
 var (
@@ -296,6 +299,32 @@ func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS b
 		Port:   portName,
 		Path:   "/metrics",
 		Scheme: "http",
+	}
+}
+
+func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+	if !enableNodeAffinity {
+		return nil
+	}
+
+	return &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      kubernetesNodeOSLabel,
+								Operator: corev1.NodeSelectorOpIn,
+								Values: []string{
+									kubernetesNodeOSLinux,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 }
 

@@ -22,7 +22,6 @@ fullnameOverride: null
 imagePullSecrets: []
 
 loki:
-  deploymentMode: simple-scalable
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
@@ -73,7 +72,7 @@ loki:
 
     memberlist:
       join_members:
-        - {{ include "loki.name" . }}-memberlist
+        - {{ include "loki.memberlist" . }}
 
     {{- if .Values.loki.commonConfig}}
     common:
@@ -180,7 +179,7 @@ loki:
       chunkBufferSize: 0
       requestTimeout: "0s"
       enableHttp2: true
-    local:
+    filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
 
@@ -683,7 +682,7 @@ read:
 # Configuration for the single binary node(s)
 singleBinary:
   # -- Number of replicas for the single binary
-  replicas: 3
+  replicas: 1
   autoscaling:
     # -- Enable autoscaling, this is only used if `queryIndex.enabled: true`
     enabled: false
@@ -709,8 +708,6 @@ singleBinary:
   # -- Additional selecto labels for each `single binary` pod
   selectorLabels: {}
   # -- Labels for single binary service
-  serviceLabels: {}
-  # -- Additional CLI args for the single binary
   extraArgs: []
   # -- Environment variables to add to the single binary pods
   extraEnv: []

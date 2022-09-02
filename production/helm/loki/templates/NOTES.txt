@@ -5,38 +5,15 @@
 ***********************************************************************
 
 Installed components:
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+* loki 
+{{- else -}}
 {{- if .Values.gateway.enabled }}
 * gateway
 {{- end }}
+{{- if .Values.minio.enabled }}
+* minio 
+{{- end }}
 * read
 * write
-
-This chart requires persistence and object storage to work correctly.
-Queries will not work unless you provide a `loki.config.common.storage` section with
-a valid object storage (and the default `filesystem` storage set to `null`), as well
-as a valid `loki.config.schema_config.configs` with an `object_store` that
-matches the common storage section.
-
-For example, to use MinIO as your object storage backend:
-
-loki:
-  config:
-    common:
-      storage:
-        filesystem: null
-        s3:
-          endpoint: minio.minio.svc.cluster.local:9000
-          insecure: true
-          bucketnames: loki-data
-          access_key_id: loki
-          secret_access_key: supersecret
-          s3forcepathstyle: true
-    schema_config:
-      configs:
-        - from: "2020-09-07"
-          store: boltdb-shipper
-          object_store: s3
-          schema: v11
-          index:
-            period: 24h
-            prefix: loki_index_
+{{- end }}
