@@ -153,6 +153,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		)
 		`,
 		`10 / (5/2)`,
+		`(count_over_time({job="postgres"}[5m])/2) or vector(2)`,
 		`10 / (count_over_time({job="postgres"}[5m])/2)`,
 		`{app="foo"} | json response_status="response.status.code", first_param="request.params[0]"`,
 		`label_replace(
