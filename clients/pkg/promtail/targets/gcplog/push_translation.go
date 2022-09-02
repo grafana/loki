@@ -1,15 +1,15 @@
 package gcplog
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
-	"regexp"
-	"strings"
-	"time"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
@@ -107,11 +107,22 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 	}, nil
 }
 
-// convertToLokiCompatibleLabel converts an incoming GCP Push message label to a loki compatible format. There are lables
+// convertToLokiCompatibleLabel converts an incoming GCP Push message label to a loki compatible format. There are labels
 // such as `logging.googleapis.com/timestamp`, which contain non-loki-compatible characters, which is just alphanumeric
 // and _. The approach taken is to translate every non-alphanumeric separator character to an underscore.
 func convertToLokiCompatibleLabel(label string) string {
-	// TODO: Since this is running for every incoming message, maybe it's more performant to do something
-	// like a loop over characters, and checking if it's not loki compatible, instead of a regexp.
-	return util.SnakeCase(labelToLokiCompatible.ReplaceAllString(label, "_"))
+	return util.SnakeCase(convertSeparatorCharacterToUnderscore(label))
+}
+
+func convertSeparatorCharacterToUnderscore(s string) string {
+	var buf bytes.Buffer
+	for _, r := range s {
+		// The condition in the if statement matches the following regex [.-/]
+		if r == '.' || r == '-' || r == '/' {
+			fmt.Fprintf(&buf, "_")
+		} else {
+			fmt.Fprintf(&buf, "%c", r)
+		}
+	}
+	return buf.String()
 }
