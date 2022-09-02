@@ -12,7 +12,7 @@ import (
 
 type noopClient struct {
 	noopChan chan api.Entry
-	wg       sync.WaitGroup
+	wg       sync.WaitGroup //nolint:copylocks
 	once     sync.Once
 }
 
