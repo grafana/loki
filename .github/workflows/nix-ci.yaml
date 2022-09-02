@@ -1,5 +1,5 @@
 ---
-name: "Test Nix Config"
+name: "Lint And Build Nix Flake"
 on:
   pull_request:
     paths:
