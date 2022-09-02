@@ -2197,8 +2197,9 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
 	queueTime := 2 * time.Nanosecond
+	illegalVector := `vector(abc)`
 	q := eng.Query(LiteralParams{
-		qs:        `vector(abc)`,
+		qs:        illegalVector,
 		start:     time.Now(),
 		end:       time.Now(),
 		step:      time.Second * 30,
@@ -2209,7 +2210,16 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
 	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+
 	require.EqualError(t, err, expectErr.Error())
+
+	qry, ok := q.(*query)
+	require.Equal(t, ok, true)
+	vectorExpr := syntax.NewVectorExpr(illegalVector)
+
+	_, err = qry.evalSample(ctx, vectorExpr)
+	expectEvalSampleErr := logqlmodel.NewParseError("unable to parse vectorExpr as a float: strconv.ParseFloat: parsing \"vector(abc)\": invalid syntax", 0, 0)
+	require.EqualError(t, err, expectEvalSampleErr.Error())
 }
 
 type errorIteratorQuerier struct {
