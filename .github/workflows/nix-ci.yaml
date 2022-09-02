@@ -15,3 +15,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix run .#lint
       - run: nix build
+        env:
+          NIX_STATE_DIR: "$TMPDIR"
+          NIX_LOG_DIR: "$TMPDIR"
+
