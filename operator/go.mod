@@ -25,7 +25,7 @@ require github.com/ViaQ/logerr/v2 v2.0.0
 require (
 	github.com/google/go-cmp v0.5.7
 	github.com/grafana/loki v1.6.2-0.20220708124813-b92f113cb096
-	github.com/openshift/library-go v0.0.0-20220810125113-79fc5d549223
+	github.com/openshift/library-go v0.0.0-20220622115547-84d884f4c9f6
 	gopkg.in/yaml.v2 v2.4.0
 )
 
