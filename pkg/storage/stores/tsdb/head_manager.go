@@ -39,7 +39,11 @@ which we use in file creation/etc.
 */
 type period time.Duration
 
-const defaultRotationPeriod = period(15 * time.Minute)
+const (
+	defaultRotationPeriod = period(15 * time.Minute)
+	// defines the period to check for active head rotation
+	defaultRotationCheckPeriod = 1 * time.Minute
+)
 
 func (p period) PeriodFor(t time.Time) int {
 	return int(t.UnixNano() / int64(p))
@@ -101,6 +105,9 @@ type HeadManager struct {
 	activeHeads, prevHeads *tenantHeads
 
 	Index
+
+	wg     sync.WaitGroup
+	cancel chan struct{}
 }
 
 func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
@@ -113,6 +120,8 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 
 		period: defaultRotationPeriod,
 		shards: shards,
+
+		cancel: make(chan struct{}),
 	}
 
 	m.Index = LazyIndex(func() (Index, error) {
@@ -134,7 +143,73 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 	return m
 }
 
+func (m *HeadManager) loop() {
+	defer m.wg.Done()
+
+	buildPrev := func() error {
+		if m.prev == nil {
+			return nil
+		}
+
+		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
+			return errors.Wrap(err, "building tsdb head")
+		}
+
+		// Now that the tsdbManager has the updated TSDBs, we can remove our references
+		m.mtx.Lock()
+		defer m.mtx.Unlock()
+		m.prevHeads = nil
+		m.prev = nil
+
+		return nil
+	}
+
+	ticker := time.NewTicker(defaultRotationCheckPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// retry tsdb build failures from previous run
+			if err := buildPrev(); err != nil {
+				level.Error(m.log).Log(
+					"msg", "failed building tsdb head",
+					"period", m.period.PeriodFor(m.prev.initialized),
+					"err", err,
+				)
+				// rotating head without building prev would result in loss of index for that period (until restart)
+				continue
+			}
+
+			now := time.Now()
+			if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
+				if err := m.Rotate(now); err != nil {
+					level.Error(m.log).Log(
+						"msg", "failed rotating tsdb head",
+						"period", m.period.PeriodFor(m.prev.initialized),
+						"err", err,
+					)
+					continue
+				}
+			}
+
+			// build tsdb from rotated-out period
+			if err := buildPrev(); err != nil {
+				level.Error(m.log).Log(
+					"msg", "failed building tsdb head",
+					"err", err,
+				)
+			}
+		case <-m.cancel:
+			return
+		}
+	}
+}
+
 func (m *HeadManager) Stop() error {
+	close(m.cancel)
+	m.wg.Wait()
+
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	if err := m.active.Stop(); err != nil {
@@ -153,15 +228,8 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	ls = b.Labels()
 
 	m.mtx.RLock()
-	now := time.Now()
-	if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
-		m.mtx.RUnlock()
-		if err := m.Rotate(now); err != nil {
-			return errors.Wrap(err, "rotating TSDB Head")
-		}
-		m.mtx.RLock()
-	}
 	defer m.mtx.RUnlock()
+
 	rec := m.activeHeads.Append(userID, ls, chks)
 	return m.active.Log(rec)
 }
@@ -206,7 +274,15 @@ func (m *HeadManager) Start() error {
 		return errors.New("cleaning (removing) wal dir")
 	}
 
-	return m.Rotate(now)
+	err = m.Rotate(now)
+	if err != nil {
+		return errors.Wrap(err, "rotating tsdb head")
+	}
+
+	m.wg.Add(1)
+	go m.loop()
+
+	return nil
 }
 
 func managerRequiredDirs(parent string) []string {
@@ -233,14 +309,13 @@ func managerPerTenantDir(parent string) string {
 	return filepath.Join(parent, "per_tenant")
 }
 
-func (m *HeadManager) Rotate(t time.Time) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if m.activeHeads != nil && m.period.PeriodFor(t) == m.period.PeriodFor(m.activeHeads.start) {
-		// no-op, we've already rotated to the desired period
-		return nil
-	}
+func (m *HeadManager) Rotate(t time.Time) (err error) {
+	defer func() {
+		m.metrics.tsdbHeadRotationsTotal.Inc()
+		if err != nil {
+			m.metrics.tsdbHeadRotationsFailedTotal.Inc()
+		}
+	}()
 
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
@@ -252,37 +327,25 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	// create new tenant heads
 	nextHeads := newTenantHeads(t, m.shards, m.metrics, m.log)
 
-	stopPrev := func(s string) {
-		if m.prev != nil {
-			if err := m.prev.Stop(); err != nil {
-				level.Error(m.log).Log(
-					"msg", "failed stopping wal",
-					"period", m.period.PeriodFor(m.prev.initialized),
-					"err", err,
-					"wal", s,
-				)
-			}
-		}
-	}
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 
-	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
 	m.prev = m.active
 	m.prevHeads = m.activeHeads
 	m.active = nextWAL
 	m.activeHeads = nextHeads
-	stopPrev("freshly rotated") // stop the newly rotated-out wal
 
-	// build tsdb from rotated-out period
-	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
+	// stop the newly rotated-out wal
 	if m.prev != nil {
-		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
-			return errors.Wrap(err, "building tsdb from rotated out period")
+		if err := m.prev.Stop(); err != nil {
+			level.Error(m.log).Log(
+				"msg", "failed stopping wal",
+				"period", m.period.PeriodFor(m.prev.initialized),
+				"err", err,
+			)
 		}
 	}
 
-	// Now that the tsdbManager has the updated TSDBs, we can remove our references
-	m.prevHeads = nil
-	m.prev = nil
 	return nil
 }
 

@@ -61,6 +61,8 @@ type Metrics struct {
 	tsdbCreationFailures          prometheus.Counter
 	tsdbManagerUpdatesTotal       prometheus.Counter
 	tsdbManagerUpdatesFailedTotal prometheus.Counter
+	tsdbHeadRotationsTotal        prometheus.Counter
+	tsdbHeadRotationsFailedTotal  prometheus.Counter
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -84,6 +86,14 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		tsdbManagerUpdatesFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_manager_updates_failed_total",
 			Help: "Total number of tsdb manager update failures (loading/rotating tsdbs in mem)",
+		}),
+		tsdbHeadRotationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_head_rotations_total",
+			Help: "Total number of tsdb head rotations",
+		}),
+		tsdbHeadRotationsFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_head_rotations_failed_total",
+			Help: "Total number of tsdb head rotations failed",
 		}),
 	}
 }
