@@ -1535,11 +1535,10 @@ func TestEngine_RangeQuery(t *testing.T) {
 				promql.Series{
 					//vector result
 					Metric: labels.Labels(nil),
-					Points: []promql.Point{promql.Point{T: 60000, V: 0}, promql.Point{T: 80000, V: 0}, promql.Point{T: 100000, V: 0}, promql.Point{T: 120000, V: 0}, promql.Point{T: 140000, V: 0}, promql.Point{T: 160000, V: 0}, promql.Point{T: 180000, V: 0}}},
+					Points: []promql.Point{{T: 60000, V: 0}, {T: 80000, V: 0}, {T: 100000, V: 0}, {T: 120000, V: 0}, {T: 140000, V: 0}, {T: 160000, V: 0}, {T: 180000, V: 0}}},
 				promql.Series{
 					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
-					Points: []promql.Point{promql.Point{T: 60000, V: 0.03333333333333333}, promql.Point{T: 80000, V: 0.06666666666666667}, promql.Point{T: 100000, V: 0.06666666666666667}, promql.Point{T: 120000, V: 0.03333333333333333}, promql.Point{T: 180000, V: 0.03333333333333333}},
-				},
+					Points: []promql.Point{{T: 60000, V: 0.03333333333333333}, {T: 80000, V: 0.06666666666666667}, {T: 100000, V: 0.06666666666666667}, {T: 120000, V: 0.03333333333333333}, {T: 180000, V: 0.03333333333333333}}},
 			},
 		},
 		{
