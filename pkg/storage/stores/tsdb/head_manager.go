@@ -53,6 +53,15 @@ func (p period) TimeForPeriod(n int) time.Time {
 	return time.Unix(0, int64(p)*int64(n))
 }
 
+type TruncationErr struct {
+	Period int
+	Err    error
+}
+
+func (e *TruncationErr) Error() string {
+	return fmt.Sprintf("wal trunction error for period %d: %s", e.Period, e.Err)
+}
+
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
 const defaultHeadManagerStripeSize = 1 << 7
@@ -151,8 +160,11 @@ func (m *HeadManager) loop() {
 			return nil
 		}
 
-		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
-			return errors.Wrap(err, "building tsdb head")
+		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
+			if _, ok := err.(*TruncationErr); !ok {
+				return err
+			}
+			// remove references even if truncation failed
 		}
 
 		// Now that the tsdbManager has the updated TSDBs, we can remove our references
@@ -216,7 +228,17 @@ func (m *HeadManager) Stop() error {
 		return err
 	}
 
-	return m.buildTSDBFromWAL(m.active.initialized)
+	if m.prevHeads != nil {
+		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
+			// log the error and start building active head
+			level.Error(m.log).Log(
+				"msg", "failed building tsdb from prev head",
+				"err", err,
+			)
+		}
+	}
+
+	return m.buildTSDBFromHead(m.activeHeads)
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
@@ -270,7 +292,9 @@ func (m *HeadManager) Start() error {
 		return errors.Wrap(err, "building tsdb")
 	}
 
+	m.metrics.tsdbWALTruncationsTotal.Inc()
 	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
+		m.metrics.tsdbWALTruncationsFailedTotal.Inc()
 		return errors.New("cleaning (removing) wal dir")
 	}
 
@@ -349,27 +373,42 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 	return nil
 }
 
-func (m *HeadManager) buildTSDBFromWAL(t time.Time) error {
-	level.Debug(m.log).Log("msg", "combining tsdb WALs")
-	grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(t))
-	if err != nil {
-		return errors.Wrap(err, "listing wals")
-	}
-	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
-
-	// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
-	// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
-	// TSDBs from orphaned WALs of previous periods during startup.
-	// we use the same timestamp as wal here for the filename to ensure it can't clobber
-	// an existing file from a previous cycle. I don't think this is possible, but
-	// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
-	if err := m.tsdbManager.BuildFromWALs(t, grp.wals); err != nil {
-		return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
+func (m *HeadManager) buildTSDBFromHead(heads *tenantHeads) error {
+	if err := m.tsdbManager.BuildFromHead(heads); err != nil {
+		level.Error(m.log).Log(
+			"msg", "failed building tsdb head",
+			"period", m.period.PeriodFor(heads.start),
+			"err", err,
+		)
+		return errors.Wrap(err, "building tsdb head")
 	}
 
 	// Now that a TSDB has been created from this group, it's safe to remove them
+	return m.truncateWALForPeriod(m.period.PeriodFor(heads.start))
+}
+
+func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
+	m.metrics.tsdbWALTruncationsTotal.Inc()
+	defer func() {
+		if err != nil {
+			m.metrics.tsdbWALTruncationsFailedTotal.Inc()
+		}
+	}()
+
+	grp, _, err := walsForPeriod(m.dir, m.period, period)
+	if err != nil {
+		return &TruncationErr{
+			Err:    errors.Wrap(err, "listing wals"),
+			Period: period,
+		}
+	}
+	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
+
 	if err := m.removeWALGroup(grp); err != nil {
-		return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+		return &TruncationErr{
+			Err:    errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period),
+			Period: period,
+		}
 	}
 	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
 
