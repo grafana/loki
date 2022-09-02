@@ -12,15 +12,15 @@ import (
 
 type noopClient struct {
 	noopChan chan api.Entry
-	wg       sync.WaitGroup //nolint:copylocks
+	wg       sync.WaitGroup
 	once     sync.Once
 }
 
-func (n noopClient) Chan() chan<- api.Entry { //nolint:copylocks
+func (n *noopClient) Chan() chan<- api.Entry {
 	return n.noopChan
 }
 
-func (n noopClient) Stop() { //nolint:copylocks
+func (n *noopClient) Stop() {
 	n.once.Do(func() { close(n.noopChan) })
 }
 
