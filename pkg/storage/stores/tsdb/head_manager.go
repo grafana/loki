@@ -186,6 +186,7 @@ func (m *HeadManager) loop() {
 				if err := m.Rotate(now); err != nil {
 					level.Error(m.log).Log(
 						"msg", "failed rotating tsdb head",
+						"period", m.period.PeriodFor(m.prev.initialized),
 						"err", err,
 					)
 					continue
