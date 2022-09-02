@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"fmt"
+	"net"
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -35,8 +36,32 @@ func TestNatSort(t *testing.T) {
 	require.Equal(t, expected, input)
 }
 
+var mockUnixResolver = func(network, address string) (*net.UnixAddr, error) {
+	return &net.UnixAddr{
+		Name: address,
+		Net:  network,
+	}, nil
+}
+
+var ips = map[string][]byte{
+	"google.com:80":     net.ParseIP("198.51.100.121"),
+	"duckduckgo.com:80": net.ParseIP("10.0.0.1"),
+	"microsoft.com:80":  net.ParseIP("172.12.34.56"),
+}
+
+var mockTCPResolver = func(network, address string) (*net.TCPAddr, error) {
+	return &net.TCPAddr{
+		IP:   ips[address],
+		Port: 0,
+		Zone: "",
+	}, nil
+}
+
 func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
-	s := cache.MemcachedJumpHashSelector{}
+	s := cache.NewMemcachedJumpHashSelector(
+		mockUnixResolver,
+		mockTCPResolver,
+	)
 	err := s.SetServers("google.com:80", "microsoft.com:80", "duckduckgo.com:80")
 	require.NoError(t, err)
 
@@ -60,7 +85,10 @@ func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 }
 
 func TestMemcachedJumpHashSelector_PickSever_ErrNoServers(t *testing.T) {
-	s := cache.MemcachedJumpHashSelector{}
+	s := cache.NewMemcachedJumpHashSelector(
+		mockUnixResolver,
+		mockTCPResolver,
+	)
 	_, err := s.PickServer("foo")
 	require.Error(t, memcache.ErrNoServers, err)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
+	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -49,10 +50,11 @@ func newPullTarget(
 	relabel []*relabel.Config,
 	jobName string,
 	config *scrapeconfig.GcplogTargetConfig,
+	clientOptions ...option.ClientOption,
 ) (*pullTarget, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ps, err := pubsub.NewClient(ctx, config.ProjectID)
+	ps, err := pubsub.NewClient(ctx, config.ProjectID, clientOptions...)
 	if err != nil {
 		return nil, err
 	}
