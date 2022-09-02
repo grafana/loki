@@ -2,6 +2,7 @@ package manifests
 
 import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	projectconfig_types "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
@@ -19,8 +20,8 @@ type Options struct {
 	GatewayBaseDomain string
 	ConfigSHA1        string
 
-	TLSProfileType TLSProfileType
-	TLSProfileSpec TLSProfileSpec
+	TLSProfileType projectconfig_types.TLSProfileType
+	TLSProfileSpec projectconfig_types.TLSProfileSpec
 
 	Gates                configv1.FeatureGates
 	Stack                lokiv1.LokiStackSpec
@@ -35,32 +36,6 @@ type Options struct {
 	OpenShiftOptions openshift.Options
 
 	Tenants Tenants
-}
-
-// TLSProfileType is a TLS security profile based on the Mozilla definitions:
-// https://wiki.mozilla.org/Security/Server_Side_TLS
-type TLSProfileType string
-
-const (
-	// TLSProfileOldType is a TLS security profile based on:
-	// https://wiki.mozilla.org/Security/Server_Side_TLS#Old_backward_compatibility
-	TLSProfileOldType TLSProfileType = "Old"
-	// TLSProfileIntermediateType is a TLS security profile based on:
-	// https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_.28default.29
-	TLSProfileIntermediateType TLSProfileType = "Intermediate"
-	// TLSProfileModernType is a TLS security profile based on:
-	// https://wiki.mozilla.org/Security/Server_Side_TLS#Modern_compatibility
-	TLSProfileModernType TLSProfileType = "Modern"
-)
-
-// TLSProfileSpec is the desired behavior of a TLSProfileType.
-type TLSProfileSpec struct {
-	// ciphers is used to specify the cipher algorithms that are negotiated
-	// during the TLS handshake.
-	Ciphers []string
-	// minTLSVersion is used to specify the minimal version of the TLS protocol
-	// that is negotiated during the TLS handshake.
-	MinTLSVersion string
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
