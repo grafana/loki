@@ -37,6 +37,7 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, ce
 	uriScheme = corev1.URISchemeHTTP
 	args = []string{
 		"--log.level=warn",
+		"--opa.skip-tenants=audit,infrastructure",
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
