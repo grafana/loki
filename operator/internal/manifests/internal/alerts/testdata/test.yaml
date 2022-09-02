@@ -7,19 +7,19 @@ tests:
   - interval: 1m
 
     input_series:
-      - series: 'loki_request_duration_seconds_count{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'code:loki_request_duration_seconds_count:rate1m{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+1x20'
-      - series: 'loki_request_duration_seconds_count{status_code="429", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'code:loki_request_duration_seconds_count:rate1m{status_code="429", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+1x20'
-      - series: 'loki_request_duration_seconds_count{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'code:loki_request_duration_seconds_count:rate1m{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+3x20'
-      - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+      - series: 'code_handler:http_requests:rate1m{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
         values: '1+1x20'
-      - series: 'http_requests_total{code="200", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+      - series: 'code_handler:http_requests:rate1m{code="200", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
         values: '1+3x20'
-      - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+      - series: 'code_handler:http_requests:rate1m{code="500", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
         values: '1+1x20'
-      - series: 'http_requests_total{code="200", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+      - series: 'code_handler:http_requests:rate1m{code="200", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
         values: '1+3x20'
 
       - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'
@@ -37,21 +37,21 @@ tests:
       - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="+Inf"}'
         values: '0+100x20'
 
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="ingester", operation="WRITE", le="1"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="1"}'
         values: '0+10x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="ingester", operation="WRITE", le="5"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="5"}'
         values: '0+50x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="ingester", operation="WRITE", le="10"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="10"}'
         values: '0+100x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="ingester", operation="WRITE", le="+Inf"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="+Inf"}'
         values: '0+100x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="querier", operation="Shipper.Query", le="1"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="1"}'
         values: '0+10x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="querier", operation="Shipper.Query", le="5"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="5"}'
         values: '0+50x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="querier", operation="Shipper.Query", le="10"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="10"}'
         values: '0+100x20'
-      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", job="querier", operation="Shipper.Query", le="+Inf"}'
+      - series: 'operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="+Inf"}'
         values: '0+100x20'
 
       - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="1"}'
@@ -74,7 +74,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of requests are responded by 5xx server errors."
-              message: "ingester my-route is experiencing 20.00% errors."
+              message: "ingester my-route is experiencing 20.48% errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackWriteRequestErrors
@@ -85,7 +85,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
-              message: "25.00% of write requests from gateway are returned with server errors."
+              message: "25.76% of write requests from gateway are returned with server errors."
               runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackReadRequestErrors
@@ -96,7 +96,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
-              message: "25.00% of query requests from gateway are returned with server errors."
+              message: "25.76% of query requests from gateway are returned with server errors."
               runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
       - eval_time: 10m
         alertname: LokiRequestPanics

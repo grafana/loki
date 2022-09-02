@@ -156,8 +156,8 @@ A service(s) is slower than expected at processing data.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
@@ -183,8 +183,8 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
@@ -210,8 +210,8 @@ The cluster is unable to push logs to backend storage in a timely manner.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
@@ -236,8 +236,8 @@ The cluster is unable to retrieve logs to backend storage in a timely manner.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
@@ -262,8 +262,8 @@ The write path is flushing the storage in response to back-pressuring.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
@@ -288,8 +288,8 @@ The query queue is currently under high load.
 - Console access to the cluster
 - Edit access to the deployed operator and Loki namespace:
   - OpenShift
-    - `openshift-logging`
-    - `openshift-operators-redhat`
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 

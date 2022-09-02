@@ -10,15 +10,11 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
     expr: |
       sum(
-        rate(
-          loki_request_duration_seconds_count{status_code=~"5.."}[1m]
-        )
+        code:loki_request_duration_seconds_count:rate1m{status_code=~"5.."}
       ) by (job, namespace, route)
       /
       sum(
-        rate(
-          loki_request_duration_seconds_count[1m]
-        )
+        code:loki_request_duration_seconds_count:rate1m
       ) by (job, namespace, route)
       * 100
       > 10
@@ -33,15 +29,11 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
     expr: |
       sum(
-        rate(
-          http_requests_total{code=~"5..", group="logsv1", handler="push"}[1m]
-        )
+        code_handler:http_requests:rate1m{code=~"5..", handler="push"}
       ) by (namespace, job, tenant)
       /
       sum(
-        rate(
-          http_requests_total{group="logsv1", handler="push"}[1m]
-        )
+        code_handler:http_requests:rate1m{handler="push"}
       ) by (namespace, job, tenant)
       * 100
       > 10
@@ -56,15 +48,11 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
     expr: |
       sum(
-        rate(
-          http_requests_total{code=~"5..", group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
-        )
+        code_handler:http_requests:rate1m{code=~"5..", handler=~"query|query_range|label|labels|label_values"}
       ) by (namespace, job, tenant)
       /
       sum(
-        rate(
-          http_requests_total{group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
-        )
+        code_handler:http_requests:rate1m{handler=~"query|query_range|label|labels|label_values"}
       ) by (namespace, job, tenant)
       * 100
       > 10
@@ -113,15 +101,11 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
     expr: |
       sum(
-        rate(
-          loki_request_duration_seconds_count{status_code="429"}[1m]
-        )
+        code:loki_request_duration_seconds_count:rate1m{status_code="429"}
       ) by (job, namespace, route)
       /
       sum(
-        rate(
-          loki_request_duration_seconds_count[1m]
-        )
+        code:loki_request_duration_seconds_count:rate1m
       ) by (job, namespace, route)
       * 100
       > 10
@@ -137,9 +121,7 @@ groups:
     expr: |
       histogram_quantile(0.99,
         sum(
-          rate(
-            loki_boltdb_shipper_request_duration_seconds_bucket{operation="WRITE"}[5m]
-          )
+          operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="WRITE"}
         ) by (le, job, namespace)
       )
       * 100
@@ -156,9 +138,7 @@ groups:
     expr: |
       histogram_quantile(0.99,
         sum(
-          rate(
-            loki_boltdb_shipper_request_duration_seconds_bucket{operation="Shipper.Query"}[5m]
-          )
+          operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="Shipper.Query"}
         ) by (le, job, namespace)
       )
       * 100
