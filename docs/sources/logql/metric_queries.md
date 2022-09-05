@@ -124,14 +124,17 @@ See [vector aggregation examples](../query_examples/#vector-aggregation-examples
 
 ## Functions
 
-LogQL supports a subset of built-in functions.
+LogQL supports a set of built-in functions.
 
-- `vector(s scalar)`: returns the scalar s as a vector with no labels.vector expr is mainly used in the oncall alarm logql rule to  turn no data to zero.
+- `vector(s scalar)`: returns the scalar s as a vector with no labels. This behaves identically to the [Prometheus `vector()` function](https://prometheus.io/docs/prometheus/latest/querying/functions/#vector).
+  `vector` is mainly used to return a value for a series that would otherwise return nothing; this can be useful when using LogQL to define an alert.
 
 Examples:
 
 - Count all the log lines within the last five minutes for the traefik namespace.
 
     ```logql
-    sum(count_over_time({namespace="traefik"}|[5m])) or vector(0)
+    sum(count_over_time({namespace="traefik"}[5m])) # will return nothing
+      or
+    vector(0) # will return 0
     ```
