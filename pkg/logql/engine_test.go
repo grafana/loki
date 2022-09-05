@@ -595,6 +595,14 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			promql.Scalar{T: 60 * 1000, V: 2},
 		},
 		{
+			// vector instant
+			`vector(2)`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			nil,
+			nil,
+			promql.Scalar{T: 60 * 1000, V: 2},
+		},
+		{
 			// single comparison
 			`1 == 1`,
 			time.Unix(60, 0), logproto.FORWARD, 100,
@@ -1505,6 +1513,35 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			`rate({app="foo"}[1m]) or vector(0)`,
+			time.Unix(60, 0), time.Unix(180, 0), 20 * time.Second, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(55, 0).UnixNano(), Hash: 1, Value: 1.},
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 1.},
+						{Timestamp: time.Unix(65, 0).UnixNano(), Hash: 3, Value: 1.},
+						{Timestamp: time.Unix(70, 0).UnixNano(), Hash: 4, Value: 1.},
+						{Timestamp: time.Unix(170, 0).UnixNano(), Hash: 5, Value: 1.},
+						{Timestamp: time.Unix(175, 0).UnixNano(), Hash: 6, Value: 1.},
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					//vector result
+					Metric: labels.Labels(nil),
+					Points: []promql.Point{{T: 60000, V: 0}, {T: 80000, V: 0}, {T: 100000, V: 0}, {T: 120000, V: 0}, {T: 140000, V: 0}, {T: 160000, V: 0}, {T: 180000, V: 0}}},
+				promql.Series{
+					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60000, V: 0.03333333333333333}, {T: 80000, V: 0.06666666666666667}, {T: 100000, V: 0.06666666666666667}, {T: 120000, V: 0.03333333333333333}, {T: 180000, V: 0.03333333333333333}}},
+			},
+		},
+		{
 			`
 			rate({app=~"foo|bar"}[1m]) and
 			rate({app="bar"}[1m])
@@ -1920,6 +1957,18 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		// vector query range
+		{
+			`vector(2)`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			nil,
+			nil,
+			promql.Matrix{
+				promql.Series{
+					Points: []promql.Point{{T: 60 * 1000, V: 2}, {T: 90 * 1000, V: 2}, {T: 120 * 1000, V: 2}, {T: 150 * 1000, V: 2}, {T: 180 * 1000, V: 2}},
+				},
+			},
+		},
 		{
 			`bytes_rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{
@@ -2142,6 +2191,35 @@ func TestEngine_Stats(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
 	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+}
+
+func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+
+	queueTime := 2 * time.Nanosecond
+	illegalVector := `vector(abc)`
+	q := eng.Query(LiteralParams{
+		qs:        illegalVector,
+		start:     time.Now(),
+		end:       time.Now(),
+		step:      time.Second * 30,
+		interval:  time.Second * 30,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+
+	require.EqualError(t, err, expectErr.Error())
+
+	qry, ok := q.(*query)
+	require.Equal(t, ok, true)
+	vectorExpr := syntax.NewVectorExpr(illegalVector)
+
+	_, err = qry.evalSample(ctx, vectorExpr)
+	expectEvalSampleErr := logqlmodel.NewParseError("unable to parse vectorExpr as a float: strconv.ParseFloat: parsing \"vector(abc)\": invalid syntax", 0, 0)
+	require.EqualError(t, err, expectEvalSampleErr.Error())
 }
 
 type errorIteratorQuerier struct {

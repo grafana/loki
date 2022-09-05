@@ -14,22 +14,22 @@ allowPrivilegeEscalation: true
 allowPrivilegedContainer: false
 allowedCapabilities: []
 defaultAddCapabilities: null
-fsGroup: 
+fsGroup:
   type: RunAsAny
 groups: []
 priority: null
 readOnlyRootFilesystem: false
-requiredDropCapabilities: 
+requiredDropCapabilities:
   - ALL
-runAsUser: 
+runAsUser:
   type: RunAsAny
-seLinuxContext: 
+seLinuxContext:
   type: MustRunAs
 seccompProfiles:
   - '*'
-supplementalGroups: 
+supplementalGroups:
   type: RunAsAny
-volumes: 
+volumes:
   - configMap
   - downwardAPI
   - emptyDir
