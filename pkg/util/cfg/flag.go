@@ -3,6 +3,8 @@ package cfg
 import (
 	"flag"
 	"fmt"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"sort"
 	"strings"
 
@@ -91,7 +93,7 @@ func categorizedUsage(fs *flag.FlagSet) func() {
 			if name == "" {
 				continue
 			}
-			fmt.Fprintf(fs.Output(), " %s:\n", strings.Title(name))
+			fmt.Fprintf(fs.Output(), " %s:\n", cases.Title(language.Und).String(name))
 			for _, u := range categories[name] {
 				fmt.Fprintln(fs.Output(), u)
 			}
