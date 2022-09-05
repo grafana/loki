@@ -158,7 +158,7 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
-func (m *tsdbManager) build(heads *tenantHeads) (err error) {
+func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) error {
@@ -253,7 +253,7 @@ func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 		}
 	}()
 
-	return m.build(heads)
+	return m.buildFromHead(heads)
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
@@ -272,7 +272,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			return errors.Wrap(err, "building TSDB from WALs")
 		}
 
-		err := m.build(tmp)
+		err := m.buildFromHead(tmp)
 		if err != nil {
 			return err
 		}
