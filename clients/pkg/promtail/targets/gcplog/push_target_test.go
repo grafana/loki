@@ -45,18 +45,7 @@ const testPayload = `
 	"subscription": "projects/wired-height-350515/subscriptions/test"
 }`
 
-func makeGCPPushRequest(host string, body string) (*http.Request, error) {
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/gcp/api/v1/push", host), strings.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	return req, nil
-}
-
 func TestPushTarget(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
 	type expectedEntry struct {
 		labels model.LabelSet
 		line   string
@@ -132,36 +121,18 @@ func TestPushTarget(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			// Create fake promtail client
-			eh := fake.New(func() {})
-			defer eh.Stop()
-
-			serverConfig, port, err := getServerConfigWithAvailablePort()
-			require.NoError(t, err, "error generating server config or finding open port")
-			config := &scrapeconfig.GcplogTargetConfig{
-				Server:               serverConfig,
+			eh, sendRequestToTarget, stop, err := startTargetWithConfig(&scrapeconfig.GcplogTargetConfig{
 				Labels:               tc.args.Labels,
 				UseIncomingTimestamp: false,
 				SubscriptionType:     "push",
-			}
-
-			prometheus.DefaultRegisterer = prometheus.NewRegistry()
-			metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-			pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tc.args.RelabelConfigs, "test_job", config)
-			require.NoError(t, err)
-			defer func() {
-				_ = pt.Stop()
-			}()
-
-			// Clear received lines after test case is ran
-			defer eh.Clear()
+			}, tc.args.RelabelConfigs...)
+			require.NoError(t, err, "Failed to start target")
+			defer stop()
 
 			// Send some logs
 			ts := time.Now()
 
-			req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.RequestBody)
-			require.NoError(t, err, "expected test drain request to be successfully created")
-			res, err := http.DefaultClient.Do(req)
+			res, err := sendRequestToTarget(tc.args.RequestBody)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
 
@@ -172,7 +143,6 @@ func TestPushTarget(t *testing.T) {
 
 			require.Equal(t, len(eh.Received()), len(tc.expectedEntries), "expected to receive equal amount of expected label sets")
 			for i, expectedEntry := range tc.expectedEntries {
-				// TODO: Add assertion over propagated timestamp
 				actualEntry := eh.Received()[i]
 
 				require.Equal(t, expectedEntry.line, actualEntry.Line, "expected line to be equal for %d-th entry", i)
@@ -191,36 +161,15 @@ func TestPushTarget(t *testing.T) {
 }
 
 func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	// Create fake promtail client
-	eh := fake.New(func() {})
-	defer eh.Stop()
-
-	serverConfig, port, err := getServerConfigWithAvailablePort()
-	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GcplogTargetConfig{
-		Server:               serverConfig,
+	eh, sendRequestToTarget, stop, err := startTargetWithConfig(&scrapeconfig.GcplogTargetConfig{
 		Labels:               nil,
 		UseIncomingTimestamp: true,
 		SubscriptionType:     "push",
-	}
+	})
+	require.NoError(t, err, "Failed to start target")
+	defer stop()
 
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
-	require.NoError(t, err)
-	defer func() {
-		_ = pt.Stop()
-	}()
-
-	// Clear received lines after test case is ran
-	defer eh.Clear()
-
-	req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
-	require.NoError(t, err, "expected test drain request to be successfully created")
-	res, err := http.DefaultClient.Do(req)
+	res, err := sendRequestToTarget(testPayload)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
 
@@ -235,37 +184,16 @@ func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
 }
 
 func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
+	eh, sendRequestToTarget, stop, err := startTargetWithConfig(&scrapeconfig.GcplogTargetConfig{
+		Labels:           nil,
+		SubscriptionType: "push",
+	})
+	require.NoError(t, err, "Failed to start target")
+	defer stop()
 
-	// Create fake promtail client
-	eh := fake.New(func() {})
-	defer eh.Stop()
-
-	serverConfig, port, err := getServerConfigWithAvailablePort()
-	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GcplogTargetConfig{
-		Server:               serverConfig,
-		Labels:               nil,
-		UseIncomingTimestamp: true,
-		SubscriptionType:     "push",
-	}
-
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
-	require.NoError(t, err)
-	defer func() {
-		_ = pt.Stop()
-	}()
-
-	// Clear received lines after test case is ran
-	defer eh.Clear()
-
-	req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
-	require.NoError(t, err, "expected test drain request to be successfully created")
-	req.Header.Set("X-Scope-OrgID", "42")
-	res, err := http.DefaultClient.Do(req)
+	res, err := sendRequestToTarget(testPayload, func(req *http.Request) {
+		req.Header.Set("X-Scope-OrgID", "42")
+	})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
 
@@ -278,29 +206,6 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 }
 
 func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	// Create fake promtail client
-	eh := fake.New(func() {})
-	defer eh.Stop()
-
-	serverConfig, port, err := getServerConfigWithAvailablePort()
-	require.NoError(t, err, "error generating server config or finding open port")
-	config := &scrapeconfig.GcplogTargetConfig{
-		Server:           serverConfig,
-		Labels:           nil,
-		SubscriptionType: "push",
-	}
-
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
-	require.NoError(t, err)
-	defer func() {
-		_ = pt.Stop()
-	}()
-
 	testCases := []struct {
 		Name               string
 		Payload            string
@@ -343,12 +248,14 @@ func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			// Clear received lines after test case is ran
-			defer eh.Clear()
+			eh, sendRequestToTarget, stop, err := startTargetWithConfig(&scrapeconfig.GcplogTargetConfig{
+				Labels:           nil,
+				SubscriptionType: "push",
+			})
+			require.NoError(t, err, "Failed to start target")
+			defer stop()
 
-			req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.Payload)
-			require.NoError(t, err, "expected test drain request to be successfully created")
-			res, err := http.DefaultClient.Do(req)
+			res, err := sendRequestToTarget(tc.Payload)
 			require.NoError(t, err)
 			require.Equal(t, tc.ExpectedStatusCode, res.StatusCode, "expected %s status code", tc.ExpectedStatusCode)
 			// Wait some time to allow message propagation
@@ -365,6 +272,14 @@ func waitForMessages(eh *fake.Client) {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
+}
+
+func makeGCPPushRequest(host string, body string) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/gcp/api/v1/push", host), strings.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	return req, nil
 }
 
 func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
@@ -391,4 +306,57 @@ func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error)
 	cfg.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
 
 	return
+}
+
+type stopper = func()
+type pushRequestSender = func(string, ...func(*http.Request)) (*http.Response, error)
+
+func startTargetWithConfig(cfg *scrapeconfig.GcplogTargetConfig, relabels ...*relabel.Config) (*fake.Client, pushRequestSender, stopper, error) {
+	// Collect all stoppables instantiated here
+	type stopFunc = func()
+	var stoppables = []stopFunc{}
+
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	stoppables = append(stoppables, eh.Stop)
+
+	serverConfig, port, err := getServerConfigWithAvailablePort()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("error generating server config or finding open port: %w", err)
+	}
+
+	cfg.Server = serverConfig
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, relabels, "test_job", cfg)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stoppables = append(stoppables, func() { _ = pt.Stop() })
+
+	stopAll := func() {
+		for _, stop := range stoppables {
+			stop()
+		}
+	}
+	sendRequest := func(payload string, modifiers ...func(*http.Request)) (*http.Response, error) {
+		req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		for _, mod := range modifiers {
+			mod(req)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make HTTP request: %w", err)
+		}
+		return res, nil
+	}
+
+	// Return apart from utilities, a function that stops all collected stoppables.
+	return eh, sendRequest, stopAll, nil
 }

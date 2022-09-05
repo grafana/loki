@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -18,14 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
-
-// Configured as a global in this file to avoid recompiling this regex everywhere.
-var labelToLokiCompatible *regexp.Regexp
-
-func init() {
-	// TODO: Maybe use a regexp negative filter and grab everything non-alphanumeric non-underscore?
-	labelToLokiCompatible = regexp.MustCompile("[.-/]")
-}
 
 // PushMessage is the POST body format sent by GCP PubSub push subscriptions.
 // See https://cloud.google.com/pubsub/docs/push for details.
