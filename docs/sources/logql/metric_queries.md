@@ -122,7 +122,7 @@ The `by` clause does the opposite, dropping labels that are not listed in the cl
 
 See [vector aggregation examples](../query_examples/#vector-aggregation-examples) for query examples that use vector aggregation expressions.
 
-## FUNCTIONS
+## Functions
 
 LogQL supports a subset of built-in functions.
 
