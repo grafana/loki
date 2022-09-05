@@ -3,10 +3,11 @@ package cfg
 import (
 	"flag"
 	"fmt"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
