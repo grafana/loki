@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.0.1
+
+- [BUGFIX] Fix Prometheus rule `LokiTooManyCompactorsRunning` aggregating multiple services together.
+
 ## 3.0.0
 
 - [CHANGE] Loki helm chart was moved to this location in the Loki repo. The chart now supports both
