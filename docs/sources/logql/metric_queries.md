@@ -121,3 +121,17 @@ The `without` clause removes the listed labels from the resulting vector, keepin
 The `by` clause does the opposite, dropping labels that are not listed in the clause, even if their label values are identical between all elements of the vector.
 
 See [vector aggregation examples](../query_examples/#vector-aggregation-examples) for query examples that use vector aggregation expressions.
+
+## FUNCTIONS
+
+LogQL supports a subset of built-in functions.
+
+- `vector(s scalar)`: returns the scalar s as a vector with no labels.vector expr is mainly used in the oncall alarm logql rule to  turn no data to zero.
+
+Examples:
+
+- Count all the log lines within the last five minutes for the traefik namespace.
+
+    ```logql
+    sum(count_over_time({namespace="traefik"}|[5m])) or vector(0)
+    ```
