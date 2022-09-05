@@ -27,6 +27,7 @@ func init() {
 }
 
 // PushMessage is the POST body format sent by GCP PubSub push subscriptions.
+// See https://cloud.google.com/pubsub/docs/push for details.
 type PushMessage struct {
 	Message struct {
 		Attributes       map[string]string `json:"attributes"`
@@ -35,6 +36,19 @@ type PushMessage struct {
 		PublishTimestamp string            `json:"publish_time"`
 	} `json:"message"`
 	Subscription string `json:"subscription"`
+}
+
+func (pm *PushMessage) Validate() error {
+	if pm.Message.Data == "" {
+		return fmt.Errorf("push message has no data")
+	}
+	if pm.Message.ID == "" {
+		return fmt.Errorf("push message has no ID")
+	}
+	if pm.Subscription == "" {
+		return fmt.Errorf("push message has no subscription")
+	}
+	return nil
 }
 
 // translate converts a GCP PushMessage into a loki api.Entry. It is responsible for decoding the log line (contained in the Message.Data)

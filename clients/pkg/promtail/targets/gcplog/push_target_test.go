@@ -269,6 +269,88 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels[lokiClient.ReservedLabelTenantID])
 }
 
+func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	serverConfig, port, err := getServerConfigWithAvailablePort()
+	require.NoError(t, err, "error generating server config or finding open port")
+	config := &scrapeconfig.GcplogTargetConfig{
+		Server:           serverConfig,
+		Labels:           nil,
+		SubscriptionType: "push",
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
+	require.NoError(t, err)
+	defer func() {
+		_ = pt.Stop()
+	}()
+
+	testCases := []struct {
+		Name               string
+		Payload            string
+		ExpectedStatusCode int
+	}{
+		{
+			Name:               "Non JSON payload",
+			Payload:            `{`,
+			ExpectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			Name:               "empty JSON",
+			Payload:            `{}`,
+			ExpectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			Name: "JSON without logs line",
+			Payload: `{
+				"message": {"message_id": "123"},
+				"subscription": "hi"
+			}`,
+			ExpectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			Name: "JSON without message ID",
+			Payload: `{
+				"message": {"data": "some log here 123"},
+				"subscription": "hi"
+			}`,
+			ExpectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			Name: "JSON without subscription info",
+			Payload: `{
+				"message": {"data": "some log here 123", "message_id": "123"}
+			}`,
+			ExpectedStatusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// Clear received lines after test case is ran
+			defer eh.Clear()
+
+			req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.Payload)
+			require.NoError(t, err, "expected test drain request to be successfully created")
+			res, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.ExpectedStatusCode, res.StatusCode, "expected %s status code", tc.ExpectedStatusCode)
+			// Wait some time to allow message propagation
+			time.Sleep(100 * time.Millisecond)
+			// Expect no received messages
+			require.Equal(t, 0, len(eh.Received()))
+		})
+	}
+}
+
 func waitForMessages(eh *fake.Client) {
 	countdown := 1000
 	for len(eh.Received()) != 1 && countdown > 0 {

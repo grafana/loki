@@ -103,22 +103,28 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 	pushMessage := PushMessage{}
 	bs, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues().Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("read_error").Inc()
 		level.Warn(h.logger).Log("msg", "failed to read incoming gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	err = json.Unmarshal(bs, &pushMessage)
 	if err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues().Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("format").Inc()
 		level.Warn(h.logger).Log("msg", "failed to unmarshall gcp push request", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err = pushMessage.Validate(); err != nil {
+		h.metrics.gcpPushErrors.WithLabelValues("invalid").Inc()
+		level.Warn(h.logger).Log("msg", "invalid gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
 	if err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues().Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("translation").Inc()
 		level.Warn(h.logger).Log("msg", "failed to translate gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
