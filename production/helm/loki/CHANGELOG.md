@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 3.0.1
 
-- [BUGFIX] Fix Prometheus rule `LokiTooManyCompactorsRunning` aggregating multiple services together.
+- [BUGFIX] Fix Prometheus rule `LokiTooManyCompactorsRunning` aggregating multiple services together in Loki helm chart.
 
 ## 3.0.0
 
