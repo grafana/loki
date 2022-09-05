@@ -211,7 +211,11 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
 		statusCode, appendErr = errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
 		if statusCode == http.StatusTooManyRequests {
-			details = append(details, mountPerStreamDetails(s.labelsString)...)
+			if len(failedEntriesWithError) != 1 {
+				level.Error(util_log.Logger).Log("msg", "expected a single entry with error")
+			} else {
+				details = append(details, mountPerStreamDetails(s.labelsString, &failedEntriesWithError[0])...)
+			}
 		}
 
 		s.chunkMtx.Unlock()
@@ -298,14 +302,14 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 //
 // It returns a slice of details instead of its marshalled version because if marshallings we can still
 // just append the returned value as it would be an empty slice. Appending a nil wouldn't work, though.
-func mountPerStreamDetails(streamLabels string) []*types.Any {
-	rls := logproto.RateLimitedStream{Labels: streamLabels}
+func mountPerStreamDetails(streamLabels string, e *entryWithError) []*types.Any {
+	rls := logproto.RateLimitedStream{Labels: streamLabels, StoppedAtIndex: uint64(e.idx)}
 	marshalledStream, err := types.MarshalAny(&rls)
 	if err == nil {
 		return []*types.Any{marshalledStream}
 	}
 
-	level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
+	level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels, "entry_idx", e.idx)
 	return []*types.Any{}
 }
 

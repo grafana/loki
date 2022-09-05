@@ -78,6 +78,7 @@ type chunkDesc struct {
 type entryWithError struct {
 	entry *logproto.Entry
 	e     error
+	idx   int
 }
 
 func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
@@ -220,24 +221,30 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{
+				entry: &entries[i],
+				e:     &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))},
+				idx:   i,
+			})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
-			continue
+			break
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := s.highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff), i})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
+			break
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err, i})
 			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}
+			break
 		} else {
 			storedEntries = append(storedEntries, entries[i])
 			s.lastLine.ts = entries[i].Timestamp

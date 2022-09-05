@@ -118,6 +118,7 @@ message LabelRequest {
 
 message RateLimitedStream {
   string labels = 1;
+  uint64 stoppedAtIndex = 2;
 }
 
 message LabelResponse {
