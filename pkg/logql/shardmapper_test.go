@@ -793,6 +793,7 @@ func TestMapping(t *testing.T) {
 				SampleExpr: &syntax.VectorExpr{Val: 0},
 				RHS: &syntax.VectorAggregationExpr{
 					Operation: syntax.OpTypeSum,
+					Grouping:  &syntax.Grouping{},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
@@ -800,9 +801,7 @@ func TestMapping(t *testing.T) {
 								Of:    2,
 							},
 							SampleExpr: &syntax.VectorAggregationExpr{
-								Grouping: &syntax.Grouping{
-									Groups: []string{"cluster"},
-								},
+								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
@@ -822,9 +821,7 @@ func TestMapping(t *testing.T) {
 									Of:    2,
 								},
 								SampleExpr: &syntax.VectorAggregationExpr{
-									Grouping: &syntax.Grouping{
-										Groups: []string{"cluster"},
-									},
+									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
