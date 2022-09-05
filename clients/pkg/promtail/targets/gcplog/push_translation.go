@@ -58,6 +58,7 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 	// mandatory label for gcplog
 	lbs := labels.NewBuilder(nil)
 	lbs.Set("__gcp_message_id", m.Message.ID)
+	lbs.Set("__gcp_subscription_name", m.Subscription)
 
 	// labels from gcp log entry. Add it as internal labels
 	for k, v := range m.Message.Attributes {

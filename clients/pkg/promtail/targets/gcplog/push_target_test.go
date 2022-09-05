@@ -108,6 +108,13 @@ func TestPushTarget(t *testing.T) {
 						TargetLabel:  "message_id",
 						Action:       relabel.Replace,
 					},
+					{
+						SourceLabels: model.LabelNames{"__gcp_subscription_name"},
+						Regex:        relabel.MustNewRegexp("(.*)"),
+						Replacement:  "$1",
+						TargetLabel:  "subscription",
+						Action:       relabel.Replace,
+					},
 				},
 			},
 			expectedEntries: []expectedEntry{
@@ -116,6 +123,7 @@ func TestPushTarget(t *testing.T) {
 						"job":              "some_job_name",
 						"google_timestamp": "2022-07-25T22:19:09.903683708Z",
 						"message_id":       "5187581549398349",
+						"subscription":     "projects/wired-height-350515/subscriptions/test",
 					},
 					line: expectedMessageData,
 				},
