@@ -203,6 +203,9 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.Len(t, resp.Data.Groups, 1)
 		require.Len(t, resp.Data.Groups[0].Rules, 1)
 
+		// Wait for remote write to be called.
+		time.Sleep(5 * time.Second)
+
 		// Check remote write was successful.
 		require.EqualValues(t, []bool{true, true}, remoteCalled, "one or both of the remote write target were not called")
 	})
