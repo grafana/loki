@@ -30,7 +30,7 @@ type PushMessage struct {
 	Subscription string `json:"subscription"`
 }
 
-func (pm *PushMessage) Validate() error {
+func (pm PushMessage) Validate() error {
 	if pm.Message.Data == "" {
 		return fmt.Errorf("push message has no data")
 	}
