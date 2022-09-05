@@ -53,15 +53,6 @@ func (p period) TimeForPeriod(n int) time.Time {
 	return time.Unix(0, int64(p)*int64(n))
 }
 
-type TruncationErr struct {
-	Period int
-	Err    error
-}
-
-func (e *TruncationErr) Error() string {
-	return fmt.Sprintf("wal trunction error for period %d: %s", e.Period, e.Err)
-}
-
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
 const defaultHeadManagerStripeSize = 1 << 7
@@ -161,10 +152,12 @@ func (m *HeadManager) loop() {
 		}
 
 		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
-			if _, ok := err.(*TruncationErr); !ok {
-				return err
-			}
-			// remove references even if truncation failed
+			level.Error(m.log).Log(
+				"msg", "failed building tsdb head",
+				"period", m.period.PeriodFor(m.prev.initialized),
+				"err", err,
+			)
+			return err
 		}
 
 		// Now that the tsdbManager has the updated TSDBs, we can remove our references
@@ -184,21 +177,17 @@ func (m *HeadManager) loop() {
 		case <-ticker.C:
 			// retry tsdb build failures from previous run
 			if err := buildPrev(); err != nil {
-				level.Error(m.log).Log(
-					"msg", "failed building tsdb head",
-					"period", m.period.PeriodFor(m.prev.initialized),
-					"err", err,
-				)
 				// rotating head without building prev would result in loss of index for that period (until restart)
 				continue
 			}
 
 			now := time.Now()
-			if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
+			curPeriod := m.period.PeriodFor(m.activeHeads.start)
+			if m.period.PeriodFor(now) > curPeriod {
 				if err := m.Rotate(now); err != nil {
 					level.Error(m.log).Log(
 						"msg", "failed rotating tsdb head",
-						"period", m.period.PeriodFor(m.prev.initialized),
+						"period", curPeriod,
 						"err", err,
 					)
 					continue
@@ -206,12 +195,7 @@ func (m *HeadManager) loop() {
 			}
 
 			// build tsdb from rotated-out period
-			if err := buildPrev(); err != nil {
-				level.Error(m.log).Log(
-					"msg", "failed building tsdb head",
-					"err", err,
-				)
-			}
+			buildPrev()
 		case <-m.cancel:
 			return
 		}
@@ -233,6 +217,7 @@ func (m *HeadManager) Stop() error {
 			// log the error and start building active head
 			level.Error(m.log).Log(
 				"msg", "failed building tsdb from prev head",
+				"period", m.period.PeriodFor(m.prev.initialized),
 				"err", err,
 			)
 		}
@@ -374,17 +359,27 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 }
 
 func (m *HeadManager) buildTSDBFromHead(heads *tenantHeads) error {
+	period := m.period.PeriodFor(heads.start)
+
 	if err := m.tsdbManager.BuildFromHead(heads); err != nil {
 		level.Error(m.log).Log(
 			"msg", "failed building tsdb head",
-			"period", m.period.PeriodFor(heads.start),
+			"period", period,
 			"err", err,
 		)
 		return errors.Wrap(err, "building tsdb head")
 	}
 
 	// Now that a TSDB has been created from this group, it's safe to remove them
-	return m.truncateWALForPeriod(m.period.PeriodFor(heads.start))
+	if err := m.truncateWALForPeriod(period); err != nil {
+		level.Error(m.log).Log(
+			"msg", "failed truncating wal files",
+			"period", period,
+			"err", err,
+		)
+	}
+
+	return nil
 }
 
 func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
@@ -397,18 +392,12 @@ func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
 
 	grp, _, err := walsForPeriod(m.dir, m.period, period)
 	if err != nil {
-		return &TruncationErr{
-			Err:    errors.Wrap(err, "listing wals"),
-			Period: period,
-		}
+		return errors.Wrap(err, "listing wals")
 	}
 	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
 
 	if err := m.removeWALGroup(grp); err != nil {
-		return &TruncationErr{
-			Err:    errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period),
-			Period: period,
-		}
+		return errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period)
 	}
 	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
 
