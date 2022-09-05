@@ -152,11 +152,6 @@ func (m *HeadManager) loop() {
 		}
 
 		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
-			level.Error(m.log).Log(
-				"msg", "failed building tsdb head",
-				"period", m.period.PeriodFor(m.prev.initialized),
-				"err", err,
-			)
 			return err
 		}
 
@@ -175,16 +170,24 @@ func (m *HeadManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
+			m.metrics.tsdbHeadRotationsTotal.Inc()
+
 			// retry tsdb build failures from previous run
 			if err := buildPrev(); err != nil {
+				m.metrics.tsdbHeadRotationsFailedTotal.Inc()
+				level.Error(m.log).Log(
+					"msg", "failed building tsdb head",
+					"period", m.period.PeriodFor(m.prev.initialized),
+					"err", err,
+				)
 				// rotating head without building prev would result in loss of index for that period (until restart)
 				continue
 			}
 
 			now := time.Now()
-			curPeriod := m.period.PeriodFor(m.activeHeads.start)
-			if m.period.PeriodFor(now) > curPeriod {
+			if curPeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > curPeriod {
 				if err := m.Rotate(now); err != nil {
+					m.metrics.tsdbHeadRotationsFailedTotal.Inc()
 					level.Error(m.log).Log(
 						"msg", "failed rotating tsdb head",
 						"period", curPeriod,
@@ -195,7 +198,13 @@ func (m *HeadManager) loop() {
 			}
 
 			// build tsdb from rotated-out period
-			buildPrev()
+			if err := buildPrev(); err != nil {
+				level.Error(m.log).Log(
+					"msg", "failed building tsdb head",
+					"period", m.period.PeriodFor(m.prev.initialized),
+					"err", err,
+				)
+			}
 		case <-m.cancel:
 			return
 		}
@@ -212,7 +221,7 @@ func (m *HeadManager) Stop() error {
 		return err
 	}
 
-	if m.prevHeads != nil {
+	if m.prev != nil {
 		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
 			// log the error and start building active head
 			level.Error(m.log).Log(
@@ -319,13 +328,6 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) (err error) {
-	defer func() {
-		m.metrics.tsdbHeadRotationsTotal.Inc()
-		if err != nil {
-			m.metrics.tsdbHeadRotationsFailedTotal.Inc()
-		}
-	}()
-
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -358,16 +360,10 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 	return nil
 }
 
-func (m *HeadManager) buildTSDBFromHead(heads *tenantHeads) error {
-	period := m.period.PeriodFor(heads.start)
-
-	if err := m.tsdbManager.BuildFromHead(heads); err != nil {
-		level.Error(m.log).Log(
-			"msg", "failed building tsdb head",
-			"period", period,
-			"err", err,
-		)
-		return errors.Wrap(err, "building tsdb head")
+func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
+	period := m.period.PeriodFor(head.start)
+	if err := m.tsdbManager.BuildFromHead(head); err != nil {
+		return errors.Wrap(err, "building tsdb from head")
 	}
 
 	// Now that a TSDB has been created from this group, it's safe to remove them

@@ -200,7 +200,7 @@ func (m *tsdbManager) build(heads *tenantHeads) (err error) {
 
 		return nil
 	}); err != nil {
-		level.Error(m.log).Log("err", err.Error(), "msg", "building TSDB from WALs")
+		level.Error(m.log).Log("err", err.Error(), "msg", "building TSDB")
 		return err
 	}
 
