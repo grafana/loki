@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	projectconfig_types "github.com/grafana/loki/operator/apis/config/v1"
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	openshiftv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -12,8 +12,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// APIServerName is the apiserver resource name used to fetch it.
+const APIServerName = "cluster"
+
 // GetSecurityProfileInfo gets the tls profile info to apply.
-func GetSecurityProfileInfo(ctx context.Context, k k8s.Client, tlsProfileType projectconfig_types.TLSProfileType) (projectconfig_types.TLSProfileSpec, error) {
+func GetSecurityProfileInfo(ctx context.Context, k k8s.Client, tlsProfileType projectconfigv1.TLSProfileType) (projectconfigv1.TLSProfileSpec, error) {
 	var tlsProfile openshiftv1.TLSSecurityProfile
 
 	if tlsProfileType != "" {
@@ -26,9 +29,9 @@ func GetSecurityProfileInfo(ctx context.Context, k k8s.Client, tlsProfileType pr
 		}
 
 		var apiServer openshiftv1.APIServer
-		if err := k.Get(ctx, client.ObjectKey{Name: "cluster"}, &apiServer); err != nil {
+		if err := k.Get(ctx, client.ObjectKey{Name: APIServerName}, &apiServer); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return projectconfig_types.TLSProfileSpec{}, kverrors.Wrap(err, "failed to lookup apiServer")
+				return projectconfigv1.TLSProfileSpec{}, kverrors.Wrap(err, "failed to lookup apiServer")
 			}
 		}
 
@@ -38,7 +41,7 @@ func GetSecurityProfileInfo(ctx context.Context, k k8s.Client, tlsProfileType pr
 	}
 
 	tlsMinVersion, ciphers := extractInfoFromTLSProfile(&tlsProfile)
-	return projectconfig_types.TLSProfileSpec{
+	return projectconfigv1.TLSProfileSpec{
 		MinTLSVersion: tlsMinVersion,
 		Ciphers:       ciphers,
 	}, nil

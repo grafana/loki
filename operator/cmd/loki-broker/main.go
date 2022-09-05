@@ -11,7 +11,7 @@ import (
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfig_types "github.com/grafana/loki/operator/apis/config/v1"
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -130,9 +130,9 @@ func main() {
 	}
 
 	if cfg.featureFlags.TLSProfile != "" &&
-		cfg.featureFlags.TLSProfile != string(projectconfig_types.TLSProfileOldType) &&
-		cfg.featureFlags.TLSProfile != string(projectconfig_types.TLSProfileIntermediateType) &&
-		cfg.featureFlags.TLSProfile != string(projectconfig_types.TLSProfileModernType) {
+		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileModernType) {
 		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
 		os.Exit(1)
 	}
@@ -145,7 +145,7 @@ func main() {
 		Stack:          ls.Spec,
 		Gates:          cfg.featureFlags,
 		ObjectStorage:  cfg.objectStorage,
-		TLSProfileType: projectconfig_types.TLSProfileType(cfg.featureFlags.TLSProfile),
+		TLSProfileType: projectconfigv1.TLSProfileType(cfg.featureFlags.TLSProfile),
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {

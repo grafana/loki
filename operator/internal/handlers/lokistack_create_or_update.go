@@ -7,7 +7,7 @@ import (
 	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfig_types "github.com/grafana/loki/operator/apis/config/v1"
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -226,7 +226,7 @@ func CreateOrUpdateLokiStack(
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
-		TLSProfileType: projectconfig_types.TLSProfileType(fg.TLSProfile),
+		TLSProfileType: projectconfigv1.TLSProfileType(fg.TLSProfile),
 	}
 
 	ll.Info("begin building manifests")

@@ -12,6 +12,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
+	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/status"
 
 	"github.com/ViaQ/logerr/v2/log"
@@ -89,7 +90,7 @@ var (
 
 	apiServer = openshiftv1.APIServer{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "cluster",
+			Name: tlsprofile.APIServerName,
 		},
 	}
 )
