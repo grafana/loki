@@ -65,29 +65,28 @@ loki:
     {{- else }}
     auth_enabled: {{ .Values.loki.auth_enabled }}
     {{- end }}
-
     server:
       http_listen_port: 3100
       grpc_listen_port: 9095
-
     memberlist:
       join_members:
         - {{ include "loki.memberlist" . }}
-
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
       storage:
       {{- include "loki.commonStorageConfig" . | nindent 4}}
     {{- end}}
-
     limits_config:
+    {{- if .Values.loki.limitsConfig}}
+    {{- toYaml .Values.loki.limitsConfig | nindent 2}}
+    {{- else }}
       enforce_metric_name: false
       reject_old_samples: true
       reject_old_samples_max_age: 168h
       max_cache_freshness_per_query: 10m
       split_queries_by_interval: 15m
-
+    {{- end}}
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled .host }}
     chunk_store_config:
@@ -100,7 +99,6 @@ loki:
           service: {{ .service }}
     {{- end }}
     {{- end }}
-
     {{- if .Values.loki.schemaConfig}}
     schema_config:
     {{- toYaml .Values.loki.schemaConfig | nindent 2}}
@@ -121,13 +119,15 @@ loki:
             prefix: loki_index_
             period: 24h
     {{- end }}
-
+    {{- if .Values.loki.compactorConfig}}
+    compactor:
+    {{- toYaml .Values.loki.compactorConfig | nindent 2}}
+    {{- end }}
     {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
     ruler:
       storage:
       {{- include "loki.rulerStorageConfig" . | nindent 4}}
     {{- end -}}
-
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
       align_queries_with_step: true
@@ -142,12 +142,10 @@ loki:
             timeout: {{ .timeout }}
       {{- end }}
     {{- end }}
-
     {{- with .Values.loki.storage_config }}
     storage_config:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
-
     {{- with .Values.loki.query_scheduler }}
     query_scheduler:
       {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -201,6 +199,12 @@ loki:
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
+  
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#limits_config for more info on how to configure limits
+  limitsConfig: {}
+  
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#compactor for more info on how to configure compactor
+  compactorConfig: {}
 
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
