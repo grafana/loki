@@ -21,7 +21,7 @@ func TestConvertToLokiCompatibleLabel(t *testing.T) {
 			want: "logging_googleapis_com_timestamp",
 		},
 		{
-			name: "Label attribute name with multiple non-undescore characters",
+			name: "Label attribute name with multiple non-underscore characters",
 			args: args{
 				label: "logging.googleapis.com/Crazy-label",
 			},
