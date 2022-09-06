@@ -15,7 +15,7 @@ type Config struct {
 
 // RegisterFlags add internal server flags to flagset
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Config.HTTPListenAddress, "internal-server.http-listen-address", "", "HTTP internal server listen address.")
+	f.StringVar(&cfg.Config.HTTPListenAddress, "internal-server.http-listen-address", "localhost", "HTTP internal server listen address.")
 	f.StringVar(&cfg.Config.HTTPListenNetwork, "internal-server.http-listen-network", serverww.DefaultNetwork, "HTTP internal server listen network, default tcp")
 	f.StringVar(&cfg.Config.HTTPTLSConfig.TLSCertPath, "internal-server.http-tls-cert-path", "", "HTTP internal server cert path.")
 	f.StringVar(&cfg.Config.HTTPTLSConfig.TLSKeyPath, "internal-server.http-tls-key-path", "", "HTTP internal server key path.")
