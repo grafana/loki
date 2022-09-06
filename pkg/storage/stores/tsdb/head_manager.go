@@ -151,8 +151,8 @@ func (m *HeadManager) loop() {
 			return nil
 		}
 
-		if err := m.buildTSDBFromWAL(m.prev.initialized); err != nil {
-			return errors.Wrap(err, "building tsdb head")
+		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
+			return err
 		}
 
 		// Now that the tsdbManager has the updated TSDBs, we can remove our references
@@ -170,8 +170,11 @@ func (m *HeadManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
+			m.metrics.tsdbHeadRotationsTotal.Inc()
+
 			// retry tsdb build failures from previous run
 			if err := buildPrev(); err != nil {
+				m.metrics.tsdbHeadRotationsFailedTotal.Inc()
 				level.Error(m.log).Log(
 					"msg", "failed building tsdb head",
 					"period", m.period.PeriodFor(m.prev.initialized),
@@ -182,11 +185,12 @@ func (m *HeadManager) loop() {
 			}
 
 			now := time.Now()
-			if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
+			if curPeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > curPeriod {
 				if err := m.Rotate(now); err != nil {
+					m.metrics.tsdbHeadRotationsFailedTotal.Inc()
 					level.Error(m.log).Log(
 						"msg", "failed rotating tsdb head",
-						"period", m.period.PeriodFor(m.prev.initialized),
+						"period", curPeriod,
 						"err", err,
 					)
 					continue
@@ -197,6 +201,7 @@ func (m *HeadManager) loop() {
 			if err := buildPrev(); err != nil {
 				level.Error(m.log).Log(
 					"msg", "failed building tsdb head",
+					"period", m.period.PeriodFor(m.prev.initialized),
 					"err", err,
 				)
 			}
@@ -216,7 +221,18 @@ func (m *HeadManager) Stop() error {
 		return err
 	}
 
-	return m.buildTSDBFromWAL(m.active.initialized)
+	if m.prev != nil {
+		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
+			// log the error and start building active head
+			level.Error(m.log).Log(
+				"msg", "failed building tsdb from prev head",
+				"period", m.period.PeriodFor(m.prev.initialized),
+				"err", err,
+			)
+		}
+	}
+
+	return m.buildTSDBFromHead(m.activeHeads)
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
@@ -270,7 +286,9 @@ func (m *HeadManager) Start() error {
 		return errors.Wrap(err, "building tsdb")
 	}
 
+	m.metrics.tsdbWALTruncationsTotal.Inc()
 	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
+		m.metrics.tsdbWALTruncationsFailedTotal.Inc()
 		return errors.New("cleaning (removing) wal dir")
 	}
 
@@ -310,13 +328,6 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) (err error) {
-	defer func() {
-		m.metrics.tsdbHeadRotationsTotal.Inc()
-		if err != nil {
-			m.metrics.tsdbHeadRotationsFailedTotal.Inc()
-		}
-	}()
-
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -349,27 +360,40 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 	return nil
 }
 
-func (m *HeadManager) buildTSDBFromWAL(t time.Time) error {
-	level.Debug(m.log).Log("msg", "combining tsdb WALs")
-	grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(t))
+func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
+	period := m.period.PeriodFor(head.start)
+	if err := m.tsdbManager.BuildFromHead(head); err != nil {
+		return errors.Wrap(err, "building tsdb from head")
+	}
+
+	// Now that a TSDB has been created from this group, it's safe to remove them
+	if err := m.truncateWALForPeriod(period); err != nil {
+		level.Error(m.log).Log(
+			"msg", "failed truncating wal files",
+			"period", period,
+			"err", err,
+		)
+	}
+
+	return nil
+}
+
+func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
+	m.metrics.tsdbWALTruncationsTotal.Inc()
+	defer func() {
+		if err != nil {
+			m.metrics.tsdbWALTruncationsFailedTotal.Inc()
+		}
+	}()
+
+	grp, _, err := walsForPeriod(m.dir, m.period, period)
 	if err != nil {
 		return errors.Wrap(err, "listing wals")
 	}
 	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
 
-	// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
-	// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
-	// TSDBs from orphaned WALs of previous periods during startup.
-	// we use the same timestamp as wal here for the filename to ensure it can't clobber
-	// an existing file from a previous cycle. I don't think this is possible, but
-	// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
-	if err := m.tsdbManager.BuildFromWALs(t, grp.wals); err != nil {
-		return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
-	}
-
-	// Now that a TSDB has been created from this group, it's safe to remove them
 	if err := m.removeWALGroup(grp); err != nil {
-		return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+		return errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period)
 	}
 	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
 
