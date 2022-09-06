@@ -21,7 +21,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Config.HTTPTLSConfig.TLSKeyPath, "internal-server.http-tls-key-path", "", "HTTP internal server key path.")
 	f.StringVar(&cfg.Config.HTTPTLSConfig.ClientAuth, "internal-server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
 	f.StringVar(&cfg.Config.HTTPTLSConfig.ClientCAs, "internal-server.http-tls-ca-path", "", "HTTP TLS Client CA path.")
-	f.IntVar(&cfg.Config.HTTPListenPort, "internal-server.http-listen-port", 8080, "HTTP internal server listen port.")
+	f.IntVar(&cfg.Config.HTTPListenPort, "internal-server.http-listen-port", 3101, "HTTP internal server listen port.")
 	f.IntVar(&cfg.Config.HTTPConnLimit, "internal-server.http-conn-limit", 0, "Maximum number of simultaneous http connections, <=0 to disable")
 	f.DurationVar(&cfg.Config.ServerGracefulShutdownTimeout, "internal-server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
 	f.DurationVar(&cfg.Config.HTTPServerReadTimeout, "internal-server.http-read-timeout", 30*time.Second, "Read timeout for HTTP server")
