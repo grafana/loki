@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"cloud.google.com/go/pubsub"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -39,15 +38,15 @@ type GCPLogEntry struct {
 	// anyway we will be sending the entire entry to Loki.
 }
 
-func format(
-	m *pubsub.Message,
+func parseGCPLogsEntry(
+	data []byte,
 	other model.LabelSet,
 	useIncomingTimestamp bool,
 	relabelConfig []*relabel.Config,
 ) (api.Entry, error) {
 	var ge GCPLogEntry
 
-	if err := json.Unmarshal(m.Data, &ge); err != nil {
+	if err := json.Unmarshal(data, &ge); err != nil {
 		return api.Entry{}, err
 	}
 
@@ -88,7 +87,7 @@ func format(
 	labels = labels.Merge(other)
 
 	ts := time.Now()
-	line := string(m.Data)
+	line := string(data)
 
 	if useIncomingTimestamp {
 		tt := ge.Timestamp

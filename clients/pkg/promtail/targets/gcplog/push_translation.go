@@ -4,17 +4,14 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"strings"
-	"time"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"strings"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -43,30 +40,26 @@ func (pm PushMessage) Validate() error {
 	return nil
 }
 
-// translate converts a GCP PushMessage into a loki api.Entry. It is responsible for decoding the log line (contained in the Message.Data)
-// attribute, using the incoming timestamp if necessary, and formatting and passing down the incoming Message.Attributes
-// if relabel is configured.
+// translate converts a GCP PushMessage into a loki api.Entry. It parses the push-specific labels, and delegates the rest to parseGCPLogsEntry.
 func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, relabelConfigs []*relabel.Config, xScopeOrgID string) (api.Entry, error) {
-	// mandatory label for gcplog
+	// Collect all push-specific labels. Every one of them is first configured as optional, and the user
+	// can relabel it if needed.
 	lbs := labels.NewBuilder(nil)
 	lbs.Set("__gcp_message_id", m.Message.ID)
 	lbs.Set("__gcp_subscription_name", m.Subscription)
-
-	// labels from gcp log entry. Add it as internal labels
 	for k, v := range m.Message.Attributes {
 		lbs.Set(fmt.Sprintf("__gcp_attributes_%s", convertToLokiCompatibleLabel(k)), v)
 	}
 
+	// Apply relabeling
 	var processed labels.Labels
-
-	// apply relabeling
 	if len(relabelConfigs) > 0 {
 		processed = relabel.Process(lbs.Labels(), relabelConfigs...)
 	} else {
 		processed = lbs.Labels()
 	}
 
-	// final labelset that will be sent to loki
+	// Drop internal or invalid labels
 	labels := make(model.LabelSet)
 	for _, lbl := range processed {
 		// ignore internal labels
@@ -80,23 +73,12 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 		labels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	}
 
-	// add labels coming from scrapeconfig
+	// Add fixed labels coming from the target configuration
 	labels = labels.Merge(other)
-
-	ts := time.Now()
 
 	decodedData, err := base64.StdEncoding.DecodeString(m.Message.Data)
 	if err != nil {
 		return api.Entry{}, fmt.Errorf("failed to decode data: %w", err)
-	}
-	line := string(decodedData)
-
-	if useIncomingTimestamp {
-		var err error
-		ts, err = time.Parse(time.RFC3339, m.Message.PublishTimestamp)
-		if err != nil {
-			return api.Entry{}, fmt.Errorf("invalid publish timestamp format: %w", err)
-		}
 	}
 
 	// If the incoming request carries the tenant id, inject it as the reserved label, so it's used by the
@@ -105,13 +87,14 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 		labels[lokiClient.ReservedLabelTenantID] = model.LabelValue(xScopeOrgID)
 	}
 
-	return api.Entry{
-		Labels: labels,
-		Entry: logproto.Entry{
-			Timestamp: ts,
-			Line:      line,
-		},
-	}, nil
+	// The labelset built by merging fixed target-level labels, push-specific labels and tenant ID is passed as to be merged
+	// to the resulting one of processing the actual GCP Logs entry.
+	entry, err := parseGCPLogsEntry(decodedData, labels, useIncomingTimestamp, relabelConfigs)
+	if err != nil {
+		return api.Entry{}, fmt.Errorf("failed to process logs entry: %w", err)
+	}
+
+	return entry, nil
 }
 
 // convertToLokiCompatibleLabel converts an incoming GCP Push message label to a loki compatible format. There are labels
