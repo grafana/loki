@@ -110,15 +110,15 @@ func CreateOrUpdateLokiStack(
 			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
 		}
 
-		if !storage.IsValidCAConfigMap(&cm) {
+		if !storage.IsValidCAConfigMap(&cm, stack.Spec.Storage.TLS.Key) {
 			return &status.DegradedError{
-				Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+				Message: "Invalid object storage CA configmap contents: missing key or no contents",
 				Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 				Requeue: false,
 			}
 		}
 
-		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name}
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: stack.Spec.Storage.TLS.Key}
 	}
 
 	var (
