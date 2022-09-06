@@ -39,7 +39,7 @@ var (
 
 // Push is a io.Writer, that writes given long entries by pushing
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
-// TODO(kavi): Add batching?
+// No batching of log lines happens when sending to Loki.
 type Push struct {
 	lokiURL     string
 	tenantID    string
