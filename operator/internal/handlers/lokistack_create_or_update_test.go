@@ -12,12 +12,10 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
-	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/status"
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
-	openshiftv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -86,12 +84,6 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string]string{},
-	}
-
-	apiServer = openshiftv1.APIServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: tlsprofile.APIServerName,
-		},
 	}
 )
 

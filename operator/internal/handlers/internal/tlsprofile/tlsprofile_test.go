@@ -52,57 +52,42 @@ var (
 	}
 )
 
-func TestGetSecurityProfileInfo_Old(t *testing.T) {
-	k := setupClient()
-
-	// Old Profile
-	profile := projectconfigv1.TLSProfileOldType
-	expected := projectconfigv1.TLSProfileSpec{
-		MinTLSVersion: "VersionTLS10",
-		Ciphers:       ciphersOld,
+func TestGetSecurityProfileInfo(t *testing.T) {
+	type tt struct {
+		desc     string
+		profile  projectconfigv1.TLSProfileType
+		expected projectconfigv1.TLSProfileSpec
 	}
 
-	info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, profile)
-	assert.Nil(t, err)
-	assert.NotNil(t, info)
-	assert.EqualValues(t, expected, info)
-}
-
-func TestGetSecurityProfileInfo_Intermediate(t *testing.T) {
-	k := setupClient()
-
-	// Intermediate Profile
-	profile := projectconfigv1.TLSProfileIntermediateType
-	expected := projectconfigv1.TLSProfileSpec{
-		MinTLSVersion: "VersionTLS12",
-		Ciphers:       ciphersIntermediate,
+	tc := []tt{
+		{
+			desc:    "Old profile",
+			profile: projectconfigv1.TLSProfileOldType,
+			expected: projectconfigv1.TLSProfileSpec{
+				MinTLSVersion: "VersionTLS10",
+				Ciphers:       ciphersOld,
+			},
+		},
+		{
+			desc:    "Intermediate profile",
+			profile: projectconfigv1.TLSProfileIntermediateType,
+			expected: projectconfigv1.TLSProfileSpec{
+				MinTLSVersion: "VersionTLS12",
+				Ciphers:       ciphersIntermediate,
+			},
+		},
+		{
+			desc:    "Modern profile",
+			profile: projectconfigv1.TLSProfileModernType,
+			expected: projectconfigv1.TLSProfileSpec{
+				MinTLSVersion: "VersionTLS13",
+				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
+				// (Read this and weep: https://github.com/golang/go/issues/29349)
+				Ciphers: []string{},
+			},
+		},
 	}
 
-	info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, profile)
-	assert.Nil(t, err)
-	assert.NotNil(t, info)
-	assert.EqualValues(t, expected, info)
-}
-
-func TestGetSecurityProfileInfo_Modern(t *testing.T) {
-	k := setupClient()
-
-	// Modern Profile
-	profile := projectconfigv1.TLSProfileModernType
-	expected := projectconfigv1.TLSProfileSpec{
-		MinTLSVersion: "VersionTLS13",
-		// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
-		// (Read this and weep: https://github.com/golang/go/issues/29349)
-		Ciphers: []string{},
-	}
-
-	info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, profile)
-	assert.Nil(t, err)
-	assert.NotNil(t, info)
-	assert.EqualValues(t, expected, info)
-}
-
-func setupClient() *k8sfakes.FakeClient {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 
@@ -116,5 +101,14 @@ func setupClient() *k8sfakes.FakeClient {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	return k
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, tc.profile)
+			assert.Nil(t, err)
+			assert.NotNil(t, info)
+			assert.EqualValues(t, tc.expected, info)
+		})
+	}
 }

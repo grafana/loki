@@ -281,7 +281,63 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 }
 
 func TestBuildGateway_WithTLSProfile(t *testing.T) {
-	objs, err := BuildGateway(Options{
+	type tt struct {
+		desc         string
+		mode         lokiv1.ModeType
+		authZ        *lokiv1.AuthorizationSpec
+		expectedArgs []string
+	}
+
+	tc := []tt{
+		{
+			desc: "static mode",
+			mode: lokiv1.Static,
+			authZ: &lokiv1.AuthorizationSpec{
+				Roles: []lokiv1.RoleSpec{
+					{
+						Name:        "some-name",
+						Resources:   []string{"metrics"},
+						Tenants:     []string{"test-a"},
+						Permissions: []lokiv1.PermissionType{"read"},
+					},
+				},
+				RoleBindings: []lokiv1.RoleBindingsSpec{
+					{
+						Name: "test-a",
+						Subjects: []lokiv1.Subject{
+							{
+								Name: "test@example.com",
+								Kind: "user",
+							},
+						},
+						Roles: []string{"read-write"},
+					},
+				},
+			},
+			expectedArgs: []string{
+				"--tls.min-version=min-version",
+				"--tls.cipher-suites=cipher1,cipher2",
+			},
+		},
+		{
+			desc: "dynamic mode",
+			mode: lokiv1.Dynamic,
+			expectedArgs: []string{
+				"--tls.min-version=min-version",
+				"--tls.cipher-suites=cipher1,cipher2",
+			},
+		},
+		{
+			desc: "openshift-logging mode",
+			mode: lokiv1.OpenshiftLogging,
+			expectedArgs: []string{
+				"--tls.min-version=min-version",
+				"--tls.cipher-suites=cipher1,cipher2",
+			},
+		},
+	}
+
+	options := Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Gates: configv1.FeatureGates{
@@ -299,24 +355,28 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 					Replicas: rand.Int31(),
 				},
 			},
-			Tenants: &lokiv1.TenantsSpec{
-				Mode: lokiv1.OpenshiftLogging,
-			},
+			Tenants: &lokiv1.TenantsSpec{},
 		},
-	})
-
-	expectedArgs := []string{
-		"--tls.min-version=min-version",
-		"--tls.cipher-suites=cipher1,cipher2",
 	}
 
-	require.NoError(t, err)
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			options.Stack.Tenants.Mode = tc.mode
+			options.Stack.Tenants.Authorization = tc.authZ
+			objs, err := BuildGateway(options)
 
-	d, ok := objs[1].(*appsv1.Deployment)
-	require.True(t, ok)
-	require.Len(t, d.Spec.Template.Spec.Containers, 2)
-	for _, c := range d.Spec.Template.Spec.Containers {
-		require.Contains(t, c.Args, expectedArgs[0])
-		require.Contains(t, c.Args, expectedArgs[1])
+			require.NoError(t, err)
+
+			d, ok := objs[1].(*appsv1.Deployment)
+			require.True(t, ok)
+
+			for _, c := range d.Spec.Template.Spec.Containers {
+				require.Contains(t, c.Args, tc.expectedArgs[0])
+				require.Contains(t, c.Args, tc.expectedArgs[1])
+			}
+		})
 	}
+
 }
