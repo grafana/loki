@@ -73,6 +73,35 @@ type FeatureGates struct {
 
 	// OpenShift contains a set of feature gates supported only on OpenShift.
 	OpenShift OpenShiftFeatureGates `json:"openshift,omitempty"`
+
+	// TLSProfile allows to chose a TLS security profile.
+	TLSProfile string `json:"tlsProfile,omitempty"`
+}
+
+// TLSProfileType is a TLS security profile based on the Mozilla definitions:
+// https://wiki.mozilla.org/Security/Server_Side_TLS
+type TLSProfileType string
+
+const (
+	// TLSProfileOldType is a TLS security profile based on:
+	// https://wiki.mozilla.org/Security/Server_Side_TLS#Old_backward_compatibility
+	TLSProfileOldType TLSProfileType = "Old"
+	// TLSProfileIntermediateType is a TLS security profile based on:
+	// https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_.28default.29
+	TLSProfileIntermediateType TLSProfileType = "Intermediate"
+	// TLSProfileModernType is a TLS security profile based on:
+	// https://wiki.mozilla.org/Security/Server_Side_TLS#Modern_compatibility
+	TLSProfileModernType TLSProfileType = "Modern"
+)
+
+// TLSProfileSpec is the desired behavior of a TLSProfileType.
+type TLSProfileSpec struct {
+	// ciphers is used to specify the cipher algorithms that are negotiated
+	// during the TLS handshake.
+	Ciphers []string
+	// minTLSVersion is used to specify the minimal version of the TLS protocol
+	// that is negotiated during the TLS handshake.
+	MinTLSVersion string
 }
 
 //+kubebuilder:object:root=true

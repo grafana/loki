@@ -11,6 +11,7 @@ import (
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -58,6 +59,8 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	// Input and output file/dir options
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
+	// TLS profile option
+	f.StringVar(&c.featureFlags.TLSProfile, "tls-profile", "", "The TLS security Profile configuration.")
 }
 
 func (c *config) validateFlags(log logr.Logger) {
@@ -126,14 +129,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.featureFlags.TLSProfile != "" &&
+		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileModernType) {
+		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
+		os.Exit(1)
+	}
+
 	// Convert config to manifest.Options
 	opts := manifests.Options{
-		Name:          cfg.Name,
-		Namespace:     cfg.Namespace,
-		Image:         cfg.Image,
-		Stack:         ls.Spec,
-		Gates:         cfg.featureFlags,
-		ObjectStorage: cfg.objectStorage,
+		Name:           cfg.Name,
+		Namespace:      cfg.Namespace,
+		Image:          cfg.Image,
+		Stack:          ls.Spec,
+		Gates:          cfg.featureFlags,
+		ObjectStorage:  cfg.objectStorage,
+		TLSProfileType: projectconfigv1.TLSProfileType(cfg.featureFlags.TLSProfile),
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
