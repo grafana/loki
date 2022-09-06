@@ -369,9 +369,8 @@ func (t *Loki) Run(opts RunOpts) error {
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	if t.Cfg.InternalServer.Enable {
 		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
-	} else {
-		t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
 	}
+	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
