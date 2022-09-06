@@ -279,3 +279,44 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 	require.NotContains(t, kinds, "*v1.Ingress")
 	require.Contains(t, kinds, "*v1.Route")
 }
+
+func TestBuildGateway_WithTLSProfile(t *testing.T) {
+	objs, err := BuildGateway(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+			HTTPEncryption:   true,
+			TLSProfile:       string(configv1.TLSProfileOldType),
+		},
+		TLSProfileSpec: configv1.TLSProfileSpec{
+			MinTLSVersion: "min-version",
+			Ciphers:       []string{"cipher1", "cipher2"},
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
+	})
+
+	expectedArgs := []string{
+		"--tls.min-version=min-version",
+		"--tls.cipher-suites=cipher1,cipher2",
+	}
+
+	require.NoError(t, err)
+
+	d, ok := objs[1].(*appsv1.Deployment)
+	require.True(t, ok)
+	require.Len(t, d.Spec.Template.Spec.Containers, 2)
+	for _, c := range d.Spec.Template.Spec.Containers {
+		require.Contains(t, c.Args, expectedArgs[0])
+		require.Contains(t, c.Args, expectedArgs[1])
+	}
+}

@@ -58,7 +58,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 func configureGatewayDeploymentForMode(
 	d *appsv1.Deployment, mode lokiv1.ModeType,
 	fg configv1.FeatureGates, stackName, stackNs string,
-	minTLSVersion string, ciphers []string,
+	minTLSVersion string, ciphers string,
 ) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
