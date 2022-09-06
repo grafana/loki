@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"strings"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"strings"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
