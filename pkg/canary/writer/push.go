@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-var p io.WriteCloser = &Push{}
+var p io.Writer = &Push{}
 
 const (
 	defaultContentType         = "application/x-protobuf"
@@ -41,36 +41,31 @@ var (
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
 // TODO(kavi): Add batching?
 type Push struct {
-	lokiURL         string
-	tenantID        string
-	httpClient      *http.Client
-	userAgent       string
-	contentType     string
-	logger          log.Logger
-	useTLs          bool
-	clientTLSConfig *tls.Config
-	caFile          string
+	lokiURL     string
+	tenantID    string
+	httpClient  *http.Client
+	userAgent   string
+	contentType string
+	logger      log.Logger
 
 	// auth
-	user, password string
+	username, password string
 
 	// Will add these label to the logs pushed to loki
 	labelName, labelValue, streamName, streamValue string
 }
 
 func NewPush(
-	lokiURL, tenantID string,
+	lokiAddr, tenantID string,
 	timeout time.Duration,
 	cfg config.HTTPClientConfig,
 	labelName, labelValue string,
 	streamName, streamValue string,
+	tlsCfg *tls.Config,
+	caFile string,
+	username, password string,
 	logger log.Logger,
 ) (*Push, error) {
-
-	u, err := url.ParseRequestURI(lokiURL)
-	if err != nil {
-		return nil, fmt.Errorf("given Loki URL(%q) is invalid: %w", lokiURL, err)
-	}
 
 	client, err := config.NewClientFromConfig(cfg, "canary-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -78,7 +73,25 @@ func NewPush(
 	}
 
 	client.Timeout = timeout
-	u.Path = pushEndpoint
+	scheme := "http"
+
+	// setup tls transport
+	if tlsCfg != nil {
+		rt, err := config.NewTLSRoundTripper(tlsCfg, caFile, func(tls *tls.Config) (http.RoundTripper, error) {
+			return &http.Transport{TLSClientConfig: tls}, nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create TLS config for transport: %w", err)
+		}
+		client.Transport = rt
+		scheme = "https"
+	}
+
+	u := url.URL{
+		Scheme: scheme,
+		Host:   lokiAddr,
+		Path:   pushEndpoint,
+	}
 
 	return &Push{
 		lokiURL:     u.String(),
@@ -91,6 +104,8 @@ func NewPush(
 		labelValue:  labelValue,
 		streamName:  streamName,
 		streamValue: streamValue,
+		username:    username,
+		password:    password,
 	}, nil
 }
 
@@ -102,12 +117,6 @@ func (p *Push) Write(payload []byte) (int, error) {
 		return 0, err
 	}
 	return len(payload), nil
-}
-
-// Close makes sure the pending buffer is pushed to `loki` before
-// returning. It's the responsibility of the client to call Close.
-func (p *Push) Close() error {
-	return nil
 }
 
 func (p *Push) parsePayload(payload []byte) (*logproto.PushRequest, error) {
@@ -168,8 +177,14 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 	req.Header.Set("Content-Type", p.contentType)
 	req.Header.Set("User-Agent", p.userAgent)
 
+	// set org-id
 	if p.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", p.tenantID)
+	}
+
+	// basic auth if provided
+	if p.username != "" {
+		req.SetBasicAuth(p.username, p.password)
 	}
 
 	resp, err := p.httpClient.Do(req)

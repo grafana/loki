@@ -12,7 +12,6 @@ import (
 
 	"crypto/tls"
 	"net/http"
-	"net/url"
 	"os/signal"
 
 	"github.com/go-kit/log"
@@ -42,6 +41,7 @@ func main() {
 	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
+	push := flag.Bool("push", false, "Push the logs to given Loki address inaddition to writing to stdout")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
@@ -128,28 +128,27 @@ func main() {
 			w   io.Writer
 		)
 
-		scheme := "http"
-		if *useTLS {
-			scheme = "https"
-		}
+		w = os.Stdout
 
-		httpListen, err := url.ParseRequestURI(fmt.Sprintf("%s://%s", scheme, *addr))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "given loki URL is invalid: %s", err)
-		}
+		if *push {
+			push, err := writer.NewPush(
+				*addr,
+				*tenantID,
+				*writeTimeout,
+				config.DefaultHTTPClientConfig,
+				*lName, *lVal,
+				*sName, *sValue,
+				tlsConfig,
+				*caFile,
+				*user, *pass,
+				log.NewLogfmtLogger(os.Stdout),
+			)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Unable to create writer for Loki, check config: %s", err)
+				os.Exit(1)
+			}
 
-		w, err = writer.NewPush(
-			httpListen.String(),
-			*tenantID,
-			*writeTimeout,
-			config.DefaultHTTPClientConfig,
-			*lName, *lVal,
-			*sName, *sValue,
-			log.NewLogfmtLogger(os.Stdout),
-		)
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Unable to create writer for Loki, check config: %s", err)
-			os.Exit(1)
+			w = io.MultiWriter(os.Stdout, push) // writes to both stdout and push to Loki directly.
 		}
 
 		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)

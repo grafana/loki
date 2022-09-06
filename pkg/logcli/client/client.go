@@ -311,8 +311,6 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		us = strings.Replace(us, "http", "ws", 1)
 	}
 
-	fmt.Println("Websocket URL", us)
-
 	if !quiet {
 		log.Println(us)
 	}
