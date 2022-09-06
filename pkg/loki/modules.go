@@ -76,6 +76,7 @@ const (
 	OverridesExporter        string = "overrides-exporter"
 	TenantConfigs            string = "tenant-configs"
 	Server                   string = "server"
+	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
 	Ingester                 string = "ingester"
 	Querier                  string = "querier"
@@ -139,6 +140,32 @@ func (t *Loki) initServer() (services.Service, error) {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}(t.Server.HTTPServer.Handler)
+
+	return s, nil
+}
+
+func (t *Loki) initInternalServer() (services.Service, error) {
+	// Loki handles signals on its own.
+	DisableSignalHandling(&t.Cfg.InternalServer.Config)
+	serv, err := server.New(t.Cfg.InternalServer.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Server = serv
+
+	servicesToWaitFor := func() []services.Service {
+		svs := []services.Service(nil)
+		for m, s := range t.serviceMap {
+			// Server should not wait for itself.
+			if m != Server {
+				svs = append(svs, s)
+			}
+		}
+		return svs
+	}
+
+	s := NewServerService(t.InternalServer, servicesToWaitFor)
 
 	return s, nil
 }
