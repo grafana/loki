@@ -16,17 +16,16 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/build"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 const (
 	defaultContentType         = "application/x-protobuf"
 	defaultMaxReponseBufferLen = 1024
-	defaultLabelName           = "name"
-	defaultLabelValue          = "canary-push"
 
 	pushEndpoint = "/loki/api/v1/push"
 )

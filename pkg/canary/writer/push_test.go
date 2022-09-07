@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -93,7 +94,7 @@ func assertResponse(t *testing.T, resp response, testAuth bool, labels model.Lab
 	// assert log entry
 	require.Len(t, resp.pushReq.Streams, 1)
 	require.Len(t, resp.pushReq.Streams[0].Entries, 1)
-	assert.Equal(t, string(payload), resp.pushReq.Streams[0].Entries[0].Line)
+	assert.Equal(t, payload, resp.pushReq.Streams[0].Entries[0].Line)
 	assert.Equal(t, ts, resp.pushReq.Streams[0].Entries[0].Timestamp)
 }
 
