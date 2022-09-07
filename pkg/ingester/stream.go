@@ -267,6 +267,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 	var outOfOrderSamples, outOfOrderBytes int
 	var rateLimitedSamples, rateLimitedBytes int
 
+	var totalBytes int
 	var failedEntriesWithError []entryWithError
 	toStore := make([]logproto.Entry, 0, len(entries))
 	for i := range entries {
@@ -282,15 +283,6 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 			continue
 		}
 
-		// Check if this should be rate limited.
-		now := time.Now()
-		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
-			rateLimitedSamples++
-			rateLimitedBytes += len(entries[i].Line)
-			continue
-		}
-
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := s.highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
@@ -300,6 +292,8 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 			continue
 		}
 
+		totalBytes += len(entries[i].Line)
+
 		s.lastLine.ts = entries[i].Timestamp
 		s.lastLine.content = entries[i].Line
 		if s.highestTs.Before(entries[i].Timestamp) {
@@ -307,6 +301,18 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		}
 
 		toStore = append(toStore, entries[i])
+	}
+
+	// Each successful call to 'AllowN' advances the limiter. With all or nothing
+	// ingestion, the limiter should only be advanced when the whole stream can be
+	// sent
+	now := time.Now()
+	if !s.limiter.AllowN(now, totalBytes) {
+		rateLimitedSamples = len(toStore)
+		rateLimitedBytes = totalBytes
+		for i := 0; i < len(toStore); i++ {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+		}
 	}
 
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
