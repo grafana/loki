@@ -270,6 +270,9 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 	var totalBytes int
 	var failedEntriesWithError []entryWithError
 	toStore := make([]logproto.Entry, 0, len(entries))
+
+	lastLine := s.lastLine
+	highestTs := s.highestTs
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
 		// ignore it.
@@ -279,7 +282,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		//
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
-		if entries[i].Timestamp.Equal(s.lastLine.ts) && entries[i].Line == s.lastLine.content {
+		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
 			continue
 		}
 
@@ -294,10 +297,10 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 
 		totalBytes += len(entries[i].Line)
 
-		s.lastLine.ts = entries[i].Timestamp
-		s.lastLine.content = entries[i].Line
-		if s.highestTs.Before(entries[i].Timestamp) {
-			s.highestTs = entries[i].Timestamp
+		lastLine.ts = entries[i].Timestamp
+		lastLine.content = entries[i].Line
+		if highestTs.Before(entries[i].Timestamp) {
+			highestTs = entries[i].Timestamp
 		}
 
 		toStore = append(toStore, entries[i])
@@ -313,9 +316,14 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 		}
+
+		s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
+		return toStore, failedEntriesWithError
 	}
 
-	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
+	s.lastLine = lastLine
+	s.highestTs = highestTs
+	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
 
 	return toStore, failedEntriesWithError
 }
