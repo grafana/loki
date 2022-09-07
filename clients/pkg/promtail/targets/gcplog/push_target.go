@@ -116,7 +116,7 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = pushMessage.Validate(); err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues("invalid").Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("invalid_message").Inc()
 		level.Warn(h.logger).Log("msg", "invalid gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
