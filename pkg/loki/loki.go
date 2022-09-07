@@ -378,6 +378,9 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.bindConfigEndpoint(opts)
 
 	// Each component serves its version.
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
+	}
 	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
 
 	t.Server.HTTP.Path("/debug/fgprof").Methods("GET", "POST").Handler(fgprof.Handler())
