@@ -293,6 +293,8 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+    # -- Job Create Secret Stage Image to Utilize
+    image: bitnami/kubectl
 
   nginxConfig:
     file: |
@@ -1059,7 +1061,7 @@ tracing:
 # Configuration for `minio` child chart
 # -------------------------------------
 minio:
-  enabled: false 
+  enabled: false
   accessKey: enterprise-logs
   secretKey: supersecret
   buckets:

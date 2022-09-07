@@ -11,13 +11,20 @@ tests:
         values: '1+1x20'
       - series: 'loki_request_duration_seconds_count{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+3x20'
+      - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+        values: '1+1x20'
+      - series: 'http_requests_total{code="200", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+        values: '1+3x20'
+      - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+        values: '1+1x20'
+      - series: 'http_requests_total{code="200", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+        values: '1+3x20'
 
       - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'
         values: '0 1 1 2+0x10'
 
     # Unit test for alerting rules.
     alert_rule_test:
-      # --------- LokiRequestErrors ---------
       - eval_time: 16m
         alertname: LokiRequestErrors
         exp_alerts:
@@ -30,8 +37,28 @@ tests:
               summary: "At least 10% of requests are responded by 5xx server errors."
               message: "ingester my-route is experiencing 25.00% errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
-
-      # --------- LokiRequestPanics ---------
+      - eval_time: 16m
+        alertname: LokiStackWriteRequestErrors
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: gateway
+              severity: critical
+            exp_annotations:
+              summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
+              message: "25.00% of write requests from gateway are returned with server errors."
+              runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
+      - eval_time: 16m
+        alertname: LokiStackReadRequestErrors
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: gateway
+              severity: critical
+            exp_annotations:
+              summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
+              message: "25.00% of query requests from gateway are returned with server errors."
+              runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
       - eval_time: 10m
         alertname: LokiRequestPanics
         exp_alerts:

@@ -7,12 +7,14 @@ import (
 	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
+	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
@@ -224,6 +226,7 @@ func CreateOrUpdateLokiStack(
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
+		TLSProfileType: projectconfigv1.TLSProfileType(fg.TLSProfile),
 	}
 
 	ll.Info("begin building manifests")
@@ -239,6 +242,14 @@ func CreateOrUpdateLokiStack(
 			return optErr
 		}
 	}
+
+	spec, err := tlsprofile.GetSecurityProfileInfo(ctx, k, opts.TLSProfileType)
+	if err != nil {
+		ll.Error(err, "failed to get security profile info")
+		return err
+	}
+
+	opts.TLSProfileSpec = spec
 
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {

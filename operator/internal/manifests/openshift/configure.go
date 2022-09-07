@@ -46,6 +46,8 @@ func ConfigureGatewayDeployment(
 	withTLS, withCertSigningService bool,
 	secretName, serverName string,
 	gatewayHTTPPort int,
+	minTLSVersion string,
+	ciphers string,
 ) error {
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
@@ -99,7 +101,6 @@ func ConfigureGatewayDeployment(
 	caFilePath := path.Join(caDir, caFile)
 	gwArgs = append(gwArgs,
 		"--tls.client-auth-type=NoClientCert",
-		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
 		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
 		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
@@ -107,7 +108,6 @@ func ConfigureGatewayDeployment(
 
 	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
-	gwContainer.Args = gwArgs
 
 	// Create and mount TLS secrets volumes if not already created.
 	if !withTLS {
@@ -125,13 +125,20 @@ func ConfigureGatewayDeployment(
 			ReadOnly:  true,
 			MountPath: tlsDir,
 		})
+
+		// Add TLS profile info args since openshift gateway always uses TLS.
+		gwArgs = append(gwArgs,
+			fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
+			fmt.Sprintf("--tls.cipher-suites=%s", ciphers))
 	}
+
+	gwContainer.Args = gwArgs
 
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
 			*gwContainer,
-			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, withTLS),
+			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphers, withTLS),
 		},
 		Volumes: gwVolumes,
 	}
