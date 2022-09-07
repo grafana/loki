@@ -293,6 +293,8 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+    # -- Job Create Secret Stage Image to Utilize
+    image: bitnami/kubectl
 
   nginxConfig:
     file: |
