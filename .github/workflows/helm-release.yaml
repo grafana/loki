@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'production/helm/**'
 
 jobs:
   call-update-helm-repo:
