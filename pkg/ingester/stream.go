@@ -249,8 +249,14 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 				outOfOrderBytes += len(entries[i].Line)
 			}
 		} else {
-			bytesAdded += len(entries[i].Line)
+			s.lastLine.ts = entries[i].Timestamp
+			s.lastLine.content = entries[i].Line
+			if s.highestTs.Before(entries[i].Timestamp) {
+				s.highestTs = entries[i].Timestamp
+			}
+
 			s.entryCt++
+			bytesAdded += len(entries[i].Line)
 
 			storedEntries = append(storedEntries, entries[i])
 		}
@@ -317,18 +323,9 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 		}
-
-		s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
-		return toStore, failedEntriesWithError
 	}
 
-	// Everything is valid, advance the stream's last line and highestTs
-	s.lastLine = lastLine
-	if s.highestTs.Before(highestTs) {
-		s.highestTs = highestTs
-	}
-	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
-
+	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }
 
