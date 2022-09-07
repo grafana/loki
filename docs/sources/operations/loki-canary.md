@@ -328,13 +328,15 @@ All options:
   -out-of-order-percentage int
       	Percentage (0-100) of log entries that should be sent out of order
   -pass string
-        Loki password
+        Loki password. This credential should have both read and write permissions to Loki endpoints
   -port int
         Port which Loki Canary should expose metrics (default 3500)
   -pruneinterval duration
         Frequency to check sent versus received logs, and also the frequency at which queries
         for missing logs will be dispatched to Loki, and the frequency spot check queries are run
         (default 1m0s)
+  -push
+	    Push the logs directly to given Loki address
   -query-timeout duration
         How long to wait for a query response from Loki (default 10s)
   -size int

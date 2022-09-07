@@ -22,8 +22,6 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-var p io.Writer = &Push{}
-
 const (
 	defaultContentType         = "application/x-protobuf"
 	defaultMaxReponseBufferLen = 1024
@@ -55,6 +53,7 @@ type Push struct {
 	labelName, labelValue, streamName, streamValue string
 }
 
+// NewPush creates an instance of `Push` which writes logs directly to given `lokiAddr`
 func NewPush(
 	lokiAddr, tenantID string,
 	timeout time.Duration,
@@ -109,7 +108,7 @@ func NewPush(
 	}, nil
 }
 
-// Write implements the io.Writer. Needed to inject it as dependency for canary.
+// Write implements the io.Writer.
 func (p *Push) Write(payload []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.httpClient.Timeout)
 	defer cancel()
