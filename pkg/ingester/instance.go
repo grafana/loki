@@ -262,7 +262,8 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
 	}
 
-	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
+	// If it's a 400 or 429, the whole stream was rejected
+	fmt.Fprintf(&buf, "total ignored: %d out of %d", totalEntries, totalEntries)
 
 	var details []*types.Any
 

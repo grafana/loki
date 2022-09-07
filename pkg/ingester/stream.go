@@ -177,14 +177,14 @@ func (s *stream) Push(
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries := s.storeEntries(ctx, toStore)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore)
 	s.recordAndSendToTailers(record, storedEntries)
 
 	if len(s.chunks) != prevNumChunks {
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
-	return bytesAdded, invalid
+	return bytesAdded, entriesWithErr
 }
 
 func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.Entry) {
@@ -231,9 +231,10 @@ func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.En
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (int, []logproto.Entry) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (int, []logproto.Entry, []entryWithError) {
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
+	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
@@ -242,6 +243,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 		}
 
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
+			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
@@ -257,7 +259,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 	}
 
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
-	return bytesAdded, storedEntries
+	return bytesAdded, storedEntries, invalid
 }
 
 func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]logproto.Entry, []entryWithError) {
