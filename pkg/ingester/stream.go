@@ -263,16 +263,17 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 }
 
 func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]logproto.Entry, []entryWithError) {
-	limit := s.limiter.lim.Limit()
-	var outOfOrderSamples, outOfOrderBytes int
-	var rateLimitedSamples, rateLimitedBytes int
+	var (
+		outOfOrderSamples, outOfOrderBytes   int
+		rateLimitedSamples, rateLimitedBytes int
+		totalBytes                           int
+		failedEntriesWithError               []entryWithError
+		limit                                = s.limiter.lim.Limit()
+		lastLine                             = s.lastLine
+		highestTs                            = s.highestTs
+		toStore                              = make([]logproto.Entry, 0, len(entries))
+	)
 
-	var totalBytes int
-	var failedEntriesWithError []entryWithError
-	toStore := make([]logproto.Entry, 0, len(entries))
-
-	lastLine := s.lastLine
-	highestTs := s.highestTs
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
 		// ignore it.
@@ -321,8 +322,11 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		return toStore, failedEntriesWithError
 	}
 
+	// Everything is valid, advance the stream's last line and highestTs
 	s.lastLine = lastLine
-	s.highestTs = highestTs
+	if s.highestTs.Before(highestTs) {
+		s.highestTs = highestTs
+	}
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
 
 	return toStore, failedEntriesWithError
