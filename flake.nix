@@ -129,6 +129,8 @@
             golangci-lint
             helm-docs
             faillint
+            chart-testing
+            chart-releaser
           ];
 
           shellHook = ''
