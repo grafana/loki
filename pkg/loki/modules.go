@@ -152,13 +152,13 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Server = serv
+	t.InternalServer = serv
 
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
 		for m, s := range t.serviceMap {
 			// Server should not wait for itself.
-			if m != Server {
+			if m != InternalServer {
 				svs = append(svs, s)
 			}
 		}
