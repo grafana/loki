@@ -38,20 +38,16 @@ type GCPLogEntry struct {
 	// anyway we will be sending the entire entry to Loki.
 }
 
-func parseGCPLogsEntry(
-	data []byte,
-	other model.LabelSet,
-	useIncomingTimestamp bool,
-	relabelConfig []*relabel.Config,
-) (api.Entry, error) {
+func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.Labels, useIncomingTimestamp bool, relabelConfig []*relabel.Config) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(data, &ge); err != nil {
 		return api.Entry{}, err
 	}
 
-	// mandatory label for gcplog
-	lbs := labels.NewBuilder(nil)
+	// Mixin with otherInternal labels coming from upstream that need processing
+	// Adding mandatory labels for gcplog
+	lbs := labels.NewBuilder(otherInternal)
 	lbs.Set("__gcp_logname", ge.LogName)
 	lbs.Set("__gcp_resource_type", ge.Resource.Type)
 
