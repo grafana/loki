@@ -957,7 +957,7 @@ When using the `push` subscription type, keep in mind:
 [server: <server_config>]
 
 # Whether Promtail should pass on the timestamp from the incoming GCP Log message.
-# When false, or if no timestamp is present in the syslog message, Promtail will assign the current
+# When false, or if no timestamp is present in the GCP Log message, Promtail will assign the current
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
