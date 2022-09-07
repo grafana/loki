@@ -993,6 +993,7 @@ spec:
                     - static
                     - dynamic
                     - openshift-logging
+                    - openshift-network
                     type: string
                 required:
                 - mode
