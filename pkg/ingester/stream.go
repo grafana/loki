@@ -163,7 +163,6 @@ func (s *stream) Push(
 		return 0, []entryWithError{{entry: &logproto.Entry{}, e: ErrEntriesExist}}
 	}
 
-	var bytesAdded int
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -173,7 +172,6 @@ func (s *stream) Push(
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	var storedEntries []logproto.Entry
 	failedEntriesWithError := []entryWithError{}
 
 	var outOfOrderSamples, outOfOrderBytes int
@@ -200,6 +198,7 @@ func (s *stream) Push(
 
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
+	toStore := make([]logproto.Entry, 0, len(entries))
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
 		// ignore it.
@@ -213,10 +212,6 @@ func (s *stream) Push(
 			continue
 		}
 
-		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
-			chunk = s.cutChunk(ctx)
-		}
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
@@ -232,24 +227,42 @@ func (s *stream) Push(
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
-		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
-			if chunkenc.IsOutOfOrderErr(err) {
-				outOfOrderSamples++
-				outOfOrderBytes += len(entries[i].Line)
-			}
 		} else {
-			storedEntries = append(storedEntries, entries[i])
 			s.lastLine.ts = entries[i].Timestamp
 			s.lastLine.content = entries[i].Line
 			if s.highestTs.Before(entries[i].Timestamp) {
 				s.highestTs = entries[i].Timestamp
 			}
+			toStore = append(toStore, entries[i])
+		}
+	}
+
+	if len(failedEntriesWithError) > 0 {
+		return 0, failedEntriesWithError
+	}
+
+	var bytesAdded int
+	var storedEntries []logproto.Entry
+	for i := 0; i < len(toStore); i++ {
+		chunk := &s.chunks[len(s.chunks)-1]
+		if chunk.closed || !chunk.chunk.SpaceFor(&toStore[i]) || s.cutChunkForSynchronization(toStore[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
+			chunk = s.cutChunk(ctx)
+		}
+
+		if err := chunk.chunk.Append(&toStore[i]); err != nil {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], err})
+			if chunkenc.IsOutOfOrderErr(err) {
+				outOfOrderSamples++
+				outOfOrderBytes += len(toStore[i].Line)
+			}
+		} else {
+			// length of string plus
+			bytesAdded += len(toStore[i].Line)
 			s.entryCt++
 
-			// length of string plus
-			bytesAdded += len(entries[i].Line)
+			storedEntries = append(storedEntries, toStore[i])
 		}
+
 		chunk.lastUpdated = time.Now()
 	}
 
@@ -298,7 +311,6 @@ func (s *stream) Push(
 	}
 
 	return bytesAdded, failedEntriesWithError
-
 }
 
 func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
