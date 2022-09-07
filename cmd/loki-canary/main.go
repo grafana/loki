@@ -47,7 +47,7 @@ func main() {
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
 	caFile := flag.String("ca-file", "", "Client certificate authority for optional use with TLS connection to Loki")
 	user := flag.String("user", "", "Loki username.")
-	pass := flag.String("pass", "", "Loki password.")
+	pass := flag.String("pass", "", "Loki password. This credential should have both read and write permissions to Loki endpoints")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
 	writeTimeout := flag.Duration("write-timeout", 10*time.Second, "How long to wait write response from Loki")
 	queryTimeout := flag.Duration("query-timeout", 10*time.Second, "How long to wait for a query response from Loki")
@@ -116,6 +116,9 @@ func main() {
 	sentChan := make(chan time.Time)
 	receivedChan := make(chan time.Time)
 
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger = log.With(logger, "caller", log.Caller(3))
+
 	c := &canary{}
 	startCanary := func() {
 		c.stop()
@@ -148,10 +151,10 @@ func main() {
 				os.Exit(1)
 			}
 
-			w = io.MultiWriter(os.Stdout, push) // writes to both stdout and push to Loki directly.
+			w = push
 		}
 
-		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)
+		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
@@ -179,7 +182,7 @@ func main() {
 	}()
 
 	terminate := make(chan os.Signal, 1)
-	signal.Notify(terminate, syscall.SIGTERM, os.Interrupt)
+	signal.Notify(terminate, syscall.SIGTERM, syscall.SIGINT, os.Interrupt)
 
 	for range terminate {
 		_, _ = fmt.Fprintf(os.Stderr, "shutting down\n")
