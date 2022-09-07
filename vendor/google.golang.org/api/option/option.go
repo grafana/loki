@@ -82,6 +82,9 @@ func (w withEndpoint) Apply(o *internal.DialSettings) {
 
 // WithScopes returns a ClientOption that overrides the default OAuth2 scopes
 // to be used for a service.
+//
+// If both WithScopes and WithTokenSource are used, scope settings from the
+// token source will be used instead.
 func WithScopes(scope ...string) ClientOption {
 	return withScopes(scope)
 }

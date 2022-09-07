@@ -1,5 +1,12 @@
 # Changes
 
+## [0.102.1](https://github.com/googleapis/google-cloud-go/compare/v0.102.0...v0.102.1) (2022-06-17)
+
+
+### Bug Fixes
+
+* **longrunning:** regapic remove path params duped as query params ([#6183](https://github.com/googleapis/google-cloud-go/issues/6183)) ([c963be3](https://github.com/googleapis/google-cloud-go/commit/c963be301f074779e6bb8c897d8064fa076e9e35))
+
 ## [0.102.0](https://github.com/googleapis/google-cloud-go/compare/v0.101.1...v0.102.0) (2022-05-24)
 
 

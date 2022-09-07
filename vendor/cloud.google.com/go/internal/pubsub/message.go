@@ -14,7 +14,6 @@
 package pubsub
 
 import (
-	"context"
 	"time"
 )
 
@@ -25,14 +24,6 @@ type AckHandler interface {
 
 	// OnNack processes a message nack.
 	OnNack()
-
-	// OnAckWithResult processes a message ack and returns
-	// a result that shows if it succeeded.
-	OnAckWithResult() *AckResult
-
-	// OnNackWithResult processes a message nack and returns
-	// a result that shows if it succeeded.
-	OnNackWithResult() *AckResult
 }
 
 // Message represents a Pub/Sub message.
@@ -92,121 +83,6 @@ func (m *Message) Nack() {
 	if m.ackh != nil {
 		m.ackh.OnNack()
 	}
-}
-
-// AcknowledgeStatus represents the status of an Ack or Nack request.
-type AcknowledgeStatus int
-
-const (
-	// AcknowledgeStatusSuccess indicates the request was a success.
-	AcknowledgeStatusSuccess AcknowledgeStatus = iota
-	// AcknowledgeStatusPermissionDenied indicates the caller does not have sufficient permissions.
-	AcknowledgeStatusPermissionDenied
-	// AcknowledgeStatusFailedPrecondition indicates the request encountered a FailedPrecondition error.
-	AcknowledgeStatusFailedPrecondition
-	// AcknowledgeStatusInvalidAckID indicates one or more of the ack IDs sent were invalid.
-	AcknowledgeStatusInvalidAckID
-	// AcknowledgeStatusOther indicates another unknown error was returned.
-	AcknowledgeStatusOther
-)
-
-// AckResult holds the result from a call to Ack or Nack.
-type AckResult struct {
-	ready chan struct{}
-	res   AcknowledgeStatus
-	err   error
-}
-
-// Ready returns a channel that is closed when the result is ready.
-// When the Ready channel is closed, Get is guaranteed not to block.
-func (r *AckResult) Ready() <-chan struct{} { return r.ready }
-
-// Get returns the status and/or error result of a Ack, Nack, or Modack call.
-// Get blocks until the Ack/Nack completes or the context is done.
-func (r *AckResult) Get(ctx context.Context) (res AcknowledgeStatus, err error) {
-	// If the result is already ready, return it even if the context is done.
-	select {
-	case <-r.Ready():
-		return r.res, r.err
-	default:
-	}
-	select {
-	case <-ctx.Done():
-		// Explicitly return AcknowledgeStatusOther for context cancelled cases,
-		// since the default is success.
-		return AcknowledgeStatusOther, ctx.Err()
-	case <-r.Ready():
-		return r.res, r.err
-	}
-}
-
-// NewAckResult creates a AckResult.
-func NewAckResult() *AckResult {
-	return &AckResult{
-		ready: make(chan struct{}),
-	}
-}
-
-// SetAckResult sets the ack response and error for a ack result and closes
-// the Ready channel. Any call after the first for the same AckResult
-// is a no-op.
-func SetAckResult(r *AckResult, res AcknowledgeStatus, err error) {
-	select {
-	case <-r.Ready():
-		return
-	default:
-		r.res = res
-		r.err = err
-		close(r.ready)
-	}
-}
-
-// AckWithResult acknowledges a message in Pub/Sub and it will not be
-// delivered to this subscription again.
-//
-// You should avoid acknowledging messages until you have
-// *finished* processing them, so that in the event of a failure,
-// you receive the message again.
-//
-// If exactly-once delivery is enabled on the subscription, the
-// AckResult returned by this method tracks the state of acknowledgement
-// operation. If the operation completes successfully, the message is
-// guaranteed NOT to be re-delivered. Otherwise, the result will
-// contain an error with more details about the failure and the
-// message may be re-delivered.
-//
-// If exactly-once delivery is NOT enabled on the subscription, or
-// if using Pub/Sub Lite, AckResult readies immediately with a AcknowledgeStatus.Success.
-// Since acks in Cloud Pub/Sub are best effort when exactly-once
-// delivery is disabled, the message may be re-delivered. Because
-// re-deliveries are possible, you should ensure that your processing
-// code is idempotent, as you may receive any given message more than
-// once.
-func (m *Message) AckWithResult() *AckResult {
-	if m.ackh != nil {
-		return m.ackh.OnAckWithResult()
-	}
-	return nil
-}
-
-// NackWithResult declines to acknowledge the message which indicates that
-// the client will not or cannot process a Message. This will cause the message
-// to be re-delivered to subscribers. Re-deliveries may take place immediately
-// or after a delay.
-//
-// If exactly-once delivery is enabled on the subscription, the
-// AckResult returned by this method tracks the state of nack
-// operation. If the operation completes successfully, the result will
-// contain AckResponse.Success. Otherwise, the result will contain an error
-// with more details about the failure.
-//
-// If exactly-once delivery is NOT enabled on the subscription, or
-// if using Pub/Sub Lite, AckResult readies immediately with a AcknowledgeStatus.Success.
-func (m *Message) NackWithResult() *AckResult {
-	if m.ackh != nil {
-		return m.ackh.OnNackWithResult()
-	}
-	return nil
 }
 
 // NewMessage creates a message with an AckHandler implementation, which should
