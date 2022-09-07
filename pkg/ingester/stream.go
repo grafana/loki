@@ -76,7 +76,7 @@ type chunkDesc struct {
 }
 
 type entryWithError struct {
-	entry *logproto.Entry
+	entry logproto.Entry
 	e     error
 }
 
@@ -160,7 +160,7 @@ func (s *stream) Push(
 
 		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
 		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
-		return 0, []entryWithError{{entry: &logproto.Entry{}, e: ErrEntriesExist}}
+		return 0, []entryWithError{{e: ErrEntriesExist}}
 	}
 
 	toStore, invalid := s.validateEntries(entries, isReplay)
@@ -243,7 +243,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 		}
 
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
-			invalid = append(invalid, entryWithError{&entries[i], err})
+			invalid = append(invalid, entryWithError{entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
@@ -286,7 +286,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := s.highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
 			continue
@@ -303,7 +303,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		toStore = append(toStore, entries[i])
 	}
 
-	// Each successful call to 'AllowN' advances the limiter. With all or nothing
+	// Each successful call to 'AllowN' advances the limiter. With all-or-nothing
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
 	now := time.Now()
@@ -311,7 +311,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		rateLimitedSamples = len(toStore)
 		rateLimitedBytes = totalBytes
 		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 		}
 	}
 
