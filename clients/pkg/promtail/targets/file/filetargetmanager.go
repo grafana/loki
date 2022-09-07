@@ -377,13 +377,12 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 
 			// close related file event watcher if no other targets are using
 			k := target.path
-			count, ok := watcherUseCount[k]
+			_, ok := watcherUseCount[k]
 			if !ok {
 				level.Warn(s.log).Log("msg", "failed to find file event watcher", "path", k)
 				continue
 			} else {
-				watcherUseCount[k]--
-				if count != 1 {
+				if watcherUseCount[k]--; watcherUseCount[k] > 0 {
 					// Multiple targets are using this file watcher, leave it alone
 					continue
 				}

@@ -556,16 +556,24 @@ func TestLabelSetUpdate(t *testing.T) {
 		"job":     "foo",
 	}
 
+	var target2 = model.LabelSet{
+		hostLabel: "localhost",
+		pathLabel: "baz",
+		"job":     "foo2",
+	}
+
+	// two separate targets with same path
 	syncer.sync([]*targetgroup.Group{
 		{
-			Targets: []model.LabelSet{target},
+			Targets: []model.LabelSet{target, target2},
 		},
 	}, targetEventHandler)
 	syncer.sendFileCreateEvent(fsnotify.Event{Name: "baz"})
 
-	require.Equal(t, 1, len(syncer.targets))
+	require.Equal(t, 2, len(syncer.targets))
 	require.Equal(t, 1, len(syncer.fileEventWatchers))
 
+	// remove second target and modify the first
 	target["job"] = "bar"
 	syncer.sync([]*targetgroup.Group{
 		{
@@ -575,5 +583,14 @@ func TestLabelSetUpdate(t *testing.T) {
 
 	require.Equal(t, 1, len(syncer.targets))
 	require.Equal(t, 1, len(syncer.fileEventWatchers))
+
+	// cleanup all targets
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{},
+		},
+	}, targetEventHandler)
+	require.Equal(t, 0, len(syncer.targets))
+	require.Equal(t, 0, len(syncer.fileEventWatchers))
 
 }
