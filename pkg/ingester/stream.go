@@ -76,7 +76,7 @@ type chunkDesc struct {
 }
 
 type entryWithError struct {
-	entry logproto.Entry
+	entry *logproto.Entry
 	e     error
 }
 
@@ -243,7 +243,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 		}
 
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
-			invalid = append(invalid, entryWithError{entries[i], err})
+			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
@@ -294,9 +294,9 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		cutoff := s.highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{entries[i], chunkenc.ErrTooFarBehind(cutoff)})
+		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
+		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
 			continue
@@ -321,7 +321,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		rateLimitedSamples = len(toStore)
 		rateLimitedBytes = totalBytes
 		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 		}
 	}
 

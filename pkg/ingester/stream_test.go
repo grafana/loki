@@ -333,7 +333,7 @@ func TestPushRateLimit(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 	}
 
-	// Both entries have errors because rate limiting is does all at once
+	// Both entries have errors because rate limiting is done all at once
 	_, entriesWithErrors := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
 	require.Len(t, entriesWithErrors, 2)
 	require.Contains(t, entriesWithErrors[0].e.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
