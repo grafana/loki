@@ -21,7 +21,7 @@ Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src
 
 ## Contribute to helm
 
-Please follow the [Loki Helm Chart](./production/helm/README.md).
+Please follow the [Loki Helm Chart](./production/helm/loki/README.md).
 
 ### Dependency management
 
