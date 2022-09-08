@@ -367,4 +367,10 @@ All options:
         Print this build's version information
   -wait duration
         Duration to wait for log entries before reporting them as lost (default 1m0s)
+  -write-max-backoff duration
+    	Maximum backoff time between retries  (default 5m0s)
+  -write-max-retries int
+    	Maximum number of retries when push a log entry  (default 10)
+  -write-min-backoff duration
+    	Initial backoff time before first retry  (default 500ms)
 ```
