@@ -164,7 +164,7 @@ func (s *stream) Push(
 	}
 
 	toStore, invalid := s.validateEntries(entries, isReplay)
-	if s.cfg.AllOrNothingStreamIngest && len(invalid) > 0 {
+	if s.cfg.RateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, invalid
 	}
 
@@ -185,6 +185,16 @@ func (s *stream) Push(
 	}
 
 	return bytesAdded, append(invalid, entriesWithErr...)
+}
+
+func hasRateLimitErr(errs []entryWithError) bool {
+	if len(errs) == 0 {
+		return false
+	}
+
+	lastErr := errs[len(errs)-1]
+	_, ok := lastErr.e.(*validation.ErrStreamRateLimit)
+	return ok
 }
 
 func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.Entry) {
@@ -293,7 +303,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		}
 
 		now := time.Now()
-		if !s.cfg.AllOrNothingStreamIngest && !s.limiter.AllowN(now, len(entries[i].Line)) {
+		if !s.cfg.RateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
@@ -324,11 +334,13 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
 	now := time.Now()
-	if s.cfg.AllOrNothingStreamIngest && !s.limiter.AllowN(now, totalBytes) {
-		rateLimitedSamples = len(toStore)
-		rateLimitedBytes = totalBytes
-		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+	if s.cfg.RateLimitWholeStream && !s.limiter.AllowN(now, totalBytes) {
+		// Report that the whole stream was rate limited
+		rateLimitedSamples = len(entries)
+		failedEntriesWithError = make([]entryWithError, 0, len(entries))
+		for i := 0; i < len(entries); i++ {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+			rateLimitedBytes += len(entries[i].Line)
 		}
 	}
 

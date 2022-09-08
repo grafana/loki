@@ -235,11 +235,10 @@ func TestUnorderedPush(t *testing.T) {
 	)
 
 	for _, x := range []struct {
-		cutBefore    bool
-		entries      []logproto.Entry
-		err          bool
-		written      int
-		allOrNothing bool
+		cutBefore bool
+		entries   []logproto.Entry
+		err       bool
+		written   int
 	}{
 		{
 			entries: []logproto.Entry{
@@ -261,16 +260,6 @@ func TestUnorderedPush(t *testing.T) {
 			err:     true,
 			written: 2, // 1 ignored // Reject whole stream when any error
 		},
-		{ //unwritten entries don't track highest
-			entries: []logproto.Entry{
-				{Timestamp: time.Unix(4, 0), Line: "x"}, // ordering err, too far
-				{Timestamp: time.Unix(12, 0), Line: "x"},
-				{Timestamp: time.Unix(13, 0), Line: "x"},
-			},
-			err:          true,
-			written:      0, // Reject whole stream when any error
-			allOrNothing: true,
-		},
 		// force a chunk cut and then push data overlapping with previous chunk.
 		// This ultimately ensures the iterators implementation respects unordered chunks.
 		{
@@ -282,8 +271,6 @@ func TestUnorderedPush(t *testing.T) {
 			written: 2,
 		},
 	} {
-		s.cfg.AllOrNothingStreamIngest = x.allOrNothing
-
 		if x.cutBefore {
 			_ = s.cutChunk(context.Background())
 		}
@@ -364,7 +351,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	cfg := defaultConfig()
-	cfg.AllOrNothingStreamIngest = true
+	cfg.RateLimitWholeStream = true
 
 	s := newStream(
 		cfg,
@@ -489,7 +476,7 @@ func Benchmark_PushStreamAllOrNothing(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{MaxChunkAge: 24 * time.Hour, AllOrNothingStreamIngest: true}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	s := newStream(&Config{MaxChunkAge: 24 * time.Hour, RateLimitWholeStream: true}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
