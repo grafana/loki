@@ -35,9 +35,10 @@ const (
 	// pipeline stages
 	ReservedLabelTenantID = "__tenant_id__"
 
-	LatencyLabel = "filename"
-	HostLabel    = "host"
-	ClientLabel  = "client"
+	LatencyLabel         = "filename"
+	HostLabel            = "host"
+	ClientLabel          = "client"
+	maxStreamsDropReason = "max_stream_drop"
 )
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
@@ -52,6 +53,8 @@ type Metrics struct {
 	batchRetries     *prometheus.CounterVec
 	countersWithHost []*prometheus.CounterVec
 	streamLag        *prometheus.GaugeVec
+
+	dropCount *prometheus.CounterVec
 }
 
 func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
@@ -92,6 +95,12 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Name:      "batch_retries_total",
 		Help:      "Number of times batches has had to be retried.",
 	}, []string{HostLabel})
+
+	m.dropCount = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "dropped_lines_total",
+		Help:      "A count of all log lines dropped",
+	}, []string{"reason"})
 
 	m.countersWithHost = []*prometheus.CounterVec{
 		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries,
@@ -153,8 +162,10 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx        context.Context
+	cancel     context.CancelFunc
+	dropCount  *prometheus.CounterVec
+	maxStreams int
 }
 
 // Tripperware can wrap a roundtripper.
@@ -267,7 +278,7 @@ func (c *client) run() {
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(c.maxStreams, e)
 				break
 			}
 
@@ -276,13 +287,17 @@ func (c *client) run() {
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
 
-				batches[tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(c.maxStreams, e)
 				break
 			}
 
 			// The max size of the batch isn't reached, so we can add the entry
-			batch.add(e)
-
+			err := batch.add(e)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "batch add err", "error", err)
+				c.metrics.dropCount.WithLabelValues(maxStreamsDropReason).Inc()
+				return
+			}
 		case <-maxWaitCheck.C:
 			// Send all batches whose max wait time has been reached
 			for tenantID, batch := range batches {

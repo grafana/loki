@@ -14,6 +14,29 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+func TestBatch_MaxStreams(t *testing.T) {
+	maxStream := 2
+
+	var inputEntries = []api.Entry{
+		{Labels: model.LabelSet{"app": "app-1"}, Entry: logproto.Entry{Timestamp: time.Unix(4, 0).UTC(), Line: "line4"}},
+		{Labels: model.LabelSet{"app": "app-2"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
+		{Labels: model.LabelSet{"app": "app-3"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
+		{Labels: model.LabelSet{"app": "app-4"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
+	}
+
+	b := newBatch(maxStream)
+
+	errCount := 0
+	for _, entry := range inputEntries {
+		err := b.add(entry)
+		if err != nil {
+			errCount++
+			assert.EqualError(t, err, fmt.Errorf(errMaxStreamsLimitExceeded, len(b.streams), b.maxStreams).Error())
+		}
+	}
+	assert.Equal(t, errCount, 2)
+}
+
 func TestBatch_add(t *testing.T) {
 	t.Parallel()
 
@@ -52,7 +75,7 @@ func TestBatch_add(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			b := newBatch()
+			b := newBatch(0)
 
 			for _, entry := range testData.inputEntries {
 				b.add(entry)
@@ -71,24 +94,24 @@ func TestBatch_encode(t *testing.T) {
 		expectedEntriesCount int
 	}{
 		"empty batch": {
-			inputBatch:           newBatch(),
+			inputBatch:           newBatch(0),
 			expectedEntriesCount: 0,
 		},
 		"single stream with single log entry": {
-			inputBatch: newBatch(
+			inputBatch: newBatch(0,
 				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 			),
 			expectedEntriesCount: 1,
 		},
 		"single stream with multiple log entries": {
-			inputBatch: newBatch(
+			inputBatch: newBatch(0,
 				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
 			),
 			expectedEntriesCount: 2,
 		},
 		"multiple streams with multiple log entries": {
-			inputBatch: newBatch(
+			inputBatch: newBatch(0,
 				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
 				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
 				api.Entry{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
@@ -111,7 +134,7 @@ func TestBatch_encode(t *testing.T) {
 }
 
 func TestHashCollisions(t *testing.T) {
-	b := newBatch()
+	b := newBatch(0)
 
 	ls1 := model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}
 	ls2 := model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}
