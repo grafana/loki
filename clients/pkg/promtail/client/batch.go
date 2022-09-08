@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	errMaxStreamsLimitExceeded = "streams limit exceeded, streams: %d exceeds limit: %d"
+	errMaxStreamsLimitExceeded = "streams limit exceeded, streams: %d exceeds limit: %d,stream: '%s'"
 )
 
 // batch holds pending log streams waiting to be sent to Loki, and it's used
@@ -41,7 +41,8 @@ func newBatch(maxStreams int, entries ...api.Entry) *batch {
 
 	// Add entries to the batch
 	for _, entry := range entries {
-		b.add(entry)
+		//never error here
+		_ = b.add(entry)
 	}
 
 	return b
@@ -60,7 +61,7 @@ func (b *batch) add(entry api.Entry) error {
 
 	streams := len(b.streams)
 	if b.maxStreams > 0 && streams >= b.maxStreams {
-		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams)
+		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labels)
 	}
 	// Add the entry as a new stream
 	b.streams[labels] = &logproto.Stream{

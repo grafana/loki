@@ -35,10 +35,9 @@ const (
 	// pipeline stages
 	ReservedLabelTenantID = "__tenant_id__"
 
-	LatencyLabel         = "filename"
-	HostLabel            = "host"
-	ClientLabel          = "client"
-	maxStreamsDropReason = "max_stream_drop"
+	LatencyLabel = "filename"
+	HostLabel    = "host"
+	ClientLabel  = "client"
 )
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
@@ -53,8 +52,6 @@ type Metrics struct {
 	batchRetries     *prometheus.CounterVec
 	countersWithHost []*prometheus.CounterVec
 	streamLag        *prometheus.GaugeVec
-
-	dropCount *prometheus.CounterVec
 }
 
 func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
@@ -95,12 +92,6 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Name:      "batch_retries_total",
 		Help:      "Number of times batches has had to be retried.",
 	}, []string{HostLabel})
-
-	m.dropCount = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "dropped_lines_total",
-		Help:      "A count of all log lines dropped",
-	}, []string{"reason"})
 
 	m.countersWithHost = []*prometheus.CounterVec{
 		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries,
@@ -162,23 +153,23 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx       context.Context
-	cancel    context.CancelFunc
-	dropCount *prometheus.CounterVec
+	ctx        context.Context
+	cancel     context.CancelFunc
+	maxStreams int
 }
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
-func New(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (Client, error) {
+func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (Client, error) {
 	if cfg.StreamLagLabels.String() != "" {
 		return nil, fmt.Errorf("client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored: %+v", cfg.StreamLagLabels.String())
 	}
-	return newClient(metrics, cfg, streamLagLabels, logger)
+	return newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
 }
 
-func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (*client, error) {
+func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (*client, error) {
 
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
@@ -197,6 +188,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 		externalLabels: cfg.ExternalLabels.LabelSet,
 		ctx:            ctx,
 		cancel:         cancel,
+		maxStreams:     maxStreams,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -226,8 +218,8 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 }
 
 // NewWithTripperware creates a new Loki client with a custom tripperware.
-func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger, tp Tripperware) (Client, error) {
-	c, err := newClient(metrics, cfg, streamLagLabels, logger)
+func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +269,7 @@ func (c *client) run() {
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[tenantID] = newBatch(c.cfg.MaxStreams, e)
+				batches[tenantID] = newBatch(c.maxStreams, e)
 				break
 			}
 
@@ -286,7 +278,7 @@ func (c *client) run() {
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
 
-				batches[tenantID] = newBatch(c.cfg.MaxStreams, e)
+				batches[tenantID] = newBatch(c.maxStreams, e)
 				break
 			}
 
@@ -294,7 +286,7 @@ func (c *client) run() {
 			err := batch.add(e)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "batch add err", "error", err)
-				c.metrics.dropCount.WithLabelValues(maxStreamsDropReason).Inc()
+				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host).Inc()
 				return
 			}
 		case <-maxWaitCheck.C:

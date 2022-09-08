@@ -31,7 +31,7 @@ func TestBatch_MaxStreams(t *testing.T) {
 		err := b.add(entry)
 		if err != nil {
 			errCount++
-			assert.EqualError(t, err, fmt.Errorf(errMaxStreamsLimitExceeded, len(b.streams), b.maxStreams).Error())
+			assert.EqualError(t, err, fmt.Errorf(errMaxStreamsLimitExceeded, len(b.streams), b.maxStreams, entry.Labels).Error())
 		}
 	}
 	assert.Equal(t, errCount, 2)
