@@ -78,7 +78,8 @@ func TestBatch_add(t *testing.T) {
 			b := newBatch(0)
 
 			for _, entry := range testData.inputEntries {
-				b.add(entry)
+				err := b.add(entry)
+				assert.NoError(t, err)
 			}
 
 			assert.Equal(t, testData.expectedSizeBytes, b.sizeBytes())
