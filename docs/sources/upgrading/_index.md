@@ -85,6 +85,12 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
 - Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
+### Promtail
+
+#### `gcp_push_target_parsing_errors_total` has a new `reason` label
+
+The `gcp_push_target_parsing_errors_total` GCP Push Target metrics has been added a new label named `reason`. This includes detail on what might have caused the parsing to fail.
+
 ## 2.6.0
 
 ### Loki
