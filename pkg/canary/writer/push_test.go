@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -29,6 +30,11 @@ const (
 func Test_Push(t *testing.T) {
 	// create dummy loki server
 	responses := make(chan response, 1) // buffered not to block the response handler
+	backoff := backoff.Config{
+		MinBackoff: 300 * time.Millisecond,
+		MaxBackoff: 5 * time.Minute,
+		MaxRetries: 10,
+	}
 
 	// mock loki server
 	mock := httptest.NewServer(createServerHandler(responses))
@@ -36,7 +42,7 @@ func Test_Push(t *testing.T) {
 	defer mock.Close()
 
 	// without TLS
-	push, err := NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", nil, "", "", "", log.NewNopLogger())
+	push, err := NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", nil, "", "", "", &backoff, log.NewNopLogger())
 	require.NoError(t, err)
 	ts, payload := testPayload()
 	n, err := push.Write([]byte(payload))
@@ -46,7 +52,7 @@ func Test_Push(t *testing.T) {
 	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload)
 
 	// with basic Auth
-	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", nil, "", testUsername, testPassword, log.NewNopLogger())
+	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", nil, "", testUsername, testPassword, &backoff, log.NewNopLogger())
 	require.NoError(t, err)
 	ts, payload = testPayload()
 	n, err = push.Write([]byte(payload))
@@ -56,7 +62,7 @@ func Test_Push(t *testing.T) {
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload)
 
 	// with custom labels
-	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "pod", "abc", nil, "", testUsername, testPassword, log.NewNopLogger())
+	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "pod", "abc", nil, "", testUsername, testPassword, &backoff, log.NewNopLogger())
 	require.NoError(t, err)
 	ts, payload = testPayload()
 	n, err = push.Write([]byte(payload))

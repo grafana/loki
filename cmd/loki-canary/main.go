@@ -15,6 +15,7 @@ import (
 	"os/signal"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
@@ -23,6 +24,12 @@ import (
 	"github.com/grafana/loki/pkg/canary/reader"
 	"github.com/grafana/loki/pkg/canary/writer"
 	_ "github.com/grafana/loki/pkg/util/build"
+)
+
+const (
+	defaultMinBackoff = 500 * time.Millisecond
+	defaultMaxBackoff = 5 * time.Minute
+	defaultMaxRetries = 10
 )
 
 type canary struct {
@@ -50,6 +57,9 @@ func main() {
 	pass := flag.String("pass", "", "Loki password. This credential should have both read and write permissions to Loki endpoints")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
 	writeTimeout := flag.Duration("write-timeout", 10*time.Second, "How long to wait write response from Loki")
+	writeMinBackoff := flag.Duration("write-min-backoff", defaultMinBackoff, "Initial backoff time before first retry ")
+	writeMaxBackoff := flag.Duration("write-max-backoff", defaultMaxBackoff, "Maximum backoff time between retries ")
+	writeMaxRetries := flag.Int("write-max-retries", defaultMaxRetries, "Maximum number of retries when push a log entry ")
 	queryTimeout := flag.Duration("query-timeout", 10*time.Second, "How long to wait for a query response from Loki")
 
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
@@ -134,6 +144,11 @@ func main() {
 		w = os.Stdout
 
 		if *push {
+			backoffCfg := backoff.Config{
+				MinBackoff: *writeMinBackoff,
+				MaxBackoff: *writeMaxBackoff,
+				MaxRetries: *writeMaxRetries,
+			}
 			push, err := writer.NewPush(
 				*addr,
 				*tenantID,
@@ -144,6 +159,7 @@ func main() {
 				tlsConfig,
 				*caFile,
 				*user, *pass,
+				&backoffCfg,
 				log.NewLogfmtLogger(os.Stdout),
 			)
 			if err != nil {

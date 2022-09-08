@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/build"
 )
@@ -50,6 +51,9 @@ type Push struct {
 
 	// Will add these label to the logs pushed to loki
 	labelName, labelValue, streamName, streamValue string
+
+	// push retry and backoff
+	backoff *backoff.Config
 }
 
 // NewPush creates an instance of `Push` which writes logs directly to given `lokiAddr`
@@ -62,6 +66,7 @@ func NewPush(
 	tlsCfg *tls.Config,
 	caFile string,
 	username, password string,
+	backoffCfg *backoff.Config,
 	logger log.Logger,
 ) (*Push, error) {
 
@@ -104,6 +109,7 @@ func NewPush(
 		streamValue: streamValue,
 		username:    username,
 		password:    password,
+		backoff:     backoffCfg,
 	}, nil
 }
 
@@ -185,24 +191,38 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 		req.SetBasicAuth(p.username, p.password)
 	}
 
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to push payload: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
+	backoff := backoff.New(ctx, *p.backoff)
+	var resp *http.Response
+
+	// send log with retry
+	for {
+		resp, err = p.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to push payload: %w", err)
+		}
+		if err = resp.Body.Close(); err != nil {
 			level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
 		}
-	}()
 
-	if resp.StatusCode/100 != 2 {
-		scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
-		line := ""
-		if scanner.Scan() {
-			line = scanner.Text()
+		status := resp.StatusCode
+
+		if status/100 != 2 {
+			scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
+			line := ""
+			if scanner.Scan() {
+				line = scanner.Text()
+			}
+			err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
 		}
-		return fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
-	}
 
-	return nil
+		if status > 0 && status != 429 && status/100 != 5 {
+			break
+		}
+
+		if !backoff.Ongoing() {
+			break
+		}
+		level.Info(p.logger).Log("msg", "retrying as server returned non successful error", "status", status)
+	}
+	return err
 }
