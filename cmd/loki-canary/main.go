@@ -198,7 +198,7 @@ func main() {
 	}()
 
 	terminate := make(chan os.Signal, 1)
-	signal.Notify(terminate, syscall.SIGTERM, syscall.SIGINT, os.Interrupt)
+	signal.Notify(terminate, syscall.SIGTERM, os.Interrupt)
 
 	for range terminate {
 		_, _ = fmt.Fprintf(os.Stderr, "shutting down\n")
