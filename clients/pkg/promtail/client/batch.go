@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	errMaxStreamsLimitExceeded = "streams limit exceeded, streams: %d exceeds limit: %d,stream: '%s'"
+	errMaxStreamsLimitExceeded = "streams limit exceeded, streams: %d exceeds limit: %d, stream: '%s'"
 )
 
 // batch holds pending log streams waiting to be sent to Loki, and it's used
