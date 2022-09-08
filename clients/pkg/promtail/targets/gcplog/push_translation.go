@@ -73,11 +73,7 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 	return entry, nil
 }
 
-var separatorCharacterReplacer *strings.Replacer
-
-func init() {
-	separatorCharacterReplacer = strings.NewReplacer(".", "_", "-", "_", "/", "_")
-}
+var separatorCharacterReplacer = strings.NewReplacer(".", "_", "-", "_", "/", "_")
 
 // convertToLokiCompatibleLabel converts an incoming GCP Push message label to a loki compatible format. There are labels
 // such as `logging.googleapis.com/timestamp`, which contain non-loki-compatible characters, which is just alphanumeric
