@@ -164,7 +164,7 @@ func (s *stream) Push(
 	}
 
 	toStore, invalid := s.validateEntries(entries, isReplay)
-	if len(invalid) > 0 {
+	if s.cfg.AllOrNothingStreamIngest && len(invalid) > 0 {
 		return 0, invalid
 	}
 
@@ -184,7 +184,7 @@ func (s *stream) Push(
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
-	return bytesAdded, entriesWithErr
+	return bytesAdded, append(invalid, entriesWithErr...)
 }
 
 func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.Entry) {
@@ -293,6 +293,14 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 			continue
 		}
 
+		now := time.Now()
+		if !s.cfg.AllOrNothingStreamIngest && !s.limiter.AllowN(now, len(entries[i].Line)) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+			rateLimitedSamples++
+			rateLimitedBytes += len(entries[i].Line)
+			continue
+		}
+
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
@@ -317,7 +325,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
 	now := time.Now()
-	if !s.limiter.AllowN(now, totalBytes) {
+	if s.cfg.AllOrNothingStreamIngest && !s.limiter.AllowN(now, totalBytes) {
 		rateLimitedSamples = len(toStore)
 		rateLimitedBytes = totalBytes
 		for i := 0; i < len(toStore); i++ {
