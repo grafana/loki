@@ -242,26 +242,25 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 			chunk = s.cutChunk(ctx)
 		}
 
+		chunk.lastUpdated = time.Now()
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}
-		} else {
-			s.lastLine.ts = entries[i].Timestamp
-			s.lastLine.content = entries[i].Line
-			if s.highestTs.Before(entries[i].Timestamp) {
-				s.highestTs = entries[i].Timestamp
-			}
-
-			s.entryCt++
-			bytesAdded += len(entries[i].Line)
-
-			storedEntries = append(storedEntries, entries[i])
+			continue
 		}
 
-		chunk.lastUpdated = time.Now()
+		s.entryCt++
+		s.lastLine.ts = entries[i].Timestamp
+		s.lastLine.content = entries[i].Line
+		if s.highestTs.Before(entries[i].Timestamp) {
+			s.highestTs = entries[i].Timestamp
+		}
+
+		bytesAdded += len(entries[i].Line)
+		storedEntries = append(storedEntries, entries[i])
 	}
 
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
