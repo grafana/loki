@@ -200,10 +200,6 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 		if err != nil {
 			return fmt.Errorf("failed to push payload: %w", err)
 		}
-		if err = resp.Body.Close(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
-		}
-
 		status := resp.StatusCode
 
 		if status/100 != 2 {
@@ -213,6 +209,10 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 				line = scanner.Text()
 			}
 			err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
+		}
+
+		if err = resp.Body.Close(); err != nil {
+			level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
 		}
 
 		if status > 0 && status != 429 && status/100 != 5 {
