@@ -160,7 +160,7 @@ func (s *stream) Push(
 
 		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
 		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
-		return 0, []entryWithError{{e: ErrEntriesExist}}
+		return 0, []entryWithError{{entry: &logproto.Entry{}, e: ErrEntriesExist}}
 	}
 
 	toStore, invalid := s.validateEntries(entries, isReplay)
