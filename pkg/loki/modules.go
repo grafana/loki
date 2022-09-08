@@ -632,7 +632,7 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	cacheGenClient, err := t.cacheGenClient()
+	genLoader, err := t.cacheGenClient()
 	if err != nil {
 		return nil, err
 	}
@@ -641,8 +641,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig,
-		generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer),
+		t.Cfg.SchemaConfig, genLoader,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -654,22 +653,39 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	compactorAddress := t.compactorAddress()
-	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+func (t *Loki) cacheGenClient() (*generationnumber.GenNumberLoader, error) {
+	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
+		return nil, nil
+	}
+
+	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+		return nil, nil
+	}
+
+	compactorAddress, err := t.compactorAddress()
+	if err != nil {
+		return nil, err
+	}
+	cacheGenClient, err := generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+	if err != nil {
+		return nil, err
+	}
+
+	return generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer), nil
+
 }
 
-func (t *Loki) compactorAddress() string {
+func (t *Loki) compactorAddress() (string, error) {
 	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
 		// In single binary or read modes, this module depends on Server
-		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
+		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" {
-		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
+		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
 	}
 
-	return t.Cfg.Common.CompactorAddress
+	return t.Cfg.Common.CompactorAddress, nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -1068,7 +1084,10 @@ func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overri
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	compactorAddress := t.compactorAddress()
+	compactorAddress, err := t.compactorAddress()
+	if err != nil {
+		return nil, err
+	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 250
