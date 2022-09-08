@@ -5,5 +5,5 @@ sig/operator:
 - 'operator/**/*'
 kind/feature:
 - 'operator/docs/enhancements/*'
-aread/helm:
+area/helm:
 - 'production/helm/**/*'
