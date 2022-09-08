@@ -632,9 +632,13 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	genLoader, err := t.cacheGenClient()
-	if err != nil {
-		return nil, err
+	var genLoader *generationnumber.GenNumberLoader
+	if t.supportIndexDeleteRequest() {
+		cacheGenClient, err := t.cacheGenClient()
+		if err != nil {
+			return nil, err
+		}
+		genLoader = generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer)
 	}
 
 	tripperware, stopper, err := queryrange.NewTripperware(
@@ -653,26 +657,23 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) cacheGenClient() (*generationnumber.GenNumberLoader, error) {
+func (t *Loki) supportIndexDeleteRequest() bool {
+	// TODO(owen-d): enable delete request storage in tsdb
 	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
-		return nil, nil
+		return false
 	}
-
 	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
-		return nil, nil
+		return false
 	}
+	return true
+}
 
+func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 	compactorAddress, err := t.compactorAddress()
 	if err != nil {
 		return nil, err
 	}
-	cacheGenClient, err := generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
-	if err != nil {
-		return nil, err
-	}
-
-	return generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer), nil
-
+	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
 func (t *Loki) compactorAddress() (string, error) {
@@ -1075,12 +1076,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
-	// TODO(owen-d): enable delete request storage in tsdb
-	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
-		return deletion.NewNoOpDeleteRequestsStore(), nil
-	}
-
-	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+	if !t.supportIndexDeleteRequest() {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
