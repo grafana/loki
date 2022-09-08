@@ -145,8 +145,9 @@ func TestHashCollisions(t *testing.T) {
 	const entriesPerLabel = 10
 
 	for i := 0; i < entriesPerLabel; i++ {
-		b.add(api.Entry{Labels: ls1, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
-		b.add(api.Entry{Labels: ls2, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
+		_ = b.add(api.Entry{Labels: ls1, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
+
+		_ = b.add(api.Entry{Labels: ls2, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
 	}
 
 	// make sure that colliding labels are stored properly as independent streams
