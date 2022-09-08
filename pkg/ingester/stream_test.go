@@ -258,7 +258,7 @@ func TestUnorderedPush(t *testing.T) {
 				{Timestamp: time.Unix(9, 0), Line: "x"},
 			},
 			err:     true,
-			written: 2, // 1 ignored // Reject whole stream when any error
+			written: 2, // 1 ignored
 		},
 		// force a chunk cut and then push data overlapping with previous chunk.
 		// This ultimately ensures the iterators implementation respects unordered chunks.
