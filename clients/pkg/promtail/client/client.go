@@ -162,10 +162,9 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx        context.Context
-	cancel     context.CancelFunc
-	dropCount  *prometheus.CounterVec
-	maxStreams int
+	ctx       context.Context
+	cancel    context.CancelFunc
+	dropCount *prometheus.CounterVec
 }
 
 // Tripperware can wrap a roundtripper.
@@ -278,7 +277,7 @@ func (c *client) run() {
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[tenantID] = newBatch(c.maxStreams, e)
+				batches[tenantID] = newBatch(c.cfg.MaxStreams, e)
 				break
 			}
 
@@ -287,7 +286,7 @@ func (c *client) run() {
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
 
-				batches[tenantID] = newBatch(c.maxStreams, e)
+				batches[tenantID] = newBatch(c.cfg.MaxStreams, e)
 				break
 			}
 

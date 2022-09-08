@@ -37,7 +37,8 @@ type Config struct {
 
 	// The tenant ID to use when pushing logs to Loki (empty string means
 	// single tenant mode)
-	TenantID string `yaml:"tenant_id"`
+	TenantID   string `yaml:"tenant_id"`
+	MaxStreams int    `yaml:"max_streams" json:"max_streams"`
 
 	// deprecated use StreamLagLabels from config.Config instead
 	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
@@ -55,6 +56,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&c.BackoffConfig.MaxBackoff, prefix+"client.max-backoff", MaxBackoff, "Maximum backoff time between retries (deprecated).")
 	f.DurationVar(&c.Timeout, prefix+"client.timeout", Timeout, "Maximum time to wait for server to respond to a request (deprecated).")
 	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2) (deprecated).")
+	f.IntVar(&c.MaxStreams, "client.max-streams", 0, "Maximum number of active streams. 0 to disable.")
 
 	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki (deprecated).")
 }
