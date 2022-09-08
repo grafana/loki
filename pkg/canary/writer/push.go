@@ -16,10 +16,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/build"
 )
@@ -161,6 +161,11 @@ func (p *Push) parsePayload(payload []byte) (*logproto.PushRequest, error) {
 // send does the heavy lifting of sending the generated logs into the Loki server.
 // It won't batch.
 func (p *Push) send(ctx context.Context, payload []byte) error {
+	var (
+		resp *http.Response
+		err  error
+	)
+
 	preq, err := p.parsePayload(payload)
 	if err != nil {
 		return err
@@ -192,7 +197,6 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 	}
 
 	backoff := backoff.New(ctx, *p.backoff)
-	var resp *http.Response
 
 	// send log with retry
 	for {

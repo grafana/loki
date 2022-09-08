@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
