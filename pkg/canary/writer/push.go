@@ -34,7 +34,7 @@ var (
 	defaultUserAgent = fmt.Sprintf("canary-push/%s", build.GetVersion().Version)
 )
 
-// Push is a io.Writer, that writes given long entries by pushing
+// Push is a io.Writer, that writes given log entries by pushing
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
 // No batching of log lines happens when sending to Loki.
 type Push struct {
