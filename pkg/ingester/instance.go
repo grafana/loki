@@ -301,12 +301,11 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 func mountPerStreamDetails(streamLabels string) []*types.Any {
 	rls := logproto.RateLimitedStream{Labels: streamLabels}
 	marshalledStream, err := types.MarshalAny(&rls)
-	if err == nil {
-		return []*types.Any{marshalledStream}
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
+		return []*types.Any{}
 	}
-
-	level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
-	return []*types.Any{}
+	return []*types.Any{marshalledStream}
 }
 
 func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
