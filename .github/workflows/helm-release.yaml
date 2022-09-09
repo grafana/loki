@@ -1,6 +1,9 @@
 name: helm-release
 
 on:
+  pull_request:
+    paths:
+      - 'production/helm/**'
   push:
     branches:
       - main
