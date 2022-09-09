@@ -74,10 +74,10 @@ These endpoints are exposed by the ruler:
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
 
 These endpoints are exposed by the compactor:
-- [`GET /compactor/ring`](#get-compactorring)
-- [`POST /loki/api/v1/delete`](#post-lokiapiv1delete)
-- [`GET /loki/api/v1/delete`](#get-lokiapiv1delete)
-- [`DELETE /loki/api/v1/delete`](#delete-lokiapiv1delete)
+- [`GET /compactor/ring`](#compactor-ring-status)
+- [`POST /loki/api/v1/delete`](#request-log-deletion)
+- [`GET /loki/api/v1/delete`](#list-log-deletion-requests)
+- [`DELETE /loki/api/v1/delete`](#request-cancellation-of-a-delete-request)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
