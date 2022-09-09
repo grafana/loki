@@ -263,8 +263,8 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	if statusCode != http.StatusTooManyRequests {
 		for _, pushErr := range pushErrs {
-			if pushErr.code == http.StatusTooManyRequests {
-				statusCode = http.StatusTooManyRequests
+			if pushErr.code == http.StatusBadRequest {
+				statusCode = http.StatusBadRequest
 				break
 			}
 		}
