@@ -185,6 +185,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	statusCode := spb.OK
 	var details []*types.Any
 	var pushErrs []*streamPushErr
+	var appendErr error
 
 	for _, reqStream := range req.Streams {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
@@ -202,7 +203,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			},
 		)
 
-		var appendErr error
 		if err != nil {
 			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 				statusCode = spb.Code(resp.Code)
@@ -252,28 +252,38 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 	}
 
-	if statusCode != http.StatusTooManyRequests {
-		for _, pushErr := range pushErrs {
-			if pushErr.code == http.StatusTooManyRequests {
-				statusCode = http.StatusTooManyRequests
-				break
-			}
-		}
-	}
+	code := decideForFinalStatusCode(int(statusCode), pushErrs)
+	return mountPushGRPCError(appendErr, code, details)
+}
 
-	if statusCode != http.StatusTooManyRequests {
-		for _, pushErr := range pushErrs {
-			if pushErr.code == http.StatusBadRequest {
-				statusCode = http.StatusBadRequest
-				break
-			}
-		}
-	}
-
+// decideForFinalStatusCode returns which status code the distributors expects based on an initial state and occurred errors.
+//
+// If no error happened for any push, returns OK.
+// If any rate limiting happened, returns 429.
+// If any bad request happened, returns 400.
+// Otherwise, returns the last error status code seen.
+func decideForFinalStatusCode(initialStatusCode int, pushErrs []*streamPushErr) spb.Code {
 	if len(pushErrs) == 0 {
-		return nil
+		return spb.OK
 	}
-	return mountPushGRPCError(pushErrs[len(pushErrs)-1].err, statusCode, details)
+
+	if initialStatusCode == http.StatusTooManyRequests {
+		return http.StatusTooManyRequests
+	}
+
+	for _, pushErr := range pushErrs {
+		if pushErr.code == http.StatusTooManyRequests {
+			return http.StatusTooManyRequests
+		}
+	}
+
+	for _, pushErr := range pushErrs {
+		if pushErr.code == http.StatusBadRequest {
+			return http.StatusBadRequest
+		}
+	}
+
+	return pushErrs[len(pushErrs)-1].code
 }
 
 // mountPushGRPCError returns an enriched gRPC error or nil if no error is given.
