@@ -730,7 +730,7 @@ singleBinary:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.readSelectorLabels" . | nindent 10 }}
+              {{- include "loki.singleBinarySelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- Node selector for single binary pods
   nodeSelector: {}

@@ -1,5 +1,5 @@
-{{- if .Values.monitoring.rules.enabled }}
 {{- with .Values.monitoring.rules }}
+{{- if .enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
