@@ -21,7 +21,8 @@ import (
 
 // FSConfig is the config for a FSObjectClient.
 type FSConfig struct {
-	Directory string `yaml:"directory"`
+	Directory                    string `yaml:"directory"`
+	SizeBasedRetentionPercentage int    `yaml:"size_based_retention_percentage"`
 }
 
 // RegisterFlags registers flags.
@@ -32,6 +33,7 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlags registers flags with prefix.
 func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
+	f.IntVar(&cfg.SizeBasedRetentionPercentage, prefix+"local.size-based-retention-percentage", 80, "Size based retention percentage")
 }
 
 func (cfg *FSConfig) ToCortexLocalConfig() local.Config {
@@ -93,6 +95,7 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 
 	defer runutil.CloseWithLogOnErr(util_log.Logger, fl, "fullPath: %s", fullPath)
 
+	// Should we perform a size based check here before copying the object to filesystem???
 	_, err = io.Copy(fl, object)
 	if err != nil {
 		return err
@@ -205,6 +208,12 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
+}
+
+//  ...
+func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context) error {
+	// Implement the function ;-)
+	return nil
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.

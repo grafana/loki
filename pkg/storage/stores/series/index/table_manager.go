@@ -152,6 +152,7 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 // BucketClient is used to enforce retention on chunk buckets.
 type BucketClient interface {
 	DeleteChunksBefore(ctx context.Context, ts time.Time) error
+	DeleteChunksBasedOnBlockSize(ctx context.Context) error
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
@@ -166,7 +167,8 @@ type TableManager struct {
 	metrics      *tableManagerMetrics
 	extraTables  []ExtraTables
 
-	bucketRetentionLoop services.Service
+	bucketRetentionLoop          services.Service
+	bucketBlockSizeRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
@@ -197,6 +199,11 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg config.SchemaConfig, maxC
 
 // Start the TableManager
 func (m *TableManager) starting(ctx context.Context) error {
+	if m.bucketClient != nil {
+		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketBlockSizeRetentionIteration, nil)
+		return services.StartAndAwaitRunning(ctx, m.bucketBlockSizeRetentionLoop)
+	}
+
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
@@ -308,6 +315,16 @@ func (m *TableManager) checkAndCreateExtraTables() error {
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
+	}
+
+	// don't return error, otherwise timer service would stop.
+	return nil
+}
+
+func (m *TableManager) bucketBlockSizeRetentionIteration(ctx context.Context) error {
+	err := m.bucketClient.DeleteChunksBasedOnBlockSize(ctx)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 	}
