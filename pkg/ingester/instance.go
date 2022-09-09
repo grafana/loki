@@ -270,6 +270,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 	}
 
+	if len(pushErrs) == 0 {
+		return nil
+	}
 	return mountPushGRPCError(pushErrs[len(pushErrs)-1].err, statusCode, details)
 }
 
