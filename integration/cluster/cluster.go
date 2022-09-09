@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -74,7 +76,44 @@ frontend_worker:
 
 frontend:
   scheduler_address: localhost:{{.schedulerPort}}
+
+{{if .remoteWriteUrls}}
+ruler:
+  wal:
+    dir: {{.rulerWALPath}}
+  storage:
+    type: local
+    local:
+      directory: {{.rulesPath}}
+  rule_path: {{.sharedDataPath}}/rule
+  enable_api: true
+  ring:
+    kvstore:
+      store: inmemory
+  remote_write:
+    enabled: true
+    clients:
+      remote_client1:
+        url: {{index .remoteWriteUrls 0}}/api/v1/write
+      remote_client2:
+        url: {{index .remoteWriteUrls 1}}/api/v1/write
+{{end}}
 `))
+
+	rulesConfig = `
+groups:
+- name: always-firing
+  interval: 1s
+  rules:
+  - alert: fire
+    expr: |
+      1 > 0
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: test
+`
 )
 
 func wrapRegistry() {
@@ -197,8 +236,13 @@ type Component struct {
 	httpPort int
 	grpcPort int
 
-	configFile string
-	dataPath   string
+	configFile   string
+	dataPath     string
+	rulerWALPath string
+	rulesPath    string
+	RulesTenant  string
+
+	RemoteWriteUrls []string
 }
 
 func (c *Component) HTTPURL() *url.URL {
@@ -228,12 +272,46 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
 
+	if len(c.RemoteWriteUrls) > 0 {
+		c.rulesPath, err = os.MkdirTemp(c.cluster.sharedPath, "rules")
+		if err != nil {
+			return fmt.Errorf("error creating rules path: %w", err)
+		}
+
+		fakeDir, err := os.MkdirTemp(c.rulesPath, "fake")
+		if err != nil {
+			return fmt.Errorf("error creating rules/fake path: %w", err)
+		}
+
+		s := strings.Split(fakeDir, "/")
+		c.RulesTenant = s[len(s)-1]
+
+		c.rulerWALPath, err = os.MkdirTemp(c.cluster.sharedPath, "ruler-wal")
+		if err != nil {
+			return fmt.Errorf("error creating ruler-wal path: %w", err)
+		}
+
+		rulesConfigFile, err := os.CreateTemp(fakeDir, "rules*.yaml")
+		if err != nil {
+			return fmt.Errorf("error creating rules config file: %w", err)
+		}
+
+		if _, err = rulesConfigFile.Write([]byte(rulesConfig)); err != nil {
+			return fmt.Errorf("error writing to rules config file: %w", err)
+		}
+
+		rulesConfigFile.Close()
+	}
+
 	if err := configTemplate.Execute(configFile, map[string]interface{}{
-		"dataPath":       c.dataPath,
-		"sharedDataPath": c.cluster.sharedPath,
-		"grpcPort":       c.grpcPort,
-		"httpPort":       c.httpPort,
-		"schedulerPort":  c.grpcPort,
+		"dataPath":        c.dataPath,
+		"sharedDataPath":  c.cluster.sharedPath,
+		"grpcPort":        c.grpcPort,
+		"httpPort":        c.httpPort,
+		"schedulerPort":   c.grpcPort,
+		"remoteWriteUrls": c.RemoteWriteUrls,
+		"rulesPath":       c.rulesPath,
+		"rulerWALPath":    c.rulerWALPath,
 	}); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
@@ -333,6 +411,13 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	if p := c.grpcPort; p != 0 {
 		allocatedFreePorts.free(p)
 	}
+	if c.rulerWALPath != "" {
+		dirs = append(dirs, c.rulerWALPath)
+	}
+	if c.rulesPath != "" {
+		dirs = append(dirs, c.rulesPath)
+	}
+
 	return files, dirs
 }
 
@@ -384,4 +469,22 @@ func getFreePort() (port int, err error) {
 		}
 	}
 	return
+}
+
+func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
+	server := httptest.NewUnstartedServer(*handler)
+	p, err := getFreePort()
+	if err != nil {
+		panic(fmt.Errorf("error allocating HTTP port: %w", err))
+	}
+
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	if err != nil {
+		panic(fmt.Errorf("failed to listen on: %v", err))
+	}
+
+	server.Listener = l
+	server.Start()
+
+	return server
 }
