@@ -47,8 +47,6 @@ we're deprecating it in favor of relying on `engine.query-timeout` only.
 
 We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
 
-Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
-
 #### Evenly spread distributors across kubernetes nodes
 
 We now evenly spread distributors across the available kubernetes nodes, but allowing more than one distributors to be scheduled into the same node.
