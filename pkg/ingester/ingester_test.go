@@ -93,10 +93,10 @@ func TestRateLimitedStreamsReturn(t *testing.T) {
 
 	var rateLimitedLabels []string
 	for _, detail := range details {
-		rls := &logproto.RateLimitedStream{}
-		err := types.UnmarshalAny(detail, rls)
+		rs := &logproto.RejectedStream{}
+		err := types.UnmarshalAny(detail, rs)
 		require.NoError(t, err)
-		rateLimitedLabels = append(rateLimitedLabels, rls.Labels)
+		rateLimitedLabels = append(rateLimitedLabels, rs.Labels)
 	}
 
 	require.EqualValues(t, []string{req.Streams[0].Labels, req.Streams[1].Labels}, rateLimitedLabels)
