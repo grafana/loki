@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"sync"
@@ -13,6 +14,8 @@ import (
 	"net/http"
 	"os/signal"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
@@ -21,6 +24,12 @@ import (
 	"github.com/grafana/loki/pkg/canary/reader"
 	"github.com/grafana/loki/pkg/canary/writer"
 	_ "github.com/grafana/loki/pkg/util/build"
+)
+
+const (
+	defaultMinBackoff = 500 * time.Millisecond
+	defaultMaxBackoff = 5 * time.Minute
+	defaultMaxRetries = 10
 )
 
 type canary struct {
@@ -39,13 +48,18 @@ func main() {
 	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
+	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
 	caFile := flag.String("ca-file", "", "Client certificate authority for optional use with TLS connection to Loki")
 	user := flag.String("user", "", "Loki username.")
-	pass := flag.String("pass", "", "Loki password.")
+	pass := flag.String("pass", "", "Loki password. This credential should have both read and write permissions to Loki endpoints")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
+	writeTimeout := flag.Duration("write-timeout", 10*time.Second, "How long to wait write response from Loki")
+	writeMinBackoff := flag.Duration("write-min-backoff", defaultMinBackoff, "Initial backoff time before first retry ")
+	writeMaxBackoff := flag.Duration("write-max-backoff", defaultMaxBackoff, "Maximum backoff time between retries ")
+	writeMaxRetries := flag.Int("write-max-retries", defaultMaxRetries, "Maximum number of retries when push a log entry ")
 	queryTimeout := flag.Duration("query-timeout", 10*time.Second, "How long to wait for a query response from Loki")
 
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
@@ -112,6 +126,9 @@ func main() {
 	sentChan := make(chan time.Time)
 	receivedChan := make(chan time.Time)
 
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger = log.With(logger, "caller", log.Caller(3))
+
 	c := &canary{}
 	startCanary := func() {
 		c.stop()
@@ -119,8 +136,41 @@ func main() {
 		c.lock.Lock()
 		defer c.lock.Unlock()
 
-		var err error
-		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)
+		var (
+			err error
+			w   io.Writer
+		)
+
+		w = os.Stdout
+
+		if *push {
+			backoffCfg := backoff.Config{
+				MinBackoff: *writeMinBackoff,
+				MaxBackoff: *writeMaxBackoff,
+				MaxRetries: *writeMaxRetries,
+			}
+			push, err := writer.NewPush(
+				*addr,
+				*tenantID,
+				*writeTimeout,
+				config.DefaultHTTPClientConfig,
+				*lName, *lVal,
+				*sName, *sValue,
+				tlsConfig,
+				*caFile,
+				*user, *pass,
+				&backoffCfg,
+				log.NewLogfmtLogger(os.Stdout),
+			)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Unable to create writer for Loki, check config: %s", err)
+				os.Exit(1)
+			}
+
+			w = push
+		}
+
+		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
