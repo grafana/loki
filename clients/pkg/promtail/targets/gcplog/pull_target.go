@@ -106,7 +106,7 @@ func (t *pullTarget) run() error {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
 		case m := <-t.msgs:
-			entry, err := format(m, t.config.Labels, t.config.UseIncomingTimestamp, t.relabelConfig)
+			entry, err := parseGCPLogsEntry(m.Data, t.config.Labels, nil, t.config.UseIncomingTimestamp, t.relabelConfig)
 			if err != nil {
 				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
 				m.Ack()
