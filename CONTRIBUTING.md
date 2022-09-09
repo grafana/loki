@@ -18,14 +18,14 @@ Loki uses GitHub to manage reviews of pull requests:
 3. Your PR is correctly documenting appropriate changes under the CHANGELOG. You should document your changes there if:
   * It adds an important feature
   * It fixes an issue present in a previous release
-  * It causes a change in operation that would be useful for an operator of Loki to know then please add a CHANGELOG entry.
-For documentation changes, build changes, simple fixes etc please skip this step. We are attempting to curate a changelog of the most relevant and important changes to be easier to ingest by end users of Loki.
+  * It causes a change in operation that would be useful for an operator of Loki to know
+You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with most relevant and important changes that end users of Loki care about.
 4. Your PR documents upgrading steps under `docs/sources/upgrading/_index.md` if it changes:
   * default configuration values
   * metric names or label names
-  * changes existing log lines such as the metrics.go query output line
+  * changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be getting used in building dashboards or alerts.
   * configuration parameters
-  * anything to do with any API
+  * Any breaking changes to HTTP or gRPC API endpoints
   * any other change that would require special attention or extra steps to upgrade
 Please document clearly what changed AND what needs to be done in the upgrade guide.
 
