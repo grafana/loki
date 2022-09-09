@@ -256,22 +256,18 @@ func mountPushGRPCError(err error, statusCode spb.Code, details []*types.Any) er
 // The returned error has an error line for every entry that failed to be ingested.
 func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) (spb.Code, error) {
 	if len(failedEntriesWithError) == 0 {
-		return 0, nil
+		return http.StatusOK, nil
 	}
 
 	lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-	_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+	_, rateLimited := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
 	outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
-	if !outOfOrder && !ok {
-		return 0, lastEntryWithErr.e
+	if !outOfOrder && !rateLimited {
+		return http.StatusBadRequest, lastEntryWithErr.e
 	}
 
-	statusCode := spb.OK
-	if outOfOrder {
-		statusCode = http.StatusBadRequest
-	}
-	if ok {
-		// per-stream or ingestion limited.
+	statusCode := http.StatusBadRequest
+	if rateLimited {
 		statusCode = http.StatusTooManyRequests
 	}
 
@@ -291,7 +287,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 	}
 
 	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
-	return statusCode, fmt.Errorf(buf.String())
+	return spb.Code(statusCode), fmt.Errorf(buf.String())
 }
 
 // mountPerStreamDetails returns a list of details with the given stream as its rate-limited version.
