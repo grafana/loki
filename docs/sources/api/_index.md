@@ -1103,9 +1103,6 @@ curl -u "Tenant1:$API_TOKEN" \
 DELETE /loki/api/v1/delete
 ```
 
-Query Parameters:
-* `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted.
-
 Remove a delete request for the authenticated tenant.
 The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
@@ -1122,6 +1119,7 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 * `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
+* `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted and the deleted request will be listed as 'processed'
 
 A 204 response indicates success.
 
