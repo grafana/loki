@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -211,6 +212,10 @@ func (ds *deleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID
 	if len(deleteRequests) == 0 {
 		return nil, ErrDeleteRequestNotFound
 	}
+
+	sort.Slice(deleteRequests, func(i, j int) bool {
+		return deleteRequests[i].SequenceNum < deleteRequests[j].SequenceNum
+	})
 
 	return deleteRequests, nil
 }
