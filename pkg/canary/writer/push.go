@@ -213,9 +213,10 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 				line = scanner.Text()
 			}
 			err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
+
 		}
 
-		if err = resp.Body.Close(); err != nil {
+		if err := resp.Body.Close(); err != nil {
 			level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
 		}
 
@@ -226,7 +227,10 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 		if !backoff.Ongoing() {
 			break
 		}
-		level.Info(p.logger).Log("msg", "retrying as server returned non successful error", "status", status)
+
+		level.Info(p.logger).Log("msg", "retrying as server returned non successful error", "status", status, "error", err)
+
 	}
+
 	return err
 }
