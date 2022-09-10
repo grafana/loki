@@ -662,7 +662,7 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
 		return false
 	}
-return config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs)
+	return config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs)
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
