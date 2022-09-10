@@ -70,7 +70,11 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
+	level.Error(logger).Log(
+		"msg", "debug push request failed",
+		"code", http.StatusInternalServerError,
+		"err", err.Error(),
+	)
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
