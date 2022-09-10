@@ -32,6 +32,7 @@ const (
 	StageTypeTenant       = "tenant"
 	StageTypeDrop         = "drop"
 	StageTypeLimit        = "limit"
+	StageTypeSampling     = "sampling"
 	StageTypeMultiline    = "multiline"
 	StageTypePack         = "pack"
 	StageTypeLabelAllow   = "labelallow"
@@ -181,6 +182,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeDrop:
 		s, err = newDropStage(logger, cfg, registerer)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeSampling:
+		s, err = newSamplingStage(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
