@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var testSampingYaml = `
