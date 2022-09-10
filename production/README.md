@@ -53,7 +53,7 @@ orchestrator from HashiCorp.
 ## Using Helm to deploy on Kubernetes
 
 Here are the Helm charts used to deploy Loki and Promtail to Kubernetes:
-- [Loki](./production/helm/loki/README.md) 
+- [Loki](./helm/loki/README.md#loki) 
 - [Promtail](https://github.com/grafana/helm-charts/blob/main/charts/promtail/README.md#promtail) 
 
 ## Build and run from source
