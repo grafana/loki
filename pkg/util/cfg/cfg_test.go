@@ -13,7 +13,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	yamlSource := dYAML([]byte(`
+	yamlSource := dYAMLStrict([]byte(`
 server:
   port: 2000
   timeout: 60h
@@ -46,7 +46,7 @@ tls:
 }
 
 func TestParseWithInvalidYAML(t *testing.T) {
-	yamlSource := dYAML([]byte(`
+	yamlSource := dYAMLStrict([]byte(`
 servers:
   ports: 2000
   timeoutz: 60h

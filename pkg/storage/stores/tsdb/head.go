@@ -39,6 +39,8 @@ const (
 	// Do not specify without bit shifting. This allows us to
 	// do shard index calcuations via bitwise & rather than modulos.
 	defaultStripeSize = 64
+
+	tsdbBuildSourceLabel = "source"
 )
 
 /*
@@ -57,12 +59,14 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 // TODO(owen-d)
 type Metrics struct {
 	seriesNotFound                prometheus.Counter
-	tsdbCreationsTotal            prometheus.Counter
-	tsdbCreationFailures          prometheus.Counter
 	tsdbManagerUpdatesTotal       prometheus.Counter
 	tsdbManagerUpdatesFailedTotal prometheus.Counter
 	tsdbHeadRotationsTotal        prometheus.Counter
 	tsdbHeadRotationsFailedTotal  prometheus.Counter
+	tsdbWALTruncationsTotal       prometheus.Counter
+	tsdbWALTruncationsFailedTotal prometheus.Counter
+	tsdbCreationsTotal            *prometheus.CounterVec
+	tsdbCreationsFailedTotal      *prometheus.CounterVec
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -70,14 +74,6 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_series_not_found_total",
 			Help: "Total number of requests for series that were not found.",
-		}),
-		tsdbCreationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_creations_total",
-			Help: "Total number of tsdb creations attempted",
-		}),
-		tsdbCreationFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_creations_failed_total",
-			Help: "Total number of tsdb creations failed",
 		}),
 		tsdbManagerUpdatesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_manager_updates_total",
@@ -89,12 +85,28 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		}),
 		tsdbHeadRotationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_rotations_total",
-			Help: "Total number of tsdb head rotations",
+			Help: "Total number of tsdb head rotations attempted",
 		}),
 		tsdbHeadRotationsFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_rotations_failed_total",
-			Help: "Total number of tsdb head rotations failed",
+			Help: "Total number of tsdb head rotations that failed",
 		}),
+		tsdbWALTruncationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_wal_truncations_total",
+			Help: "Total number of WAL truncations attempted",
+		}),
+		tsdbWALTruncationsFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_wal_truncations_failed_total",
+			Help: "Total number of WAL truncations that failed",
+		}),
+		tsdbCreationsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_tsdb_creations_total",
+			Help: "Total number of tsdb creations attempted",
+		}, []string{tsdbBuildSourceLabel}),
+		tsdbCreationsFailedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_tsdb_creations_failed_total",
+			Help: "Total number of tsdb creations that failed",
+		}, []string{tsdbBuildSourceLabel}),
 	}
 }
 

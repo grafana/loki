@@ -29,8 +29,7 @@ one that causes a querier component to hit an out-of-memory error,
 or one that causes a querier component to crash.
 Once the error occurs,
 the tenant or tenants issuing the error-causing query will be reassigned
-to other running queriers,
-up to the limit imposed by the `max_queriers_per_tenant` configuration.
+to other running queriers(remember all tenants can use all available queriers),
 This, in turn, may affect the queriers that have been reassigned.
 
 ## How shuffle sharding works

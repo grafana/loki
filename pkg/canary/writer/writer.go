@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 )
 
 const (
@@ -25,9 +28,17 @@ type Writer struct {
 	pad                  string
 	quit                 chan struct{}
 	done                 chan struct{}
+
+	logger log.Logger
 }
 
-func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval, outOfOrderMin, outOfOrderMax time.Duration, outOfOrderPercentage, entrySize int) *Writer {
+func NewWriter(
+	writer io.Writer,
+	sentChan chan time.Time,
+	entryInterval, outOfOrderMin, outOfOrderMax time.Duration,
+	outOfOrderPercentage, entrySize int,
+	logger log.Logger,
+) *Writer {
 
 	w := &Writer{
 		w:                    writer,
@@ -40,6 +51,7 @@ func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval, outOfOr
 		prevTsLen:            0,
 		quit:                 make(chan struct{}),
 		done:                 make(chan struct{}),
+		logger:               logger,
 	}
 
 	go w.run()
@@ -83,7 +95,10 @@ func (w *Writer) run() {
 				w.prevTsLen = tsLen
 			}
 
-			fmt.Fprintf(w.w, LogEntry, ts, w.pad)
+			_, err := fmt.Fprintf(w.w, LogEntry, ts, w.pad)
+			if err != nil {
+				level.Error(w.logger).Log("msg", "failed to write log entry", "error", err)
+			}
 			w.sent <- t
 		case <-w.quit:
 			return

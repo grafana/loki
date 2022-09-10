@@ -1,5 +1,6 @@
----
 {{- with .Values.monitoring.serviceMonitor }}
+{{- if .enabled }}
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -53,4 +54,5 @@ spec:
       tlsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}
 {{- end }}
