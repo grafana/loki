@@ -56,6 +56,12 @@ func newSamplingStage(logger log.Logger, config interface{}, registerer promethe
 
 	samplingRate := math.Max(0.0, math.Min(cfg.SamplingRate, 1.0))
 	samplingBoundary := uint64(float64(maxRandomNumber) * samplingRate)
+	seedGenerator := utils.NewRand(time.Now().UnixNano())
+	pool := sync.Pool{
+		New: func() interface{} {
+			return rand.NewSource(seedGenerator.Int63())
+		},
+	}
 	return &samplingStage{
 		logger:           log.With(logger, "component", "stage", "type", "drop"),
 		cfg:              cfg,
@@ -70,6 +76,7 @@ type samplingStage struct {
 	cfg              *SamplingConfig
 	dropCount        *prometheus.CounterVec
 	samplingBoundary uint64
+	pool             sync.Pool
 }
 
 func (m *samplingStage) Run(in chan Entry) chan Entry {
@@ -101,13 +108,7 @@ func (m *samplingStage) randomID() uint64 {
 	return val
 }
 func (m *samplingStage) randomNumber() uint64 {
-	seedGenerator := utils.NewRand(time.Now().UnixNano())
-	pool := sync.Pool{
-		New: func() interface{} {
-			return rand.NewSource(seedGenerator.Int63())
-		},
-	}
-	generator := pool.Get().(rand.Source)
+	generator := m.pool.Get().(rand.Source)
 	number := uint64(generator.Int63())
 	pool.Put(generator)
 	return number
