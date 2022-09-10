@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	ErrSamplingStageEmptyConfig = "sampling stage config must contain at least one of `source`, `expression`, `older_than` or `longer_than`"
 	ErrSamplingStageInvalidRate = "sampling stage failed to parse rate,Sampling Rate must be between 0.0 and 1.0, received %f"
 )
 const maxRandomNumber = ^(uint64(1) << 63) // i.e. 0x7fffffffffffffff
@@ -31,10 +30,6 @@ type SamplingConfig struct {
 
 // validateDropConfig validates the DropConfig for the dropStage
 func validateSamplingConfig(cfg *SamplingConfig) error {
-	if cfg == nil {
-		return errors.New(ErrSamplingStageEmptyConfig)
-	}
-
 	if cfg.DropReason == nil || *cfg.DropReason == "" {
 		cfg.DropReason = &defaultSamplingpReason
 	}
