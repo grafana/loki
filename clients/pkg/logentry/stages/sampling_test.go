@@ -19,7 +19,7 @@ pipeline_stages:
 
 func TestSamplingPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	plName := "test_pipeline"
+	plName := "testPipeline"
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testSampingYaml), &plName, registry)
 	require.NoError(t, err)
 
