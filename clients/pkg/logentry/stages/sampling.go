@@ -112,7 +112,7 @@ func (m *samplingStage) randomID() uint64 {
 func (m *samplingStage) randomNumber() uint64 {
 	generator := m.pool.Get().(rand.Source)
 	number := uint64(generator.Int63())
-	pool.Put(generator)
+	m.pool.Put(generator)
 	return number
 }
 
