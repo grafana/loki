@@ -69,6 +69,8 @@ loki:
       drop:
         - ALL
     allowPrivilegeEscalation: false
+  # -- Should enableServiceLinks be enabled. Default to enable
+  enableServiceLinks: true
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
   # -- Config file contents for Loki
@@ -1140,7 +1142,6 @@ gateway:
     # high CPU load.
     htpasswd: >-
       {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }}
-
 
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null

@@ -44,6 +44,13 @@ spec:
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if or (.Values.loki.enableServiceLinks) (eq (.Values.loki.enableServiceLinks | toString) "<nil>") }}
+      enableServiceLinks: true
+      {{- else }}
+      enableServiceLinks: false
+      {{- end }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
