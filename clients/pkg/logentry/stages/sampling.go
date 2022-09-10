@@ -68,6 +68,7 @@ func newSamplingStage(logger log.Logger, config interface{}, registerer promethe
 		cfg:              cfg,
 		dropCount:        getDropCountMetric(registerer),
 		samplingBoundary: samplingBoundary,
+		pool:             pool,
 	}, nil
 }
 
