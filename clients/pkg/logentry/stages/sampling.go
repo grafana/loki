@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-	
+
 	"github.com/go-kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
@@ -58,17 +58,16 @@ func newSamplingStage(logger log.Logger, config interface{}, registerer promethe
 	samplingRate := math.Max(0.0, math.Min(cfg.SamplingRate, 1.0))
 	samplingBoundary := uint64(float64(maxRandomNumber) * samplingRate)
 	seedGenerator := utils.NewRand(time.Now().UnixNano())
-	pool := sync.Pool{
-		New: func() interface{} {
-			return rand.NewSource(seedGenerator.Int63())
-		},
-	}
 	return &samplingStage{
 		logger:           log.With(logger, "component", "stage", "type", "drop"),
 		cfg:              cfg,
 		dropCount:        getDropCountMetric(registerer),
 		samplingBoundary: samplingBoundary,
-		pool:             pool,
+		pool: sync.Pool{
+			New: func() interface{} {
+				return rand.NewSource(seedGenerator.Int63())
+			},
+		},
 	}, nil
 }
 
