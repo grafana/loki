@@ -37,11 +37,11 @@ pipeline_stages:
     burst: 1
     drop: true
 `
+var plName = "testPipeline"
 
 // TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitWaitPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	plName := "testPipeline"
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitWaitYaml), &plName, registry)
 	logs := make([]Entry, 0)
 	logCount := 5
@@ -60,7 +60,6 @@ func TestLimitWaitPipeline(t *testing.T) {
 // TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitDropPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	plName := "testPipeline"
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitDropYaml), &plName, registry)
 	logs := make([]Entry, 0)
 	logCount := 10
