@@ -38,13 +38,6 @@ func TestSamplingPipeline(t *testing.T) {
 
 }
 
-var (
-	samplingVal             = "msg"
-	samplingRegex           = ".*blah"
-	samplingInvalidRegex    = "(?P<ts[0-9]+).*"
-	samplingInvalidByteSize = "23QB"
-)
-
 func Test_validateSamplingConfig(t *testing.T) {
 	tests := []struct {
 		name    string
