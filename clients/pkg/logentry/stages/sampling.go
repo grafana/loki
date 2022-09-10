@@ -1,15 +1,16 @@
 package stages
 
 import (
+	"math"
+	"math/rand"
+	"sync"
+	"time"
+	
 	"github.com/go-kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/uber/jaeger-client-go/utils"
-	"math"
-	"math/rand"
-	"sync"
-	"time"
 )
 
 const (
