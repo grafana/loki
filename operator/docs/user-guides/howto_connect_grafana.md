@@ -46,7 +46,7 @@ An example configuration authenticating to the gateway in this manner is availab
 
 The configuration uses `oauth-proxy` to authenticate the user to the Grafana instance and forwards the token through Grafana to LokiStack's gateway service. This enables the configuration to fully take advantage of the tenancy model, so that users can only see the logs of their applications and only admins can view infrastructure and audit logs.
 
-As the open-source version of Grafana does not support to limit datasources to certain groups of users, all three datasources ("application", "infrastructure" and "audit") will be visible to all users. The infrastructure and audit datasources will not yield any data for non-admin users.
+As the open-source version of Grafana does not support to limit datasources to certain groups of users, all datasources ("application", "infrastructure", "audit" and "network") will be visible to all users. The infrastructure and audit datasources will not yield any data for non-admin users.
 
 ### Using the Gateway With a Static Token
 

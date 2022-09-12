@@ -459,6 +459,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:static
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
+        - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

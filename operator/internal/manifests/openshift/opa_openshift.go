@@ -5,7 +5,9 @@ import (
 	"os"
 	"path"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
+
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -19,7 +21,7 @@ const (
 	opaDefaultLabelMatcher = "kubernetes_namespace_name"
 )
 
-func newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphers string, withTLS bool) corev1.Container {
+func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphers string, withTLS bool) corev1.Container {
 	var (
 		image        string
 		args         []string
@@ -35,11 +37,16 @@ func newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, minTL
 	uriScheme = corev1.URISchemeHTTP
 	args = []string{
 		"--log.level=warn",
-		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
-		fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatcher),
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
+		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
+	}
+
+	if mode != lokiv1.OpenshiftNetwork {
+		args = append(args, []string{
+			fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatcher),
+		}...)
 	}
 
 	if withTLS {
@@ -64,7 +71,8 @@ func newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, minTL
 		}
 	}
 
-	for _, t := range defaultTenants {
+	tenants := GetTenants(mode)
+	for _, t := range tenants {
 		args = append(args, fmt.Sprintf(`--openshift.mappings=%s=%s`, t, opaDefaultAPIGroup))
 	}
 
