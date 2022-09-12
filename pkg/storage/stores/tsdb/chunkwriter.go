@@ -52,9 +52,6 @@ func (w *ChunkWriter) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		if err := w.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
 			return err
 		}
-		if err := w.backupChunkWriter.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
-			return err
-		}
 	}
 	return nil
 }
