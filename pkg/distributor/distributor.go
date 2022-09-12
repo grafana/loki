@@ -251,18 +251,43 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, nil
 	}
 
+	keys, streams, validationErr, ok := d.validateStreams(req.Streams, userID)
+	if !ok {
+		return nil, validationErr
+	}
+
+	if len(streams) == 0 {
+		return &logproto.PushResponse{}, validationErr
+	}
+
+	tracker, err := d.pushStreams(ctx, keys, streams, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case err := <-tracker.err:
+		return nil, err
+	case <-tracker.done:
+		return &logproto.PushResponse{}, validationErr
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) ([]uint32, []streamTracker, error, bool) {
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
-	streams := make([]streamTracker, 0, len(req.Streams))
-	keys := make([]uint32, 0, len(req.Streams))
+	validStreams := make([]streamTracker, 0, len(streams))
+	keys := make([]uint32, 0, len(streams))
 	validatedSamplesSize := 0
 	validatedSamplesCount := 0
 
 	var validationErr error
 	validationContext := d.validator.getValidationContextForTime(time.Now(), userID)
 
-	for _, stream := range req.Streams {
+	for _, stream := range streams {
 		// Return early if stream does not contain any entries
 		if len(stream.Entries) == 0 {
 			continue
@@ -271,6 +296,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Truncate first so subsequent steps have consistent line lengths
 		d.truncateLines(validationContext, &stream)
 
+		var err error
 		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
@@ -310,19 +336,20 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
+		// TODO: Shard somewhere else
 		if d.cfg.ShardStreams.Enabled {
 			derivedKeys, derivedStreams := d.shardStream(stream, userID)
 			keys = append(keys, derivedKeys...)
-			streams = append(streams, derivedStreams...)
+			validStreams = append(validStreams, derivedStreams...)
 		} else {
 			keys = append(keys, util.TokenFor(userID, stream.Labels))
-			streams = append(streams, streamTracker{stream: stream})
+			validStreams = append(validStreams, streamTracker{stream: stream})
 		}
 	}
 
-	// Return early if none of the streams contained entries
-	if len(streams) == 0 {
-		return &logproto.PushResponse{}, validationErr
+	// Return early if none of the validStreams contained entries
+	if len(validStreams) == 0 {
+		return keys, validStreams, validationErr, true
 	}
 
 	now := time.Now()
@@ -330,9 +357,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		return nil, nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize), false
 	}
 
+	return keys, validStreams, validationErr, true
+}
+
+func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []streamTracker, userID string) (pushTracker, error) {
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
@@ -341,7 +372,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	for i, key := range keys {
 		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
 		if err != nil {
-			return nil, err
+			return pushTracker{}, err
 		}
 
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
@@ -356,6 +387,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
 		err:  make(chan error, 1),
 	}
+
 	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {
 		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
@@ -369,14 +401,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.sendSamples(localCtx, ingester, samples, &tracker)
 		}(ingesterDescs[ingester], samples)
 	}
-	select {
-	case err := <-tracker.err:
-		return nil, err
-	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+
+	return tracker, nil
 }
 
 func min(x1, x2 int) int {
