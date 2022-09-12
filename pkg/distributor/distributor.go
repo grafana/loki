@@ -275,6 +275,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+// nolint:error-return
 func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) ([]uint32, []streamTracker, error, bool) {
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
