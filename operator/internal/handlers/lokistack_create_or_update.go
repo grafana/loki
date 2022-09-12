@@ -143,15 +143,14 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		if stack.Spec.Tenants.Mode != lokiv1.OpenshiftLogging {
-			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
+		switch stack.Spec.Tenants.Mode {
+		case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
 			if err != nil {
 				return err
 			}
-		}
-
-		if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging {
-			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
+		default:
+			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
 			if err != nil {
 				return err
 			}
