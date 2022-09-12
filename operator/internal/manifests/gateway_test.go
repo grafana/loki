@@ -404,15 +404,13 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			objs, err := BuildGateway(tc.options)
-
 			require.NoError(t, err)
 
 			d, ok := objs[1].(*appsv1.Deployment)
 			require.True(t, ok)
 
-			for _, c := range d.Spec.Template.Spec.Containers {
-				require.Contains(t, c.Args, tc.expectedArgs[0])
-				require.Contains(t, c.Args, tc.expectedArgs[1])
+			for _, arg := range tc.expectedArgs {
+				require.Contains(t, d.Spec.Template.Spec.Containers[0].Args, arg)
 			}
 		})
 	}
