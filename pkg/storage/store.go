@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -226,8 +227,23 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
+		var backupChunkWriter stores.ChunkWriter
+		backupStoreStop := func() {}
+		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
+			pCopy := p
+			pCopy.IndexType = config.BoltDBShipperType
+			pCopy.IndexTables.Prefix = fmt.Sprintf("%sbackup_", pCopy.IndexTables.Prefix)
+			backupChunkWriter, _, backupStoreStop, err = s.storeForPeriod(pCopy, chunkClient, f)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			// disable index deduplication which is not done when RF=1 even when using boltdb-shipper as index store
+			// This is to make sure index is not deduped even when the chunk is already written to the object storage by tsdb store.
+			backupChunkWriter.(*series.Writer).DisableIndexDeduplication = true
+		}
+
 		writer, idx, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
-			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), indexClientReg)
+			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), backupChunkWriter, indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -238,6 +254,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 				chunkClient.Stop()
 				stopTSDBStoreFunc()
 				objectClient.Stop()
+				backupStoreStop()
 			}, nil
 	}
 

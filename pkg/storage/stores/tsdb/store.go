@@ -45,6 +45,7 @@ type newStoreFactoryFunc func(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRanges config.TableRanges,
+	backupChunkWriter stores.ChunkWriter,
 	reg prometheus.Registerer,
 ) (
 	chunkWriter stores.ChunkWriter,
@@ -69,6 +70,7 @@ var NewStore = func() newStoreFactoryFunc {
 		objectClient client.ObjectClient,
 		limits downloads.Limits,
 		tableRanges config.TableRanges,
+		backupChunkWriter stores.ChunkWriter,
 		reg prometheus.Registerer,
 	) (
 		stores.ChunkWriter,
@@ -84,7 +86,7 @@ var NewStore = func() newStoreFactoryFunc {
 			}
 		}
 
-		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, storeInstance.Stop, nil
+		return NewChunkWriter(f, p, storeInstance.indexWriter, backupChunkWriter), storeInstance.indexStore, storeInstance.Stop, nil
 	}
 }()
 
