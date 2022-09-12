@@ -363,7 +363,7 @@ func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) 
 	return keys, validStreams, validationErr, true
 }
 
-func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []streamTracker, userID string) (pushTracker, error) {
+func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []streamTracker, userID string) (*pushTracker, error) {
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
@@ -372,7 +372,7 @@ func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []
 	for i, key := range keys {
 		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
 		if err != nil {
-			return pushTracker{}, err
+			return nil, err
 		}
 
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
@@ -402,7 +402,7 @@ func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []
 		}(ingesterDescs[ingester], samples)
 	}
 
-	return tracker, nil
+	return &tracker, nil
 }
 
 func min(x1, x2 int) int {
