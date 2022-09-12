@@ -61,7 +61,7 @@ type Config struct {
 	ResyncInterval           time.Duration                          `yaml:"resync_interval"`
 	QueryReadyNumDays        int                                    `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig gatewayclient.IndexGatewayClientConfig `yaml:"index_gateway_client"`
-	UseBoltDBShipperAsBackup bool                                   `yaml:"use_bolt_db_shipper_as_backup"`
+	UseBoltDBShipperAsBackup bool                                   `yaml:"use_boltdb_shipper_as_backup"`
 
 	IngesterName           string
 	Mode                   Mode
