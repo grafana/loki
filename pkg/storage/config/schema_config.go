@@ -70,9 +70,10 @@ type TableRange struct {
 // TableRanges represents a list of table ranges for multiple schemas.
 type TableRanges []TableRange
 
-// TableNumberInRange tells whether given table number falls in any of the ranges.
-func (t TableRanges) TableNumberInRange(tableNumber int64) bool {
-	return t.ConfigForTableNumber(tableNumber) != nil
+// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
+func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
 }
 
 func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {

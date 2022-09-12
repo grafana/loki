@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -749,6 +750,54 @@ func TestSchemaConfig_ValidateBoltdb(t *testing.T) {
 			} else {
 				require.EqualError(t, err, tc.err.Error())
 			}
+		})
+	}
+}
+
+func TestTableRanges_TableInRange(t *testing.T) {
+	tableRanges := TableRanges{
+		TableRange{
+			Start: 1,
+			End:   10,
+			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+			}},
+		},
+		TableRange{
+			Start: 11,
+			End:   20,
+			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+				Prefix: "index_foo_",
+			}},
+		},
+	}
+
+	for i, tc := range []struct {
+		tableNumber int64
+		tableName   string
+		expResp     bool
+	}{
+		{
+			tableNumber: 1,
+			tableName:   "index_1",
+			expResp:     true,
+		},
+		{
+			tableNumber: 15,
+			tableName:   "index_foo_15",
+			expResp:     true,
+		},
+		{
+			tableNumber: 25,
+			tableName:   "index_15",
+		},
+		{
+			tableNumber: 15,
+			tableName:   "index_15",
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			require.Equal(t, tc.expResp, tableRanges.TableInRange(tc.tableNumber, tc.tableName))
 		})
 	}
 }
