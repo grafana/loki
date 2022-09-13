@@ -260,19 +260,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	tracker, err := d.pushStreams(ctx, keys, streams, userID)
+	resp, err := d.pushStreams(ctx, keys, streams, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	select {
-	case err := <-tracker.err:
-		return nil, err
-	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return resp, validationErr
 }
 
 // nolint
@@ -364,11 +357,11 @@ func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) 
 	return keys, validStreams, validationErr, true
 }
 
-func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []streamTracker, userID string) (*pushTracker, error) {
+func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []streamTracker, userID string) (*logproto.PushResponse, error) {
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	samplesByIngester := map[string][]*streamTracker{}
+	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
 		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
@@ -379,19 +372,19 @@ func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Instances {
-			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &streams[i])
+			streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
 			ingesterDescs[ingester.Addr] = ingester
 		}
 	}
 
 	tracker := pushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendStreams() only sends once on each
 		err:  make(chan error, 1),
 	}
 
 	tracker.samplesPending.Store(int32(len(streams)))
-	for ingester, samples := range samplesByIngester {
-		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
+	for ingester, streams := range streamsByIngester {
+		go func(ingester ring.InstanceDesc, streams []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
 			defer cancel()
@@ -399,11 +392,18 @@ func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, ingester, samples, &tracker)
-		}(ingesterDescs[ingester], samples)
+			d.sendStreams(localCtx, ingester, streams, &tracker)
+		}(ingesterDescs[ingester], streams)
 	}
 
-	return &tracker, nil
+	select {
+	case err := <-tracker.err:
+		return nil, err
+	case <-tracker.done:
+		return &logproto.PushResponse{}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func min(x1, x2 int) int {
@@ -526,9 +526,8 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 	validation.MutatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedBytes))
 }
 
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
-	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
+func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
+	err := d.sendStreamsErr(ctx, ingester, streamTrackers)
 
 	// If we succeed, decrement each sample's pending count by one.  If we reach
 	// the required number of successful puts on this sample, then decrement the
@@ -558,8 +557,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDes
 	}
 }
 
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
+func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
