@@ -161,7 +161,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 		iters = append(iters, storeIter)
 	}
-
+	if len(iters) == 1 {
+		return iters[0], nil
+	}
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 

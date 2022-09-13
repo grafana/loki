@@ -31,6 +31,10 @@ func newNoopTSDBManager(dir string) noopTSDBManager {
 	}
 }
 
+func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
+	panic("BuildFromHead not implemented")
+}
+
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier) error {
 	return recoverHead(m.dir, m.tenantHeads, wals)
 }
@@ -166,7 +170,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, newNoopTSDBManager(dir))
+	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(dir) {
@@ -249,7 +253,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, newNoopTSDBManager(dir))
+	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 

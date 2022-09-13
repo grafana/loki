@@ -262,24 +262,14 @@ func TestIndexGatewayClientConfig_when_TargetIsQuerierOrRead(t *testing.T) {
 	})
 }
 
+const localhost = "localhost"
+
 func minimalWorkingConfig(t *testing.T, dir, target string) Config {
 	prepareGlobalMetricsRegistry(t)
 
 	cfg := Config{}
-	cfg.SchemaConfig = config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				IndexType:  config.StorageTypeInMemory,
-				ObjectType: config.StorageTypeFileSystem,
-				RowShards:  16,
-				Schema:     "v11",
-				From: config.DayTime{
-					Time: model.Now(),
-				},
-			},
-		},
-	}
 	flagext.DefaultValues(&cfg)
+
 	// Set to 0 to find any free port.
 	cfg.Server.HTTPListenPort = 0
 	cfg.Server.GRPCListenPort = 0
@@ -298,6 +288,29 @@ func minimalWorkingConfig(t *testing.T, dir, target string) Config {
 			},
 		},
 	}
+
+	cfg.SchemaConfig = config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				IndexType:  config.StorageTypeInMemory,
+				ObjectType: config.StorageTypeFileSystem,
+				RowShards:  16,
+				Schema:     "v11",
+				From: config.DayTime{
+					Time: model.Now(),
+				},
+			},
+		},
+	}
+
+	cfg.Common.InstanceAddr = localhost
+	cfg.Ingester.LifecyclerConfig.Addr = localhost
+	cfg.Distributor.DistributorRing.InstanceAddr = localhost
+	cfg.IndexGateway.Mode = indexgateway.SimpleMode
+	cfg.IndexGateway.Ring.InstanceAddr = localhost
+	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
+
+	cfg.Ruler.Config.Ring.InstanceAddr = localhost
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 

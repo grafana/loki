@@ -22,13 +22,14 @@ import (
 )
 
 type pushTarget struct {
-	logger         log.Logger
-	handler        api.EntryHandler
 	config         *scrapeconfig.GcplogTargetConfig
+	entries        chan<- api.Entry
+	handler        api.EntryHandler
 	jobName        string
-	server         *server.Server
+	logger         log.Logger
 	metrics        *Metrics
 	relabelConfigs []*relabel.Config
+	server         *server.Server
 }
 
 // newPushTarget creates a brand new GCP Push target, capable of receiving message from a GCP PubSub push subscription.
@@ -36,11 +37,12 @@ func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler
 	wrappedLogger := log.With(logger, "component", "gcp_push")
 
 	ht := &pushTarget{
-		metrics:        metrics,
-		logger:         wrappedLogger,
+		config:         config,
+		entries:        handler.Chan(),
 		handler:        handler,
 		jobName:        jobName,
-		config:         config,
+		logger:         wrappedLogger,
+		metrics:        metrics,
 		relabelConfigs: relabel,
 	}
 
@@ -96,28 +98,33 @@ func (h *pushTarget) run() error {
 }
 
 func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
-	entries := h.handler.Chan()
 	defer r.Body.Close()
 
 	pushMessage := PushMessage{}
 	bs, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues().Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("read_error").Inc()
 		level.Warn(h.logger).Log("msg", "failed to read incoming gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	err = json.Unmarshal(bs, &pushMessage)
 	if err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues().Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("format").Inc()
 		level.Warn(h.logger).Log("msg", "failed to unmarshall gcp push request", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err = pushMessage.Validate(); err != nil {
+		h.metrics.gcpPushErrors.WithLabelValues("invalid_message").Inc()
+		level.Warn(h.logger).Log("msg", "invalid gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
 	if err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues().Inc()
+		h.metrics.gcpPushErrors.WithLabelValues("translation").Inc()
 		level.Warn(h.logger).Log("msg", "failed to translate gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -125,7 +132,7 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 
 	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
-	entries <- entry
+	h.entries <- entry
 	h.metrics.gcpPushEntries.WithLabelValues().Inc()
 	w.WriteHeader(http.StatusNoContent)
 }

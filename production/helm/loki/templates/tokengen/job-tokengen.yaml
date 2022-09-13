@@ -69,7 +69,7 @@ spec:
             {{- end }}
       containers:
         - name: create-secret
-          image: bitnami/kubectl
+          image: {{ .Values.enterprise.tokengen.image }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           command:
             - /bin/bash

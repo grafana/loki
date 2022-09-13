@@ -186,7 +186,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if q.LocalConfig == "" {
 		return errors.New("no supplied config file")
 	}
-	if err := cfg.YAML(q.LocalConfig, false)(&conf); err != nil {
+	if err := cfg.YAML(q.LocalConfig, false, true)(&conf); err != nil {
 		return err
 	}
 

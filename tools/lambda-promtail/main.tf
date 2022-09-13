@@ -43,6 +43,24 @@ resource "aws_iam_role_policy" "logs" {
         "Resource" : [
           for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
         ]
+      },
+      {
+        "Action" : [
+          "kms:Decrypt",
+        ],
+        "Effect" : "Allow",
+        "Resource" : "arn:aws:kms:*:*:*",
+      },
+      {
+        "Action": [
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeInstances",
+          "ec2:AttachNetworkInterface"
+        ],
+        "Effect" : "Allow",
+        "Resource": "*",
       }
     ]
   })

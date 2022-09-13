@@ -76,6 +76,7 @@ const (
 	OverridesExporter        string = "overrides-exporter"
 	TenantConfigs            string = "tenant-configs"
 	Server                   string = "server"
+	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
 	Ingester                 string = "ingester"
 	Querier                  string = "querier"
@@ -129,16 +130,45 @@ func (t *Loki) initServer() (services.Service, error) {
 	s := NewServerService(t.Server, servicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
-	t.Server.HTTPServer.Handler = func(next http.Handler) http.Handler {
+	h := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !t.Cfg.AuthEnabled {
 				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
 				return
 			}
+
 			_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}(t.Server.HTTPServer.Handler)
+
+	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
+
+	return s, nil
+}
+
+func (t *Loki) initInternalServer() (services.Service, error) {
+	// Loki handles signals on its own.
+	DisableSignalHandling(&t.Cfg.InternalServer.Config)
+	serv, err := server.New(t.Cfg.InternalServer.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	t.InternalServer = serv
+
+	servicesToWaitFor := func() []services.Service {
+		svs := []services.Service(nil)
+		for m, s := range t.serviceMap {
+			// Server should not wait for itself.
+			if m != InternalServer {
+				svs = append(svs, s)
+			}
+		}
+		return svs
+	}
+
+	s := NewServerService(t.InternalServer, servicesToWaitFor)
 
 	return s, nil
 }

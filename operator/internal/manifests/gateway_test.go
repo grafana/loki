@@ -279,3 +279,140 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 	require.NotContains(t, kinds, "*v1.Ingress")
 	require.Contains(t, kinds, "*v1.Route")
 }
+
+func TestBuildGateway_WithTLSProfile(t *testing.T) {
+	tt := []struct {
+		desc         string
+		options      Options
+		expectedArgs []string
+	}{
+		{
+			desc: "static mode",
+			options: Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway: true,
+					HTTPEncryption:   true,
+					TLSProfile:       string(configv1.TLSProfileOldType),
+				},
+				TLSProfileSpec: configv1.TLSProfileSpec{
+					MinTLSVersion: "min-version",
+					Ciphers:       []string{"cipher1", "cipher2"},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+						Authorization: &lokiv1.AuthorizationSpec{
+							Roles: []lokiv1.RoleSpec{
+								{
+									Name:        "some-name",
+									Resources:   []string{"metrics"},
+									Tenants:     []string{"test-a"},
+									Permissions: []lokiv1.PermissionType{"read"},
+								},
+							},
+							RoleBindings: []lokiv1.RoleBindingsSpec{
+								{
+									Name: "test-a",
+									Subjects: []lokiv1.Subject{
+										{
+											Name: "test@example.com",
+											Kind: "user",
+										},
+									},
+									Roles: []string{"read-write"},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedArgs: []string{
+				"--tls.min-version=min-version",
+				"--tls.cipher-suites=cipher1,cipher2",
+			},
+		},
+		{
+			desc: "dynamic mode",
+			options: Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway: true,
+					HTTPEncryption:   true,
+					TLSProfile:       string(configv1.TLSProfileOldType),
+				},
+				TLSProfileSpec: configv1.TLSProfileSpec{
+					MinTLSVersion: "min-version",
+					Ciphers:       []string{"cipher1", "cipher2"},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+			},
+			expectedArgs: []string{
+				"--tls.min-version=min-version",
+				"--tls.cipher-suites=cipher1,cipher2",
+			},
+		},
+		{
+			desc: "openshift-logging mode",
+			options: Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway: true,
+					HTTPEncryption:   true,
+					TLSProfile:       string(configv1.TLSProfileOldType),
+				},
+				TLSProfileSpec: configv1.TLSProfileSpec{
+					MinTLSVersion: "min-version",
+					Ciphers:       []string{"cipher1", "cipher2"},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+			},
+			expectedArgs: []string{
+				"--tls.min-version=min-version",
+				"--tls.cipher-suites=cipher1,cipher2",
+			},
+		},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			objs, err := BuildGateway(tc.options)
+			require.NoError(t, err)
+
+			d, ok := objs[1].(*appsv1.Deployment)
+			require.True(t, ok)
+
+			for _, arg := range tc.expectedArgs {
+				require.Contains(t, d.Spec.Template.Spec.Containers[0].Args, arg)
+			}
+		})
+	}
+
+}

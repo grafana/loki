@@ -207,6 +207,12 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *syntax.LabelReplaceExpr:
 		return labelReplaceEvaluator(ctx, nextEv, e, q)
+	case *syntax.VectorExpr:
+		val, err := e.Value()
+		if err != nil {
+			return nil, err
+		}
+		return newVectorIterator(val, q.Step().Nanoseconds(), q.Start().UnixNano(), q.End().UnixNano()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -875,6 +881,47 @@ func literalStepEvaluator(
 	)
 }
 
+// vectorIterator return simple vector like (1).
+type vectorIterator struct {
+	step, end, current int64
+	val                float64
+}
+
+func newVectorIterator(val float64,
+	step, start, end int64) *vectorIterator {
+	if step == 0 {
+		step = 1
+	}
+	return &vectorIterator{
+		val:     val,
+		step:    step,
+		end:     end,
+		current: start - step,
+	}
+}
+
+func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
+	r.current = r.current + r.step
+	if r.current > r.end {
+		return false, 0, nil
+	}
+	results := make(promql.Vector, 0)
+	vectorPoint := promql.Sample{
+		Point: promql.Point{T: r.current, V: r.val},
+	}
+	results = append(results, vectorPoint)
+	return true, r.current, results
+}
+
+func (r *vectorIterator) Close() error {
+	return nil
+}
+
+func (r *vectorIterator) Error() error {
+	return nil
+}
+
+// labelReplaceEvaluator
 func labelReplaceEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,
