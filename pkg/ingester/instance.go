@@ -238,7 +238,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return pushErr(pushErrs)
 }
 
-// decideForFinalStatusCode returns which status code the distributors expects based on an initial state and occurred errors.
+// decideForFinalStatusCode returns which status code the distributors expects based on occurred errors.
 //
 // If no error happened for any push, returns OK.
 // If any rate limiting happened, returns 429.
@@ -253,9 +253,7 @@ func decideForFinalStatusCode(pushErrs []*streamPushErr) int32 {
 	return int32(pushErrs[len(pushErrs)-1].code)
 }
 
-// mountPushGRPCError returns an enriched gRPC error or nil if no error is given.
-//
-// This is in its own function to be reused by tests.
+// pushErr returns an enriched gRPC error or nil if no error is given.
 func pushErr(pushErrs []*streamPushErr) error {
 	if len(pushErrs) == 0 {
 		return nil
