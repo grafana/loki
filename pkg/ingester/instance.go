@@ -165,8 +165,9 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 }
 
 type streamPushErr struct {
-	code spb.Code
-	err  error
+	code    spb.Code
+	err     error
+	details *types.Any
 }
 
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
@@ -182,11 +183,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
 
-	statusCode := spb.OK
-	var details []*types.Any
 	var pushErrs []*streamPushErr
-	var appendErr error
-
 	for _, reqStream := range req.Streams {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
@@ -204,34 +201,20 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		)
 
 		if err != nil {
-			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-				statusCode = spb.Code(resp.Code)
-				appendErr = fmt.Errorf("%w: %v", err, string(resp.Body))
-			} else {
-				statusCode = http.StatusPreconditionRequired
-				appendErr = err
-			}
 			pushErrs = append(pushErrs, &streamPushErr{
-				err:  appendErr,
-				code: statusCode,
+				err:  err,
+				code: http.StatusInternalServerError,
 			})
 			continue
 		}
 
 		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
-		statusCode, appendErr = errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
+		statusCode, err := errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
 		pushErrs = append(pushErrs, &streamPushErr{
-			err:  appendErr,
-			code: statusCode,
+			err:     err,
+			code:    statusCode,
+			details: perStreamDetails(s.labelsString),
 		})
-
-		reason := logproto.STORE_ERROR
-		if statusCode == http.StatusTooManyRequests {
-			reason = logproto.PER_STREAM_RATE_LIMITED
-		} else if chunkenc.IsOutOfOrderErr(appendErr) {
-			reason = logproto.OUT_OF_ORDER
-		}
-		details = append(details, mountPerStreamDetails(s.labelsString, reason)...)
 
 		s.chunkMtx.Unlock()
 	}
@@ -252,51 +235,45 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 	}
 
-	code := decideForFinalStatusCode(int(statusCode), pushErrs)
-	return mountPushGRPCError(appendErr, code, details)
+	return pushErr(pushErrs)
 }
 
 // decideForFinalStatusCode returns which status code the distributors expects based on an initial state and occurred errors.
 //
 // If no error happened for any push, returns OK.
 // If any rate limiting happened, returns 429.
-// If any bad request happened, returns 400.
 // Otherwise, returns the last error status code seen.
-func decideForFinalStatusCode(initialStatusCode int, pushErrs []*streamPushErr) spb.Code {
-	if len(pushErrs) == 0 {
-		return spb.OK
-	}
-
-	if initialStatusCode == http.StatusTooManyRequests {
-		return http.StatusTooManyRequests
-	}
-
+func decideForFinalStatusCode(pushErrs []*streamPushErr) int32 {
 	for _, pushErr := range pushErrs {
 		if pushErr.code == http.StatusTooManyRequests {
 			return http.StatusTooManyRequests
 		}
 	}
 
-	for _, pushErr := range pushErrs {
-		if pushErr.code == http.StatusBadRequest {
-			return http.StatusBadRequest
-		}
-	}
-
-	return pushErrs[len(pushErrs)-1].code
+	return int32(pushErrs[len(pushErrs)-1].code)
 }
 
 // mountPushGRPCError returns an enriched gRPC error or nil if no error is given.
 //
 // This is in its own function to be reused by tests.
-func mountPushGRPCError(err error, statusCode spb.Code, details []*types.Any) error {
-	if err == nil {
+func pushErr(pushErrs []*streamPushErr) error {
+	if len(pushErrs) == 0 {
 		return nil
 	}
 
+	code := decideForFinalStatusCode(pushErrs)
+	details := make([]*types.Any, 0, len(pushErrs))
+	lastErr := pushErrs[len(pushErrs)-1]
+	for _, pushErr := range pushErrs {
+		if pushErr.code == http.StatusTooManyRequests {
+			lastErr = pushErr
+			details = append(details, pushErr.details)
+		}
+	}
+
 	return status.ErrorProto(&spb.Status{
-		Code:    int32(statusCode),
-		Message: err.Error(),
+		Code:    code,
+		Message: lastErr.err.Error(),
 		Details: details,
 	})
 }
@@ -344,14 +321,14 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 //
 // It returns a slice of details instead of its marshalled version because if marshallings we can still
 // just append the returned value as it would be an empty slice. Appending a nil wouldn't work, though.
-func mountPerStreamDetails(streamLabels string, reason logproto.RejectedReason) []*types.Any {
-	rls := logproto.RejectedStream{Labels: streamLabels, Reason: reason}
-	marshalledStream, err := types.MarshalAny(&rls)
+func perStreamDetails(streamLabels string) *types.Any {
+	rls := logproto.RejectedStream{Labels: streamLabels}
+	rejectedStream, err := types.MarshalAny(&rls)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling rate-limited stream", "err", err, "labels", streamLabels)
-		return []*types.Any{}
+		return nil
 	}
-	return []*types.Any{marshalledStream}
+	return rejectedStream
 }
 
 func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
