@@ -48,7 +48,7 @@ func (c *tableClient) reconnectTableSession() error {
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	result, err := c.listTables()
 	//
-	if err == gocql.ErrNoConnections {
+	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := c.reconnectTableSession()
 		if connectErr != nil {
 			return nil, errors.Wrap(err, "ObjectClient getChunk reconnect fail")
