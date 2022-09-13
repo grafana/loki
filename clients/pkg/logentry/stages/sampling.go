@@ -29,7 +29,7 @@ type SamplingConfig struct {
 	SamplingRate float64 `mapstructure:"rate"`
 }
 
-// validateDropConfig validates the DropConfig for the dropStage
+// validateSamplingConfig validates the SamplingConfig for the sampleStage
 func validateSamplingConfig(cfg *SamplingConfig) error {
 	if cfg.DropReason == nil || *cfg.DropReason == "" {
 		cfg.DropReason = &defaultSamplingpReason
@@ -59,7 +59,7 @@ func newSamplingStage(logger log.Logger, config interface{}, registerer promethe
 	samplingBoundary := uint64(float64(maxRandomNumber) * samplingRate)
 	seedGenerator := utils.NewRand(time.Now().UnixNano())
 	return &samplingStage{
-		logger:           log.With(logger, "component", "stage", "type", "drop"),
+		logger:           log.With(logger, "component", "stage", "type", "sampling"),
 		cfg:              cfg,
 		dropCount:        getDropCountMetric(registerer),
 		samplingBoundary: samplingBoundary,
@@ -71,7 +71,6 @@ func newSamplingStage(logger log.Logger, config interface{}, registerer promethe
 	}, nil
 }
 
-// dropStage applies Label matchers to determine if the include stages should be run
 type samplingStage struct {
 	logger           log.Logger
 	cfg              *SamplingConfig
