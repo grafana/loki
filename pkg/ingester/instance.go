@@ -210,11 +210,13 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		_, failedEntriesWithError := s.Push(ctx, reqStream.Entries, record, 0, false)
 		statusCode, err := errorForFailedEntries(s, failedEntriesWithError, len(reqStream.Entries))
-		pushErrs = append(pushErrs, &streamPushErr{
-			err:     err,
-			code:    statusCode,
-			details: perStreamDetails(s.labelsString),
-		})
+		if err != nil {
+			pushErrs = append(pushErrs, &streamPushErr{
+				err:     err,
+				code:    statusCode,
+				details: perStreamDetails(s.labelsString),
+			})
+		}
 
 		s.chunkMtx.Unlock()
 	}
@@ -277,6 +279,7 @@ func pushErr(pushErrs []*streamPushErr) error {
 }
 
 // errorForFailedEntries mounts an error message and a status code based on entries that couldn't be ingested.
+// go nice
 //
 // The returned error has an error line for every entry that failed to be ingested.
 func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) (spb.Code, error) {
