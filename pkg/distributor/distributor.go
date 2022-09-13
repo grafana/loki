@@ -223,6 +223,7 @@ func (d *Distributor) stopping(_ error) error {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
+	key         uint32
 	stream      logproto.Stream
 	minSuccess  int
 	maxFailures int
@@ -251,7 +252,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, nil
 	}
 
-	keys, streams, validationErr, ok := d.validateStreams(req.Streams, userID)
+	streams, validationErr, ok := d.validateStreams(req.Streams, userID)
 	if !ok {
 		return nil, validationErr
 	}
@@ -260,7 +261,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	resp, err := d.pushStreams(ctx, keys, streams, userID)
+	resp, err := d.pushStreams(ctx, streams, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -269,12 +270,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 }
 
 // nolint
-func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) ([]uint32, []streamTracker, error, bool) {
+func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) ([]streamTracker, error, bool) {
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	validStreams := make([]streamTracker, 0, len(streams))
-	keys := make([]uint32, 0, len(streams))
 	validatedSamplesSize := 0
 	validatedSamplesCount := 0
 
@@ -332,18 +332,16 @@ func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) 
 
 		// TODO: Shard somewhere else
 		if d.cfg.ShardStreams.Enabled {
-			derivedKeys, derivedStreams := d.shardStream(stream, userID)
-			keys = append(keys, derivedKeys...)
+			derivedStreams := d.shardStream(stream, userID)
 			validStreams = append(validStreams, derivedStreams...)
 		} else {
-			keys = append(keys, util.TokenFor(userID, stream.Labels))
-			validStreams = append(validStreams, streamTracker{stream: stream})
+			validStreams = append(validStreams, streamTracker{key: util.TokenFor(userID, stream.Labels), stream: stream})
 		}
 	}
 
 	// Return early if none of the validStreams contained entries
 	if len(validStreams) == 0 {
-		return keys, validStreams, validationErr, true
+		return validStreams, validationErr, true
 	}
 
 	now := time.Now()
@@ -351,20 +349,20 @@ func (d *Distributor) validateStreams(streams []logproto.Stream, userID string) 
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize), false
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize), false
 	}
 
-	return keys, validStreams, validationErr, true
+	return validStreams, validationErr, true
 }
 
-func (d *Distributor) pushStreams(ctx context.Context, keys []uint32, streams []streamTracker, userID string) (*logproto.PushResponse, error) {
+func (d *Distributor) pushStreams(ctx context.Context, streams []streamTracker, userID string) (*logproto.PushResponse, error) {
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
 	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
-	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
+	for i := 0; i < len(streams); i++ {
+		replicationSet, err := d.ingestersRing.Get(streams[i].key, ring.Write, descs[:0], nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -416,10 +414,10 @@ func min(x1, x2 int) int {
 // shardStream shards (divides) the given stream into N smaller streams, where
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
-func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker) {
+func (d *Distributor) shardStream(stream logproto.Stream, userID string) []streamTracker {
 	shardCount, ok := d.streamSharder.ShardCountFor(stream)
 	if !ok || shardCount <= 1 {
-		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
+		return []streamTracker{{key: util.TokenFor(userID, stream.Labels), stream: stream}}
 	}
 
 	if d.cfg.ShardStreams.LoggingEnabled {
@@ -429,7 +427,6 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 	streamLabels := labelTemplate(stream.Labels)
 	streamPattern := streamLabels.String()
 
-	derivedKeys := make([]uint32, 0, shardCount)
 	derivedStreams := make([]streamTracker, 0, shardCount)
 	for i := 0; i < shardCount; i++ {
 		shard, ok := d.createShard(stream, streamLabels, streamPattern, shardCount, i)
@@ -437,15 +434,13 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 			continue
 		}
 
-		derivedKeys = append(derivedKeys, util.TokenFor(userID, shard.Labels))
-		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
-
+		derivedStreams = append(derivedStreams, streamTracker{key: util.TokenFor(userID, shard.Labels), stream: shard})
 		if d.cfg.ShardStreams.LoggingEnabled {
 			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
 
-	return derivedKeys, derivedStreams
+	return derivedStreams
 }
 
 // labelTemplate returns a label set that includes the dummy label to be replaced
