@@ -317,10 +317,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 	return spb.Code(statusCode), fmt.Errorf(buf.String())
 }
 
-// mountPerStreamDetails returns a list of details with the given stream as its rate-limited version.
-//
-// It returns a slice of details instead of its marshalled version because if marshallings we can still
-// just append the returned value as it would be an empty slice. Appending a nil wouldn't work, though.
+// perStreamDetails returns in a gRPC-friendly format a list of details extracted from the given stream.
 func perStreamDetails(streamLabels string) *types.Any {
 	rls := logproto.RejectedStream{Labels: streamLabels}
 	rejectedStream, err := types.MarshalAny(&rls)
