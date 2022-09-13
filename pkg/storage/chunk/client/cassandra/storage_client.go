@@ -582,7 +582,7 @@ func (s *ObjectClient) reconnectReadSession() error {
 func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	err := s.putChunks(ctx, chunks)
 	//
-	if err == gocql.ErrNoConnections {
+	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := s.reconnectWriteSession()
 		if connectErr != nil {
 			return errors.Wrap(err, "ObjectClient BatchWrite reconnect fail")
