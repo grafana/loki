@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [7063](https://github.com/grafana/loki/pull/7063) **kavirajk**: Add additional `push` mode to Loki canary that can directly push logs to given Loki URL.
 * [7069](https://github.com/grafana/loki/pull/7069) **periklis**: Add support for custom internal server listener for readiness probes.
 * [7023](https://github.com/grafana/loki/pull/7023) **liguozhong**: logql engine support exec `vector(0)` grammar.
 * [6983](https://github.com/grafana/loki/pull/6983) **slim-bean**: `__timestamp__` and `__line__` are now available in the logql `label_format` query stage.
@@ -19,6 +20,7 @@
 
 ##### Fixes
 * [6937](https://github.com/grafana/loki/pull/6937) **ssncferreira**: Fix topk and bottomk expressions with parameter <= 0.
+* [6780](https://github.com/grafana/loki/pull/6780) **periklis**:  Attach the panic recovery handler on all HTTP handlers
 * [6358](https://github.com/grafana/loki/pull/6358) **taharah**: Fixes sigv4 authentication for the Ruler's remote write configuration by allowing both a global and per tenant configuration.
 * [6375](https://github.com/grafana/loki/pull/6375) **dannykopping**: Fix bug that prevented users from using the `json` parser after a `line_format` pipeline stage.
 * [6505](https://github.com/grafana/loki/pull/6375) **dmitri-lerko** Fixes `failed to receive pubsub messages` error with promtail GCPLog client.

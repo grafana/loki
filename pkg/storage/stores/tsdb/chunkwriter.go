@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -21,22 +22,28 @@ type IndexWriter interface {
 }
 
 type ChunkWriter struct {
-	schemaCfg   config.SchemaConfig
-	fetcher     *fetcher.Fetcher
-	indexWriter IndexWriter
+	schemaCfg         config.SchemaConfig
+	fetcher           *fetcher.Fetcher
+	indexWriter       IndexWriter
+	backupChunkWriter stores.ChunkWriter
 }
 
 func NewChunkWriter(
 	fetcher *fetcher.Fetcher,
 	pd config.PeriodConfig,
 	indexWriter IndexWriter,
+	backupChunkWriter stores.ChunkWriter,
 ) *ChunkWriter {
+	if backupChunkWriter == nil {
+		backupChunkWriter = noopBackupChunkWriter{}
+	}
 	return &ChunkWriter{
 		schemaCfg: config.SchemaConfig{
 			Configs: []config.PeriodConfig{pd},
 		},
-		fetcher:     fetcher,
-		indexWriter: indexWriter,
+		fetcher:           fetcher,
+		indexWriter:       indexWriter,
+		backupChunkWriter: backupChunkWriter,
 	}
 }
 
@@ -83,5 +90,15 @@ func (w *ChunkWriter) PutOne(ctx context.Context, from, through model.Time, chk 
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
+	return w.backupChunkWriter.PutOne(ctx, from, through, chk)
+}
+
+type noopBackupChunkWriter struct{}
+
+func (d noopBackupChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
+	return nil
+}
+
+func (d noopBackupChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }

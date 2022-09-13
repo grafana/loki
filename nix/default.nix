@@ -37,5 +37,9 @@ in {
     faillint = prev.callPackage ./faillint.nix {
       inherit (prev) lib buildGoModule fetchFromGitHub;
     };
+
+    chart-releaser = prev.callPackage ./chart-releaser.nix {
+      inherit (prev) pkgs lib buildGoModule fetchFromGitHub;
+    };
   };
 }
