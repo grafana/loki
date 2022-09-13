@@ -14,7 +14,7 @@ toc: true
 ---
 
 
-This document will describe how to send application, infrastructure, and audit logs to the LokiStack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
+This document will describe how to send application, infrastructure, audit and network logs to the LokiStack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
 
 __Please read the [hacking guide](./hack_loki_operator.md) before proceeding with the following instructions.__
 
@@ -133,6 +133,69 @@ _Note: While this document will only give instructions for two methods of log fo
     ```
 
     _Note:_ You can add/remove any pipeline from the ClusterLogForwarder spec in case if you want to limit the logs being sent.
+
+## Network Observability
+
+[Network Observability](https://github.com/netobserv/network-observability-operator) also require an external loki instance and is compatible with LokiStack Gateway. You must use a separate instance than `openshift-logging` one.
+
+The Network Observability Operator can automatically install and configure dependent operators. However, if you need to configure these manually, follow the step below.
+
+* Deploy the Loki Operator and a dedicated `lokistack` for Network Observability:
+- open Openshift admin console 
+- go to Operators -> OperatorHub and install Loki Operator from Red Hat catalog if not already installed
+- ensure you are in `network-observability` namespace
+- go to Operators -> Installed Operators -> Loki Operator -> LokiStack
+- click on Create LokiStack
+- set name to `lokistack-network`
+- set `Object Storage` -> `Secret` [check object storage documentation](../lokistack/object_storage.md)
+- set `Tenants Configuration` -> `Mode` to `openshift-network`
+
+* Create the following `ClusterRole` and `ClusterRoleBinding` which allow `flowlogs-pipeline` and `network-observability-plugin` service accounts to read and write the network logs:
+
+    ```yaml
+  ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: lokistack-network-tenant-logs
+    rules:
+    - apiGroups:
+      - 'loki.grafana.com'
+      resources:
+      - network
+      resourceNames:
+      - logs
+      verbs:
+      - 'get'
+      - 'create'
+  ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: lokistack-network-tenant-logs
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: lokistack-network-tenant-logs
+    subjects:
+    - kind: ServiceAccount
+      name: flowlogs-pipeline
+      namespace: network-observability
+    - kind: ServiceAccount
+      name: network-observability-plugin
+      namespace: network-observability
+    ```
+
+* Deploy the [Network Observability Operator](https://github.com/netobserv/network-observability-operator) following the [Getting started documentation](https://github.com/netobserv/network-observability-operator/blob/main/README.md#getting-started) either from Operator Hub or commands available in the repository.
+
+* Apply the following configuration in `FlowCollector` for `network` tenant of `lokistack-network`:
+```yaml
+  loki:
+    tenantID: network
+    sendAuthToken: true
+    url: 'https://lokistack-network-gateway-http.network-observability.svc.cluster.local:8080/api/logs/v1/network/'
+```
+Check [config samples](https://github.com/netobserv/network-observability-operator/tree/main/config/samples) for all options.
 
 ## Forwarding Clients
 
