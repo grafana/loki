@@ -1,4 +1,4 @@
-package stores
+package index
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -6,7 +6,6 @@ import (
 )
 
 type metrics struct {
-	// ToDo(Sandeep): Refactor code to include index write requests
 	indexQueryLatency *prometheus.HistogramVec
 }
 

@@ -241,16 +241,19 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		}
 	}
 
+	m.metrics.tsdbBuildLastSuccess.SetToCurrentTime()
 	return nil
 }
 
 func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 	level.Debug(m.log).Log("msg", "building heads")
 	defer func() {
-		m.metrics.tsdbCreationsTotal.WithLabelValues("head").Inc()
+		status := statusSuccess
 		if err != nil {
-			m.metrics.tsdbCreationsFailedTotal.WithLabelValues("head").Inc()
+			status = statusFailure
 		}
+
+		m.metrics.tsdbBuilds.WithLabelValues(status, "head").Inc()
 	}()
 
 	return m.buildFromHead(heads)
@@ -259,10 +262,12 @@ func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
 	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
 	defer func() {
-		m.metrics.tsdbCreationsTotal.WithLabelValues("wal").Inc()
+		status := statusSuccess
 		if err != nil {
-			m.metrics.tsdbCreationsFailedTotal.WithLabelValues("wal").Inc()
+			status = statusFailure
 		}
+
+		m.metrics.tsdbBuilds.WithLabelValues(status, "wal").Inc()
 	}()
 
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
