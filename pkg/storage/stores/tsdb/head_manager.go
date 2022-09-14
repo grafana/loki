@@ -172,7 +172,6 @@ func (m *HeadManager) loop() {
 		case <-ticker.C:
 			// retry tsdb build failures from previous run
 			if err := buildPrev(); err != nil {
-				m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
 				level.Error(m.log).Log(
 					"msg", "failed building tsdb head",
 					"period", m.period.PeriodFor(m.prev.initialized),
@@ -194,6 +193,7 @@ func (m *HeadManager) loop() {
 					continue
 				}
 				m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
+				m.metrics.rotationLastSuccess.SetToCurrentTime()
 			}
 
 			// build tsdb from rotated-out period
@@ -379,11 +379,12 @@ func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
 
 func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
 	defer func() {
-		if err == nil {
-			m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
-		} else {
-			m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
 		}
+
+		m.metrics.walTruncations.WithLabelValues(status).Inc()
 	}()
 
 	grp, _, err := walsForPeriod(m.dir, m.period, period)

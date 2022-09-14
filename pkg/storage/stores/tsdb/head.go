@@ -62,30 +62,40 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 
 // TODO(owen-d)
 type Metrics struct {
-	seriesNotFound prometheus.Counter
-	headRotations  *prometheus.CounterVec
-	walTruncations *prometheus.CounterVec
-	tsdbCreations  *prometheus.CounterVec
+	seriesNotFound      prometheus.Counter
+	walTruncations      *prometheus.CounterVec
+	tsdbCreations       *prometheus.CounterVec
+	headRotations       *prometheus.CounterVec
+	rotationLastSuccess prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_head_series_not_found_total",
-			Help: "Total number of requests for series that were not found",
+			Namespace: "loki_tsdb",
+			Name:      "head_series_not_found_total",
+			Help:      "Total number of requests for series that were not found",
 		}),
-		headRotations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_tsdb_head_rotations_total",
-			Help: "Total number of tsdb head rotations partitioned by status",
-		}, []string{statusLabel}),
 		walTruncations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_tsdb_wal_truncations_total",
-			Help: "Total number of WAL truncations partitioned by status",
+			Namespace: "loki_tsdb",
+			Name:      "wal_truncations_total",
+			Help:      "Total number of WAL truncations partitioned by status",
 		}, []string{statusLabel}),
 		tsdbCreations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_tsdb_creations_total",
-			Help: "Total number of tsdb creations partitioned by status",
+			Namespace: "loki_tsdb",
+			Name:      "creations_total",
+			Help:      "Total number of tsdb creations partitioned by status",
 		}, []string{statusLabel, tsdbBuildSourceLabel}),
+		headRotations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_tsdb",
+			Name:      "head_rotations_total",
+			Help:      "Total number of tsdb head rotations partitioned by status",
+		}, []string{statusLabel}),
+		rotationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_tsdb",
+			Name:      "head_rotation_last_successful_run_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful tsdb head rotation",
+		}),
 	}
 }
 
