@@ -4,6 +4,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/config"
 
 	"github.com/grafana/loki/pkg/logql"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
@@ -18,6 +19,10 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 	}
 
 	if len(cfg.RemoteWrite.Clients) == 0 && cfg.RemoteWrite.Client != nil {
+		if cfg.RemoteWrite.Clients == nil {
+			cfg.RemoteWrite.Clients = make(map[string]config.RemoteWriteConfig)
+		}
+
 		cfg.RemoteWrite.Clients["default"] = *cfg.RemoteWrite.Client
 	}
 
