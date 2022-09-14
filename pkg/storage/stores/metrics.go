@@ -6,16 +6,15 @@ import (
 )
 
 type metrics struct {
-	// ToDo(Sandeep): Refactor code to include index write requests
-	indexQueryLatency *prometheus.HistogramVec
+	storeRequestLatency *prometheus.HistogramVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
-		indexQueryLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		storeRequestLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki",
-			Name:      "index_request_duration_seconds",
-			Help:      "Time (in seconds) spent in serving index query requests",
+			Name:      "store_request_duration_seconds",
+			Help:      "Time (in seconds) spent in serving store requests",
 		}, []string{"operation", "status_code"}),
 	}
 }

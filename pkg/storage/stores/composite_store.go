@@ -73,9 +73,7 @@ func (c *CompositeStore) Stores() []Store {
 
 func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	for _, chunk := range chunks {
-		err := c.forStores(ctx, chunk.From, chunk.Through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-			return store.PutOne(innerCtx, from, through, chunk)
-		})
+		err := c.PutOne(ctx, chunk.From, chunk.Through, chunk)
 		if err != nil {
 			return err
 		}
@@ -85,7 +83,9 @@ func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		return store.PutOne(innerCtx, from, through, chunk)
+		return instrument.CollectedRequest(ctx, "put_chunk", instrument.NewHistogramCollector(c.metrics.storeRequestLatency), instrument.ErrorCode, func(ctx context.Context) error {
+			return store.PutOne(innerCtx, from, through, chunk)
+		})
 	})
 }
 
@@ -97,7 +97,7 @@ func (c compositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 
 func (c compositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	var lbls []labels.Labels
-	if err := instrument.CollectedRequest(ctx, "series", instrument.NewHistogramCollector(c.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "series", instrument.NewHistogramCollector(c.metrics.storeRequestLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		lbls, err = c.getSeries(ctx, userID, from, through, matchers...)
 		return err
@@ -133,7 +133,7 @@ func (c compositeStore) getSeries(ctx context.Context, userID string, from, thro
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	var values []string
-	if err := instrument.CollectedRequest(ctx, "label_values", instrument.NewHistogramCollector(c.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "label_values", instrument.NewHistogramCollector(c.metrics.storeRequestLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		values, err = c.labelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 		return err
@@ -160,7 +160,7 @@ func (c compositeStore) labelValuesForMetricName(ctx context.Context, userID str
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	var values []string
-	if err := instrument.CollectedRequest(ctx, "label_names", instrument.NewHistogramCollector(c.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "label_names", instrument.NewHistogramCollector(c.metrics.storeRequestLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		values, err = c.labelNamesForMetricName(ctx, userID, from, through, metricName)
 		return err
@@ -188,7 +188,7 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 	var chunks [][]chunk.Chunk
 	var fetchers []*fetcher.Fetcher
 
-	if err := instrument.CollectedRequest(ctx, "chunkrefs", instrument.NewHistogramCollector(c.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "chunkrefs", instrument.NewHistogramCollector(c.metrics.storeRequestLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		chunks, fetchers, err = c.getChunkRefs(ctx, userID, from, through, matchers...)
 		return err
@@ -222,7 +222,7 @@ func (c compositeStore) getChunkRefs(ctx context.Context, userID string, from, t
 
 func (c compositeStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	var sts *stats.Stats
-	if err := instrument.CollectedRequest(ctx, "stats", instrument.NewHistogramCollector(c.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "stats", instrument.NewHistogramCollector(c.metrics.storeRequestLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		sts, err = c.stats(ctx, userID, from, through, matchers...)
 		return err
