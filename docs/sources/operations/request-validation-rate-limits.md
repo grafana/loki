@@ -16,7 +16,7 @@ It is recommended that Loki operators set up alerts or dashboards with these met
 
 - **sample**: a log line
 - **series**/**stream**: samples with a unique combination of labels
-- **active stream**: streams that have received log lines within the last `max_chunk_age` period (default: 2h)
+- **active stream**: streams that are present in the ingesters - these have recently received log lines within the `chunk_idle_period` period (default: 30m)
 
 ## Rate-Limit Errors
 
