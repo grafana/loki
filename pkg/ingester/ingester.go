@@ -110,6 +110,8 @@ type Config struct {
 
 	QueryBatchSize       uint32 `yaml:"query_batch_size"`
 	QueryBatchSampleSize uint32 `yaml:"query_batch_sample_size"`
+	// Whether nor not to ingest all at once or not. Comes from distributor StreamShards Enabled
+	RateLimitWholeStream bool `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.

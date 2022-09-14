@@ -437,6 +437,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Ingester.RateLimitWholeStream = t.Cfg.Distributor.ShardStreams.Enabled
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -679,17 +680,20 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	cacheGenClient, err := t.cacheGenClient()
-	if err != nil {
-		return nil, err
+	var genLoader *generationnumber.GenNumberLoader
+	if t.supportIndexDeleteRequest() {
+		cacheGenClient, err := t.cacheGenClient()
+		if err != nil {
+			return nil, err
+		}
+		genLoader = generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer)
 	}
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig,
-		generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer),
+		t.Cfg.SchemaConfig, genLoader,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -701,12 +705,19 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
+func (t *Loki) supportIndexDeleteRequest() bool {
+	// TODO(owen-d): enable delete request storage in tsdb
+	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
+		return false
+	}
+	return config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs)
+}
+
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 	compactorAddress, err := t.compactorAddress()
 	if err != nil {
 		return nil, err
 	}
-
 	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
@@ -1110,12 +1121,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
-	// TODO(owen-d): enable delete request storage in tsdb
-	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
-		return deletion.NewNoOpDeleteRequestsStore(), nil
-	}
-
-	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+	if !t.supportIndexDeleteRequest() {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 

@@ -334,9 +334,45 @@ func TestPushRateLimit(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 	}
+
 	// Counter should be 2 now since the first line will be deduped.
 	_, entriesWithErrors := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
 	require.Len(t, entriesWithErrors, 1)
+	require.Contains(t, entriesWithErrors[0].e.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+}
+
+func TestPushRateLimitAllOrNothing(t *testing.T) {
+	l := validation.Limits{
+		PerStreamRateLimit:      10,
+		PerStreamRateLimitBurst: 10,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	cfg := defaultConfig()
+	cfg.RateLimitWholeStream = true
+
+	s := newStream(
+		cfg,
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+	}
+
+	// Both entries have errors because rate limiting is done all at once
+	_, entriesWithErrors := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	require.Len(t, entriesWithErrors, 2)
 	require.Contains(t, entriesWithErrors[0].e.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
@@ -408,6 +444,39 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
+	require.NoError(b, err)
+
+	go t.loop()
+	defer t.close()
+
+	s.tailers[1] = t
+	ctx := context.Background()
+	e := entries(100, time.Now())
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		rec := recordPool.GetRecord()
+		_, entriesWithErrors := s.Push(ctx, e, rec, 0, true)
+		require.Empty(b, entriesWithErrors)
+		recordPool.PutRecord(rec)
+	}
+}
+
+func Benchmark_PushStreamAllOrNothing(b *testing.B) {
+	ls := labels.Labels{
+		labels.Label{Name: "namespace", Value: "loki-dev"},
+		labels.Label{Name: "cluster", Value: "dev-us-central1"},
+		labels.Label{Name: "job", Value: "loki-dev/ingester"},
+		labels.Label{Name: "container", Value: "ingester"},
+	}
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	s := newStream(&Config{MaxChunkAge: 24 * time.Hour, RateLimitWholeStream: true}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
