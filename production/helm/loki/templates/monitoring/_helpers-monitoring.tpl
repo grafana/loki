@@ -11,7 +11,19 @@ Client definition for LogsInstance
 {{- end }}
 - url: {{ $url }}
   externalLabels:
-    cluster: {{ include "loki.fullname" . -}}
+    cluster: {{ include "loki.fullname" . }}
+  {{- if or .Values.loki.auth_enabled .Values.enterprise.enabled }}
+  tenantId: {{ .Values.monitoring.selfMonitoring.tenant }}
+  {{- end }}
+  {{- if .Values.enterprise.enabled }}
+  basicAuth:
+    username:
+      name: {{ include "enterprise-logs.canarySecret" . }}
+      key: username
+    password:
+      name: {{ include "enterprise-logs.canarySecret" . }}
+      key: password
+  {{- end }}
 {{- end -}}
 
 {{/*
