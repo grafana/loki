@@ -58,6 +58,7 @@ type DefaultClient struct {
 	BearerToken     string
 	BearerTokenFile string
 	Retries         int
+	RetryTimeout    int
 	QueryTags       string
 	AuthHeader      string
 	ProxyURL        string
@@ -218,6 +219,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
+			time.Sleep(time.Duration(c.RetryTimeout) * time.Second)
 			continue
 		}
 		if resp.StatusCode/100 != 2 {
@@ -226,6 +228,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
+			time.Sleep(time.Duration(c.RetryTimeout) * time.Second)
 			continue
 		}
 		success = true
