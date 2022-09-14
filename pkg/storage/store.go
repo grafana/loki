@@ -25,10 +25,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -203,7 +204,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, series.IndexStore, func(), error) {
+func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
@@ -227,28 +228,27 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
-		var backupChunkWriter stores.ChunkWriter
+		var backupIndexWriter index.Writer
 		backupStoreStop := func() {}
 		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
 			pCopy := p
 			pCopy.IndexType = config.BoltDBShipperType
 			pCopy.IndexTables.Prefix = fmt.Sprintf("%sbackup_", pCopy.IndexTables.Prefix)
-			backupChunkWriter, _, backupStoreStop, err = s.storeForPeriod(pCopy, chunkClient, f)
+			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, chunkClient, f)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			// disable index deduplication which is not done when RF=1 even when using boltdb-shipper as index store
-			// This is to make sure index is not deduped even when the chunk is already written to the object storage by tsdb store.
-			backupChunkWriter.(*series.Writer).DisableIndexDeduplication = true
 		}
 
-		writer, idx, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
-			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), backupChunkWriter, indexClientReg)
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), backupIndexWriter, indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		return writer, idx,
+		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
+
+		return chunkWriter, indexReaderWriter,
 			func() {
 				f.Stop()
 				chunkClient.Stop()
@@ -262,18 +262,18 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}
-	idx = index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, s.logger, s.cfg.DisableBroadIndexQueries)
-	schema, err := index.CreateSchema(p)
+	idx = series_index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, s.logger, s.cfg.DisableBroadIndexQueries)
+	schema, err := series_index.CreateSchema(p)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if s.storeCfg.CacheLookupsOlderThan != 0 {
-		schema = index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
+		schema = series_index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
 	}
 
 	var (
-		writer     stores.ChunkWriter = series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication)
-		indexStore                    = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
+		indexReaderWriter = series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
+		chunkWriter       = stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
 	)
 
 	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
@@ -283,11 +283,11 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		indexStore = series.NewIndexGatewayClientStore(gw, indexStore)
+		indexReaderWriter = series.NewIndexGatewayClientStore(gw, indexReaderWriter)
 	}*/
 
-	return writer,
-		indexStore,
+	return chunkWriter,
+		indexReaderWriter,
 		func() {
 			chunkClient.Stop()
 			f.Stop()
