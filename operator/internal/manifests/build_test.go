@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -863,63 +862,6 @@ func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
 				require.Equal(t, tc.wantAffinity, gotAffinity,
 					"kind", raw.GetObjectKind().GroupVersionKind(),
 					"name", raw.GetName())
-			}
-		})
-	}
-}
-
-func TestBuildAll_WithRetention(t *testing.T) {
-	tt := []struct {
-		desc        string
-		limits      *lokiv1.LimitsSpec
-		wantEnabled bool
-	}{
-		{
-			desc:        "disabled",
-			limits:      nil,
-			wantEnabled: false,
-		},
-		{
-			desc: "global 14 days",
-			limits: &lokiv1.LimitsSpec{
-				Global: &lokiv1.LimitsTemplateSpec{
-					Retention: &lokiv1.RetentionLimitSpec{
-						Days: 14,
-					},
-				},
-			},
-			wantEnabled: true,
-		},
-	}
-
-	for _, tc := range tt {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-
-			opts := &Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1.LokiStackSpec{
-					Size:   lokiv1.SizeOneXSmall,
-					Limits: tc.limits,
-				},
-			}
-
-			err := ApplyDefaultSettings(opts)
-			require.NoError(t, err)
-
-			objects, err := BuildAll(*opts)
-			require.NoError(t, err)
-
-			for _, obj := range objects {
-				if configMap, ok := obj.(*corev1.ConfigMap); ok {
-					configRaw := string(configMap.BinaryData["config.yaml"])
-
-					if gotEnabled := strings.Contains(configRaw, "retention_enabled: true"); gotEnabled != tc.wantEnabled {
-						t.Errorf("got enabled %v, want %v", gotEnabled, tc.wantEnabled)
-					}
-				}
 			}
 		})
 	}
