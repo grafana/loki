@@ -3,7 +3,6 @@ package stages
 import (
 	"math"
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -58,16 +57,13 @@ func newSamplingStage(logger log.Logger, config interface{}, registerer promethe
 	samplingRate := math.Max(0.0, math.Min(cfg.SamplingRate, 1.0))
 	samplingBoundary := uint64(float64(maxRandomNumber) * samplingRate)
 	seedGenerator := utils.NewRand(time.Now().UnixNano())
+	source := rand.NewSource(seedGenerator.Int63())
 	return &samplingStage{
 		logger:           log.With(logger, "component", "stage", "type", "sampling"),
 		cfg:              cfg,
 		dropCount:        getDropCountMetric(registerer),
 		samplingBoundary: samplingBoundary,
-		pool: sync.Pool{
-			New: func() interface{} {
-				return rand.NewSource(seedGenerator.Int63())
-			},
-		},
+		source:           source,
 	}, nil
 }
 
@@ -76,7 +72,7 @@ type samplingStage struct {
 	cfg              *SamplingConfig
 	dropCount        *prometheus.CounterVec
 	samplingBoundary uint64
-	pool             sync.Pool
+	source           rand.Source
 }
 
 func (m *samplingStage) Run(in chan Entry) chan Entry {
@@ -108,10 +104,7 @@ func (m *samplingStage) randomID() uint64 {
 	return val
 }
 func (m *samplingStage) randomNumber() uint64 {
-	generator := m.pool.Get().(rand.Source)
-	number := uint64(generator.Int63())
-	m.pool.Put(generator)
-	return number
+	return uint64(m.source.Int63())
 }
 
 // Name implements Stage
