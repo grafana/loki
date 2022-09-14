@@ -8,8 +8,6 @@ import (
 	"sync"
 
 	"github.com/bmatcuk/doublestar"
-	"gopkg.in/fsnotify.v1"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -270,7 +269,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	targets := map[string]struct{}{}
+	targetsSeen := map[string]struct{}{}
 	dropped := []target.Target{}
 
 	for _, group := range groups {
@@ -327,7 +326,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				key = fmt.Sprintf("%s:%s", key, pathExclude)
 			}
 
-			targets[key] = struct{}{}
+			targetsSeen[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
 				dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
@@ -356,15 +355,38 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 		}
 	}
 
+	s.droppedTargets = dropped
+
+	// keep track of how many targets are using a fileEventWatcher
+	watcherUseCount := make(map[string]int, len(s.fileEventWatchers))
+	for _, target := range s.targets {
+		if _, ok := watcherUseCount[target.path]; !ok {
+			watcherUseCount[target.path] = 1
+		} else {
+			watcherUseCount[target.path]++
+		}
+	}
+
+	// remove existing targets not seen in groups arg; cleanup unused fileEventWatchers
 	for key, target := range s.targets {
-		if _, ok := targets[key]; !ok {
+		if _, ok := targetsSeen[key]; !ok {
 			level.Info(s.log).Log("msg", "Removing target", "key", key)
 			target.Stop()
 			s.metrics.targetsActive.Add(-1.)
 			delete(s.targets, key)
 
-			// close related file event watcher
+			// close related file event watcher if no other targets are using
 			k := target.path
+			_, ok := watcherUseCount[k]
+			if !ok {
+				level.Warn(s.log).Log("msg", "failed to find file event watcher", "path", k)
+				continue
+			} else {
+				if watcherUseCount[k]--; watcherUseCount[k] > 0 {
+					// Multiple targets are using this file watcher, leave it alone
+					continue
+				}
+			}
 			if _, ok := s.fileEventWatchers[k]; ok {
 				close(s.fileEventWatchers[k])
 				delete(s.fileEventWatchers, k)
@@ -373,7 +395,6 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			}
 		}
 	}
-	s.droppedTargets = dropped
 }
 
 // sendFileCreateEvent sends file creation events to only the targets with matched path.
