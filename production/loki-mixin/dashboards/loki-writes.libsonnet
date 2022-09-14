@@ -83,18 +83,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
-                         $.row('Store')
-                         .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_store_request_duration_seconds_count{%s operation="put_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
-                         )
-                         .addPanel(
-                           $.panel('Latency') +
-                           $.latencyPanel('loki_store_request_duration_seconds', '{%s operation="put_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
-                         )
-                       )
+                        .addRowIf(
+                          !$._config.ssd.enabled,
+                          $.row('Store')
+                          .addPanel(
+                            $.panel('QPS') +
+                            $.qpsPanel('loki_store_request_duration_seconds_count{%s operation="put_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                          .addPanel(
+                            $.panel('Latency') +
+                            $.latencyPanel('loki_store_request_duration_seconds', '{%s operation="put_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                        )
                         .addRowIf(
                           showBigTable,
                           $.row('BigTable')
