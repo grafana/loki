@@ -74,7 +74,7 @@ spec:
           command:
             - /bin/bash
             - -euc
-            - kubectl create secret generic {{ .Values.enterprise.tokengen.adminTokenSecret }} --from-file=token=/shared/admin-token --from-literal=grafana-token="$(base64 <(echo :$(cat /shared/admin-token)))"
+            - kubectl create secret generic {{ .Values.enterprise.tokengen.adminTokenSecret }} --from-file=token=/shared/admin-token
           volumeMounts:
             {{- if .Values.enterprise.tokengen.extraVolumeMounts }}
               {{ toYaml .Values.enterprise.tokengen.extraVolumeMounts | nindent 12 }}
