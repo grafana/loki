@@ -4,6 +4,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/config"
 
 	"github.com/grafana/loki/pkg/logql"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
