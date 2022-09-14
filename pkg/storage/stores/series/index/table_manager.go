@@ -28,6 +28,7 @@ const (
 	writeLabel = "write"
 
 	bucketRetentionEnforcementInterval = 12 * time.Hour
+	bucketBlockSizeRetentionPercentage = 80
 )
 
 type tableManagerMetrics struct {
@@ -199,15 +200,14 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg config.SchemaConfig, maxC
 
 // Start the TableManager
 func (m *TableManager) starting(ctx context.Context) error {
-	if m.bucketClient != nil {
-		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketBlockSizeRetentionIteration, nil)
-		return services.StartAndAwaitRunning(ctx, m.bucketBlockSizeRetentionLoop)
-	}
-
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
+	} else if m.bucketClient != nil { // Need to check valid conditions
+		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketBlockSizeRetentionPercentage, nil, m.bucketBlockSizeRetentionIteration, nil)
+		return services.StartAndAwaitRunning(ctx, m.bucketBlockSizeRetentionLoop)
 	}
+
 	return nil
 }
 
