@@ -123,7 +123,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := stores.NewCompositeStore(limits, registerer)
+	stores := stores.NewCompositeStore(limits)
 
 	s := &store{
 		Store:     stores,
@@ -246,6 +246,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
+		indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
 		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 		return chunkWriter, indexReaderWriter,
@@ -271,10 +272,9 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		schema = series_index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
 	}
 
-	var (
-		indexReaderWriter = series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
-		chunkWriter       = stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
-	)
+	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
+	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
 	/*if s.cfg.BoltDBShipperConfig != nil && shouldUseIndexGatewayClient(s.cfg.BoltDBShipperConfig) {
