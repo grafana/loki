@@ -354,6 +354,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -530,6 +532,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -726,6 +730,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -896,6 +902,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -1069,6 +1077,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -1262,6 +1272,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
