@@ -122,7 +122,7 @@ The `too_far_behind` and `out_of_order` reasons are identical, except that `out_
 
 This validation error is returned when a stream is submitted out of order. More details can be found [here](https://grafana.com/docs/loki/latest/configuration/#accept-out-of-order-writes) about Loki's ordering constraints.
 
-This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block.
+The `unordered_writes` config value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file, whereas `max_chunk_age` is a global configuration.
 
 This problem can be solved by ensuring that log delivery is configured correctly, or by increasing the `max_chunk_age` value.
 
