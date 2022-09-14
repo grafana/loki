@@ -241,6 +241,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		}
 	}
 
+	m.metrics.creationLastSuccess.SetToCurrentTime()
 	return nil
 }
 

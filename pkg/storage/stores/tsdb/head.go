@@ -66,7 +66,7 @@ type Metrics struct {
 	walTruncations      *prometheus.CounterVec
 	tsdbCreations       *prometheus.CounterVec
 	headRotations       *prometheus.CounterVec
-	rotationLastSuccess prometheus.Gauge
+	creationLastSuccess prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -91,10 +91,10 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "head_rotations_total",
 			Help:      "Total number of tsdb head rotations partitioned by status",
 		}, []string{statusLabel}),
-		rotationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		creationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki_tsdb",
-			Name:      "head_rotation_last_successful_run_timestamp_seconds",
-			Help:      "Unix timestamp of the last successful tsdb head rotation",
+			Name:      "last_successful_creation_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful tsdb creation",
 		}),
 	}
 }

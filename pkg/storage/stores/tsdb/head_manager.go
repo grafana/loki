@@ -193,7 +193,6 @@ func (m *HeadManager) loop() {
 					continue
 				}
 				m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
-				m.metrics.rotationLastSuccess.SetToCurrentTime()
 			}
 
 			// build tsdb from rotated-out period
