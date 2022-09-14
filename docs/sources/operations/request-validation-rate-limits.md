@@ -7,11 +7,10 @@ weight: 30
 
 Loki will reject requests if they exceed a usage threshold (rate-limit error) or if they are invalid (validation error).
 
-All occurrences of these errors can be observed using the `loki_discarded_samples_total` and `loki discarded_bytes_total` metrics. The sections below describe the various possible reasons specified in the `reason` label of these metrics.
+All occurrences of these errors can be observed using the `loki_discarded_samples_total` and `loki_discarded_bytes_total` metrics. The sections below describe the various possible reasons specified in the `reason` label of these metrics.
 
 It is recommended that Loki operators set up alerts or dashboards with these metrics to detect when rate-limits or validation errors occur. 
 
-If you are using Grafana Cloud, these can be observed in your Grafana instance in the _Grafana Cloud Billing/Usage_ dashboard under the _Discarded Log Samples_ panel.
 
 ### Terminology
 
@@ -40,7 +39,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ### `per_stream_rate_limit`
 
-This limit is enforced a stream reaches its rate-limit.
+This limit is enforced a single stream reaches its rate-limit.
 
 Each stream has a rate-limit applied to it to prevent individual streams from overwhelming a set of ingesters (equal to the `replication_factor` value).
 
@@ -183,7 +182,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `label_name_too_long`
 
-If a series has a label with a length in bytes greater than Loki has been configured to allow, this error will occur.
+If a series has a label name with a length in bytes greater than Loki has been configured to allow, this error will occur.
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_name_length` value. The offending stream will be returned in the body of the HTTP response.
 
@@ -198,7 +197,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `label_value_too_long`
 
-If a series has a label with a length in bytes greater than Loki has been configured to allow, this error will occur.
+If a series has a label value with a length in bytes greater than Loki has been configured to allow, this error will occur.
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_value_length` value. The offending stream will be returned in the body of the HTTP response.
 
