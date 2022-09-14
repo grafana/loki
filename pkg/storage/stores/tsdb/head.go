@@ -62,11 +62,11 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 
 // TODO(owen-d)
 type Metrics struct {
-	seriesNotFound      prometheus.Counter
-	walTruncations      *prometheus.CounterVec
-	tsdbCreations       *prometheus.CounterVec
-	headRotations       *prometheus.CounterVec
-	creationLastSuccess prometheus.Gauge
+	seriesNotFound       prometheus.Counter
+	headRotations        *prometheus.CounterVec
+	walTruncations       *prometheus.CounterVec
+	tsdbBuilds           *prometheus.CounterVec
+	tsdbBuildLastSuccess prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -76,25 +76,25 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "head_series_not_found_total",
 			Help:      "Total number of requests for series that were not found",
 		}),
-		walTruncations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_tsdb",
-			Name:      "wal_truncations_total",
-			Help:      "Total number of WAL truncations partitioned by status",
-		}, []string{statusLabel}),
-		tsdbCreations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_tsdb",
-			Name:      "creations_total",
-			Help:      "Total number of tsdb creations partitioned by status",
-		}, []string{statusLabel, tsdbBuildSourceLabel}),
 		headRotations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_tsdb",
-			Name:      "head_rotations_total",
+			Name:      "head_rotation_attempts_total",
 			Help:      "Total number of tsdb head rotations partitioned by status",
 		}, []string{statusLabel}),
-		creationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		walTruncations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_tsdb",
-			Name:      "last_successful_creation_timestamp_seconds",
-			Help:      "Unix timestamp of the last successful tsdb creation",
+			Name:      "wal_truncation_attempts_total",
+			Help:      "Total number of WAL truncations partitioned by status",
+		}, []string{statusLabel}),
+		tsdbBuilds: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_tsdb",
+			Name:      "build_index_attempts_total",
+			Help:      "Total number of tsdb index builds partitioned by status",
+		}, []string{statusLabel, tsdbBuildSourceLabel}),
+		tsdbBuildLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_tsdb",
+			Name:      "build_index_last_successful_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful tsdb index build",
 		}),
 	}
 }
