@@ -247,9 +247,10 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 	level.Debug(m.log).Log("msg", "building heads")
 	defer func() {
-		m.metrics.tsdbCreationsTotal.WithLabelValues("head").Inc()
-		if err != nil {
-			m.metrics.tsdbCreationsFailedTotal.WithLabelValues("head").Inc()
+		if err == nil {
+			m.metrics.tsdbCreations.WithLabelValues(statusSuccess, "head").Inc()
+		} else {
+			m.metrics.tsdbCreations.WithLabelValues(statusFailure, "head").Inc()
 		}
 	}()
 
@@ -259,9 +260,10 @@ func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
 	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
 	defer func() {
-		m.metrics.tsdbCreationsTotal.WithLabelValues("wal").Inc()
-		if err != nil {
-			m.metrics.tsdbCreationsFailedTotal.WithLabelValues("wal").Inc()
+		if err == nil {
+			m.metrics.tsdbCreations.WithLabelValues(statusSuccess, "wal").Inc()
+		} else {
+			m.metrics.tsdbCreations.WithLabelValues(statusFailure, "wal").Inc()
 		}
 	}()
 
