@@ -165,13 +165,10 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, entriesWithErrors := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true)
 		r.ing.replayController.Add(int64(bytesAdded))
-		if len(entriesWithErrors) > 0 {
-			lastEntryWithError := entriesWithErrors[len(entriesWithErrors)-1]
-			if errors.Is(lastEntryWithError.e, ErrEntriesExist) {
-				r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
-			}
+		if err != nil && err == ErrEntriesExist {
+			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
 		}
 		return nil
 	})
