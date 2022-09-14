@@ -40,7 +40,11 @@ const (
 	// do shard index calcuations via bitwise & rather than modulos.
 	defaultStripeSize = 64
 
+	statusLabel          = "status"
 	tsdbBuildSourceLabel = "source"
+
+	statusFailure = "failure"
+	statusSuccess = "success"
 )
 
 /*
@@ -58,55 +62,40 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 
 // TODO(owen-d)
 type Metrics struct {
-	seriesNotFound                prometheus.Counter
-	tsdbManagerUpdatesTotal       prometheus.Counter
-	tsdbManagerUpdatesFailedTotal prometheus.Counter
-	tsdbHeadRotationsTotal        prometheus.Counter
-	tsdbHeadRotationsFailedTotal  prometheus.Counter
-	tsdbWALTruncationsTotal       prometheus.Counter
-	tsdbWALTruncationsFailedTotal prometheus.Counter
-	tsdbCreationsTotal            *prometheus.CounterVec
-	tsdbCreationsFailedTotal      *prometheus.CounterVec
+	seriesNotFound       prometheus.Counter
+	headRotations        *prometheus.CounterVec
+	walTruncations       *prometheus.CounterVec
+	tsdbBuilds           *prometheus.CounterVec
+	tsdbBuildLastSuccess prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_head_series_not_found_total",
-			Help: "Total number of requests for series that were not found.",
+			Namespace: "loki_tsdb",
+			Name:      "head_series_not_found_total",
+			Help:      "Total number of requests for series that were not found",
 		}),
-		tsdbManagerUpdatesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_manager_updates_total",
-			Help: "Total number of tsdb manager updates (loading/rotating tsdbs in mem)",
+		headRotations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_tsdb",
+			Name:      "head_rotation_attempts_total",
+			Help:      "Total number of tsdb head rotations partitioned by status",
+		}, []string{statusLabel}),
+		walTruncations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_tsdb",
+			Name:      "wal_truncation_attempts_total",
+			Help:      "Total number of WAL truncations partitioned by status",
+		}, []string{statusLabel}),
+		tsdbBuilds: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_tsdb",
+			Name:      "build_index_attempts_total",
+			Help:      "Total number of tsdb index builds partitioned by status",
+		}, []string{statusLabel, tsdbBuildSourceLabel}),
+		tsdbBuildLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_tsdb",
+			Name:      "build_index_last_successful_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful tsdb index build",
 		}),
-		tsdbManagerUpdatesFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_manager_updates_failed_total",
-			Help: "Total number of tsdb manager update failures (loading/rotating tsdbs in mem)",
-		}),
-		tsdbHeadRotationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_head_rotations_total",
-			Help: "Total number of tsdb head rotations attempted",
-		}),
-		tsdbHeadRotationsFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_head_rotations_failed_total",
-			Help: "Total number of tsdb head rotations that failed",
-		}),
-		tsdbWALTruncationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_wal_truncations_total",
-			Help: "Total number of WAL truncations attempted",
-		}),
-		tsdbWALTruncationsFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_tsdb_wal_truncations_failed_total",
-			Help: "Total number of WAL truncations that failed",
-		}),
-		tsdbCreationsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_tsdb_creations_total",
-			Help: "Total number of tsdb creations attempted",
-		}, []string{tsdbBuildSourceLabel}),
-		tsdbCreationsFailedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_tsdb_creations_failed_total",
-			Help: "Total number of tsdb creations that failed",
-		}, []string{tsdbBuildSourceLabel}),
 	}
 }
 
