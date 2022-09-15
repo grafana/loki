@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
@@ -113,6 +114,7 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
+		Retention: retentionConfig(&opt.Stack),
 	}
 }
 
@@ -198,4 +200,24 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 	}
 
 	return c
+}
+
+var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXExtraSmall: 10,
+	lokiv1.SizeOneXSmall:      150,
+	lokiv1.SizeOneXMedium:     150,
+}
+
+func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
+	if ls.Limits == nil || ls.Limits.Global == nil || ls.Limits.Global.Retention == nil {
+		return config.RetentionOptions{
+			Enabled: false,
+		}
+	}
+
+	return config.RetentionOptions{
+		Enabled:           true,
+		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
+		Globals:           ls.Limits.Global.Retention,
+	}
 }
