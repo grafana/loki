@@ -23,7 +23,7 @@ local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet'
     volumeMounts: [
       volumeMount.new('shared', '/bootstrap'),
       volumeMount.new('token', '/bootstrap/token', readOnly=true) +
-        volumeMount.withSubPath('token'),
+      volumeMount.withSubPath('token'),
     ],
     provisioner: {
       initCommand: [],
