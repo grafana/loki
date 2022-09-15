@@ -340,13 +340,14 @@ func (i *instance) StreamRates(_ context.Context, _ *logproto.StreamRatesRequest
 	}
 
 	err := i.streams.ForEach(func(s *stream) (bool, error) {
-		hashWithoutShard, _ := s.labels.HashWithoutLabels(buf, distributor.ShardLbName)
+		hashWithoutShard, b := s.labels.HashWithoutLabels(buf, distributor.ShardLbName)
 		resp.StreamRates = append(resp.StreamRates, &logproto.StreamRate{
 			StreamHash:        s.labels.Hash(),
 			StreamHashNoShard: hashWithoutShard,
 			Rate:              s.Rate(),
 		})
 
+		buf = b
 		return true, nil
 	})
 
