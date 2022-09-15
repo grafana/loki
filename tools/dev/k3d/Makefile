@@ -38,6 +38,12 @@ create-registry:
 		echo "Registry already exists"; \
 	fi
 
+# Secrets are kept in the Grafana Labs Shared 1password vault
+# The op command used below is the 1password CLI tool.
+# If you don't have access to the Grafana Labs Shared 1password vault
+# you can provide any enterprise grafana license key in secrets/grafana.jwt
+# and any enterprise logs license key in secrets/gel.jwt.
+# When running the secrets target, make sure you first run `op signin`.
 secrets: secrets/grafana.jwt secrets/gel.jwt
 
 secrets/grafana.jwt:
