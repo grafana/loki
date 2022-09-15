@@ -193,6 +193,7 @@ loki:
       accessKeyId: null
       s3ForcePathStyle: false
       insecure: false
+      http_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
