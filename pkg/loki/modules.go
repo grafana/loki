@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -663,7 +664,7 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	var genLoader *generationnumber.GenNumberLoader
+	var genLoader queryrangebase.CacheGenNumberLoader
 	if t.supportIndexDeleteRequest() {
 		cacheGenClient, err := t.cacheGenClient()
 		if err != nil {
