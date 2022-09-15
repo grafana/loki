@@ -402,6 +402,8 @@ func TestRate(t *testing.T) {
 	}
 
 	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	require.NoError(t, err)
+
 	require.Eventually(t, func() bool {
 		return s.Rate() == 100
 	}, 20*time.Millisecond, time.Millisecond)
