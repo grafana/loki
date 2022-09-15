@@ -67,8 +67,9 @@ loki:
     {{- end }}
 
     server:
-      http_listen_port: 3100
-      grpc_listen_port: 9095
+    {{- if .Values.loki.serverConfig}}
+    {{- toYaml .Values.loki.serverConfig | nindent 2}}
+    {{- end}}
 
     memberlist:
       join_members:
@@ -158,6 +159,11 @@ loki:
 
   # Should authentication be enabled
   auth_enabled: true
+
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
+  serverConfig:
+    http_listen_port: 3100
+    grpc_listen_port: 9095
 
   # -- Limits config
   limits_config:
