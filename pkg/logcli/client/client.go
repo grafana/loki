@@ -65,7 +65,6 @@ type DefaultClient struct {
 	BearerToken     string
 	BearerTokenFile string
 	Retries         int
-	RetryCooldown   int
 	QueryTags       string
 	AuthHeader      string
 	ProxyURL        string
