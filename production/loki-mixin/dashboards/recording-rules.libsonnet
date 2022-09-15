@@ -5,7 +5,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+:
     {
       'loki-mixin-recording-rules.json': raw +
-                      $.dashboard('Loki / Recording Rules', uid='recording-rules')
-                      .addTag()
+                                         $.dashboard('Loki / Recording Rules', uid='recording-rules')
+                                         .addTag(),
     },
 }
