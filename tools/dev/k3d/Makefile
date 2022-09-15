@@ -42,7 +42,10 @@ create-registry:
 # The op command used below is the 1password CLI tool.
 # If you don't have access to the Grafana Labs Shared 1password vault
 # you can provide any enterprise grafana license key in secrets/grafana.jwt
-# and any enterprise logs license key in secrets/gel.jwt.
+# and any enterprise logs license key in secrets/gel.jwt, though you may need
+# to modify the deployment to provide the correct cluster name to match the
+# license provided.
+#
 # When running the secrets target, make sure you first run `op signin`.
 secrets: secrets/grafana.jwt secrets/gel.jwt
 
