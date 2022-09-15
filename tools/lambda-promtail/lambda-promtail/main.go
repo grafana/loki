@@ -55,8 +55,13 @@ func setupArguments() {
 		panic(err)
 	}
 
-	username = os.Getenv("USERNAME")
-	password = os.Getenv("PASSWORD")
+	if (os.Getenv("SECRET_NAME") != "" && os.Getenv("SECRET_USERNAME_KEY") != "" && os.Getenv("SECRET_PASSWORD_KEY") != "" && os.Getenv("AWS_REGION") != "") {
+		username, password = getSecret(os.Getenv("SECRET_NAME"),os.Getenv("SECRET_USERNAME_KEY"),os.Getenv("SECRET_PASSWORD_KEY"),os.Getenv("AWS_REGION"))
+	}else{
+		username = os.Getenv("USERNAME")
+		password = os.Getenv("PASSWORD")
+	}
+	
 	// If either username or password is set then both must be.
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
