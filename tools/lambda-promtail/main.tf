@@ -4,6 +4,11 @@ provider "aws" {
 
 data "aws_region" "current" {}
 
+data "aws_secretsmanager_secret" "this" {
+  count = var.secret_name != null && var.secret_name != "" ? 1 : 0
+  name  = var.secret_name
+}
+
 resource "aws_iam_role" "iam_for_lambda" {
   name = "iam_for_lambda"
 
@@ -52,7 +57,18 @@ resource "aws_iam_role_policy" "logs" {
         "Resource" : "arn:aws:kms:*:*:*",
       },
       {
-        "Action": [
+        "Action" : [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:ListSecretVersionIds",
+        ],
+        "Effect" : "Allow",
+        "Resource" : [
+          for secret in data.aws_secretsmanager_secret.this : secret.arn
+        ]
+      },
+      {
+        "Action" : [
           "ec2:DescribeNetworkInterfaces",
           "ec2:CreateNetworkInterface",
           "ec2:DeleteNetworkInterface",
@@ -60,7 +76,7 @@ resource "aws_iam_role_policy" "logs" {
           "ec2:AttachNetworkInterface"
         ],
         "Effect" : "Allow",
-        "Resource": "*",
+        "Resource" : "*",
       }
     ]
   })
@@ -99,13 +115,16 @@ resource "aws_lambda_function" "lambda_promtail" {
 
   environment {
     variables = {
-      WRITE_ADDRESS = var.write_address
-      USERNAME      = var.username
-      PASSWORD      = var.password
-      KEEP_STREAM   = var.keep_stream
-      BATCH_SIZE    = var.batch_size
-      EXTRA_LABELS  = var.extra_labels
-      TENANT_ID     = var.tenant_id
+      WRITE_ADDRESS       = var.write_address
+      USERNAME            = var.username
+      PASSWORD            = var.password
+      SECRET_NAME         = var.secret_name
+      SECRET_USERNAME_KEY = var.secret_username_key
+      SECRET_PASSWORD_KEY = var.secret_password_key
+      KEEP_STREAM         = var.keep_stream
+      BATCH_SIZE          = var.batch_size
+      EXTRA_LABELS        = var.extra_labels
+      TENANT_ID           = var.tenant_id
     }
   }
 
