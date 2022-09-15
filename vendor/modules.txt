@@ -258,7 +258,7 @@ github.com/dimchansky/utfbom
 ## explicit
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
-# github.com/docker/docker v20.10.16+incompatible
+# github.com/docker/docker v20.10.17+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -1245,7 +1245,7 @@ golang.org/x/oauth2/jwt
 ## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20220627191245-f75cf1eec38b
+# golang.org/x/sys v0.0.0-20220829200755-d48e67d00261
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -1260,6 +1260,7 @@ golang.org/x/sys/windows/svc/eventlog
 golang.org/x/term
 # golang.org/x/text v0.3.7
 ## explicit; go 1.17
+golang.org/x/text/cases
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/ianaindex
@@ -1270,7 +1271,12 @@ golang.org/x/text/encoding/korean
 golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/encoding/traditionalchinese
 golang.org/x/text/encoding/unicode
+golang.org/x/text/internal
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
 golang.org/x/text/internal/utf8internal
+golang.org/x/text/language
 golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform

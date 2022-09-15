@@ -1,29 +1,37 @@
 package tsdb
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/series"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+type IndexWriter interface {
+	Append(userID string, ls labels.Labels, chks tsdb_index.ChunkMetas) error
+}
+
 type store struct {
-	indexShipper indexshipper.IndexShipper
-	indexWriter  IndexWriter
-	indexStore   series.IndexStore
-	stopOnce     sync.Once
+	index.Reader
+	indexShipper      indexshipper.IndexShipper
+	indexWriter       IndexWriter
+	backupIndexWriter index.Writer
+	stopOnce          sync.Once
 }
 
 var storeInstance *store
@@ -45,10 +53,10 @@ type newStoreFactoryFunc func(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRanges config.TableRanges,
+	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
 ) (
-	chunkWriter stores.ChunkWriter,
-	indexStore series.IndexStore,
+	indexReaderWriter index.ReaderWriter,
 	stopFunc func(),
 	err error,
 )
@@ -69,22 +77,27 @@ var NewStore = func() newStoreFactoryFunc {
 		objectClient client.ObjectClient,
 		limits downloads.Limits,
 		tableRanges config.TableRanges,
+		backupIndexWriter index.Writer,
 		reg prometheus.Registerer,
 	) (
-		stores.ChunkWriter,
-		series.IndexStore,
+		index.ReaderWriter,
 		func(),
 		error,
 	) {
 		if storeInstance == nil {
-			storeInstance = &store{}
+			if backupIndexWriter == nil {
+				backupIndexWriter = noopBackupIndexWriter{}
+			}
+			storeInstance = &store{
+				backupIndexWriter: backupIndexWriter,
+			}
 			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, err
 			}
 		}
 
-		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, storeInstance.Stop, nil
+		return storeInstance, storeInstance.Stop, nil
 	}
 }()
 
@@ -157,7 +170,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		return err
 	}
 
-	s.indexStore = NewIndexClient(multiIndex, opts)
+	s.Reader = NewIndexClient(multiIndex, opts)
 
 	return nil
 }
@@ -173,8 +186,33 @@ func (s *store) Stop() {
 	})
 }
 
+func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+	// Always write the index to benefit durability via replication factor.
+	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+	metas := tsdb_index.ChunkMetas{
+		{
+			Checksum: chk.ChunkRef.Checksum,
+			MinTime:  int64(chk.ChunkRef.From),
+			MaxTime:  int64(chk.ChunkRef.Through),
+			KB:       uint32(approxKB),
+			Entries:  uint32(chk.Data.Entries()),
+		},
+	}
+	if err := s.indexWriter.Append(chk.UserID, chk.Metric, metas); err != nil {
+		return errors.Wrap(err, "writing index entry")
+	}
+
+	return s.backupIndexWriter.IndexChunk(ctx, chk)
+}
+
 type failingIndexWriter struct{}
 
-func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ index.ChunkMetas) error {
+func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ tsdb_index.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
+}
+
+type noopBackupIndexWriter struct{}
+
+func (n noopBackupIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+	return nil
 }

@@ -70,7 +70,7 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 	m.deletionFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "compactor_delete_processing_fails_total",
-		Help:      "Number times the delete phase of compaction has failed",
+		Help:      "Number of times the delete phase of compaction has failed",
 	}, []string{"cause"})
 	m.loadPendingRequestsAttemptsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -80,7 +80,7 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 	m.oldestPendingDeleteRequestAgeSeconds = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki",
 		Name:      "compactor_oldest_pending_delete_request_age_seconds",
-		Help:      "Age of oldest pending delete request in seconds, since they are over their cancellation period",
+		Help:      "Age of oldest pending delete request in seconds since they are over their cancellation period",
 	})
 	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki",

@@ -43,3 +43,6 @@ pkg/loki/wal
 
 # vscode
 .vscode
+
+# nix
+result

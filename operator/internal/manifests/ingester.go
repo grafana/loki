@@ -49,6 +49,7 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,

@@ -261,6 +261,9 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if lit, ok := expr.(*syntax.LiteralExpr); ok {
 		return q.evalLiteral(ctx, lit)
 	}
+	if vec, ok := expr.(*syntax.VectorExpr); ok {
+		return q.evalVector(ctx, vec)
+	}
 
 	expr, err := optimizeSampleExpr(expr)
 	if err != nil {
@@ -345,6 +348,23 @@ func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.Value(),
+	}
+
+	if GetRangeType(q.params) == InstantType {
+		return s, nil
+	}
+
+	return PopulateMatrixFromScalar(s, q.params), nil
+}
+
+func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_parser.Value, error) {
+	value, err := expr.Value()
+	if err != nil {
+		return nil, err
+	}
+	s := promql.Scalar{
+		T: q.params.Start().UnixNano() / int64(time.Millisecond),
+		V: value,
 	}
 
 	if GetRangeType(q.params) == InstantType {

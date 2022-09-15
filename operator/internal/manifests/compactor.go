@@ -46,6 +46,7 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 // NewCompactorStatefulSet creates a statefulset object for a compactor.
 func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
