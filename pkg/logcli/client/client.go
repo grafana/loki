@@ -49,6 +49,10 @@ type Client interface {
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
+type BackoffConfig struct {
+	MaxBackoff int
+	MinBackoff int
+}
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
@@ -60,13 +64,12 @@ type DefaultClient struct {
 	Tripperware     Tripperware
 	BearerToken     string
 	BearerTokenFile string
-	MaxRetries      int
-	MaxBackoff      int
-	MinBackoff      int
+	Retries         int
 	RetryCooldown   int
 	QueryTags       string
 	AuthHeader      string
 	ProxyURL        string
+	BackoffConfig   BackoffConfig
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -219,9 +222,10 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	success := false
 
 	bkcfg := backoff.Config{
-		MinBackoff: time.Duration(c.MinBackoff) * time.Second,
-		MaxBackoff: time.Duration(c.MaxBackoff) * time.Second,
-		MaxRetries: c.MaxRetries,
+		MinBackoff: time.Duration(c.BackoffConfig.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.BackoffConfig.MaxBackoff) * time.Second,
+		// 0 max-retries for backoff means infinite number of retries.
+		MaxRetries: c.Retries + 1,
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
@@ -237,7 +241,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := ioutil.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.MaxRetries-backoff.NumRetries())
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}

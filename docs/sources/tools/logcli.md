@@ -316,15 +316,13 @@ Flags:
       --bearer-token-file=""  adds the Authorization header to API requests for
                               authentication purposes. Can also be set using
                               LOKI_BEARER_TOKEN_FILE env var.
-      --max-retries=1         How many times to retry each query when getting an
+      --retries=0             How many times to retry each query when getting an
                               error response from Loki. Can also be set using
-                              LOKI_CLIENT_MAX_RETRIES env var.
-      --min-backoff=1         Minimum backoff time between retries. Can also be
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be
                               set using LOKI_CLIENT_MIN_BACKOFF env var.
-      --max-backoff=1         Maximum backoff time between retries. Can also be
+      --max-backoff=0         Maximum backoff time between retries. Can also be
                               set using LOKI_CLIENT_MAX_BACKOFF env var.
-      --retry-cooldown=0      How many seconds to wait between retries. Can also
-                              be set using LOKI_CLIENT_RETRY_COOLDOWN env var.
       --auth-header="Authorization"  
                               The authorization header used. Can also be set
                               using LOKI_AUTH_HEADER env var.
