@@ -213,7 +213,17 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 
 //  ...
 func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context) error {
-	// Implement the function ;-)
+	diskUsage, error := DiskUsage(f.cfg.Directory)
+
+	if error != nil {
+		return error
+	}
+
+	if diskUsage.UsedPercent >= 80 {
+		// Remove old chunks here
+		return nil
+	}
+
 	return nil
 }
 
