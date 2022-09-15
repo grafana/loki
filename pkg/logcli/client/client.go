@@ -1,8 +1,10 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/grafana/dskit/backoff"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -57,7 +59,9 @@ type DefaultClient struct {
 	Tripperware     Tripperware
 	BearerToken     string
 	BearerTokenFile string
-	Retries         int
+	MaxRetries      int
+	MaxBackoff      int
+	MinBackoff      int
 	RetryCooldown   int
 	QueryTags       string
 	AuthHeader      string
@@ -210,29 +214,39 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	var resp *http.Response
-	attempts := c.Retries + 1
+
 	success := false
 
-	for attempts > 0 {
-		attempts--
+	bkcfg := backoff.Config{
+		MinBackoff: time.Duration(c.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.MaxBackoff) * time.Second,
+		MaxRetries: c.MaxRetries,
+	}
+	backoff := backoff.New(context.Background(), bkcfg)
 
+	for {
+		if !backoff.Ongoing() {
+			break
+		}
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
-			time.Sleep(time.Duration(c.RetryCooldown) * time.Second)
+			backoff.Wait()
 			continue
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := ioutil.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.MaxRetries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
-			time.Sleep(time.Duration(c.RetryCooldown) * time.Second)
+			backoff.Wait()
 			continue
 		}
 		success = true
+
 		break
+
 	}
 	if !success {
 		return fmt.Errorf("Run out of attempts while querying the server")
