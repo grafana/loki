@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor"
+
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -329,6 +331,26 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 		return nil
 	}
 	return s.labels
+}
+
+func (i *instance) StreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	var buf []byte
+	resp := &logproto.StreamRatesResponse{
+		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),
+	}
+
+	err := i.streams.ForEach(func(s *stream) (bool, error) {
+		hashWithoutShard, _ := s.labels.HashWithoutLabels(buf, distributor.ShardLbName)
+		resp.StreamRates = append(resp.StreamRates, &logproto.StreamRate{
+			StreamHash:        s.labels.Hash(),
+			StreamHashNoShard: hashWithoutShard,
+			Rate:              s.Rate(),
+		})
+
+		return true, nil
+	})
+
+	return resp, err
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {

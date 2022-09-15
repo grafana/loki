@@ -177,6 +177,8 @@ type Interface interface {
 	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
+	logproto.StreamDataServer
+
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
@@ -618,6 +620,23 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	}
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
+}
+
+// StreamRates returns a response containing all streams and their current rate
+func (i *Ingester) StreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	} else if i.readonly {
+		return nil, ErrReadOnly
+	}
+
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return &logproto.StreamRatesResponse{}, err
+	}
+
+	return instance.StreamRates(ctx, req)
 }
 
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive

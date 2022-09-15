@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor"
+
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -133,6 +135,87 @@ func TestConcurrentPushes(t *testing.T) {
 
 	wg.Wait()
 	// test passes if no goroutine reports error
+}
+
+func TestStreamRates(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	require.Nil(t, err)
+
+	const (
+		concurrent          = 10
+		iterations          = 100
+		entriesPerIteration = 100
+	)
+
+	uniqueLabels := map[string]bool{}
+	startChannel := make(chan struct{})
+	hashes := map[uint64]uint64{}
+
+	var buf []byte
+	wg := sync.WaitGroup{}
+	for i := 0; i < concurrent; i++ {
+		l := makeRandomLabels()
+		for uniqueLabels[l.String()] {
+			l = makeRandomLabels()
+		}
+		uniqueLabels[l.String()] = true
+
+		hashWithoutShard, _ := l.HashWithoutLabels(buf, distributor.ShardLbName)
+		hashes[l.Hash()] = hashWithoutShard
+
+		wg.Add(1)
+		go func(labels string) {
+			defer wg.Done()
+
+			<-startChannel
+
+			tt := time.Now().Add(-5 * time.Minute)
+
+			for i := 0; i < iterations; i++ {
+				err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+					{Labels: labels, Entries: entries(entriesPerIteration, tt)},
+				}})
+
+				require.NoError(t, err)
+
+				tt = tt.Add(entriesPerIteration * time.Nanosecond)
+			}
+		}(l.String())
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	close(startChannel)
+
+	wg.Wait()
+
+	var rates *logproto.StreamRatesResponse
+	require.Eventually(t, func() bool {
+		rates, err = inst.StreamRates(context.Background(), &logproto.StreamRatesRequest{})
+		require.NoError(t, err)
+
+		if len(rates.StreamRates) != 10 {
+			return false
+		}
+
+		for _, r := range rates.StreamRates {
+			if r.Rate != 79000 {
+				return false
+			}
+		}
+		return true
+	}, time.Second, time.Millisecond)
+
+	for _, r := range rates.StreamRates {
+		hashNoShard, ok := hashes[r.StreamHash]
+		require.True(t, ok)
+		require.Equal(t, hashNoShard, r.StreamHashNoShard)
+	}
+
+	fmt.Println(rates.StreamRates)
 }
 
 func TestSyncPeriod(t *testing.T) {
@@ -383,7 +466,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 	return result
 }
 
-var labelNames = []string{"app", "instance", "namespace", "user", "cluster"}
+var labelNames = []string{"app", "instance", "namespace", "user", "cluster", distributor.ShardLbName}
 
 func makeRandomLabels() labels.Labels {
 	ls := labels.NewBuilder(nil)
