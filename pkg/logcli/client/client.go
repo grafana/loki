@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/grafana/dskit/backoff"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"github.com/gorilla/websocket"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
+
+	"github.com/grafana/dskit/backoff"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
