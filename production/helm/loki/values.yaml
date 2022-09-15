@@ -81,12 +81,10 @@ loki:
       {{- include "loki.commonStorageConfig" . | nindent 4}}
     {{- end}}
 
+    {{- with .Values.loki.lmits_config }}
     limits_config:
-      enforce_metric_name: false
-      reject_old_samples: true
-      reject_old_samples_max_age: 168h
-      max_cache_freshness_per_query: 10m
-      split_queries_by_interval: 15m
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled .host }}
@@ -153,14 +151,28 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.compactor }}
+    compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
+
+  # -- Limits config
+  limits_config:
+    enforce_metric_name: false
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    max_cache_freshness_per_query: 10m
+    split_queries_by_interval: 15m
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
 
+  # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
     bucketNames:
       chunks: chunks
@@ -214,6 +226,9 @@ loki:
       at: "250ms"
       max_per_second: 20
       up_to: 3
+
+  # --  Optional compactor configuration
+  compactor: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
