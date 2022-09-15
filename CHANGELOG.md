@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [7166](https://github.com/grafana/loki/pull/7166) **lfelipevaca**: lambda-promtail: Add support for getting loki credentials with secret manager.
 * [7063](https://github.com/grafana/loki/pull/7063) **kavirajk**: Add additional `push` mode to Loki canary that can directly push logs to given Loki URL.
 * [7069](https://github.com/grafana/loki/pull/7069) **periklis**: Add support for custom internal server listener for readiness probes.
 * [7023](https://github.com/grafana/loki/pull/7023) **liguozhong**: logql engine support exec `vector(0)` grammar.

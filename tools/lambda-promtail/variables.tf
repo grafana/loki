@@ -24,14 +24,32 @@ variable "lambda_promtail_image" {
 
 variable "username" {
   type        = string
-  description = "The basic auth username, necessary if writing directly to Grafana Cloud Loki."
+  description = "The basic auth username, necessary if writing directly to Grafana Cloud Loki and the 'secret_name' variable has not been set."
   default     = ""
 }
 
 variable "password" {
   type        = string
-  description = "The basic auth password, necessary if writing directly to Grafana Cloud Loki."
+  description = "The basic auth password, necessary if writing directly to Grafana Cloud Loki and the 'secret_name' variable has not been set."
   sensitive   = true
+  default     = ""
+}
+
+variable "secret_name" {
+  type        = string
+  description = "Name of the secret to retrieve the auth credentials, necessary if writing directly to Grafana Cloud Loki."
+  default     = ""
+}
+
+variable "secret_username_key" {
+  type        = string
+  description = "Secret key that contains the username, necessary if 'secret_name' variable has been set."
+  default     = ""
+}
+
+variable "secret_password_key" {
+  type        = string
+  description = "Secret key that contains the password, necessary if 'secret_name' variable has been set."
   default     = ""
 }
 
@@ -48,9 +66,9 @@ variable "keep_stream" {
 }
 
 variable "extra_labels" {
-  type = string
+  type        = string
   description = "Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail."
-  default = ""
+  default     = ""
 }
 
 variable "batch_size" {
