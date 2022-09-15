@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-logr/logr"
 	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
@@ -105,7 +106,7 @@ func TestGetSecurityProfileInfo(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, tc.profile)
+			info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, logr.Logger{}, tc.profile)
 			assert.Nil(t, err)
 			assert.NotNil(t, info)
 			assert.EqualValues(t, tc.expected, info)
