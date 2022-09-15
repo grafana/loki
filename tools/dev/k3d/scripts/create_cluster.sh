@@ -15,17 +15,20 @@ echo "Creating ${cluster_name} kubernetes cluster"
 k3d cluster create "${cluster_name}" \
 	--servers 1 \
 	--agents 3 \
-  --volume ${gex_plugins_checkout_dir}/plugins/grafana-enterprise-logs-app:/var/lib/grafana/plugins/grafana-enterprise-logs-app \
+	--volume "${gex_plugins_checkout_dir}/plugins/grafana-enterprise-logs-app:/var/lib/grafana/plugins/grafana-enterprise-logs-app" \
 	--registry-use "k3d-grafana:${registry_port}" \
 	--wait || true
 
+cluster_node_list_json=$(k3d node list -o json)
+cluster_port=$(echo "${cluster_node_list_json}" | jq -r ".[] | select(.name == \"k3d-${cluster_name}-serverlb\") | .portMappings.\"6443\"[] | .HostPort")
 tk env set "${environment}" \
-	--server="https://0.0.0.0:$(k3d node list -o json | jq -r ".[] | select(.name == \"k3d-${cluster_name}-serverlb\") | .portMappings.\"6443\"[] | .HostPort")" \
+	--server="https://0.0.0.0:${cluster_port}" \
 	--namespace="${namespace}"
 
 kubectl config set-context "${namespace}"
 
-if ! kubectl get namespaces | grep -q -m 1 "${namespace}"; then
+namespaces=$(kubectl get namespaces)
+if ! echo "${namespaces}" | grep -q -m 1 "${namespace}"; then
 	kubectl create namespace "${namespace}" || true
 fi
 
