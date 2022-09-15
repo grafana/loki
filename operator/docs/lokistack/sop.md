@@ -189,7 +189,16 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 ### Steps
 
 - Examine the metrics for the reason and tenant that is being limited: `loki_discarded_samples_total{namespace="<namespace>"}`
-- Change the ingestion limits for the affected tenant or decrease the rate of logs entering the system
+- Increase the limits allocated to the tenant in the LokiStack CRD
+
+| Reason | Corresponding Ingestion Limit Keys |
+| --- | --- |
+| `rate_limited` | `ingestionRate`, `ingestionBurstSize` |
+| `stream_limit` | `maxGlobalStreamsPerTenant` |
+| `label_name_too_long` | `maxLabelNameLength` |
+| `label_value_too_long` | `maxLabelValueLength` |
+| `line_too_long` | `maxLineSize` |
+| `max_label_names_per_series` | `maxLabelNamesPerSeries` |
 
 ## Loki Storage Slow Write
 
@@ -269,7 +278,7 @@ The write path is flushing the storage in response to back-pressuring.
 
 - Adjust the ingestion limits for the affected tenant or increase the number of ingesters
 
-## Loki Write Path High Load
+## Loki Read Path High Load
 
 ### Impact
 
