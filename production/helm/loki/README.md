@@ -235,7 +235,7 @@ monitoring:
 | ingress.paths.write[0] | string | `"/api/prom/push"` |  |
 | ingress.paths.write[1] | string | `"/loki/api/v1/push"` |  |
 | loki.auth_enabled | bool | `true` |  |
-| loki.serverConfig | object | `{"http_listen_port": 3100, "grpc_listen_port": 9095}` | Check https://grafana.com/docs/loki/latest/configuration/#server for more info on how to provide server configuration
+| loki.serverConfig | object | `{"grpc_listen_port":9095,"http_listen_port":3100}` | Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration. |
 | loki.commonConfig | object | `{"path_prefix":"/var/loki","replication_factor":3}` | Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration |
 | loki.compactor | object | `{}` | Optional compactor configuration |
 | loki.config | string | See values.yaml | Config file contents for Loki |
