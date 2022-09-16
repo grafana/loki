@@ -82,7 +82,7 @@ loki:
       {{- include "loki.commonStorageConfig" . | nindent 4}}
     {{- end}}
 
-    {{- with .Values.loki.lmits_config }}
+    {{- with .Values.loki.limits_config }}
     limits_config:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
