@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // nolint:revive
@@ -166,10 +167,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]index.ChunkMetas)
 		for _, chk := range chks {
-			idxBuckets, err := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
-			if err != nil {
-				return err
-			}
+			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
 
 			for _, bucket := range idxBuckets {
 				pds[bucket] = append(pds[bucket], chk)
@@ -286,7 +284,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string, err error) {
+func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
@@ -296,7 +294,7 @@ func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 		}
 	}
 	if len(res) == 0 {
-		return nil, fmt.Errorf("could not find config for table(s) fom: %d, through %d", start, end)
+		level.Warn(util_log.Logger).Log("err", "could not find config for table(s) fom: %d, through %d", start, end)
 	}
 	return
 }
