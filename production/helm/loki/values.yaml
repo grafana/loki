@@ -308,7 +308,7 @@ enterprise:
   # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
   adminTokenSecret: null
 
-  # -- Aleternative name of the secret to store token for the canary
+  # -- Alternative name of the secret to store token for the canary
   canarySecret: null
 
   # -- Configuration for `tokengen` target
