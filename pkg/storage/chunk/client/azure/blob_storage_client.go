@@ -119,7 +119,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.BoolVar(&c.UseServicePrincipal, prefix+"azure.use-service-principal", false, "Use Service Principal to authenticate through Azure OAuth.")
 	f.StringVar(&c.TenantID, prefix+"azure.tenant-id", "", "Azure Tenant ID is used to authenticate through Azure OAuth.")
 	f.StringVar(&c.ClientID, prefix+"azure.client-id", "", "Azure Service Principal ID(GUID).")
-	f.Var(&c.ClientSecret, prefix+"azure.client-id", "Azure Service Principal secret key.")
+	f.Var(&c.ClientSecret, prefix+"azure.client-secret", "Azure Service Principal secret key.")
 }
 
 type BlobStorageMetrics struct {
