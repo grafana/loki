@@ -24,7 +24,7 @@ func Test_getLabels(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "s3_lb",
+			name: "s3_alb",
 			args: args{
 				record: events.S3EventRecord{
 					AWSRegion: "us-east-1",
@@ -50,9 +50,44 @@ func Test_getLabels(t *testing.T) {
 				"key":           "my-bucket/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2022/01/24/123456789012_elasticloadbalancing_us-east-1_app.my-loadbalancer.b13ea9d19f16d015_20220124T0000Z_0.0.0.0_2et2e1mx.log.gz",
 				"month":         "01",
 				"region":        "us-east-1",
+				"lb_type":       LB_ALB_TYPE,
 				"src":           "my-loadbalancer",
 				"type":          LB_LOG_TYPE,
 				"year":          "2022",
+			},
+			wantErr: false,
+		},
+		{
+			name: "s3_nlb",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-2",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "elb_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "my-bucket/prefix/AWSLogs/123456789012/elasticloadbalancing/us-east-2/2016/05/01/123456789012_elasticloadbalancing_us-east-2_net.my-loadbalancer.1234567890abcdef_201605010000Z_2soosksi.log.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "elb_logs_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-2",
+				"day":           "01",
+				"key":           "my-bucket/prefix/AWSLogs/123456789012/elasticloadbalancing/us-east-2/2016/05/01/123456789012_elasticloadbalancing_us-east-2_net.my-loadbalancer.1234567890abcdef_201605010000Z_2soosksi.log.gz",
+				"month":         "05",
+				"region":        "us-east-2",
+				"lb_type":       LB_NLB_TYPE,
+				"src":           "my-loadbalancer",
+				"type":          LB_LOG_TYPE,
+				"year":          "2016",
 			},
 			wantErr: false,
 		},
@@ -307,6 +342,29 @@ func Test_parseS3Log(t *testing.T) {
 					"type":       LB_LOG_TYPE,
 					"src":        "source",
 					"account_id": "123456789",
+				},
+			},
+			expectedLen:    1,
+			expectedStream: `{__aws_log_type="s3_lb", __aws_s3_lb="source", __aws_s3_lb_owner="123456789"}`,
+			wantErr:        false,
+		},
+		{
+			name: "nlbaccesslogs",
+			args: args{
+				batchSize: 1024, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/nlbaccesslog.log.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"account_id": "123456789",
+					"type":       LB_LOG_TYPE,
+					"region":     "us-east-2",
+					"year":       "2016",
+					"month":      "05",
+					"day":        "01",
+					"lb_type":    LB_NLB_TYPE,
+					"src":        "source",
 				},
 			},
 			expectedLen:    1,
