@@ -305,7 +305,7 @@ enterprise:
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
 
-  # -- Alternative name for admin token secret, needed by tokgen and provisioner jobs
+  # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
   adminTokenSecret: null
 
   # -- Aleternative name of the secret to store token for the canary
