@@ -291,10 +291,12 @@ func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
-		if cfg == nil {
-			return nil, fmt.Errorf("could not find config for table number %d", cur)
+		if cfg != nil {
+			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
 		}
-		res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
+	}
+	if len(res) == 0 {
+		return nil, fmt.Errorf("could not find config for table(s) fom: %d, through %d", start, end)
 	}
 	return
 }
