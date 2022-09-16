@@ -113,7 +113,6 @@ require (
 )
 
 require (
-	github.com/gogo/googleapis v1.4.0
 	github.com/grafana/groupcache_exporter v0.0.0-20220629095919-59a8c6428a43
 	github.com/heroku/x v0.0.50
 	github.com/mailgun/groupcache/v2 v2.3.2
@@ -181,6 +180,7 @@ require (
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-zookeeper/zk v1.0.2 // indirect
 	github.com/gofrs/flock v0.7.1 // indirect
+	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.0.1 // indirect

@@ -146,8 +146,8 @@ Generated storage config for loki common config
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
-  secret_access_key: {{ $.Values.minio.secretKey }}
-  access_key_id: {{ $.Values.minio.accessKey }}
+  secret_access_key: {{ $.Values.minio.rootPassword }}
+  access_key_id: {{ $.Values.minio.rootUser }}
   s3forcepathstyle: true
   insecure: true
 {{- else if eq .Values.loki.storage.type "s3" -}}
@@ -171,6 +171,21 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .http_config}}
+  http_config:
+    {{- with .idle_conn_timeout }}
+    idle_conn_timeout: {{ . }}
+    {{- end}}
+    {{- with .response_header_timeout }}
+    response_header_timeout: {{ . }}
+    {{- end}}
+    {{- with .insecure_skip_verify }}
+    insecure_skip_verify: {{ . }}
+    {{- end}}
+    {{- with .ca_file}}
+    ca_file: {{ . }}
+    {{- end}}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}

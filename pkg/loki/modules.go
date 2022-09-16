@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -130,16 +131,19 @@ func (t *Loki) initServer() (services.Service, error) {
 	s := NewServerService(t.Server, servicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
-	t.Server.HTTPServer.Handler = func(next http.Handler) http.Handler {
+	h := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !t.Cfg.AuthEnabled {
 				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
 				return
 			}
+
 			_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}(t.Server.HTTPServer.Handler)
+
+	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
 	return s, nil
 }
@@ -427,6 +431,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Ingester.RateLimitWholeStream = t.Cfg.Distributor.ShardStreams.Enabled
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -659,17 +664,20 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	cacheGenClient, err := t.cacheGenClient()
-	if err != nil {
-		return nil, err
+	var genLoader queryrangebase.CacheGenNumberLoader
+	if t.supportIndexDeleteRequest() {
+		cacheGenClient, err := t.cacheGenClient()
+		if err != nil {
+			return nil, err
+		}
+		genLoader = generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer)
 	}
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig,
-		generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer),
+		t.Cfg.SchemaConfig, genLoader,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -681,12 +689,19 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
+func (t *Loki) supportIndexDeleteRequest() bool {
+	// TODO(owen-d): enable delete request storage in tsdb
+	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
+		return false
+	}
+	return config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs)
+}
+
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 	compactorAddress, err := t.compactorAddress()
 	if err != nil {
 		return nil, err
 	}
-
 	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
@@ -1090,12 +1105,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
-	// TODO(owen-d): enable delete request storage in tsdb
-	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
-		return deletion.NewNoOpDeleteRequestsStore(), nil
-	}
-
-	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+	if !t.supportIndexDeleteRequest() {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 

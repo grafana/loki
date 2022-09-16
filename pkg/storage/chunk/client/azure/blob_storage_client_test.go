@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -142,4 +143,52 @@ func Test_EndpointSuffixWithBlob(t *testing.T) {
 	bloburl, err := c.getBlobURL("blob", false)
 	require.NoError(t, err)
 	require.Equal(t, *expect, bloburl.URL())
+}
+
+func Test_ConfigValidation(t *testing.T) {
+	t.Run("expected validation error if environment is not supported", func(t *testing.T) {
+		cfg := &BlobStorageConfig{
+			Environment: "",
+		}
+
+		require.EqualError(t, cfg.Validate(), "unsupported Azure blob storage environment: , please select one of: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment ")
+	})
+	t.Run("expected validation error if tenant_id is empty and UseServicePrincipal is enabled", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("", "", "")
+
+		require.EqualError(t, cfg.Validate(), "tenant_id is required if authentication using Service Principal is enabled")
+	})
+	t.Run("expected validation error if client_id is empty and UseServicePrincipal is enabled", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("fake_tenant", "", "")
+
+		require.EqualError(t, cfg.Validate(), "client_id is required if authentication using Service Principal is enabled")
+	})
+	t.Run("expected validation error if client_secret is empty and UseServicePrincipal is enabled", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("fake_tenant", "fake_client", "")
+
+		require.EqualError(t, cfg.Validate(), "client_secret is required if authentication using Service Principal is enabled")
+	})
+	t.Run("expected no errors if UseServicePrincipal is enabled and required fields are set", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("fake_tenant", "fake_client", "fake_secret")
+
+		require.NoError(t, cfg.Validate())
+	})
+	t.Run("expected no errors if UseServicePrincipal is disabled and fields are empty", func(t *testing.T) {
+		cfg := &BlobStorageConfig{
+			Environment:         azureGlobal,
+			UseServicePrincipal: false,
+		}
+
+		require.NoError(t, cfg.Validate())
+	})
+}
+
+func createServicePrincipalStorageConfig(tenantID string, clientID string, clientSecret string) *BlobStorageConfig {
+	return &BlobStorageConfig{
+		Environment:         azureGlobal,
+		UseServicePrincipal: true,
+		TenantID:            tenantID,
+		ClientID:            clientID,
+		ClientSecret:        flagext.SecretWithValue(clientSecret),
+	}
 }

@@ -105,6 +105,9 @@ type Config struct {
 	IndexShards int `yaml:"index_shards"`
 
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
+
+	// Whether nor not to ingest all at once or not. Comes from distributor StreamShards Enabled
+	RateLimitWholeStream bool `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
