@@ -633,7 +633,7 @@ monitoring:
       # -- Additional LogsInstance labels
       labels: {}
 
-    # The Loki canaray pushes logs to and queries from this loki installation to test
+    # The Loki canary pushes logs to and queries from this loki installation to test
     # that it's working correctly
     lokiCanary:
       enabled: true
