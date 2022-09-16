@@ -31,6 +31,10 @@ func newNoopTSDBManager(dir string) noopTSDBManager {
 	}
 }
 
+func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
+	panic("BuildFromHead not implemented")
+}
+
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier) error {
 	return recoverHead(m.dir, m.tenantHeads, wals)
 }

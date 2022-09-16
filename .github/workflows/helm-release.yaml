@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'production/helm/**'
 
 jobs:
   call-update-helm-repo:
@@ -12,6 +14,7 @@ jobs:
       charts_dir: production/helm
       cr_configfile: production/helm/cr.yaml
       ct_configfile: production/helm/ct.yaml
+      helm_tag_prefix: helm
     secrets:
       helm_repo_token: ${{ secrets.GH_BOT_ACCESS_TOKEN }}
       # See https://github.com/grafana/helm-charts/blob/main/INTERNAL.md about this key

@@ -2,6 +2,7 @@ package series
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gogo/status"
 	"github.com/prometheus/common/model"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
@@ -21,7 +23,7 @@ type IndexGatewayClientStore struct {
 	// Previously index gateways would only serve index rows from boltdb-shipper files.
 	// tsdb also supports configuring index gateways but there is no concept of serving index rows so
 	// the fallbackStore could be nil and should be checked before use
-	fallbackStore IndexStore
+	fallbackStore index.Reader
 }
 
 type IndexGatewayClient interface {
@@ -32,7 +34,7 @@ type IndexGatewayClient interface {
 	GetStats(ctx context.Context, req *logproto.IndexStatsRequest, opts ...grpc.CallOption) (*logproto.IndexStatsResponse, error)
 }
 
-func NewIndexGatewayClientStore(client IndexGatewayClient, fallbackStore IndexStore) IndexStore {
+func NewIndexGatewayClientStore(client IndexGatewayClient, fallbackStore index.Reader) index.ReaderWriter {
 	return &IndexGatewayClientStore{
 		client:        client,
 		fallbackStore: fallbackStore,
@@ -142,6 +144,10 @@ func (c *IndexGatewayClientStore) SetChunkFilterer(chunkFilter chunk.RequestChun
 	if c.fallbackStore != nil {
 		c.fallbackStore.SetChunkFilterer(chunkFilter)
 	}
+}
+
+func (c *IndexGatewayClientStore) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+	return fmt.Errorf("index writes not supported on index gateway client")
 }
 
 // isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
