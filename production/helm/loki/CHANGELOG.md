@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 3.1.0
 
-- [FEATURE] Loki canary and GEL token provisioner added. The GEL token provisioner will provision a tenant and token to be used by the self-monitoring features (including the canary), as well as any additional teants specified. A k8s secret will be created with a read and write token for each additional tenant specified.
+- [FEATURE] Loki canary and GEL token provisioner added. The GEL token provisioner will provision a tenant and token to be used by the self-monitoring features (including the canary), as well as any additional tenants specified. A k8s secret will be created with a read and write token for each additional tenant specified.
 
 ## 3.0.4
 
