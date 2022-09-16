@@ -294,7 +294,7 @@ func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 		}
 	}
 	if len(res) == 0 {
-		level.Warn(util_log.Logger).Log("err", "could not find config for table(s) fom: %d, through %d", start, end)
+		level.Warn(util_log.Logger).Log("err", "could not find config for table(s) from: %d, through %d", start, end)
 	}
 	return
 }
