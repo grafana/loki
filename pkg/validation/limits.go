@@ -54,6 +54,7 @@ const (
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type Limits struct {
 	// Distributor enforced limits.
+	IngestionTenantShardSize    int              `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
 	IngestionRateStrategy       string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
 	IngestionRateMB             float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
 	IngestionBurstSizeMB        float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
@@ -407,6 +408,11 @@ func (o *Overrides) MaxQuerySeries(userID string) int {
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// IngestionTenantShardSize returns the ingesters shard size for a given user.
+func (o *Overrides) IngestionTenantShardSize(userID string) int {
+	return o.getOverridesForUser(userID).IngestionTenantShardSize
 }
 
 // QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.

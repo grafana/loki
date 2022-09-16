@@ -93,6 +93,7 @@ type Distributor struct {
 	validator        *Validator
 	pool             *ring_client.Pool
 	streamSharder    StreamSharder
+	limits           *validation.Overrides
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -171,6 +172,7 @@ func New(
 		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:             labelCache,
 		rateLimitStrat:         rateLimitStrat,
+		limits:                 overrides,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -336,10 +338,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
+	// Get a subring if tenant has shuffle shard size configured.
+	subRing := d.ingestersRing.ShuffleShard(userID, d.limits.IngestionTenantShardSize(userID))
 	samplesByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
+		replicationSet, err := subRing.Get(key, ring.Write, descs[:0], nil, nil)
 		if err != nil {
 			return nil, err
 		}

@@ -627,6 +627,51 @@ func TestStreamShard(t *testing.T) {
 	}
 }
 
+func TestShufflerWriteShard(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionTenantShardSize = 2
+	mockIngesters := make([]*mockIngester, 0)
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) {
+		ingester := &mockIngester{}
+		mockIngesters = append(mockIngesters, ingester)
+		return ingester, nil
+	})
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+
+	labels := 250
+	for i := 0; i < labels; i++ {
+		// Construct the log line, honoring the input size
+		streamLabels := fmt.Sprintf("{foo=\"bar%d\"}", i)
+		req := logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: streamLabels,
+				},
+			},
+		}
+		line := strconv.Itoa(i) + strings.Repeat(" ", 2)
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond),
+			Line:      line,
+		})
+		_, err := d.Push(ctx, &req)
+		if err != nil {
+			require.NoError(t, err)
+		}
+	}
+
+	ingesterPushedSize := 0
+	for _, ingester := range mockIngesters {
+		if len(ingester.pushed) > 0 {
+			ingesterPushedSize++
+		}
+	}
+
+	expectedSize := limits.IngestionTenantShardSize
+	require.Equal(t, expectedSize, ingesterPushedSize)
+}
+
 func BenchmarkShardStream(b *testing.B) {
 	stream := logproto.Stream{}
 	labels := "{app='myapp', job='fizzbuzz'}"
@@ -1007,6 +1052,9 @@ func (r mockRing) HasInstance(instanceID string) bool {
 
 func (r mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
 	// take advantage of pass by value to bound to size:
+	if size == 0 {
+		return r
+	}
 	r.ingesters = r.ingesters[:size]
 	return r
 }
