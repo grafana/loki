@@ -219,7 +219,7 @@ func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context) error
 		return error
 	}
 
-	if diskUsage.UsedPercent >= 80 {
+	if diskUsage.UsedPercent >= float64(f.cfg.SizeBasedRetentionPercentage) {
 		// Remove old chunks here
 		return nil
 	}

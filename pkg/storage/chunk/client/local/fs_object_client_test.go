@@ -3,6 +3,8 @@ package local
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -198,4 +200,12 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, commonPrefixes, 0)
 	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
+}
+
+func TestDiskUsage(t *testing.T) {
+	fsObjectsDir := t.TempDir()
+	diskUsage, _ := DiskUsage(fsObjectsDir)
+
+	require.Equal(t, "float64", fmt.Sprintf("%T", diskUsage.UsedPercent), "diskUsage.UsedPercent is not float64")
+	require.LessOrEqual(t, diskUsage.UsedPercent, float64(100), "diskUsage.UsedPercent is miscalculated")
 }
