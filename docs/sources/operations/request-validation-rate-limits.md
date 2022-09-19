@@ -26,7 +26,12 @@ Rate-limits are enforced when Loki cannot handle more requests from a tenant.
 
 This rate-limit is enforced when a tenant has exceeded their configured log ingestion rate-limit.
 
-This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. The config options to use are `ingestion_rate_mb` and `ingestion_burst_size_mb`.
+One solution if you're seeing samples dropped due to `rate_limited` is simply to increase the rate limits on your Loki cluster. These limits can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. The config options to use are `ingestion_rate_mb` and `ingestion_burst_size_mb`.
+
+Note that you'll want to make sure your Loki cluster has sufficient resources provisioned to be able to accommodate these higher limits. Otherwise your cluster may experience performance degradation as it tries to handle this higher volume of log lines to ingest.
+
+ Another option to address samples being dropped due to `rate_limits` is simply to decrease the rate of log lines being sent to your Loki cluster. Consider collecting logs from fewer targets or setting up `drop` stages in Promtail to filter out certain log lines. Promtail's [limits configuration](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#limits_config) also gives you the ability to control the volume of logs Promtail remote writes to your Loki cluster.  
+
 
 | Property                | Value                   |
 |-------------------------|-------------------------|
@@ -45,7 +50,9 @@ Each stream has a rate-limit applied to it to prevent individual streams from ov
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. The config options to adjust are `per_stream_rate_limit` and `per_stream_rate_limit_burst`.
 
-In Grafana Cloud, we typically set `per_stream_rate_limit` no higher than 5MB, and `per_stream_rate_limit_burst` no higher than 20MB.
+Another option you could consider to decrease the rate of samples dropped due to `per_stream_rate_limit` is to split the stream that is getting rate limited into several smaller streams. A third option is to use Promtail's [limit stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/limit/#limit-stage) to limit the rate of samples sent to the stream hitting the `per_stream_rate_limit`. 
+
+We typically recommend setting `per_stream_rate_limit` no higher than 5MB, and `per_stream_rate_limit_burst` no higher than 20MB.
 
 | Property                | Value                   |
 |-------------------------|-------------------------|
@@ -79,9 +86,9 @@ Validation errors occur when a request violates a validation rule defined by Lok
 
 ### `line_too_long`
 
-This error occurs when a log line exceeds the maximum allowable length in bytes.
+This error occurs when a log line exceeds the maximum allowable length in bytes. The HTTP response will include the stream to which the offending log line belongs as well as its size in bytes. 
 
-This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. To increase the maximum line size, adjust `max_line_size`.  Alternatively, logs can be truncated if they exceed the maximum length in bytes with `max_line_size_truncate`.
+This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. To increase the maximum line size, adjust `max_line_size`.  We recommend that you do not increase this value above 256kb for performance reasons. Alternatively, Loki can be configured to ingest truncated versions of log lines over the length limit by using the `max_line_size_truncate` option.
 
 | Property                | Value            |
 |-------------------------|------------------|
@@ -126,7 +133,7 @@ The `unordered_writes` config value can be modified globally in the [`limits_con
 
 This problem can be solved by ensuring that log delivery is configured correctly, or by increasing the `max_chunk_age` value.
 
-It is recommended to resist configuring the `max_chunk_age` option as this has other implications, and to instead try track down the cause for delayed logged delivery. It should also be noted that this a per-stream error, so by simply splitting streams (adding more labels) this problem can be circumvented, especially if multiple hosts are sending samples for a single stream.
+It is recommended to resist modifying the default value of `max_chunk_age` as this has other implications, and to instead try track down the cause for delayed logged delivery. It should also be noted that this a per-stream error, so by simply splitting streams (adding more labels) this problem can be circumvented, especially if multiple hosts are sending samples for a single stream.
 
 | Property                | Value      |
 |-------------------------|------------|
@@ -137,7 +144,7 @@ It is recommended to resist configuring the `max_chunk_age` option as this has o
 
 ## `greater_than_max_sample_age`
 
-If the `reject_old_samples` config option is set to `true` (it is by default), then samples will be rejected if they are older than the `reject_old_samples_max_age` value.
+If the `reject_old_samples` config option is set to `true` (it is by default), then samples will be rejected with `reason=greater_than_max_sample_age` if they are older than the `reject_old_samples_max_age` value. You should not see samples rejected for `reason=greater_than_max_sample_age` if `reject_old_samples=false`.
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `reject_old_samples_max_age` value, or investigating why log delivery is delayed for this particular stream. The stream in question will be returned in the body of the HTTP response.
 
@@ -167,9 +174,9 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `max_label_names_per_series`
 
-If a series is submitted with more labels than Loki has been configured to allow, this error will occur.
+If a sample is submitted with more labels than Loki has been configured to allow, it will be rejected with the `max_label_names_per_series` reason.
 
-This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_names_per_series` value. The offending stream will be returned in the body of the HTTP response.
+This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_names_per_series` value. The stream to which the offending sample (i.e. the one with too many label names) belongs will be returned in the body of the HTTP response.
 
 | Property                | Value             |
 |-------------------------|-------------------|
@@ -182,7 +189,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `label_name_too_long`
 
-If a series has a label name with a length in bytes greater than Loki has been configured to allow, this error will occur.
+If a sample is sent with a label name that has a length in bytes greater than Loki has been configured to allow, it will be rejected with the `label_name_too_long` reason. 
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_name_length` value. The offending stream will be returned in the body of the HTTP response.
 
@@ -197,7 +204,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `label_value_too_long`
 
-If a series has a label value with a length in bytes greater than Loki has been configured to allow, this error will occur.
+If a sample has a label value with a length in bytes greater than Loki has been configured to allow, it will be rejected for the `label_value_too_long` reason. 
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_value_length` value. The offending stream will be returned in the body of the HTTP response.
 
@@ -212,7 +219,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `duplicate_label_names`
 
-If a series has two or more identical labels, this error will occur.
+If a sample is sent with two or more identical labels, it will be rejected for the `duplicate_label_names` reason. 
 
 The offending stream will be returned in the body of the HTTP response.
 
