@@ -193,7 +193,7 @@ func (t *decompressor) readLines() {
 	level.Info(t.logger).Log("msg", "successfully mounted reader", "path", t.path, "ext", filepath.Ext(t.path))
 
 	scanner := bufio.NewScanner(r)
-	for line := 0; ; line++ {
+	for line := 1; ; line++ {
 		if !scanner.Scan() {
 			break
 		}
