@@ -56,9 +56,9 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 
+		wg.Add(3)
 		go func() {
 			// wait for all 3 replicas to get called before returning response
-			wg.Add(3)
 			wg.Wait()
 
 			// return response from 2 of the 3 replicas
@@ -104,9 +104,9 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		wg.Add(3)
 		go func() {
 			// wait for all 3 replicas to get called before returning response
-			wg.Add(3)
 			wg.Wait()
 
 			// return response from 2 out of the 3 replicas
