@@ -38,7 +38,7 @@ As a result of this major change, upgrades from the charts this replaces might b
 
 ### Upgrading from `grafana/loki`
 
-The default installation of `grafana/loki` is a single instance backed by `filesystem` storage that is not highly available. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, the running the `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving you data. Will still highly recommend backing up all data before conducting the upgrade.
+The default installation of `grafana/loki` is a single instance backed by `filesystem` storage that is not highly available. As a result, this upgrade method will involve downtime. The upgrade will involve deleting the previously deployed loki stateful set, the running the `helm upgrade` which will create the new one with the same name, which should attach to the existing PVC or ephemeral storage, thus preserving your data. Will still highly recommend backing up all data before conducting the upgrade.
 
 To upgrade, you will need at least the following in your `values.yaml`:
 
