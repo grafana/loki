@@ -142,7 +142,7 @@ monitoring:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | enterprise.adminApi | object | `{"enabled":true}` | If enabled, the correct admin_client storage will be configured. If disabled while running enterprise, make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`. |
-| enterprise.adminTokenSecret | string | `nil` | Alternative name for admin token secret, needed by tokgen and provisioner jobs |
+| enterprise.adminTokenSecret | string | `nil` | Alternative name for admin token secret, needed by tokengen and provisioner jobs |
 | enterprise.canarySecret | string | `nil` | Aleternative name of the secret to store token for the canary |
 | enterprise.cluster_name | string | `nil` | Optional name of the GEL cluster, otherwise will use .Release.Name The cluster name must match what is in your GEL license |
 | enterprise.config | string | `"{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n"` |  |
