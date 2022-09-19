@@ -333,7 +333,7 @@ Create the service endpoint including port for MinIO.
 {{- define "loki.host" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $url := printf "%s.%s.svc.%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
-{{- if $isSingleBinary  }}
+{{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
   {{- $url = printf "%s.%s.svc.%s:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- end }}
 {{- printf "%s" $url -}}
