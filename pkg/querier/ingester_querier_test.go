@@ -31,16 +31,14 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				wg.Done()
 
 				ctx := args[0].(context.Context)
-				for {
-					select {
-					case <-ctx.Done():
-						// expected to be cancelled once the first two replicas return
-						require.ErrorIs(t, ctx.Err(), context.Canceled)
-						return
-					case <-wait:
-						cnt++
-						return
-					}
+				select {
+				case <-ctx.Done():
+					// ctx should be cancelled once the first two replicas return
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+				case <-wait:
+					cnt++
+				case <-time.After(time.Second):
+					t.Error("timed out waiting for ctx cancellation")
 				}
 			},
 		)
@@ -52,10 +50,6 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// Ensure the testcase completes by timing out incase the context doesn't get cancelled
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-
 		wg.Add(3)
 		go func() {
 			// wait for all 3 replicas to get called before returning response
@@ -66,7 +60,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			wait <- struct{}{}
 		}()
 
-		_, err = ingesterQuerier.Label(ctx, new(logproto.LabelRequest))
+		_, err = ingesterQuerier.Label(context.Background(), new(logproto.LabelRequest))
 		ingesterClient.AssertNumberOfCalls(t, "Label", 3)
 		require.Equal(t, 2, cnt)
 		require.NoError(t, err)
@@ -82,16 +76,14 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			func(args mock.Arguments) {
 				wg.Done()
 				ctx := args[0].(context.Context)
-				for {
-					select {
-					case <-ctx.Done():
-						// should not be cancelled by the tracker
-						require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
-						return
-					case <-wait:
-						cnt++
-						return
-					}
+
+				select {
+				case <-ctx.Done():
+					// should not be cancelled by the tracker
+					require.NoError(t, ctx.Err())
+				case <-wait:
+					cnt++
+				case <-time.After(time.Second):
 				}
 			},
 		)
@@ -114,10 +106,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			wait <- struct{}{}
 		}()
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-
-		_, err = ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
+		_, err = ingesterQuerier.SelectLogs(context.Background(), logql.SelectLogParams{
 			QueryRequest: new(logproto.QueryRequest),
 		})
 		ingesterClient.AssertNumberOfCalls(t, "Query", 3)
