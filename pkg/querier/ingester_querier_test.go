@@ -115,7 +115,6 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				}()
 
 				err = testData.testFn(ingesterQuerier)
-
 				ingesterClient.AssertNumberOfCalls(t, testData.method, 3)
 				require.Equal(t, 2, cnt)
 				if retErr {
@@ -171,7 +170,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				testName += " call should not return early on reaching quorum"
 			}
 
-			t.Run(testName+" should not return early on reaching quorum", func(t *testing.T) {
+			t.Run(testName, func(t *testing.T) {
 				cnt := 0
 				wg := sync.WaitGroup{}
 				wait := make(chan struct{})
@@ -191,13 +190,11 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				}
 
 				ingesterClient := newQuerierClientMock()
-
 				if retErr {
 					ingesterClient.On(testData.method, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(testData.method+" failed")).Run(runFn)
 				} else {
 					ingesterClient.On(testData.method, mock.Anything, mock.Anything, mock.Anything).Return(testData.retVal, nil).Run(runFn)
 				}
-
 				ingesterQuerier, err := newIngesterQuerier(
 					mockIngesterClientConfig(),
 					newReadRingMock(ringIngesters, 1),
@@ -225,9 +222,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					require.NoError(t, err)
 				}
 			})
-
 		}
-
 	}
 }
 
