@@ -88,11 +88,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Index')
                           .addPanel(
                             $.panel('QPS') +
-                            $.qpsPanel('index_request_duration_seconds_count{%s operation="put_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.qpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.panel('Latency') +
-                            $.latencyPanel('index_request_duration_seconds', '{%s operation="put_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                         )
                         .addRowIf(
