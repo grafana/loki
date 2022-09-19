@@ -335,11 +335,11 @@ type readRingMock struct {
 	replicationSet ring.ReplicationSet
 }
 
-func newReadRingMock(ingesters []ring.InstanceDesc) *readRingMock {
+func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
 	return &readRingMock{
 		replicationSet: ring.ReplicationSet{
 			Instances: ingesters,
-			MaxErrors: 0,
+			MaxErrors: maxErrors,
 		},
 	}
 }
@@ -408,7 +408,7 @@ func (r *readRingMock) GetInstanceState(instanceID string) (ring.InstanceState, 
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
-	})
+	}, 0)
 }
 
 func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {

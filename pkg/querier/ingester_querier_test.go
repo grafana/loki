@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,7 +13,118 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
+
+func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
+	ringIngesters := []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("2.2.2.2", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}
+
+	t.Parallel()
+	t.Run("label call should return early on reaching quorum", func(t *testing.T) {
+		cnt := 0
+		wg := sync.WaitGroup{}
+		wait := make(chan struct{})
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(new(logproto.LabelResponse), nil).Run(
+			func(args mock.Arguments) {
+				wg.Done()
+
+				ctx := args[0].(context.Context)
+				for {
+					select {
+					case <-ctx.Done():
+						// expected to be cancelled once the first two replicas return
+						require.ErrorIs(t, ctx.Err(), context.Canceled)
+						return
+					case <-wait:
+						cnt++
+						return
+					}
+				}
+			},
+		)
+		ingesterQuerier, err := newIngesterQuerier(
+			mockIngesterClientConfig(),
+			newReadRingMock(ringIngesters, 1),
+			mockQuerierConfig().ExtraQueryDelay,
+			newIngesterClientMockFactory(ingesterClient),
+		)
+		require.NoError(t, err)
+
+		// Ensure the testcase completes by timing out incase the context doesn't get cancelled
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+
+		go func() {
+			// wait for all 3 replicas to get called before returning response
+			wg.Add(3)
+			wg.Wait()
+
+			// return response from 2 of the 3 replicas
+			wait <- struct{}{}
+			wait <- struct{}{}
+		}()
+
+		_, err = ingesterQuerier.Label(ctx, new(logproto.LabelRequest))
+		ingesterClient.AssertNumberOfCalls(t, "Label", 3)
+		require.Equal(t, 2, cnt)
+		require.NoError(t, err)
+	})
+
+	t.Run("select logs should not return early on reaching quorum", func(t *testing.T) {
+		cnt := 0
+		wg := sync.WaitGroup{}
+		wait := make(chan struct{})
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(newQueryClientMock(), nil).Run(
+			func(args mock.Arguments) {
+				wg.Done()
+				ctx := args[0].(context.Context)
+				for {
+					select {
+					case <-ctx.Done():
+						// should not be cancelled by the tracker
+						require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+						return
+					case <-wait:
+						cnt++
+						return
+					}
+				}
+			},
+		)
+
+		ingesterQuerier, err := newIngesterQuerier(
+			mockIngesterClientConfig(),
+			newReadRingMock(ringIngesters, 1),
+			mockQuerierConfig().ExtraQueryDelay,
+			newIngesterClientMockFactory(ingesterClient),
+		)
+		require.NoError(t, err)
+
+		go func() {
+			// wait for all 3 replicas to get called before returning response
+			wg.Add(3)
+			wg.Wait()
+
+			// return response from 2 out of the 3 replicas
+			wait <- struct{}{}
+			wait <- struct{}{}
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		_, err = ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
+			QueryRequest: new(logproto.QueryRequest),
+		})
+		ingesterClient.AssertNumberOfCalls(t, "Query", 3)
+		require.NoError(t, err)
+		require.Equal(t, 2, cnt)
+	})
+}
 
 func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 	t.Parallel()
@@ -82,7 +194,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 
 			ingesterQuerier, err := newIngesterQuerier(
 				mockIngesterClientConfig(),
-				newReadRingMock(testData.ringIngesters),
+				newReadRingMock(testData.ringIngesters, 0),
 				mockQuerierConfig().ExtraQueryDelay,
 				newIngesterClientMockFactory(ingesterClient),
 			)
