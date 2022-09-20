@@ -44,7 +44,7 @@ Note that you'll want to make sure your Loki cluster has sufficient resources pr
 
 ### `per_stream_rate_limit`
 
-This limit is enforced a single stream reaches its rate-limit.
+This limit is enforced when a single stream reaches its rate-limit.
 
 Each stream has a rate-limit applied to it to prevent individual streams from overwhelming a set of ingesters (equal to the `replication_factor` value).
 
