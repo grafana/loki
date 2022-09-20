@@ -406,6 +406,10 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 		return nil, nil, err
 	}
 
+	if shardCount <= 1 {
+		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}, nil
+	}
+
 	if d.cfg.ShardStreams.LoggingEnabled {
 		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels, "shard_count", shardCount)
 	}
