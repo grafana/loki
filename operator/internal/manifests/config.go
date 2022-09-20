@@ -209,15 +209,25 @@ var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
 }
 
 func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
-	if ls.Limits == nil || ls.Limits.Global == nil || ls.Limits.Global.Retention == nil {
-		return config.RetentionOptions{
-			Enabled: false,
+	if ls.Limits == nil {
+		return config.RetentionOptions{}
+	}
+
+	globalRetention := ls.Limits.Global != nil && ls.Limits.Global.Retention != nil
+	tenantRetention := false
+	for _, t := range ls.Limits.Tenants {
+		if t.Retention != nil {
+			tenantRetention = true
+			break
 		}
+	}
+
+	if !globalRetention && !tenantRetention {
+		return config.RetentionOptions{}
 	}
 
 	return config.RetentionOptions{
 		Enabled:           true,
 		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
-		Globals:           ls.Limits.Global.Retention,
 	}
 }

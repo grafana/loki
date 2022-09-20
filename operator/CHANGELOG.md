@@ -1,5 +1,6 @@
 ## Main
 
+- [7201](https://github.com/grafana/loki/pull/7201) **xperimental**: Write configuration for per-tenant retention
 - [7037](https://github.com/grafana/loki/pull/7037) **xperimental**: Skip enforcing matcher for certain tenants on OpenShift
 - [7106](https://github.com/grafana/loki/pull/7106) **xperimental**: Manage global stream-based retention
 - [7092](https://github.com/grafana/loki/pull/7092) **aminesnow**: Configure kube-rbac-proxy sidecar to use Intermediate TLS security profile in OCP
