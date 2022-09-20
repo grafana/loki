@@ -657,7 +657,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, "fake")
+			d.shardStream(stream, "fake") //nolint:errcheck
 		}
 	})
 
@@ -669,7 +669,8 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, "fake")
+			d.shardStream(stream, "fake") //nolint:errcheck
+
 		}
 	})
 
@@ -681,7 +682,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, "fake")
+			d.shardStream(stream, "fake") //nolint:errcheck
 		}
 	})
 
@@ -693,7 +694,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, "fake")
+			d.shardStream(stream, "fake") //nolint:errcheck
 		}
 	})
 }
