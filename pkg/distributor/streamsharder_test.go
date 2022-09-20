@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -13,28 +14,30 @@ func TestStreamSharder(t *testing.T) {
 	stream2 := logproto.Stream{Entries: make([]logproto.Entry, 11), Labels: "test-stream-2"}
 
 	t.Run("it returns not ok when a stream should not be sharded", func(t *testing.T) {
-		sharder := NewStreamSharder()
+		sharder := NewStreamSharder(3)
 
-		shards, ok := sharder.ShardCountFor(stream)
-		require.Equal(t, shards, 0)
-		require.False(t, ok)
+		shards, err := sharder.ShardCountFor(stream)
+		require.NoError(t, err)
+		require.Equal(t, shards, 1)
 	})
 
 	t.Run("it keeps track of multiple streams", func(t *testing.T) {
-		sharder := NewStreamSharder()
-		sharder.IncreaseShardsFor(stream)
-		sharder.IncreaseShardsFor(stream)
-		sharder.IncreaseShardsFor(stream2)
-
-		shards, ok := sharder.ShardCountFor(stream)
+		sharder := NewStreamSharder(3)
+		sharderImpl, ok := sharder.(*streamSharder)
 		require.True(t, ok)
 
-		require.Equal(t, 4, shards)
+		sharderImpl.storeRate(stream, 1000)   // 1 MB
+		sharderImpl.storeRate(stream2, 20000) // 20 MB
 
-		shards, ok = sharder.ShardCountFor(stream2)
-		require.True(t, ok)
+		shards, err := sharder.ShardCountFor(stream)
+		require.NoError(t, err)
 
-		require.Equal(t, 2, shards)
+		require.Equal(t, 1, shards)
+
+		shards, err = sharder.ShardCountFor(stream2)
+		require.NoError(t, err)
+
+		require.Equal(t, 6, shards)
 	})
 }
 
@@ -55,12 +58,12 @@ func (s *StreamSharderMock) IncreaseShardsFor(stream logproto.Stream) {
 	s.increaseCallsFor("IncreaseShardsFor")
 }
 
-func (s *StreamSharderMock) ShardCountFor(stream logproto.Stream) (int, bool) {
+func (s *StreamSharderMock) ShardCountFor(stream logproto.Stream) (int, error) {
 	s.increaseCallsFor("ShardCountFor")
 	if s.wantShards < 0 {
-		return 0, false
+		return 0, fmt.Errorf("unshardable stream")
 	}
-	return s.wantShards, true
+	return s.wantShards, nil
 }
 
 func (s *StreamSharderMock) increaseCallsFor(funcName string) {

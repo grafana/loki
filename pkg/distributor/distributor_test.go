@@ -620,7 +620,8 @@ func TestStreamShard(t *testing.T) {
 			}
 			baseStream.Entries = tc.entries
 
-			_, derivedStreams := d.shardStream(baseStream, "fake")
+			_, derivedStreams, err := d.shardStream(baseStream, "fake")
+			require.NoError(t, err)
 
 			require.Equal(t, tc.wantDerivedStream, derivedStreams)
 		})

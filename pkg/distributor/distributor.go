@@ -54,6 +54,7 @@ var (
 type ShardStreamsConfig struct {
 	Enabled        bool `yaml:"enabled"`
 	LoggingEnabled bool `yaml:"logging_enabled"`
+	DesiredRate    int  `yaml:"desired_rate"`
 }
 
 // Config for a Distributor.
@@ -77,8 +78,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // StreamSharder manages the state necessary to shard streams.
 type StreamSharder interface {
-	ShardCountFor(stream logproto.Stream) (int, bool)
-	IncreaseShardsFor(stream logproto.Stream)
+	ShardCountFor(stream logproto.Stream) (int, error)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -199,7 +199,7 @@ func New(
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
-	d.streamSharder = NewStreamSharder()
+	d.streamSharder = NewStreamSharder(d.cfg.ShardStreams.DesiredRate)
 
 	return &d, nil
 }
@@ -310,11 +310,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
+		var shardErr error
 		if d.cfg.ShardStreams.Enabled {
-			derivedKeys, derivedStreams := d.shardStream(stream, userID)
+			derivedKeys, derivedStreams, err := d.shardStream(stream, userID)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "error sharding stream", "err", err)
+			}
+
+			if unshardableErr, ok := err.(*unshardableStreamErr); ok {
+				return nil, httpgrpc.Errorf(http.StatusTooManyRequests, unshardableErr.Error())
+			}
+
 			keys = append(keys, derivedKeys...)
 			streams = append(streams, derivedStreams...)
-		} else {
+			shardErr = err
+		}
+		if !d.cfg.ShardStreams.Enabled || shardErr != nil {
 			keys = append(keys, util.TokenFor(userID, stream.Labels))
 			streams = append(streams, streamTracker{stream: stream})
 		}
@@ -389,14 +400,14 @@ func min(x1, x2 int) int {
 // shardStream shards (divides) the given stream into N smaller streams, where
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
-func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker) {
-	shardCount, ok := d.streamSharder.ShardCountFor(stream)
-	if !ok || shardCount <= 1 {
-		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
+func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker, error) {
+	shardCount, err := d.streamSharder.ShardCountFor(stream)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	if d.cfg.ShardStreams.LoggingEnabled {
-		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels)
+		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels, "shard_count", shardCount)
 	}
 
 	streamLabels := labelTemplate(stream.Labels)
@@ -407,6 +418,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 	for i := 0; i < shardCount; i++ {
 		shard, ok := d.createShard(stream, streamLabels, streamPattern, shardCount, i)
 		if !ok {
+			level.Error(util_log.Logger).Log("msg", "couldn't create shard", "stream", stream.Labels, "idx", i)
 			continue
 		}
 
@@ -418,7 +430,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint
 		}
 	}
 
-	return derivedKeys, derivedStreams
+	return derivedKeys, derivedStreams, nil
 }
 
 // labelTemplate returns a label set that includes the dummy label to be replaced
