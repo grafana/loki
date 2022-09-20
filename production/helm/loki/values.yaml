@@ -305,6 +305,8 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `tokengen` Job
     annotations: {}
+    # -- Tolerations for tokengen Job
+    tolerations: []
     # -- Additional volumes for Pods
     extraVolumes: []
     # -- Additional volume mounts for Pods
