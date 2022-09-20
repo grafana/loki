@@ -15,7 +15,7 @@ It is recommended that Loki operators set up alerts or dashboards with these met
 ### Terminology
 
 - **sample**: a log line
-- **series**/**stream**: samples with a unique combination of labels
+- **stream**: samples with a unique combination of labels 
 - **active stream**: streams that are present in the ingesters - these have recently received log lines within the `chunk_idle_period` period (default: 30m)
 
 ## Rate-Limit Errors
@@ -125,7 +125,7 @@ This validation error is returned when a stream is submitted without any labels.
 
 ## `too_far_behind` and `out_of_order`
 
-The `too_far_behind` and `out_of_order` reasons are identical, except that `out_of_order` can only occur if the `unordered_writes` config option is set to `false`. The default value since Loki v2.4 is `true`, so `too_far_behind` is more common.
+The `too_far_behind` and `out_of_order` reasons are identical. Loki clusters with `unordered_writes=true` (the default value as of Loki v2.4) use `reason=too_far_behind`. Loki clusters with `unordered_writes=false` use `reason=out_of_order`.
 
 This validation error is returned when a stream is submitted out of order. More details can be found [here](https://grafana.com/docs/loki/latest/configuration/#accept-out-of-order-writes) about Loki's ordering constraints.
 
@@ -174,7 +174,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 ## `max_label_names_per_series`
 
-If a sample is submitted with more labels than Loki has been configured to allow, it will be rejected with the `max_label_names_per_series` reason.
+If a sample is submitted with more labels than Loki has been configured to allow, it will be rejected with the `max_label_names_per_series` reason. Note that 'series' is the same thing as a 'stream' in Loki - the 'series' term is a legacy name. 
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_names_per_series` value. The stream to which the offending sample (i.e. the one with too many label names) belongs will be returned in the body of the HTTP response.
 
@@ -191,7 +191,7 @@ This value can be modified globally in the [`limits_config`](https://grafana.com
 
 If a sample is sent with a label name that has a length in bytes greater than Loki has been configured to allow, it will be rejected with the `label_name_too_long` reason. 
 
-This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_name_length` value. The offending stream will be returned in the body of the HTTP response.
+This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. This error can be solved by increasing the `max_label_name_length` value, though we do not recommend raising it significantly above the default value of `1024` for performance reasons. The offending stream will be returned in the body of the HTTP response.
 
 | Property                | Value             |
 |-------------------------|-------------------|
