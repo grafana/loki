@@ -46,7 +46,7 @@ Note that you'll want to make sure your Loki cluster has sufficient resources pr
 
 This limit is enforced when a single stream reaches its rate-limit.
 
-Each stream has a rate-limit applied to it to prevent individual streams from overwhelming a set of ingesters (equal to the `replication_factor` value).
+Each stream has a rate-limit applied to it to prevent individual streams from overwhelming the set of ingesters it is distributed to (the size of that set is equal to the `replication_factor` value).
 
 This value can be modified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file) file. The config options to adjust are `per_stream_rate_limit` and `per_stream_rate_limit_burst`.
 
