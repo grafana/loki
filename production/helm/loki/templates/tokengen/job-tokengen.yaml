@@ -88,6 +88,10 @@ spec:
       restartPolicy: OnFailure
       serviceAccount: {{ template "enterprise-logs.tokengenFullname" . }}
       serviceAccountName: {{ template "enterprise-logs.tokengenFullname" . }}
+      {{- with .Values.enterprise.tokengen.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: config
           {{- if .Values.enterprise.useExternalConfig }}
