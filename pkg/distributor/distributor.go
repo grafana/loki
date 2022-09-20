@@ -315,16 +315,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			derivedKeys, derivedStreams, err := d.shardStream(stream, userID)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error sharding stream", "err", err)
+				shardErr = err
+			} else {
+				keys = append(keys, derivedKeys...)
+				streams = append(streams, derivedStreams...)
 			}
 
 			if unshardableErr, ok := err.(*unshardableStreamErr); ok {
+				level.Error(util_log.Logger).Log("msg", "ignoring push request because stream is unshardable", "stream", stream.Labels)
 				return nil, httpgrpc.Errorf(http.StatusTooManyRequests, unshardableErr.Error())
 			}
-
-			keys = append(keys, derivedKeys...)
-			streams = append(streams, derivedStreams...)
-			shardErr = err
 		}
+
 		if !d.cfg.ShardStreams.Enabled || shardErr != nil {
 			keys = append(keys, util.TokenFor(userID, stream.Labels))
 			streams = append(streams, streamTracker{stream: stream})
