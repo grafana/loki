@@ -6,7 +6,5 @@ weight: 150
 
 This section explains fundamental concepts about Grafana Loki:
 
-- [Overview]({{< relref "./overview/" >}})
-- [Architecture]({{< relref "./architecture/" >}})
-- [Labels]({{< relref "./labels/" >}})
+{{< section >}}
 
