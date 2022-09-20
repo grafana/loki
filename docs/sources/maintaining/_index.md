@@ -5,3 +5,7 @@ weight: 1200
 # Grafana Loki Maintainers' Guide
 
 This section details information for maintainers of Grafana Loki.
+
+- [Release Loki build images]({{< relref "./release-loki-build-image/" >}})
+- [Release]({{< relref "./release/" >}})
+
