@@ -225,8 +225,8 @@ func (c *Memcached) Stop() {
 		return
 	}
 
-	close(c.inputCh)
 	c.wg.Wait()
+	close(c.inputCh)
 }
 
 func (c *Memcached) GetCacheType() stats.CacheType {
