@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
@@ -165,6 +167,24 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	readCloser, size, err := o.store.GetObject(ctx, key)
 	if err != nil {
+		if strings.Contains(err.Error(), "NoSuchKey") {
+			const chunkLen = 13 * 3600 // in seconds
+			userID := "-1"
+			ts := model.TimeFromUnix(int64(0 * chunkLen))
+			promChunk := chunk.New()
+			emptyChunk := chunk.NewChunk(
+				userID,
+				model.Fingerprint(1),
+				labels.Labels{
+					{Name: model.MetricNameLabel, Value: "foo"},
+					{Name: "bar", Value: "baz"},
+				},
+				promChunk,
+				ts,
+				ts.Add(chunkLen))
+			return emptyChunk, nil
+		}
+
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 

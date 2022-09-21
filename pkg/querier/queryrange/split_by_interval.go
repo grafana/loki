@@ -2,9 +2,7 @@ package queryrange
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -125,11 +123,6 @@ func (h *splitByInterval) Process(
 			return nil, ctx.Err()
 		case data := <-x.ch:
 			if data.err != nil {
-				//failed to get s3 object: NoSuchKey
-				if strings.Contains(data.err.Error(), "data.err") {
-					fmt.Println(time.Now(), " - debug NoSuch target.err:", data.err.Error())
-				}
-				fmt.Println(time.Now(), " - debug all target.err:", data.err.Error())
 				return nil, data.err
 			}
 
