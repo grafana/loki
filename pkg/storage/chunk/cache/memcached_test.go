@@ -9,6 +9,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/log"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -18,7 +19,6 @@ import (
 func TestMemcached_fetchKeysBatched(t *testing.T) {
 	// make sure of two things
 	// 1. `c.inputCh` is closed when `c.Close()` is triggered
-	// 2. Once `c.Close()` no entries should be written to `c.inputCh` avoiding `send on closed channel` panic.
 
 	client := newMockMemcache()
 	m := cache.NewMemcached(cache.MemcachedConfig{
@@ -31,7 +31,8 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		testMemcacheFailing(t, m)
+
+		assert.NotPanics(t, func() { testMemcacheFailing(t, m) })
 	}()
 
 	m.Stop()
@@ -78,8 +79,6 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	}
 	err := memcache.Store(ctx, keys, bufs)
 	require.NoError(t, err)
-
-	fmt.Println("inside testing")
 
 	found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -45,6 +46,8 @@ type Memcached struct {
 	wg      sync.WaitGroup
 	inputCh chan *work
 
+	close chan struct{}
+
 	logger log.Logger
 }
 
@@ -66,6 +69,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				ConstLabels: prometheus.Labels{"name": name},
 			}, []string{"method", "status_code"}),
 		),
+		close: make(chan struct{}),
 	}
 
 	if cfg.BatchSize == 0 || cfg.Parallelism == 0 {
@@ -73,10 +77,11 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 	}
 
 	c.inputCh = make(chan *work)
-	c.wg.Add(cfg.Parallelism)
 
 	for i := 0; i < cfg.Parallelism; i++ {
+		c.wg.Add(1)
 		go func() {
+			defer c.wg.Done()
 			for input := range c.inputCh {
 				res := &result{
 					batchID: input.batchID,
@@ -84,11 +89,8 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
 				input.resultCh <- res
 			}
-
-			c.wg.Done()
 		}()
 	}
-
 	return c
 }
 
@@ -158,44 +160,79 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
-	resultsCh := make(chan *result)
+	// Read all values from this channel to avoid blocking upstream.
 	batchSize := c.cfg.BatchSize
+
+	maxResults := len(keys) / batchSize
+	if len(keys)%batchSize != 0 {
+		maxResults++
+	}
+
+	resultsCh := make(chan *result, maxResults)
 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
-			c.inputCh <- &work{
-				keys:     batchKeys,
-				ctx:      ctx,
-				resultCh: resultsCh,
-				batchID:  j,
+			// This go routines owns the `c.inputCh` in a way that it is the only actor writing to it.
+			// It's better to close that channel by this writer goroutine rather than in `Close()` method.
+			// Because doing so would have inherint race between "closing" `c.inputCh` and "writing" to it.
+			select {
+			case <-c.close:
+				// fmt.Println("in close case, fetchKeysBatched", i, j)
+				if c.inputCh != nil {
+					close(c.inputCh)
+					c.inputCh = nil
+				}
+				return
+			default:
+				// fmt.Println("in default case, fetchKeysBatched")
+				c.inputCh <- &work{
+					keys:     batchKeys,
+					ctx:      ctx,
+					resultCh: resultsCh,
+					batchID:  j,
+				}
+				j++
 			}
-			j++
 		}
 	}()
 
-	// Read all values from this channel to avoid blocking upstream.
-	numResults := len(keys) / batchSize
-	if len(keys)%batchSize != 0 {
-		numResults++
-	}
+	// fmt.Println("fetchKeysBatched before")
+
+	// actualResults defines the actual results that got into resultsCh before `Stop()` is called.
+	actualResults := len(resultsCh)
 
 	// We need to order found by the input keys order.
-	results := make([]*result, numResults)
-	for i := 0; i < numResults; i++ {
-		result := <-resultsCh
+	results := make([]*result, actualResults)
+
+	for i := 0; i < actualResults; i++ {
+		result := <-resultsCh // this may block if nothing written to resultsCh, can happen if `Stop()` is called before anything written to `c.inputCh`
+		// fmt.Println("fetchKeysBatched after")
 		results[result.batchID] = result
 	}
-	close(resultsCh)
 
-	for _, result := range results {
-		found = append(found, result.found...)
-		bufs = append(bufs, result.bufs...)
-		missed = append(missed, result.missed...)
-		if result.err != nil {
-			err = result.err
-		}
-	}
+	// foundMap := make(map[string]bool)
+
+	// for _, result := range results {
+	// 	found = append(found, result.found...)
+	// 	bufs = append(bufs, result.bufs...)
+	// 	missed = append(missed, result.missed...)
+	// 	if result.err != nil {
+	// 		err = result.err
+	// 	}
+	// }
+
+	// for _, v := range found {
+	// 	foundMap[v] = true
+	// }
+
+	// // If `Stop()` called before the batch fetch is completed, then still there could be missing keys that didn't even made request for.
+	// // Add those to the missed slice.
+	// for _, k := range keys {
+	// 	if !foundMap[k] {
+	// 		missed = append(missed, k)
+	// 	}
+	// }
 
 	return
 }
@@ -224,8 +261,8 @@ func (c *Memcached) Stop() {
 	if c.inputCh == nil {
 		return
 	}
-
-	close(c.inputCh)
+	fmt.Println("Closing the close channel")
+	close(c.close)
 	c.wg.Wait()
 }
 

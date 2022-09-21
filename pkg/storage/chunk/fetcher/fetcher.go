@@ -180,6 +180,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 
 	var fromStorage []chunk.Chunk
 	if len(missing) > 0 {
+		if c.storage == nil {
+			return nil, errors.New("nil storage cannot get chunks")
+		}
 		fromStorage, err = c.storage.GetChunks(ctx, missing)
 	}
 
