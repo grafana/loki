@@ -54,6 +54,10 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.read.terminationGracePeriodSeconds }}
+      {{- with .Values.read.persistence.persistentVolumeClaimRetentionPolicy }}
+      persistentVolumeClaimRetentionPolicy:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: read
           image: {{ include "loki.image" . }}
@@ -137,16 +141,33 @@ spec:
         {{- with .Values.read.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if not .Values.read.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+  {{- else if .Values.read.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.read.persistence.existingClaim }}
+  {{- else }}
   volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        {{- with .Values.read.persistence.storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
-        {{- end }}
-        resources:
-          requests:
-            storage: {{ .Values.read.persistence.size | quote }}
+  - metadata:
+      name: data
+      labels:
+        {{- toYaml .Values.read.persistence.labels | nindent 8 }}
+      annotations:
+        {{- toYaml .Values.read.persistence.annotations | nindent 8 }}
+    spec:
+      accessModes:
+        {{- toYaml .Values.read.persistence.accessModes | nindent 8 }}
+      resources:
+        requests:
+          storage: {{ .Values.read.persistence.size | quote }}
+      {{- with .Values.read.persistence.storageClass }}
+      storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+      {{- end }}
+      {{- if .Values.read.persistence.selector }}
+      selector:
+        {{- toYaml .Values.read.persistence.selector | nindent 8 }}
+      {{- end }}
+  {{- end }}
 {{- end }}

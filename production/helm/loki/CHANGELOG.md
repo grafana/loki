@@ -11,6 +11,9 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.0.9
+- [ENHANCEMENT] Make PVC for Statefulsets optional but enabled as default
+  
 ## 3.0.4
 
 - [CHANGE] Default minio replicas to 1 node with 2 drives. The old config used the default, which was 16 nodes with 1 drive each.

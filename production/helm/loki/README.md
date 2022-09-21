@@ -330,8 +330,15 @@ monitoring:
 | read.image.repository | string | `nil` | Docker image repository for the read image. Overrides `loki.image.repository` |
 | read.image.tag | string | `nil` | Docker image tag for the read image. Overrides `loki.image.tag` |
 | read.nodeSelector | object | `{}` | Node selector for read pods |
+| read.persistence.enabled | bool | `true` | Enable Persistence for Read Statefulset |
 | read.persistence.size | string | `"10Gi"` | Size of persistent disk |
 | read.persistence.storageClass | string | `nil` | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). |
+| read.persistence.accessModes | list | `[ReadWriteOnce]` | Persistence AccessModes |
+| read.persistence.annotations | object | `{}` | Persistence Annotations |
+| read.persistence.labels | object | `{}` | Persistence Labels |
+| read.persistence.existingClaim | string | `nil` | Name of existing Claim |
+| read.persistence.selector | object | `{}` | PVC Selector |
+| read.persistence.persistentVolumeClaimRetentionPolicy | object | `{}` | Retention Policies for PVC |
 | read.podAnnotations | object | `{}` | Annotations for read pods |
 | read.priorityClassName | string | `nil` | The name of the PriorityClass for read pods |
 | read.replicas | int | `3` | Number of replicas for the read |
@@ -380,8 +387,15 @@ monitoring:
 | write.image.repository | string | `nil` | Docker image repository for the write image. Overrides `loki.image.repository` |
 | write.image.tag | string | `nil` | Docker image tag for the write image. Overrides `loki.image.tag` |
 | write.nodeSelector | object | `{}` | Node selector for write pods |
+| write.persistence.enabled | bool | `true` | Enable Persistence for Write Statefulset |
 | write.persistence.size | string | `"10Gi"` | Size of persistent disk |
 | write.persistence.storageClass | string | `nil` | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). |
+| write.persistence.accessModes | list | `[ReadWriteOnce]` | Persistence AccessModes |
+| write.persistence.annotations | object | `{}` | Persistence Annotations |
+| write.persistence.labels | object | `{}` | Persistence Labels |
+| write.persistence.existingClaim | string | `nil` | Name of existing Claim |
+| write.persistence.selector | object | `{}` | PVC Selector |
+| write.persistence.persistentVolumeClaimRetentionPolicy | object | `{}` | Retention Policies for PVC |
 | write.podAnnotations | object | `{}` | Annotations for write pods |
 | write.priorityClassName | string | `nil` | The name of the PriorityClass for write pods |
 | write.replicas | int | `3` | Number of replicas for the write |

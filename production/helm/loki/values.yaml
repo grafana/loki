@@ -628,15 +628,31 @@ write:
   nodeSelector: {}
   # -- Tolerations for write pods
   tolerations: []
+
   persistence:
+    enabled: true
+    accessModes:
+    - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
+    labels: {}
+    annotations: {}
+    # selector:
+    #   matchLabels:
+    #     app.kubernetes.io/name: loki
+    # subPath: ""
+    # existingClaim:
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
     # If set to "-", storageClassName: "", which disables dynamic provisioning.
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # persistentVolumeClaimRetentionPolicy:
+    #   whenDeleted: Delete
+    #   whenScaled: Delete
+
+
 
 # Configuration for the read node(s)
 read:
@@ -696,14 +712,27 @@ read:
   # -- Tolerations for read pods
   tolerations: []
   persistence:
+    enabled: true
+    accessModes:
+    - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
+    labels: {}
+    annotations: {}
+    # selector:
+    #   matchLabels:
+    #     app.kubernetes.io/name: loki
+    # subPath: ""
+    # existingClaim:
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
     # If set to "-", storageClassName: "", which disables dynamic provisioning.
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # persistentVolumeClaimRetentionPolicy:
+    #   whenDeleted: Delete
+    #   whenScaled: Delete
 
 # Configuration for the single binary node(s)
 singleBinary:
