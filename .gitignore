@@ -35,6 +35,7 @@ pkg/loki/wal
 
 # Workspaces
 *.work
+*.work.sum
 
 # emacs
 .#*
