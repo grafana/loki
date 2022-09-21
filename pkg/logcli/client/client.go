@@ -236,9 +236,9 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	if !success {
 		msg := "Run out of attempts while querying the server"
 		if respErrorMsg != "" {
-		    msg = fmt.Sprintf("%s; response: %s", msg, respErrorMsg)
+			msg = fmt.Sprintf("%s; response: %s", msg, respErrorMsg)
 		}
-		return fmt.Errorf(msg)		
+		return fmt.Errorf(msg)
 	}
 
 	defer func() {
