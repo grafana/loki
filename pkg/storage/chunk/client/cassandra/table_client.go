@@ -72,6 +72,19 @@ func (c *tableClient) listTables() ([]string, error) {
 }
 
 func (c *tableClient) CreateTable(ctx context.Context, desc config.TableDesc) error {
+	err := c.createTable(ctx, desc)
+	//
+	if errors.Cause(err) == gocql.ErrNoConnections {
+		connectErr := c.reconnectTableSession()
+		if connectErr != nil {
+			return errors.Wrap(err, "ObjectClient createTable reconnect fail")
+		}
+		// retry after reconnect
+		err = c.createTable(ctx, desc)
+	}
+	return err
+}
+func (c *tableClient) createTable(ctx context.Context, desc config.TableDesc) error {
 	query := c.getCreateTableQuery(&desc)
 	err := c.session.Query(query).WithContext(ctx).Exec()
 	return errors.WithStack(err)
