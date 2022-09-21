@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,7 +22,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 	testData := []byte("test-data")
 	tableName := "test-table"
 	require.NoError(t, util.EnsureDirectory(filepath.Join(tempDir, tableName)))
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tempDir, tableName, "src"), testData, 0o666))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, tableName, "src"), testData, 0o666))
 
 	// try downloading the file from the storage.
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
@@ -37,7 +36,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 		}))
 
 	// verify the contents of the downloaded file.
-	b, err := ioutil.ReadFile(filepath.Join(tempDir, "dest"))
+	b, err := os.ReadFile(filepath.Join(tempDir, "dest"))
 	require.NoError(t, err)
 
 	require.Equal(t, testData, b)
@@ -52,7 +51,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 		}))
 
 	// verify the contents of the downloaded gz file.
-	b, err = ioutil.ReadFile(filepath.Join(tempDir, "dest.gz"))
+	b, err = os.ReadFile(filepath.Join(tempDir, "dest.gz"))
 	require.NoError(t, err)
 
 	require.Equal(t, testData, b)

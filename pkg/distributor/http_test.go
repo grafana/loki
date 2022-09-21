@@ -1,7 +1,7 @@
 package distributor
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,7 +33,7 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), "<th>Instance ID</th>")
 		require.NotContains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
@@ -48,7 +48,7 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
 		require.NotContains(t, string(body), "<th>Instance ID</th>")
