@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -13,6 +14,29 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
+
+func TestMemcached_fetchKeysBatched(t *testing.T) {
+	// make sure of two things
+	// 1. `c.inputCh` is closed when `c.Close()` is triggered
+	// 2. Once `c.Close()` no entries should be written to `c.inputCh` avoiding `send on closed channel` panic.
+
+	client := newMockMemcache()
+	m := cache.NewMemcached(cache.MemcachedConfig{
+		BatchSize:   10,
+		Parallelism: 5,
+	}, client, "test", nil, log.NewNopLogger(), "test")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		testMemcacheFailing(t, m)
+	}()
+
+	m.Stop()
+	wg.Wait()
+}
 
 func TestMemcached(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
@@ -55,7 +79,10 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	err := memcache.Store(ctx, keys, bufs)
 	require.NoError(t, err)
 
+	fmt.Println("inside testing")
+
 	found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
+
 	for i := 0; i < numKeys; i++ {
 		if i%5 == 0 {
 			require.Equal(t, fmt.Sprint(i), missing[0])
@@ -68,6 +95,7 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 		found = found[1:]
 		bufs = bufs[1:]
 	}
+
 }
 
 // mockMemcache whose calls fail 1/3rd of the time.
