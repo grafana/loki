@@ -31,7 +31,7 @@ Please document clearly what changed AND what needs to be done in the upgrade gu
 
 ## Setup
 
-A common problem raises in local environments when you want your module to use a locally modified dependency:
+A common problem arises in local environments when you want your module to use a locally modified dependency:
 How do you make Go understand you don't want to fetch upstream dependencies but use local ones?
 You could modify `go.mod` and use `replace` directives, but it's highly harming *Developer Experience* as you
 need to roll back your `go.mod` before committing.
@@ -48,7 +48,7 @@ $ go work init     # Init your go.work file
 $ go work use -r . # Recursively add sub-modules in the use clause of your go.work file
 ```
 
-Since Go 1.18, we are able to launch building commands in a mode called *workspace*. Conceptually,
+Since Go 1.18, we are able to launch build commands in a mode called *workspace*. Conceptually,
 a workspace is an **untracked** file adding `replace` directives to your `go.mod` at runtime.
 By default, Go will use the *workspace* mode when a `go.work` file is present, but you can have
 different *workspaces* and specify which one to use with the `GOWORK` environment variable.
