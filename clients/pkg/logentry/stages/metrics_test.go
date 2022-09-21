@@ -2,6 +2,7 @@ package stages
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,75 @@ func TestMetricsWithDropInPipeline(t *testing.T) {
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedDropMetrics)); err != nil {
 		t.Fatalf("mismatch metrics: %v", err)
+	}
+}
+
+var testMetricWithNonPromLabel = `
+pipeline_stages:
+- static_labels:
+    good_label: "1"
+- metrics:
+    loki_count:
+      type: Counter
+      source: app
+      description: "should count all entries"
+      config:
+        match_all: true
+        action: inc
+`
+
+var testConfigWithTenantStep = `
+pipeline_stages:
+- static_labels:
+    good_label: "1"
+- tenant:
+    value: "2"
+- metrics:
+    loki_count:
+      type: Counter
+      source: app
+      description: "should count all entries"
+      config:
+        match_all: true
+        action: inc
+`
+
+func TestNonPrometheusLabelsShouldBeDropped(t *testing.T) {
+	const expected = `# HELP logentry_dropped_lines_total A count of all log lines dropped as a result of a pipeline stage
+# TYPE logentry_dropped_lines_total counter
+logentry_dropped_lines_total{reason="match_stage"} 1
+# HELP promtail_custom_loki_count should only inc on non dropped labels
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count{good_label="1"} 1
+`
+	for name, tc := range map[string]struct {
+		promtailConfig string
+		labels         model.LabelSet
+	}{
+		"non-prometheus incoming label": {
+			promtailConfig: testMetricWithNonPromLabel,
+			labels: model.LabelSet{
+				"__bad_label__": "2",
+			},
+		},
+		"tenant step injected label": {
+			promtailConfig: testConfigWithTenantStep,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			registry := prometheus.NewRegistry()
+			pl, err := NewPipeline(util_log.Logger, loadConfig(tc.promtailConfig), nil, registry)
+			require.NoError(t, err)
+			in := make(chan Entry)
+			out := pl.Run(in)
+
+			in <- newEntry(nil, tc.labels, testMetricLogLine1, time.Now())
+			close(in)
+			<-out
+
+			err = testutil.GatherAndCompare(registry, strings.NewReader(expected))
+			require.NoError(t, err, "gathered metrics are different than expected")
+		})
 	}
 }
 
