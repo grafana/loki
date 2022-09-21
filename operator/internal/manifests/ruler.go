@@ -27,7 +27,7 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureRulerGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureRulerGRPCServicePKI(statefulSet, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 	}
@@ -274,7 +274,7 @@ func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName str
 	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNs string) error {
 	caBundleName := signingCABundleName(stackName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
@@ -303,6 +303,15 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) err
 			// Enable GRPC over TLS for ruler client
 			"-ruler.client.tls-enabled=true",
 			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(stackName), stackNs)),
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
+			// Enable GRPC over TLS for boltb-shipper index-gateway client
+			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
 		},
 	}
 
