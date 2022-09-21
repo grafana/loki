@@ -202,16 +202,16 @@ func TestMatcherGroups(t *testing.T) {
 		query string
 		exp   []MatcherRange
 	}{
-		//{
-		//	query: `{job="foo"}`,
-		//	exp: []MatcherRange{
-		//		{
-		//			Matchers: []*labels.Matcher{
-		//				labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
-		//			},
-		//		},
-		//	},
-		//},
+		{
+			query: `{job="foo"}`,
+			exp: []MatcherRange{
+				{
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
+			},
+		},
 		{
 			query: `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m] offset 10m)`,
 			exp: []MatcherRange{
