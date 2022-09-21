@@ -291,7 +291,7 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 		Config: ruler.Config{},
 		RemoteWrite: RemoteWriteConfig{
 			Enabled: true,
-			Client: config.RemoteWriteConfig{
+			Client: &config.RemoteWriteConfig{
 				URL: nil,
 			},
 		},

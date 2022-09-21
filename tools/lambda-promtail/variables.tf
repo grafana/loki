@@ -70,3 +70,9 @@ variable "lambda_vpc_security_groups" {
   description = "List of security group IDs associated with the Lambda function."
   default     = []
 }
+
+variable "kms_key_arn" {
+  type        = string
+  description = "kms key arn for encryp env vars."
+  default     = ""
+}

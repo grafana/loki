@@ -18,6 +18,15 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	}()
 
 	var (
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			// By default, a minute is added to the delete request start time. This compensates for that.
+			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.deletion-mode=filter-and-delete",
+		)
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
 			"-target=index-gateway",
@@ -41,12 +50,14 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-target=query-frontend",
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL().Host,
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
 		_ = clu.AddComponent(
 			"querier",
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL().Host,
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
 	)
 

@@ -41,6 +41,7 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 // NewDistributorDeployment creates a deployment object for a distributor
 func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,

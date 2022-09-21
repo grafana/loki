@@ -21,7 +21,7 @@ To deploy a different version change `variable.version` default value or
 specify from command line:
 
 ```shell
-nomad job run -var="version=2.5.0" job.nomad.hcl
+nomad job run -var="version=2.6.1" job.nomad.hcl
 ```
 
 ### Scale Loki
@@ -79,7 +79,7 @@ healthcheck:
 ```
 
 ```hcl
-    task "distibutor" {
+    task "distributor" {
       driver       = "docker"
       user         = "nobody"
       kill_timeout = "90s"
@@ -132,7 +132,7 @@ integration:
       ]
 
       check {
-        name     = "Loki distibutor"
+        name     = "Loki distributor"
         port     = "health"
         type     = "http"
         path     = "/ready"

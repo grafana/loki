@@ -1,7 +1,7 @@
 variable "version" {
   type        = string
   description = "Loki version"
-  default     = "2.5.0"
+  default     = "2.6.1"
 }
 
 job "loki" {
@@ -182,7 +182,7 @@ job "loki" {
     }
   }
 
-  group "distibutor" {
+  group "distributor" {
     count = 2
 
     network {
@@ -210,7 +210,7 @@ job "loki" {
       ]
 
       check {
-        name     = "Loki distibutor"
+        name     = "Loki distributor"
         port     = "http"
         type     = "http"
         path     = "/ready"
@@ -219,7 +219,7 @@ job "loki" {
       }
     }
 
-    task "distibutor" {
+    task "distributor" {
       driver       = "docker"
       user         = "nobody"
       kill_timeout = "90s"

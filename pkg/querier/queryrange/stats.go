@@ -115,6 +115,9 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 
 			// execute the request
 			resp, err := next.Do(statsCtx, req)
+			if err != nil {
+				return resp, err
+			}
 
 			// collect stats and status
 			var statistics *stats.Result
@@ -175,9 +178,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}
-
 			}
-			return resp, err
+			return resp, nil
 		})
 	})
 }

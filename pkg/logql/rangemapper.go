@@ -450,7 +450,9 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 func clone(expr syntax.SampleExpr) syntax.SampleExpr {
 	e, err := syntax.ParseSampleExpr(expr.String())
 	if err != nil {
-		panic(err)
+		panic(
+			errors.Wrapf(err, "error cloning query: %s", expr.String()),
+		)
 	}
 	return e
 }

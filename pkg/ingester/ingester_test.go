@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -316,6 +317,10 @@ func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, 
 
 func (s *mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
+}
+
+func (s *mockStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return &stats.Stats{}, nil
 }
 
 func (s *mockStore) Stop() {}

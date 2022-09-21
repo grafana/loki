@@ -204,7 +204,6 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 
 // StackSizeTable defines the default configurations for each size
 var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
-
 	lokiv1.SizeOneXExtraSmall: {
 		Size:              lokiv1.SizeOneXExtraSmall,
 		ReplicationFactor: 1,

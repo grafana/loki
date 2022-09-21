@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -286,7 +286,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableNumberInRange(tableNumber) {
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, tableName) {
 			continue
 		}
 
@@ -387,7 +387,7 @@ func (tm *tableManager) loadLocalTables() error {
 		if err != nil {
 			return err
 		}
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableNumberInRange(tableNumber) {
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, fileInfo.Name()) {
 			continue
 		}
 

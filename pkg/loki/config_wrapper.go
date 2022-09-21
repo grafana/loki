@@ -20,13 +20,15 @@ import (
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
+const versionFlag = "version"
+
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
 // for interacting with the config file or the application directly.
 // ConfigWrapper implements cfg.DynamicCloneable, allowing configuration to be dynamically set based
 // on the logic in ApplyDynamicConfig, which receives values set in config file
 type ConfigWrapper struct {
 	Config          `yaml:",inline"`
-	PrintVersion    bool
+	printVersion    bool
 	VerifyConfig    bool
 	PrintConfig     bool
 	ListTargets     bool
@@ -35,8 +37,17 @@ type ConfigWrapper struct {
 	ConfigExpandEnv bool
 }
 
+func PrintVersion(args []string) bool {
+	for _, a := range args {
+		if a == "-"+versionFlag {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.PrintVersion, "version", false, "Print this builds version information")
+	f.BoolVar(&c.printVersion, versionFlag, false, "Print this builds version information")
 	f.BoolVar(&c.VerifyConfig, "verify-config", false, "Verify config file and exits")
 	f.BoolVar(&c.PrintConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
 	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
@@ -153,7 +164,9 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
-		r.Common.GroupCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
+		if r.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
+			r.Common.EmbeddedCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
+		}
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -162,7 +175,9 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		if r.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
+			r.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		}
 	}
 }
 
@@ -291,17 +306,18 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
 
-	// GroupCacheRing
-	if mergeWithExisting || reflect.DeepEqual(r.Common.GroupCacheConfig.Ring, defaults.Common.GroupCacheConfig.Ring) {
-		r.Common.GroupCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.Common.GroupCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.Common.GroupCacheConfig.Ring.InstancePort = rc.InstancePort
-		r.Common.GroupCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
-		r.Common.GroupCacheConfig.Ring.InstanceID = rc.InstanceID
-		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Common.GroupCacheConfig.Ring.InstanceZone = rc.InstanceZone
-		r.Common.GroupCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.Common.GroupCacheConfig.Ring.KVStore = rc.KVStore
+	// EmbeddedCache distributed ring.
+	if r.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() &&
+		(mergeWithExisting || reflect.DeepEqual(r.Common.EmbeddedCacheConfig.Ring, defaults.Common.EmbeddedCacheConfig.Ring)) {
+		r.Common.EmbeddedCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Common.EmbeddedCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Common.EmbeddedCacheConfig.Ring.InstancePort = rc.InstancePort
+		r.Common.EmbeddedCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
+		r.Common.EmbeddedCacheConfig.Ring.InstanceID = rc.InstanceID
+		r.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Common.EmbeddedCacheConfig.Ring.InstanceZone = rc.InstanceZone
+		r.Common.EmbeddedCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Common.EmbeddedCacheConfig.Ring.KVStore = rc.KVStore
 	}
 }
 
@@ -337,7 +353,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	if err != nil {
 		return err
 	}
-	cfg.Common.GroupCacheConfig.Ring.TokensFilePath = f
+	cfg.Common.EmbeddedCacheConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -416,8 +432,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.GroupCacheConfig.Ring.InstanceInterfaceNames) {
-		cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames) {
+		cfg.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -432,7 +448,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.Common.GroupCacheConfig.Ring.KVStore.Store = memberlistStr
+	r.Common.EmbeddedCacheConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -585,12 +601,12 @@ func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.Perio
 // (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
-	if !cache.IsRedisSet(chunkCacheConfig) && !cache.IsMemcacheSet(chunkCacheConfig) {
+	if !cache.IsCacheConfigured(chunkCacheConfig) {
 		r.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = true
 	}
 
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
-	if !cache.IsRedisSet(resultsCacheConfig) && !cache.IsMemcacheSet(resultsCacheConfig) {
+	if !cache.IsCacheConfigured(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
 		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
 		// so instead we will override them here.

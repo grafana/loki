@@ -77,8 +77,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
 					time.Unix(int64(i), 0).String(),
+					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
@@ -242,7 +243,7 @@ func TestUnorderedPush(t *testing.T) {
 			entries: []logproto.Entry{
 				{Timestamp: time.Unix(2, 0), Line: "x"},
 				{Timestamp: time.Unix(1, 0), Line: "x"},
-				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(10, 0), Line: "x"},
 			},
@@ -285,8 +286,6 @@ func TestUnorderedPush(t *testing.T) {
 
 	exp := []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "x"},
-		{Timestamp: time.Unix(2, 0), Line: "x"},
-		// duplicate was allowed here b/c it wasnt written sequentially
 		{Timestamp: time.Unix(2, 0), Line: "x"},
 		{Timestamp: time.Unix(7, 0), Line: "x"},
 		{Timestamp: time.Unix(8, 0), Line: "x"},
@@ -336,6 +335,41 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	// Counter should be 2 now since the first line will be deduped.
 	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+}
+
+func TestPushRateLimitAllOrNothing(t *testing.T) {
+	l := validation.Limits{
+		PerStreamRateLimit:      10,
+		PerStreamRateLimitBurst: 10,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	cfg := defaultConfig()
+	cfg.RateLimitWholeStream = true
+
+	s := newStream(
+		cfg,
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+	}
+
+	// Both entries have errors because rate limiting is done all at once
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[0].Line))}).Error())
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 

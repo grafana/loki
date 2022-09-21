@@ -196,6 +196,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# TLS configuration for serving over HTTPS
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
 [grpc_listen_address: <string>]
@@ -203,6 +218,21 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # gRPC server listen port
 # CLI flag: -server.grpc-listen-port
 [grpc_listen_port: <int> | default = 9095]
+
+# TLS configuration for serving over gRPC
+grpc_tls_config:
+  # gRPC server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+  # gRPC server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+  # gRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+  # gRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 # Register instrumentation handlers (/metrics, etc.)
 # CLI flag: -server.register-instrumentation
@@ -276,6 +306,20 @@ ring:
   # reading and writing.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+# Configures the distributor to shard streams that are too big
+shard_streams:
+  # Whether to enable stream sharding
+  #
+  # CLI flag: -distributor.stream-sharding.enabled
+  [enabled: <boolean> | default = false]
+
+  # Enable logging when sharding streams because logging on the read path may
+  # impact performance. When disabled, stream sharding will emit no logs 
+  # regardless of log level
+  #
+  # CLI flag: -distributor.stream-sharding.logging-enabled
+  [logging_enabled: <boolean> | default = false]
 ```
 
 ## querier
@@ -321,7 +365,8 @@ The `querier` block configures the Loki Querier.
 
 # Configuration options for the LogQL engine.
 engine:
-  # Timeout for query execution
+  # Timeout for query execution.
+  # Deprecated: use querier.query-timeout instead.
   # CLI flag: -querier.engine.timeout
   [timeout: <duration> | default = 3m]
 
@@ -544,93 +589,14 @@ remote_write:
   # This should be greater than or equivalent to -limits.per-user-override-period.
   [config_refresh_period: <duration> | default = 10s]
 
-  client:
-    # The URL of the endpoint to send samples to.
-    url: <string>
+  # Deprecated: Use `clients` instead
+  # Configure remote write client.
+  [client: <remote_write_client_config>] 
 
-    # Timeout for requests to the remote write endpoint.
-    [remote_timeout: <duration> | default = 30s]
-
-    # Custom HTTP headers to be sent along with each remote write request.
-    # Be aware that headers that are set by Loki itself can't be overwritten.
-    headers:
-      [<string>: <string> ...]
-
-    # List of remote write relabel configurations.
-    write_relabel_configs:
-      [- <relabel_config> ...]
-
-    # Name of the remote write config, which if specified must be unique among remote
-    # write configs.
-    # The name will be used in metrics and logging in place of a generated value
-    # to help users distinguish between remote write configs.
-    [name: <string>]
-
-    # Sets the `Authorization` header on every remote write request with the
-    # configured username and password.
-    # password and password_file are mutually exclusive.
-    basic_auth:
-      [username: <string>]
-      [password: <secret>]
-      [password_file: <string>]
-
-    # Optional `Authorization` header configuration.
-    authorization:
-      # Sets the authentication type.
-      [type: <string> | default: Bearer]
-      # Sets the credentials. It is mutually exclusive with
-      # `credentials_file`.
-      [credentials: <secret>]
-      # Sets the credentials to the credentials read from the configured file.
-      # It is mutually exclusive with `credentials`.
-      [credentials_file: <filename>]
-
-    # Optionally configures AWS's Signature Verification 4 signing process to
-    # sign requests. Cannot be set at the same time as basic_auth, authorization, or oauth2.
-    # To use the default credentials from the AWS SDK, use `sigv4: {}`.
-    [sigv4: <sigv4_config>]
-
-    # Configures the remote write request's TLS settings.
-    tls_config:
-      # CA certificate to validate API server certificate with.
-      [ca_file: <filename>]
-      # Certificate and key files for client cert authentication to the server.
-      [cert_file: <filename>]
-      [key_file: <filename>]
-      # ServerName extension to indicate the name of the server.
-      # https://tools.ietf.org/html/rfc4366#section-3.1
-      [server_name: <string>]
-      # Disable validation of the server certificate.
-      [insecure_skip_verify: <boolean>]
-
-    # Optional proxy URL.
-    [proxy_url: <string>]
-
-    # Configure whether HTTP requests follow HTTP 3xx redirects.
-    [follow_redirects: <boolean> | default = true]
-
-    # Configures the queue used to write to remote storage.
-    queue_config:
-      # Number of samples to buffer per shard before we block reading of more
-      # samples from the WAL. It is recommended to have enough capacity in each
-      # shard to buffer several requests to keep throughput up while processing
-      # occasional slow remote requests.
-      [capacity: <int> | default = 2500]
-      # Maximum number of shards, i.e. amount of concurrency.
-      [max_shards: <int> | default = 200]
-      # Minimum number of shards, i.e. amount of concurrency.
-      [min_shards: <int> | default = 1]
-      # Maximum number of samples per send.
-      [max_samples_per_send: <int> | default = 500]
-      # Maximum time a sample will wait in buffer.
-      [batch_send_deadline: <duration> | default = 5s]
-      # Initial retry delay. Gets doubled for every retry.
-      [min_backoff: <duration> | default = 30ms]
-      # Maximum retry delay.
-      [max_backoff: <duration> | default = 100ms]
-      # Retry upon receiving a 429 status code from the remote-write storage.
-      # This is experimental and might change in the future.
-      [retry_on_http_429: <boolean> | default = false]
+  # Configure remote write clients.
+  # A map with remote client id as key.
+  clients:
+    [<string>: <remote_write_client_config>]
 
 wal:
   # The directory in which to write tenant WAL files. Each tenant will have its own
@@ -664,9 +630,8 @@ alertmanager_client:
   # Sets the `Authorization` header on every remote write request with the
   # configured username and password.
   # password and password_file are mutually exclusive.
-  basic_auth:
-    [username: <string>]
-    [password: <secret>]
+  [basic_auth_username: <string>]
+  [basic_auth_password: <secret>]
 
   # Optional `Authorization` header configuration.
   authorization:
@@ -1828,10 +1793,6 @@ to wait before saving them to the backing store.
 # The CLI flags prefix for this block config is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
-# The minimum time between a chunk update and being saved
-# to the store.
-[min_chunk_age: <duration>]
-
 # Cache index entries older than this period. Default is disabled.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration>]
@@ -2091,6 +2052,14 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
+# Number of upload/remove operations to execute in parallel when finalizing a compaction.
+# CLI flag: -boltdb.shipper.compactor.upload-parallelism
+#
+# NOTE: This setting is per compaction operation, which can be
+# executed in parallel. The upper bound on the number of concurrent
+# uploads is upload_parallelism * max_compaction_parallelism
+[upload_parallelism: <int> | default = 10]
+
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -boltdb.shipper.compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
@@ -2109,18 +2078,52 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# Constrain the size of a delete request. When a delete request that spans > delete_max_interval
+# is input, the request is sharded into smaller requests of no more than delete_max_interval.
+#
+# 0 means no delete_max_interval.
+# CLI flag: -boltdb.shipper.compactor.delete-max-interval
+[delete_max_interval: <duration> | default = 0]
+
+# The max number of delete requests to run per compaction cycle.
+# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+[delete_batch_size: <duration> | default = 70]
+
+# The maximum amount of time to spend running retention and deletion
+# on any given table in the index. 0 is no timeout
+#
+# NOTE: This timeout prioritizes runtime over completeness of retention/deletion.
+# It may take several compaction runs to fully perform retention and process
+# all outstanding delete requests
+# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+[retention_table_timeout: <duration> | default = 0]
+
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
-# Deletion mode.
-# Can be one of "disabled", "filter-only", or "filter-and-delete".
-# When set to "filter-only" or "filter-and-delete", and if
-# retention_enabled is true, then the log entry deletion API endpoints are available.
+# Deprecated: Deletion mode.
+# Use deletion_mode per tenant configuration instead.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "disabled"]
+
+# The hash ring configuration used by compactors to elect a single instance for running compactions
+# The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
+[compactor_ring: <ring>]
+
+# Number of tables that compactor will try to compact. Newer tables
+# are chosen when this is less than the number of tables available
+# CLI flag:  -boltdb.shipper.compact.tables-to-compact
+[tables_to_compact: <int> | default: 0]
+
+# Do not compact N latest tables.  Together with
+# -boltdb.shipper.compactor.run-once and
+# -boltdb.shipper.compactor.tables-to-compact, this is useful when
+# clearing compactor backlogs.
+# CLI flag: -boltdb.shipper.compact.skip-latest-n-tables
+[skip_latest_n_tables: <int> | default: 0]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
@@ -2333,49 +2336,68 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean> | default = false]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # The URL of the endpoint to send samples to.
 [ruler_remote_write_url: <string>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Timeout for requests to the remote write endpoint.
 [ruler_remote_write_timeout: <duration>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Custom HTTP headers to be sent along with each remote write request.
 # Be aware that headers that are set by Loki itself can't be overwritten.
 [ruler_remote_write_headers: <headers>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # List of remote write relabel configurations.
 [ruler_remote_write_relabel_configs: <relabel_config>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Number of samples to buffer per shard before we block reading of more
 # samples from the WAL. It is recommended to have enough capacity in each
 # shard to buffer several requests to keep throughput up while processing
 # occasional slow remote requests.
 [ruler_remote_write_queue_capacity: <int>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Minimum number of shards, i.e. amount of concurrency.
 [ruler_remote_write_queue_min_shards: <int>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Maximum number of shards, i.e. amount of concurrency.
 [ruler_remote_write_queue_max_shards: <int>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Maximum number of samples per send.
 [ruler_remote_write_queue_max_samples_per_send: <int>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Maximum time a sample will wait in buffer.
 [ruler_remote_write_queue_batch_send_deadline: <duration>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Initial retry delay. Gets doubled for every retry.
 [ruler_remote_write_queue_min_backoff: <duration>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Maximum retry delay.
 [ruler_remote_write_queue_max_backoff: <duration>]
+
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
 [ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
 
+# Deprecated: Use `ruler_remote_write_config` instead.
 # Configures AWS's Signature Verification 4 signing process to
 # sign every remote write request.
 [ruler_remote_write_sigv4_config:  <sigv4_config>]
+
+# Configures global and per-tenant limits for remote write clients. 
+# A map with remote client id as key.
+ruler_remote_write_config:  
+  [<string>: <remote_write_client_config>]
 
 # Limit queries that can be sharded.
 # Queries within the time range of now and now minus this sharding lookback
@@ -2384,14 +2406,21 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Split queries by an interval and execute in parallel, any value less than zero disables it.
+# Split queries by a time interval and execute in parallel. The value 0 disables splitting by time.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
 
-# When true, access to the deletion API is enabled.
+# Deprecated: Use deletion_mode per tenant configuration instead.
 # CLI flag: -compactor.allow_deletes
 [allow_deletes: <boolean> | default = false]
+
+# Deletion mode.
+# Can be one of "disabled", "filter-only", or "filter-and-delete".
+# When set to "filter-only" or "filter-and-delete", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "filter-and-delete"]
 ```
 
 ## sigv4_config
@@ -2414,6 +2443,99 @@ sign every remote write request.
 
 # AWS Role ARN, an alternative to using AWS API keys.
 [role_arn: <string>]
+```
+
+## remote_write_client_config
+
+The `remote_write_client_config` block configures the client for the remote write function in the ruler.
+
+```yaml
+# The URL of the endpoint to send samples to.
+url: <string>
+
+# Timeout for requests to the remote write endpoint.
+[remote_timeout: <duration> | default = 30s]
+
+# Custom HTTP headers to be sent along with each remote write request.
+# Be aware that headers that are set by Loki itself can't be overwritten.
+headers:
+  [<string>: <string> ...]
+
+# List of remote write relabel configurations.
+write_relabel_configs:
+  [- <relabel_config> ...]
+
+# Name of the remote write config, which if specified must be unique among remote
+# write configs.
+# The name will be used in metrics and logging in place of a generated value
+# to help users distinguish between remote write configs.
+[name: <string>]
+
+# Sets the `Authorization` header on every remote write request with the
+# configured username and password.
+# password and password_file are mutually exclusive.
+basic_auth:
+  [username: <string>]
+  [password: <secret>]
+  [password_file: <string>]
+
+# Optional `Authorization` header configuration.
+authorization:
+  # Sets the authentication type.
+  [type: <string> | default: Bearer]
+  # Sets the credentials. It is mutually exclusive with
+  # `credentials_file`.
+  [credentials: <secret>]
+  # Sets the credentials to the credentials read from the configured file.
+  # It is mutually exclusive with `credentials`.
+  [credentials_file: <filename>]
+
+# Optionally configures AWS's Signature Verification 4 signing process to
+# sign requests. Cannot be set at the same time as basic_auth, authorization, or oauth2.
+# To use the default credentials from the AWS SDK, use `sigv4: {}`.
+[sigv4: <sigv4_config>]
+
+# Configures the remote write request's TLS settings.
+tls_config:
+  # CA certificate to validate API server certificate with.
+  [ca_file: <filename>]
+  # Certificate and key files for client cert authentication to the server.
+  [cert_file: <filename>]
+  [key_file: <filename>]
+  # ServerName extension to indicate the name of the server.
+  # https://tools.ietf.org/html/rfc4366#section-3.1
+  [server_name: <string>]
+  # Disable validation of the server certificate.
+  [insecure_skip_verify: <boolean>]
+
+# Optional proxy URL.
+[proxy_url: <string>]
+
+# Configure whether HTTP requests follow HTTP 3xx redirects.
+[follow_redirects: <boolean> | default = true]
+
+# Configures the queue used to write to remote storage.
+queue_config:
+  # Number of samples to buffer per shard before we block reading of more
+  # samples from the WAL. It is recommended to have enough capacity in each
+  # shard to buffer several requests to keep throughput up while processing
+  # occasional slow remote requests.
+  [capacity: <int> | default = 2500]
+  # Maximum number of shards, i.e. amount of concurrency.
+  [max_shards: <int> | default = 200]
+  # Minimum number of shards, i.e. amount of concurrency.
+  [min_shards: <int> | default = 1]
+  # Maximum number of samples per send.
+  [max_samples_per_send: <int> | default = 500]
+  # Maximum time a sample will wait in buffer.
+  [batch_send_deadline: <duration> | default = 5s]
+  # Initial retry delay. Gets doubled for every retry.
+  [min_backoff: <duration> | default = 30ms]
+  # Maximum retry delay.
+  [max_backoff: <duration> | default = 100ms]
+  # Retry upon receiving a 429 status code from the remote-write storage.
+  # This is experimental and might change in the future.
+  [retry_on_http_429: <boolean> | default = false]
 ```
 
 ### grpc_client_config
@@ -2660,6 +2782,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
+
+# Groupcache is an in-process, distributed cache that behaves similarly to memcached but is built-in to Loki
+groupcache:
+  # Enable groupcache
+  # CLI flag: -common.groupcache.enabled
+  [enabled: <boolean>: default = false]
+  # Set the maximum available memory to use for each groupcache group
+  # NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.
+  # CLI flag: -common.groupcache.capacity-per-cache-mb
+  [capacity_per_cache_mb: <int>: default = 100]
 ```
 
 ## analytics
@@ -2872,7 +3004,7 @@ configure a runtime configuration file:
 
 How far into the past accepted out-of-order log entries may be
 is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 1 hour.
+`max_chunk_age` defaults to 2 hour.
 Loki calculates the earliest time that out-of-order entries may have
 and be accepted with
 

@@ -21,7 +21,7 @@ type MultiClient struct {
 }
 
 // NewMulti creates a new client
-func NewMulti(metrics *Metrics, streamLagLabels []string, logger log.Logger, cfgs ...Config) (Client, error) {
+func NewMulti(metrics *Metrics, streamLagLabels []string, logger log.Logger, maxStreams int, cfgs ...Config) (Client, error) {
 	var fake struct{}
 
 	if len(cfgs) == 0 {
@@ -30,7 +30,7 @@ func NewMulti(metrics *Metrics, streamLagLabels []string, logger log.Logger, cfg
 	clientsCheck := make(map[string]struct{})
 	clients := make([]Client, 0, len(cfgs))
 	for _, cfg := range cfgs {
-		client, err := New(metrics, cfg, streamLagLabels, logger)
+		client, err := New(metrics, cfg, streamLagLabels, maxStreams, logger)
 		if err != nil {
 			return nil, err
 		}

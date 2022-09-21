@@ -21,26 +21,26 @@ func TestGuessShardFactor(t *testing.T) {
 		{
 			exp: 4,
 			stats: stats.Stats{
-				Bytes: p90BytesPerSecond * 4,
+				Bytes: maxBytesPerShard * 4,
 			},
 		},
 		{
 			// round up shard factor
 			exp: 16,
 			stats: stats.Stats{
-				Bytes: p90BytesPerSecond * 15,
+				Bytes: maxBytesPerShard * 15,
 			},
 		},
 		{
 			exp: 2,
 			stats: stats.Stats{
-				Bytes: p90BytesPerSecond + 1,
+				Bytes: maxBytesPerShard + 1,
 			},
 		},
 		{
 			exp: 0,
 			stats: stats.Stats{
-				Bytes: p90BytesPerSecond,
+				Bytes: maxBytesPerShard,
 			},
 		},
 	} {

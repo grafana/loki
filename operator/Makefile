@@ -27,8 +27,8 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.0.1
-CHANNELS ?= "candidate"
-DEFAULT_CHANNEL ?= "candidate"
+CHANNELS ?= "stable"
+DEFAULT_CHANNEL ?= "stable"
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -106,7 +106,7 @@ help: ## Display this help.
 
 .PHONY: deps
 deps: go.mod go.sum
-	go mod tidy -compat=1.17
+	go mod tidy
 	go mod download
 	go mod verify
 
@@ -158,7 +158,7 @@ lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and a
 
 .PHONY: fmt
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
+	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
 
 .PHONY: oci-build
 oci-build: ## Build the image
