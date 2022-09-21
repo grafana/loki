@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -211,20 +213,57 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 	})
 }
 
-//  ...
+// DeleteChunksBasedOnBlockSize
 func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context) error {
 	diskUsage, error := DiskUsage(f.cfg.Directory)
 
 	if error != nil {
+		// TODO: handle the error in a better way!
 		return error
 	}
 
 	if diskUsage.UsedPercent >= float64(f.cfg.SizeBasedRetentionPercentage) {
-		// Remove old chunks here
-		return nil
+		if error := f.purgeOldFiles(diskUsage); error != nil {
+			// TODO: handle the error in a better way!
+			return error
+		}
+	}
+	return nil
+}
+
+// (f *FSObjectClient) purgeOldFiles
+func (f *FSObjectClient) purgeOldFiles(diskUsage DiskStatus) error {
+	files, error := ioutil.ReadDir(f.cfg.Directory)
+	bytesToDelete := f.bytesToDelete(diskUsage)
+	deletedAmount := 0.0
+
+	if error != nil {
+		// TODO: handle the error in a better way!
+		return error
 	}
 
+	// Sorting by the last modified time
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModTime().Before(files[j].ModTime())
+	})
+
+	for _, file := range files {
+		if bytesToDelete > deletedAmount {
+			deletedAmount = deletedAmount + float64(file.Size())
+			level.Info(util_log.Logger).Log("msg", "block size retention exceded, removing file", "filepath", file.Name())
+			if error := os.Remove(file.Name()); error != nil {
+				// TODO: handle the error in a better way!
+				return error
+			}
+		}
+	}
 	return nil
+}
+
+// (f *FSObjectClient) bytesToDelete
+func (f *FSObjectClient) bytesToDelete(diskUsage DiskStatus) (bytes float64) {
+	percentajeOfExcessToBeDeleted := 5.0
+	return (((diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage) - percentajeOfExcessToBeDeleted) / 100) * float64(diskUsage.All))
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
