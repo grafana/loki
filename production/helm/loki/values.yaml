@@ -121,13 +121,13 @@ loki:
             period: 24h
     {{- end }}
 
-    {{- if .Values.loki.rulerConfig}}
     ruler:
       storage:
       {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
       {{- include "loki.rulerStorageConfig" . | nindent 4}}
       {{- end }}
-    {{- toYaml .Values.loki.rulerConfig | nindent 2}}
+    {{- with .Values.loki.rulerConfig}}
+    {{- toYaml . | nindent 2}}
     {{- end }}
 
     {{- with .Values.loki.memcached.results_cache }}
@@ -225,10 +225,7 @@ loki:
   schemaConfig: {}
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
-  rulerConfig:
-    alertmanager_url: ""
-    enable_alertmanager_v2: false
-    enable_api: true
+  rulerConfig: {}
 
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
