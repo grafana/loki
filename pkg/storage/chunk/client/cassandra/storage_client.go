@@ -625,6 +625,11 @@ func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]ch
 	return chunks, nil
 }
 
+var emptyLabel = labels.Labels{
+	{Name: model.MetricNameLabel, Value: "foo"},
+	{Name: "bar", Value: "baz"},
+}
+
 func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	result, err := s.getChunkExec(ctx, decodeContext, input)
 	if errors.Cause(err) == gocql.ErrNotFound {
@@ -635,10 +640,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 		emptyChunk := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
-			labels.Labels{
-				{Name: model.MetricNameLabel, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-			},
+			emptyLabel,
 			promChunk,
 			ts,
 			ts.Add(chunkLen))

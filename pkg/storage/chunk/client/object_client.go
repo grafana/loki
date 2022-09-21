@@ -155,6 +155,11 @@ func (o *client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 	return util.GetParallelChunks(ctx, getChunkMaxParallel, chunks, o.getChunk)
 }
 
+var EmptyLabel = labels.Labels{
+	{Name: model.MetricNameLabel, Value: "foo"},
+	{Name: "bar", Value: "baz"},
+}
+
 func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	if ctx.Err() != nil {
 		return chunk.Chunk{}, ctx.Err()
@@ -175,10 +180,7 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 			emptyChunk := chunk.NewChunk(
 				userID,
 				model.Fingerprint(1),
-				labels.Labels{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "bar", Value: "baz"},
-				},
+				EmptyLabel,
 				promChunk,
 				ts,
 				ts.Add(chunkLen))

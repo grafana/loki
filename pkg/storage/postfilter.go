@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"github.com/prometheus/common/model"
 	"strings"
 	"time"
 
@@ -161,6 +162,11 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	return result, resultKeys, lastErr
 }
 
+var EmptyLabel = labels.Labels{
+	{Name: model.MetricNameLabel, Value: "foo"},
+	{Name: "bar", Value: "baz"},
+}
+
 func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.Chunk, logSelector syntax.LogSelectorExpr, s config.SchemaConfig) (*chunkWithKey, error) {
 	pipeline, err := logSelector.Pipeline()
 	if err != nil {
@@ -174,6 +180,10 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 		log.Span.LogFields(otlog.Int("postFilterChunkLen", postLen))
 		log.Span.Finish()
 	}()
+
+	if cnk.Metric.String() == EmptyLabel.String() {
+		return &chunkWithKey{cnk: cnk, key: s.ExternalKey(cnk.ChunkRef), isPostFilter: false}, nil
+	}
 
 	streamPipeline := pipeline.ForStream(labels.NewBuilder(cnk.Metric).Del(labels.MetricName).Labels())
 	chunkData := cnk.Data
