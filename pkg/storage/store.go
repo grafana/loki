@@ -223,7 +223,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			}
 			idx := series.NewIndexGatewayClientStore(gw, nil)
 
-			return failingChunkWriter{}, idx, func() {
+			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 				f.Stop()
 				gw.Stop()
 			}, nil
