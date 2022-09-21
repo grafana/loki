@@ -46,6 +46,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
