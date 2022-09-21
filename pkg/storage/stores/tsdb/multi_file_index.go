@@ -236,9 +236,9 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 	return results, nil
 }
 
-func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	_, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		return nil, idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
+		return nil, idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 	})
 	return err
 }
