@@ -2,7 +2,6 @@
 
 IMAGE_TAG := $(shell ../../../tools/image-tag)
 REGISTRY_PORT ?= $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
-ENTERPRISE_LOGS_CHECKOUT_DIR ?= $(shell pwd)/../../../../enterprise-logs
 
 loki-distributed: prepare build-latest-image
 	$(CURDIR)/scripts/create_cluster.sh loki-distributed $(REGISTRY_PORT)
@@ -10,10 +9,13 @@ loki-distributed: prepare build-latest-image
 	sleep 5
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/loki-distributed
 
-enterprise-logs: prepare build-provisioner-image
+enterprise-logs: prepare
 	$(CURDIR)/scripts/create_cluster.sh enterprise-logs $(REGISTRY_PORT)
 	# wait 5s for the cluster to be ready
 	sleep 5
+	$(MAKE) -C $(CURDIR) apply-enterprise-logs
+	
+apply-enterprise-logs:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/enterprise-logs
 
 down:
@@ -63,8 +65,3 @@ build-latest-image:
 	make -C $(CURDIR)/../../.. loki-image
 	docker tag grafana/loki:$(IMAGE_TAG) k4d-grafana:$(REGISTRY_PORT)/loki:latest
 	docker push k3d-grafana:$(REGISTRY_PORT)/loki:latest
-
-build-provisioner-image:
-	make -C $(ENTERPRISE_LOGS_CHECKOUT_DIR) enterprise-logs-provisioner-image
-	docker tag us.gcr.io/kubernetes-dev/enterprise-logs-provisioner:$(shell $(MAKE) -s -C $(ENTERPRISE_LOGS_CHECKOUT_DIR) image-tag) k3d-grafana:$(REGISTRY_PORT)/enterprise-logs-provisioner:latest
-	docker push k3d-grafana:$(REGISTRY_PORT)/enterprise-logs-provisioner:latest
