@@ -131,11 +131,14 @@ loki:
             period: 24h
     {{- end }}
 
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
     ruler:
       storage:
+      {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
       {{- include "loki.rulerStorageConfig" . | nindent 4}}
-    {{- end -}}
+      {{- end }}
+    {{- with .Values.loki.rulerConfig}}
+    {{- toYaml . | nindent 2}}
+    {{- end }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -230,6 +233,9 @@ loki:
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
+
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
+  rulerConfig: {}
 
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
