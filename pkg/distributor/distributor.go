@@ -76,9 +76,16 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.ShardStreams.LoggingEnabled, "distributor.stream-sharding.logging-enabled", false, "Enable logging when sharding streams")
 }
 
-// StreamSharder manages the state necessary to shard streams.
-type StreamSharder interface {
-	ShardCountFor(stream logproto.Stream) (int, error)
+// ShardStore controls number of shards to be used to split streams into smaller pieces.
+type ShardStore interface {
+	ShardsFor(stream logproto.Stream) (int, error)
+	StoreShards(stream logproto.Stream, shards int) error
+}
+
+// RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
+type RateStore interface {
+	RateFor(stream logproto.Stream) (int, error)
+	StoreRate(stream logproto.Stream, rate int) error
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -92,7 +99,9 @@ type Distributor struct {
 	ingestersRing    ring.ReadRing
 	validator        *Validator
 	pool             *ring_client.Pool
-	streamSharder    StreamSharder
+
+	shardStore ShardStore
+	rateStore  RateStore
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -199,7 +208,8 @@ func New(
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
-	d.streamSharder = NewStreamSharder(d.cfg.ShardStreams.DesiredRate)
+	d.shardStore = NewShardStore()
+	d.rateStore = NewRateStore()
 
 	return &d, nil
 }
@@ -403,7 +413,7 @@ func min(x1, x2 int) int {
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
 func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker, error) {
-	shardCount, err := d.streamSharder.ShardCountFor(stream)
+	shardCount, err := d.ShardCountFor(stream)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -587,4 +597,35 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	lsVal := ls.String()
 	d.labelCache.Add(key, lsVal)
 	return lsVal, nil
+}
+
+// ShardCountFor returns the right number of shards to be used by the given stream.
+//
+// It first checks if the number of shards is present in a shard store. If it isn't it will calculate it
+// based on the rate stored in the rate store and will store the new evaluated number of shards.
+func (d *Distributor) ShardCountFor(stream logproto.Stream) (int, error) {
+	if s, err := d.shardStore.ShardsFor(stream); err != nil {
+		return s, nil
+	}
+
+	return d.calculateAndStoreShards(stream)
+}
+
+func (d *Distributor) calculateAndStoreShards(stream logproto.Stream) (int, error) {
+	rate, err := d.rateStore.RateFor(stream)
+	if err != nil {
+		return 0, err
+	}
+
+	shards := (rate + stream.Size()) / (d.cfg.ShardStreams.DesiredRate * 1000)
+	if shards > len(stream.Entries) {
+		return 1, &unshardableStreamErr{labels: stream.Labels, entriesNum: len(stream.Entries), shardNum: shards}
+	} else if shards == 0 {
+		// 1 shard is enough for the given stream
+		return 1, nil
+	}
+	if err := d.shardStore.StoreShards(stream, shards); err != nil {
+		return 0, err
+	}
+	return shards, nil
 }
