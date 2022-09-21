@@ -36,6 +36,37 @@ Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 drop, and the final metadata to attach to the log line. Refer to the docs for
 [configuring Promtail](configuration/) for more details.
 
+### Support for compressed files
+
+Promtail has native support for ingesting compressed files by a mechanism that
+relies on file extensions. If a discovered file has a expected compression file
+extension, Promtail will lazily decompress the compressed file and push the
+parsed data to Loki. Important details are:
+* It relies on the `\n` character to separate the data into different log lines.
+* The max expected log line is 2 MB within the compressed file.
+* It supports the following extensions:
+  - `.gz`: Data will be decompressed with the native Gunzip Golang pkg (`pkg/compress/gzip`)
+  - `.z`: Data will be decompressed with the native Zlib Golang pkg (`pkg/compress/zlib`)
+  - `.bz2`: Data will be decompressed with the native Bzip2 Golang pkg (`pkg/compress/bzip2`)
+  - `.tar.gz`: Data will be decompressed exactly as the `.gz` extension.
+      However, because `tar` will add its metadata at the beggining of the
+      compressed file, **the first parsed line will contains metadata together with
+      your log line**. It is illustrated at
+      `./clients/pkg/promtail/targets/file/decompresser_test.go`.
+* Positions are supported. That means that, if you interrupt Promtail after
+  parsing and pushing 45% of your compressed file data, you can expect Promtail
+  to resume work from the 55% rest.
+* Since decompression and pushing can be very performatic, depending on the size
+  of your compressed file Loki will rate-limit your ingestion. In that case you
+  might configure Promtail's `limits_config` to slow the pace or increase
+  ingestion limits on Loki.
+* Log rotations **aren't supported as of now**, mostly because it requires substantial
+changes on Promtail. If you'd like to see support for it, please create a new
+issue on Github asking for it and explaining your use case.
+* If you would like to see support for a compression protocol that isn't listed here, please
+create a new issue on Github asking for it and explaining your use case.
+
+
 ## Loki Push API
 
 Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api#post-lokiapiv1push) with the [loki_push_api](configuration#loki_push_api_config) scrape config.
