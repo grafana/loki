@@ -199,6 +199,7 @@ func buildChunkMetas(from, to int64) index.ChunkMetas {
 			MinTime:  i,
 			MaxTime:  i,
 			Checksum: uint32(i),
+			Entries:  1,
 		})
 	}
 
@@ -877,5 +878,5 @@ type dummyChunkData struct {
 }
 
 func (d dummyChunkData) Entries() int {
-	return 0
+	return 1
 }

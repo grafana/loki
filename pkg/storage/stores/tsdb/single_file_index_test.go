@@ -64,7 +64,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), "fake", cases)
+				return BuildIndex(t, t.TempDir(), cases)
 			},
 		},
 		{
