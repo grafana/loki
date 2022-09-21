@@ -709,9 +709,9 @@ func IsLogicalBinOp(op string) bool {
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
-	Selector() LogSelectorExpr
+	Selector() (LogSelectorExpr, error)
 	Extractor() (SampleExtractor, error)
-	MatcherGroups() []MatcherRange
+	MatcherGroups() ([]MatcherRange, error)
 	Expr
 }
 
@@ -721,6 +721,7 @@ type RangeAggregationExpr struct {
 
 	Params   *float64
 	Grouping *Grouping
+	err      error
 	implicit
 }
 
@@ -728,18 +729,18 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, str
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0))
+			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}
 		var err error
 		params = new(float64)
 		*params, err = strconv.ParseFloat(*stringParams, 64)
 		if err != nil {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0))
+			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0)}
 		}
 
 	} else {
 		if operation == OpRangeTypeQuantile {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
+			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
 	}
 	e := &RangeAggregationExpr{
@@ -749,16 +750,22 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, str
 		Params:    params,
 	}
 	if err := e.validate(); err != nil {
-		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+		return &RangeAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
 	}
 	return e
 }
 
-func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
-	return e.Left.Left
+func (e *RangeAggregationExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.Left.Left, nil
 }
 
-func (e *RangeAggregationExpr) MatcherGroups() []MatcherRange {
+func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	xs := e.Left.Left.Matchers()
 	if len(xs) > 0 {
 		return []MatcherRange{
@@ -767,9 +774,9 @@ func (e *RangeAggregationExpr) MatcherGroups() []MatcherRange {
 				Interval: e.Left.Interval,
 				Offset:   e.Left.Offset,
 			},
-		}
+		}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (e RangeAggregationExpr) validate() error {
@@ -861,6 +868,7 @@ type VectorAggregationExpr struct {
 	Grouping  *Grouping
 	Params    int
 	Operation string
+	err       error
 	implicit
 }
 
@@ -870,19 +878,19 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	switch operation {
 	case OpTypeBottomK, OpTypeTopK:
 		if params == nil {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
 		p, err = strconv.Atoi(*params)
 		if err != nil {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0)}
 		}
 		if p <= 0 {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0))
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
 		}
 
 	default:
 		if params != nil {
-			panic(logqlmodel.NewParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0))
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0)}
 		}
 	}
 	if gr == nil {
@@ -896,15 +904,24 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	}
 }
 
-func (e *VectorAggregationExpr) MatcherGroups() []MatcherRange {
+func (e *VectorAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	return e.Left.MatcherGroups()
 }
 
-func (e *VectorAggregationExpr) Selector() LogSelectorExpr {
+func (e *VectorAggregationExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	return e.Left.Selector()
 }
 
 func (e *VectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
 	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
@@ -1025,10 +1042,22 @@ type BinOpExpr struct {
 	RHS  SampleExpr
 	Op   string
 	Opts *BinOpOptions
+	err  error
 }
 
-func (e *BinOpExpr) MatcherGroups() []MatcherRange {
-	return append(e.SampleExpr.MatcherGroups(), e.RHS.MatcherGroups()...)
+func (e *BinOpExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	groups, err := e.SampleExpr.MatcherGroups()
+	if err != nil {
+		return nil, err
+	}
+	RHSGroups, err := e.RHS.MatcherGroups()
+	if err != nil {
+		return nil, err
+	}
+	return append(groups, RHSGroups...), nil
 }
 
 func (e *BinOpExpr) String() string {
@@ -1076,46 +1105,62 @@ func (e *BinOpExpr) Walk(f WalkFn) {
 func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
-		panic(logqlmodel.NewParseError(fmt.Sprintf(
+		return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 			"unexpected type for left leg of binary operation (%s): %T",
 			op,
 			lhs,
-		), 0, 0))
+		), 0, 0)}
 	}
 
 	right, ok := rhs.(SampleExpr)
 	if !ok {
-		panic(logqlmodel.NewParseError(fmt.Sprintf(
+		return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 			"unexpected type for right leg of binary operation (%s): %T",
 			op,
 			rhs,
-		), 0, 0))
+		), 0, 0)}
 	}
 
 	leftLit, lOk := left.(*LiteralExpr)
 	rightLit, rOk := right.(*LiteralExpr)
-
+	var leftVal float64
+	var rightVal float64
+	if lOk {
+		leftV, err := leftLit.Value()
+		if err != nil {
+			return &BinOpExpr{err: err}
+		}
+		leftVal = leftV
+	}
+	if rOk {
+		rightV, err := rightLit.Value()
+		if err != nil {
+			return &BinOpExpr{err: err}
+		}
+		rightVal = rightV
+	}
 	if IsLogicalBinOp(op) {
+
 		if lOk {
-			panic(logqlmodel.NewParseError(fmt.Sprintf(
+			return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 				"unexpected literal for left leg of logical/set binary operation (%s): %f",
 				op,
-				leftLit.Val,
-			), 0, 0))
+				leftVal,
+			), 0, 0)}
 		}
 
 		if rOk {
-			panic(logqlmodel.NewParseError(fmt.Sprintf(
+			return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 				"unexpected literal for right leg of logical/set binary operation (%s): %f",
 				op,
-				rightLit.Val,
-			), 0, 0))
+				rightVal,
+			), 0, 0)}
 		}
 	}
 
 	// map expr like (1+1) -> 2
 	if lOk && rOk {
-		return reduceBinOp(op, leftLit, rightLit)
+		return reduceBinOp(op, leftVal, rightVal)
 	}
 
 	return &BinOpExpr{
@@ -1123,24 +1168,28 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 		RHS:        right,
 		Op:         op,
 		Opts:       opts,
+		err:        nil,
 	}
 }
 
 // Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
-func reduceBinOp(op string, left, right *LiteralExpr) *LiteralExpr {
-	merged := MergeBinOp(
+func reduceBinOp(op string, left, right float64) *LiteralExpr {
+	merged, err := MergeBinOp(
 		op,
-		&promql.Sample{Point: promql.Point{V: left.Val}},
-		&promql.Sample{Point: promql.Point{V: right.Val}},
+		&promql.Sample{Point: promql.Point{V: left}},
+		&promql.Sample{Point: promql.Point{V: right}},
 		false,
 		false,
 	)
+	if err != nil {
+		return &LiteralExpr{err: err}
+	}
 	return &LiteralExpr{Val: merged.V}
 }
 
-func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
+func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) (*promql.Sample, error) {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -1361,12 +1410,12 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 		}
 
 	default:
-		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
+		return nil, errors.Errorf("should never happen: unexpected operation: (%s)", op)
 	}
 
 	res := merger(left, right)
 	if !isVectorComparison {
-		return res
+		return res, nil
 	}
 
 	if filter {
@@ -1374,21 +1423,22 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 		// ensure we return the left hand side's value (2) instead of the
 		// comparison operator's result (1: the truthy answer)
 		if res != nil {
-			return left
+			return left, nil
 		}
 	}
-	return res
+	return res, nil
 }
 
 type LiteralExpr struct {
 	Val float64
+	err error
 	implicit
 }
 
 func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0))
+		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0)
 	}
 
 	if invert {
@@ -1397,6 +1447,7 @@ func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 
 	return &LiteralExpr{
 		Val: n,
+		err: err,
 	}
 }
 
@@ -1407,15 +1458,20 @@ func (e *LiteralExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *LiteralExpr) Selector() LogSelectorExpr               { return e }
+func (e *LiteralExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *LiteralExpr) HasFilter() bool                         { return false }
 func (e *LiteralExpr) Shardable() bool                         { return true }
 func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
-func (e *LiteralExpr) MatcherGroups() []MatcherRange           { return nil }
-func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
-func (e *LiteralExpr) Value() float64                          { return e.Val }
+func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
+func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, e.err }
+func (e *LiteralExpr) Value() (float64, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	return e.Val, nil
+}
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer
@@ -1445,6 +1501,7 @@ type LabelReplaceExpr struct {
 	Src         string
 	Regex       string
 	Re          *regexp.Regexp
+	err         error
 
 	implicit
 }
@@ -1452,7 +1509,9 @@ type LabelReplaceExpr struct {
 func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex string) *LabelReplaceExpr {
 	re, err := regexp.Compile("^(?:" + regex + ")$")
 	if err != nil {
-		panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0))
+		return &LabelReplaceExpr{
+			err: logqlmodel.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0),
+		}
 	}
 	return &LabelReplaceExpr{
 		Left:        left,
@@ -1464,15 +1523,24 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 	}
 }
 
-func (e *LabelReplaceExpr) Selector() LogSelectorExpr {
+func (e *LabelReplaceExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	return e.Left.Selector()
 }
 
-func (e *LabelReplaceExpr) MatcherGroups() []MatcherRange {
+func (e *LabelReplaceExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	return e.Left.MatcherGroups()
 }
 
 func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
 	return e.Left.Extractor()
 }
 
@@ -1548,7 +1616,7 @@ type MatcherRange struct {
 	Interval, Offset time.Duration
 }
 
-func MatcherGroups(expr Expr) []MatcherRange {
+func MatcherGroups(expr Expr) ([]MatcherRange, error) {
 	switch e := expr.(type) {
 	case SampleExpr:
 		return e.MatcherGroups()
@@ -1558,11 +1626,11 @@ func MatcherGroups(expr Expr) []MatcherRange {
 				{
 					Matchers: xs,
 				},
-			}
+			}, nil
 		}
-		return nil
+		return nil, nil
 	default:
-		return nil
+		return nil, nil
 	}
 }
 
@@ -1603,11 +1671,11 @@ func (e *VectorExpr) Value() (float64, error) {
 	return e.Val, nil
 }
 
-func (e *VectorExpr) Selector() LogSelectorExpr               { return e }
+func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
 func (e *VectorExpr) Shardable() bool                         { return true }
 func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
-func (e *VectorExpr) MatcherGroups() []MatcherRange           { return nil }
+func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
 func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }

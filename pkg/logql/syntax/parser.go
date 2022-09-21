@@ -166,15 +166,24 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 func validateSampleExpr(expr SampleExpr) error {
 	switch e := expr.(type) {
 	case *BinOpExpr:
+		if e.err != nil {
+			return e.err
+		}
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
-
 		return validateSampleExpr(e.RHS)
 	case *LiteralExpr:
+		if e.err != nil {
+			return e.err
+		}
 		return nil
 	default:
-		return validateMatchers(expr.Selector().Matchers())
+		selector, err := expr.Selector()
+		if err != nil {
+			return err
+		}
+		return validateMatchers(selector.Matchers())
 	}
 }
 

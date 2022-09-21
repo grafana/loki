@@ -15,6 +15,9 @@ func (r RangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 
 // extractor creates a SampleExtractor but allows for the grouping to be overridden.
 func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
