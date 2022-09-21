@@ -77,6 +77,28 @@ func BenchmarkReadlines(b *testing.B) {
 	}
 }
 
+func TestGigantiqueGunzipFile(t *testing.T) {
+	file := "test_fixtures/long-access.gz"
+	handler := fake.New(func() {})
+
+	d := &decompressor{
+		logger:  log.NewNopLogger(),
+		running: atomic.NewBool(false),
+		handler: handler,
+		path:    file,
+		done:    make(chan struct{}),
+		metrics: NewMetrics(prometheus.NewRegistry()),
+	}
+
+	d.readLines()
+
+	<-d.done
+	time.Sleep(time.Millisecond * 200)
+
+	entries := handler.Received()
+	require.Equal(t, 100000, len(entries))
+}
+
 func TestOnelineFiles(t *testing.T) {
 	fileContent, err := os.ReadFile("test_fixtures/onelinelog.log")
 	require.NoError(t, err)
