@@ -242,7 +242,7 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	spec, err := tlsprofile.GetSecurityProfileInfo(ctx, k, opts.TLSProfileType)
+	spec, err := tlsprofile.GetSecurityProfileInfo(ctx, k, ll, opts.TLSProfileType)
 	if err != nil {
 		ll.Error(err, "failed to get security profile info")
 		return err

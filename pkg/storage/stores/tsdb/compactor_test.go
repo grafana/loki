@@ -230,8 +230,7 @@ func TestCompactor_Compact(t *testing.T) {
 		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
 		Schema:      "v12",
 	}
-	indexBkts, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
-	require.NoError(t, err)
+	indexBkts := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
 	tableName := indexBkts[0]
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
@@ -839,8 +838,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{periodConfig},
 	}
-	indexBuckets, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
-	require.NoError(t, err)
+	indexBuckets := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 	tableName := indexBuckets[0]
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	// shiftTableStart shift tableInterval.Start by the given amount of milliseconds.

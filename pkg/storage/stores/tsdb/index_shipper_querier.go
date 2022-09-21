@@ -30,10 +30,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 	var indices []Index
 
 	// Ensure we query both per tenant and multitenant TSDBs
-	idxBuckets, err := indexBuckets(from, through, i.tableRanges)
-	if err != nil {
-		return nil, err
-	}
+	idxBuckets := indexBuckets(from, through, i.tableRanges)
 	for _, bkt := range idxBuckets {
 		if err := i.shipper.ForEach(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
 			impl, ok := idx.(Index)

@@ -66,9 +66,10 @@ loki:
     auth_enabled: {{ .Values.loki.auth_enabled }}
     {{- end }}
 
+    {{- with .Values.loki.server }}
     server:
-      http_listen_port: 3100
-      grpc_listen_port: 9095
+      {{- toYaml . | nindent 2}}
+    {{- end}}
 
     memberlist:
       join_members:
@@ -81,12 +82,10 @@ loki:
       {{- include "loki.commonStorageConfig" . | nindent 4}}
     {{- end}}
 
+    {{- with .Values.loki.limits_config }}
     limits_config:
-      enforce_metric_name: false
-      reject_old_samples: true
-      reject_old_samples_max_age: 168h
-      max_cache_freshness_per_query: 10m
-      split_queries_by_interval: 15m
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled .host }}
@@ -153,14 +152,33 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.compactor }}
+    compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
+
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
+  server:
+    http_listen_port: 3100
+    grpc_listen_port: 9095
+
+  # -- Limits config
+  limits_config:
+    enforce_metric_name: false
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    max_cache_freshness_per_query: 10m
+    split_queries_by_interval: 15m
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
 
+  # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
     bucketNames:
       chunks: chunks
@@ -175,6 +193,7 @@ loki:
       accessKeyId: null
       s3ForcePathStyle: false
       insecure: false
+      http_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
@@ -214,6 +233,9 @@ loki:
       at: "250ms"
       max_per_second: 20
       up_to: 3
+
+  # --  Optional compactor configuration
+  compactor: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
@@ -283,6 +305,8 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `tokengen` Job
     annotations: {}
+    # -- Tolerations for tokengen Job
+    tolerations: []
     # -- Additional volumes for Pods
     extraVolumes: []
     # -- Additional volume mounts for Pods
@@ -1062,8 +1086,13 @@ tracing:
 # -------------------------------------
 minio:
   enabled: false
-  accessKey: enterprise-logs
-  secretKey: supersecret
+  replicas: 1
+  # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
+  # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
+  # Since we only have 1 replica, that means 2 drives must be used.
+  drivesPerNode: 2
+  rootUser: enterprise-logs
+  rootPassword: supersecret
   buckets:
     - name: chunks
       policy: none

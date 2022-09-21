@@ -75,7 +75,7 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
