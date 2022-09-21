@@ -246,7 +246,8 @@ pipeline_stages:
         action: inc
 `
 
-var testConfigWithTenantStep = `
+func TestNonPrometheusLabelsShouldBeDropped(t *testing.T) {
+	const counterConfig = `
 pipeline_stages:
 - static_labels:
     good_label: "1"
@@ -262,26 +263,89 @@ pipeline_stages:
         action: inc
 `
 
-func TestNonPrometheusLabelsShouldBeDropped(t *testing.T) {
-	const expected = `# HELP logentry_dropped_lines_total A count of all log lines dropped as a result of a pipeline stage
-# TYPE logentry_dropped_lines_total counter
-logentry_dropped_lines_total{reason="match_stage"} 1
-# HELP promtail_custom_loki_count should only inc on non dropped labels
+	const expectedCounterMetrics = `# HELP promtail_custom_loki_count should count all entries
 # TYPE promtail_custom_loki_count counter
 promtail_custom_loki_count{good_label="1"} 1
 `
+
+	const gaugeConfig = `
+pipeline_stages:
+- regex:
+    expression: 'vehicle=(?P<vehicle>\d+) longitude=(?P<longitude>[-]?\d+\.\d+) latitude=(?P<latitude>\d+\.\d+)'
+- labels:
+    vehicle:
+- metrics:
+    longitude:
+        type: Gauge
+        description: "longitude GPS vehicle"
+        source: longitude
+        config:
+          match_all: true
+          action: set
+`
+
+	const expectedGaugeMetrics = `# HELP promtail_custom_longitude longitude GPS vehicle
+# TYPE promtail_custom_longitude gauge
+promtail_custom_longitude{vehicle="1"} -10.1234
+`
+
+	const histogramConfig = `
+pipeline_stages:
+- json:
+    expressions:
+      payload: payload
+- metrics:
+    payload_size_bytes:
+      type: Histogram
+      description: payload size in bytes
+      source: payload
+      config:
+        buckets: [10, 20]
+`
+
+	const expectedHistogramMetrics = `# HELP promtail_custom_payload_size_bytes payload size in bytes
+# TYPE promtail_custom_payload_size_bytes histogram
+promtail_custom_payload_size_bytes_bucket{test="app",le="10"} 1
+promtail_custom_payload_size_bytes_bucket{test="app",le="20"} 1
+promtail_custom_payload_size_bytes_bucket{test="app",le="+Inf"} 1
+promtail_custom_payload_size_bytes_sum{test="app"} 10
+promtail_custom_payload_size_bytes_count{test="app"} 1
+`
 	for name, tc := range map[string]struct {
-		promtailConfig string
-		labels         model.LabelSet
+		promtailConfig  string
+		labels          model.LabelSet
+		line            string
+		expectedCollect string
 	}{
-		"non-prometheus incoming label": {
+		"counter metric with non-prometheus incoming label": {
 			promtailConfig: testMetricWithNonPromLabel,
 			labels: model.LabelSet{
 				"__bad_label__": "2",
 			},
+			line:            testMetricLogLine1,
+			expectedCollect: expectedCounterMetrics,
 		},
-		"tenant step injected label": {
-			promtailConfig: testConfigWithTenantStep,
+		"counter metric with tenant step injected label": {
+			promtailConfig:  counterConfig,
+			line:            testMetricLogLine1,
+			expectedCollect: expectedCounterMetrics,
+		},
+		"gauge metric with non-prometheus incoming label": {
+			promtailConfig: gaugeConfig,
+			labels: model.LabelSet{
+				"__bad_label__": "2",
+			},
+			line:            `#<13>Jan 28 14:25:52 vehicle=1 longitude=-10.1234 latitude=15.1234`,
+			expectedCollect: expectedGaugeMetrics,
+		},
+		"histogram metric with non-prometheus incoming label": {
+			promtailConfig: histogramConfig,
+			labels: model.LabelSet{
+				"test":          "app",
+				"__bad_label__": "2",
+			},
+			line:            testMetricLogLine1,
+			expectedCollect: expectedHistogramMetrics,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -291,11 +355,11 @@ promtail_custom_loki_count{good_label="1"} 1
 			in := make(chan Entry)
 			out := pl.Run(in)
 
-			in <- newEntry(nil, tc.labels, testMetricLogLine1, time.Now())
+			in <- newEntry(nil, tc.labels, tc.line, time.Now())
 			close(in)
 			<-out
 
-			err = testutil.GatherAndCompare(registry, strings.NewReader(expected))
+			err = testutil.GatherAndCompare(registry, strings.NewReader(tc.expectedCollect))
 			require.NoError(t, err, "gathered metrics are different than expected")
 		})
 	}
