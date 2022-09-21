@@ -59,6 +59,7 @@ func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 	return metric
 }
 
+// cleanLabels removes labels whose label name is not a valid prometheus one, or has the reserved `__` prefix.
 func cleanLabels(set model.LabelSet) model.LabelSet {
 	out := make(model.LabelSet, len(set))
 	for k, v := range set {
