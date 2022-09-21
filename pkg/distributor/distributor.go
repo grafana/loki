@@ -232,8 +232,8 @@ type streamTracker struct {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type pushTracker struct {
-	samplesPending atomic.Int32
-	samplesFailed  atomic.Int32
+	streamsPending atomic.Int32
+	streamsFailed  atomic.Int32
 	done           chan struct{}
 	err            chan error
 }
@@ -256,8 +256,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We also work out the hash value at the same time.
 	streams := make([]streamTracker, 0, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
-	validatedSamplesSize := 0
-	validatedSamplesCount := 0
+	validatedLineSize := 0
+	validatedLineCount := 0
 
 	var validationErr error
 	validationContext := d.validator.getValidationContextForTime(time.Now(), userID)
@@ -305,8 +305,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			n++
-			validatedSamplesSize += len(entry.Line)
-			validatedSamplesCount++
+			validatedLineSize += len(entry.Line)
+			validatedLineCount++
 		}
 		stream.Entries = stream.Entries[:n]
 
@@ -326,17 +326,17 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedLineSize) {
 		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedLineCount))
+		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedLineSize))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedLineCount, validatedLineSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	samplesByIngester := map[string][]*streamTracker{}
+	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
 		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
@@ -347,7 +347,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Instances {
-			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &streams[i])
+			streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
 			ingesterDescs[ingester.Addr] = ingester
 		}
 	}
@@ -356,8 +356,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
 		err:  make(chan error, 1),
 	}
-	tracker.samplesPending.Store(int32(len(streams)))
-	for ingester, samples := range samplesByIngester {
+	tracker.streamsPending.Store(int32(len(streams)))
+	for ingester, streams := range streamsByIngester {
 		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
@@ -366,8 +366,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, ingester, samples, &tracker)
-		}(ingesterDescs[ingester], samples)
+			d.sendStreams(localCtx, ingester, samples, &tracker)
+		}(ingesterDescs[ingester], streams)
 	}
 	select {
 	case err := <-tracker.err:
@@ -500,31 +500,31 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
-	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
+func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
+	err := d.sendStreamsErr(ctx, ingester, streamTrackers)
 
-	// If we succeed, decrement each sample's pending count by one.  If we reach
-	// the required number of successful puts on this sample, then decrement the
-	// number of pending samples by one.  If we successfully push all samples to
-	// min success ingesters, wake up the waiting rpc so it can return early.
-	// Similarly, track the number of errors, and if it exceeds maxFailures
-	// shortcut the waiting rpc.
+	// If we succeed, decrement each stream's pending count by one.
+	// If we reach the required number of successful puts on this stream, then
+	// decrement the number of pending streams by one.
+	// If we successfully push all streams to min success ingesters, wake up the
+	// waiting rpc so it can return early. Similarly, track the number of errors,
+	// and if it exceeds maxFailures shortcut the waiting rpc.
 	//
-	// The use of atomic increments here guarantees only a single sendSamples
+	// The use of atomic increments here guarantees only a single sendStreams
 	// goroutine will write to either channel.
 	for i := range streamTrackers {
 		if err != nil {
 			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
 				continue
 			}
-			if pushTracker.samplesFailed.Inc() == 1 {
+			if pushTracker.streamsFailed.Inc() == 1 {
 				pushTracker.err <- err
 			}
 		} else {
 			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
 				continue
 			}
-			if pushTracker.samplesPending.Dec() == 0 {
+			if pushTracker.streamsPending.Dec() == 0 {
 				pushTracker.done <- struct{}{}
 			}
 		}
@@ -532,7 +532,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDes
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
+func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
