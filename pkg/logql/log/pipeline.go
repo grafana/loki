@@ -2,6 +2,7 @@ package log
 
 import (
 	"reflect"
+	"sync"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -42,6 +43,7 @@ func NewNoopPipeline() Pipeline {
 
 type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
+	mu    sync.RWMutex
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -66,11 +68,17 @@ func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.LabelsResult }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	h := labels.Hash()
+	n.mu.RLock()
 	if cached, ok := n.cache[h]; ok {
+		n.mu.RUnlock()
 		return cached
 	}
+	n.mu.RUnlock()
 	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
+
+	n.mu.Lock()
 	n.cache[h] = sp
+	n.mu.Unlock()
 	return sp
 }
 
