@@ -406,11 +406,14 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	if len(shards) == 1 {
 		shard = &shards[0]
 	}
-
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
 	err = i.forMatchingStreams(
 		ctx,
 		req.Start,
-		expr.Selector().Matchers(),
+		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
 			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
