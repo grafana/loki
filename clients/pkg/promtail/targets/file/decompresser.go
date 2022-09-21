@@ -3,7 +3,6 @@ package file
 import (
 	"bufio"
 	"compress/bzip2"
-	"compress/flate"
 	"compress/gzip"
 	"compress/zlib"
 	"fmt"
@@ -32,7 +31,6 @@ import (
 
 func supportedCompressedFormats() map[string]struct{} {
 	return map[string]struct{}{
-		".zip":    {},
 		".gz":     {},
 		".tar.gz": {},
 		".z":      {},
@@ -114,9 +112,6 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 	} else if ext == ".z" {
 		decompressLib = "compress/zlib"
 		reader, err = zlib.NewReader(f)
-	} else if ext == ".zip" {
-		decompressLib = "compress/flate"
-		reader = flate.NewReader(f)
 	} else if ext == ".bz2" {
 		decompressLib = "bzip2"
 		reader = bzip2.NewReader(f)
@@ -192,7 +187,10 @@ func (t *decompressor) readLines() {
 
 	level.Info(t.logger).Log("msg", "successfully mounted reader", "path", t.path, "ext", filepath.Ext(t.path))
 
+	maxLoglineSize := 2 << 14 // 65536
+	buffer := make([]byte, maxLoglineSize*2)
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(buffer, maxLoglineSize)
 	for line := 1; ; line++ {
 		if !scanner.Scan() {
 			break
