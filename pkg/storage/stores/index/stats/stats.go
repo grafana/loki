@@ -44,7 +44,6 @@ func (p *PoolBloom) Get() *Blooms {
 
 func (p *PoolBloom) Put(x *Blooms) {
 	x.Streams.ClearAll()
-	x.Chunks.ClearAll()
 	x.stats = &Stats{}
 	p.pool.Put(x)
 }
@@ -70,11 +69,8 @@ func (p *PoolBloom) Put(x *Blooms) {
 func newBlooms() *Blooms {
 	// 1 million streams @ 1% error =~ 1.14MB
 	streams := bloom.NewWithEstimates(1e6, 0.01)
-	// 10 million chunks @ 1% error =~ 11.43MB
-	chunks := bloom.NewWithEstimates(10e6, 0.01)
 	return &Blooms{
 		Streams: streams,
-		Chunks:  chunks,
 		stats:   &Stats{},
 	}
 }
@@ -86,8 +82,8 @@ func newBlooms() *Blooms {
 // statistics prior to running queries.
 type Blooms struct {
 	sync.RWMutex
-	Streams, Chunks *bloom.BloomFilter
-	stats           *Stats
+	Streams *bloom.BloomFilter
+	stats   *Stats
 }
 
 func (b *Blooms) Stats() Stats { return b.stats.Stats() }
@@ -101,16 +97,7 @@ func (b *Blooms) AddStream(fp model.Fingerprint) {
 }
 
 func (b *Blooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
-	// fingerprint + mintime + maxtime + checksum
-	ln := 8 + 8 + 8 + 4
-	key := make([]byte, ln)
-	binary.BigEndian.PutUint64(key, uint64(fp))
-	binary.BigEndian.PutUint64(key[8:], uint64(chk.MinTime))
-	binary.BigEndian.PutUint64(key[16:], uint64(chk.MaxTime))
-	binary.BigEndian.PutUint32(key[24:], chk.Checksum)
-	b.add(b.Chunks, key, func() {
-		b.stats.AddChunk(fp, chk)
-	})
+	b.stats.AddChunk(fp, chk)
 }
 
 func (b *Blooms) add(filter *bloom.BloomFilter, key []byte, update func()) {

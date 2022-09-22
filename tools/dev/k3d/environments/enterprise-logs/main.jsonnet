@@ -1,15 +1,13 @@
 local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet';
 local tanka = import 'github.com/grafana/jsonnet-libs/tanka-util/main.libsonnet';
 
-local provisioner = import 'provisioner/provisioner.libsonnet';
-
 local grafana = import 'grafana/grafana.libsonnet';
 local envVar = if std.objectHasAll(k.core.v1, 'envVar') then k.core.v1.envVar else k.core.v1.container.envType;
 local helm = tanka.helm.new(std.thisFile);
 
 local spec = (import './spec.json').spec;
 
-provisioner {
+{
   local prometheusServerName = self.prometheus.service_prometheus_kube_prometheus_prometheus.metadata.name,
   local prometheusUrl = 'http://%s:9090' % prometheusServerName,
 
@@ -17,45 +15,16 @@ provisioner {
   local lokiGatewayUrl = 'http://%s' % lokiGatewayHost,
 
   local licenseClusterName = 'enterprise-logs-test-fixture',
-  local provisionerSecret = 'gel-provisioning-tokens',
+  local provisionedSecretPrefix = 'provisioned-secret',
   local adminTokenSecret = 'gel-admin-token',
 
-  local tenant = 'team-l',
-
-  _images+:: {
-    provisioner: '%s/enterprise-logs-provisioner' % std.extVar('registry'),
-  },
+  local tenant = 'loki',
 
   _config+:: {
     clusterName: licenseClusterName,
     namespace: spec.namespace,
     adminTokenSecret: adminTokenSecret,
     adminApiUrl: lokiGatewayUrl,
-    provisioner+: {
-      initCommand: [
-        '/usr/bin/enterprise-logs-provisioner',
-
-        '-bootstrap-path=/bootstrap',
-        '-cluster-name=' + licenseClusterName,
-        '-gel-url=' + lokiGatewayUrl,
-
-        '-instance=%s' % tenant,
-
-        '-access-policy=promtail-l:team-l:logs:write',
-        '-access-policy=grafana-l:team-l:logs:read',
-
-        '-token=promtail-l',
-        '-token=grafana-l',
-      ],
-      containerCommand: [
-        'bash',
-        '-c',
-        'kubectl create secret generic '
-        + provisionerSecret
-        + ' --from-literal=token-promtail-l="$(cat /bootstrap/token-promtail-l)"'
-        + ' --from-literal=token-grafana-l="$(cat /bootstrap/token-grafana-l)" ',
-      ],
-    },
   },
 
   loki: helm.template($._config.clusterName, '../../../../../production/helm/loki', {
@@ -67,9 +36,22 @@ provisioner {
         license: {
           contents: importstr '../../secrets/gel.jwt',
         },
-        tokengen: {
-          enable: true,
-          adminTokenSecret: adminTokenSecret,
+        adminTokenSecret: adminTokenSecret,
+        provisioner: {
+          provisionedSecretPrefix: provisionedSecretPrefix,
+          tenants: [
+            tenant,
+          ],
+        },
+      },
+      monitoring+: {
+        selfMonitoring+: {
+          tenant: tenant,
+        },
+        serviceMonitor: {
+          //TODO: this is required because of the service monitor selector match labels
+          // from kube-prometheus-stack.
+          labels: { release: 'prometheus' },
         },
       },
       minio+: {
@@ -84,6 +66,15 @@ provisioner {
       grafana+: {
         enabled: false,
       },
+      prometheus: {
+        prometheusSpec: {
+          serviceMonitorSelector: {
+            matchLabels: {
+              release: 'prometheus',
+            },
+          },
+        },
+      },
     },
     kubeVersion: 'v1.18.0',
     noHooks: false,
@@ -92,7 +83,7 @@ provisioner {
   local datasource = grafana.datasource,
   prometheus_datasource:: datasource.new('prometheus', prometheusUrl, type='prometheus', default=false),
   loki_datasource:: datasource.new('loki', lokiGatewayUrl, type='loki', default=true) +
-                    datasource.withBasicAuth('team-l', '${PROVISONING_TOKEN_GRAFANA_L}'),
+                    datasource.withBasicAuth(tenant, '${PROVISIONED_TENANT_TOKEN}'),
 
   grafana: grafana
            + grafana.withAnonymous()
@@ -161,7 +152,7 @@ provisioner {
                  function(c) c {
                    env+: [
                      envVar.new('GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS', 'grafana-enterprise-logs-app'),
-                     envVar.fromSecretRef('PROVISONING_TOKEN_GRAFANA_L', provisionerSecret, 'token-grafana-l'),
+                     envVar.fromSecretRef('PROVISIONED_TENANT_TOKEN', '%s-%s' % [provisionedSecretPrefix, tenant], 'token-read'),
                    ],
                  }
                ),

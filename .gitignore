@@ -33,6 +33,10 @@ test_results.txt
 .idea
 pkg/loki/wal
 
+# Workspaces
+*.work
+*.work.sum
+
 # emacs
 .#*
 
