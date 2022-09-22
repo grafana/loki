@@ -12,9 +12,9 @@ import (
 )
 
 type Client struct {
-	address string
-	api     v1.API
-  timeBetweenRetries time.Duration
+	address            string
+	api                v1.API
+	timeBetweenRetries time.Duration
 }
 
 func DefaultCanaryClient(address string, timeBetweenRetries time.Duration) (*Client, error) {
@@ -31,9 +31,9 @@ func DefaultCanaryClient(address string, timeBetweenRetries time.Duration) (*Cli
 
 func NewCanaryClient(address string, api v1.API, timeBetweenRetries time.Duration) *Client {
 	return &Client{
-		address: address,
-		api:     api,
-    timeBetweenRetries: timeBetweenRetries,
+		address:            address,
+		api:                api,
+		timeBetweenRetries: timeBetweenRetries,
 	}
 }
 
@@ -70,7 +70,7 @@ func (c *Client) Run(retries int) error {
 			continue
 		}
 
-    break
+		break
 	}
 
 	if err != nil {
