@@ -7,19 +7,19 @@ tests:
   - interval: 1m
 
     input_series:
-      - series: 'code:loki_request_duration_seconds_count:rate1m{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'code:loki_request_duration_seconds_count:irate1m{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+1x20'
-      - series: 'code:loki_request_duration_seconds_count:rate1m{status_code="429", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'code:loki_request_duration_seconds_count:irate1m{status_code="429", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+1x20'
-      - series: 'code:loki_request_duration_seconds_count:rate1m{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'code:loki_request_duration_seconds_count:irate1m{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+3x20'
-      - series: 'code_handler:http_requests:rate1m{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+      - series: 'code_handler:http_requests:irate1m{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
         values: '1+1x20'
-      - series: 'code_handler:http_requests:rate1m{code="200", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+      - series: 'code_handler:http_requests:irate1m{code="200", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
         values: '1+3x20'
-      - series: 'code_handler:http_requests:rate1m{code="500", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+      - series: 'code_handler:http_requests:irate1m{code="500", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
         values: '1+1x20'
-      - series: 'code_handler:http_requests:rate1m{code="200", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+      - series: 'code_handler:http_requests:irate1m{code="200", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
         values: '1+3x20'
 
       - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'

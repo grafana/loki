@@ -2,12 +2,12 @@
 groups:
 - name: logging_loki.rules
   rules:
-  - record: code_handler:http_requests:rate1m
+  - record: code_handler:http_requests:irate1m
     expr: |
-      rate(http_requests_total{group="logsv1"}[1m])
-  - record: code:loki_request_duration_seconds_count:rate1m
+      irate(http_requests_total{group="logsv1"}[1m])
+  - record: code:loki_request_duration_seconds_count:irate1m
     expr: |
-      rate(loki_request_duration_seconds_count[1m])
+      irate(loki_request_duration_seconds_count[1m])
   - record: operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m
     expr: |
       rate(loki_boltdb_shipper_request_duration_seconds_bucket[5m])
