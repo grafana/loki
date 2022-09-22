@@ -502,7 +502,7 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				queryTimeout = q.cfg.QueryTimeout
 			}
 
-			newCtx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+			newCtx, cancel := context.WithTimeout(ctx, queryTimeout)
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)
