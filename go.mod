@@ -92,12 +92,12 @@ require (
 	github.com/thanos-io/thanos v0.22.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
-	github.com/weaveworks/common v0.0.0-20220809154356-72ba250fe659
+	github.com/weaveworks/common v0.0.0-20220916164235-da3fde973eec
 	github.com/xdg-go/scram v1.0.2
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.9.0
 	go.uber.org/goleak v1.1.12
-	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
+	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
 	golang.org/x/net v0.0.0-20220706163947-c90051bbdb60
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	golang.org/x/sys v0.0.0-20220829200755-d48e67d00261
@@ -233,7 +233,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/exporter-toolkit v0.7.1 // indirect
+	github.com/prometheus/exporter-toolkit v0.7.2-0.20220901134540-2434b08435da // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rs/xid v1.2.1 // indirect
