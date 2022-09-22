@@ -84,6 +84,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		"msg", "delete request for user added",
 		"user", userID,
 		"query", query,
+		"interval", interval.String(),
 	)
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()

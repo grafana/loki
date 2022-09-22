@@ -124,6 +124,43 @@ spec:
                             format: int32
                             type: integer
                         type: object
+                      retention:
+                        description: Retention defines how long logs are kept in storage.
+                        properties:
+                          days:
+                            description: Days contains the number of days logs are
+                              kept.
+                            minimum: 1
+                            type: integer
+                          streams:
+                            description: Stream defines the log stream.
+                            items:
+                              description: RetentionStreamSpec defines a log stream
+                                with separate retention time.
+                              properties:
+                                days:
+                                  description: Days contains the number of days logs
+                                    are kept.
+                                  minimum: 1
+                                  type: integer
+                                priority:
+                                  default: 1
+                                  description: Priority defines the priority of this
+                                    selector compared to other retention rules.
+                                  format: int32
+                                  type: integer
+                                selector:
+                                  description: Selector contains the LogQL query used
+                                    to define the log stream.
+                                  type: string
+                              required:
+                              - days
+                              - selector
+                              type: object
+                            type: array
+                        required:
+                        - days
+                        type: object
                     type: object
                   tenants:
                     additionalProperties:
@@ -194,6 +231,44 @@ spec:
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
+                          type: object
+                        retention:
+                          description: Retention defines how long logs are kept in
+                            storage.
+                          properties:
+                            days:
+                              description: Days contains the number of days logs are
+                                kept.
+                              minimum: 1
+                              type: integer
+                            streams:
+                              description: Stream defines the log stream.
+                              items:
+                                description: RetentionStreamSpec defines a log stream
+                                  with separate retention time.
+                                properties:
+                                  days:
+                                    description: Days contains the number of days
+                                      logs are kept.
+                                    minimum: 1
+                                    type: integer
+                                  priority:
+                                    default: 1
+                                    description: Priority defines the priority of
+                                      this selector compared to other retention rules.
+                                    format: int32
+                                    type: integer
+                                  selector:
+                                    description: Selector contains the LogQL query
+                                      used to define the log stream.
+                                    type: string
+                                required:
+                                - days
+                                - selector
+                                type: object
+                              type: array
+                          required:
+                          - days
                           type: object
                       type: object
                     description: Tenants defines the limits applied per tenant.
@@ -1010,6 +1085,7 @@ spec:
                     - static
                     - dynamic
                     - openshift-logging
+                    - openshift-network
                     type: string
                 required:
                 - mode
