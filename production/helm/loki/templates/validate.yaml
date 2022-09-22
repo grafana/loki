@@ -3,10 +3,17 @@
 {{- end }}
 
 {{ with .Values.monitoring.selfMonitoring}}
+
 {{- if and (not .enabled) .lokiCanary.enabled }}
 {{- fail "Loki Canary requires self monitoring to also be enabled"}}
 {{- end }}
 
 {{- if and .lokiCanary.test.enabled (not .lokiCanary.enabled) }}
 {{- fail "Loki Canary test requires the Loki Canary to be enabled"}}
-{{ - end }}
+{{- end }}
+
+{{- if and .lokiCanary.test.enabled (eq .lokiCanary.test.prometheusAddress "") }}
+{{- fail "Loki Canary test requires a prometheusAddress to be set"}}
+{{- end }}
+
+{{- end}}

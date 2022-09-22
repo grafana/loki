@@ -1,5 +1,5 @@
-{{ with .Values.monitoring.selfMonitoring.lokiCanary.test }}
-{{ if .enabled }}
+{{- with .Values.monitoring.selfMonitoring.lokiCanary.test }}
+{{- if .enabled }}
 ---
 apiVersion: v1
 kind: Pod
@@ -18,6 +18,8 @@ metadata:
 spec:
   containers:
     - name: loki-canary-test
-      image: {{ include "loki-canary-test.image" $ }}
+      image: {{ include "loki-canary.test-image" $ }}
       args: ['-address', '{{ .prometheusAddress }}']
   restartPolicy: Never
+{{- end }}
+{{- end }}
