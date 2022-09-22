@@ -119,6 +119,7 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
+	Timeout   time.Duration
 	logger    log.Logger
 	evaluator Evaluator
 	limits    Limits
@@ -126,6 +127,7 @@ type Engine struct {
 
 // NewEngine creates a new LogQL Engine.
 func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
+	queryTimeout := opts.Timeout
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -134,6 +136,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 		logger:    logger,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
+		Timeout:   queryTimeout,
 	}
 }
 
@@ -146,8 +149,9 @@ func (ng *Engine) Query(params Params) Query {
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
-		record: true,
-		limits: ng.limits,
+		record:  true,
+		limits:  ng.limits,
+		timeout: ng.Timeout,
 	}
 }
 
@@ -162,6 +166,7 @@ type query struct {
 	params    Params
 	parse     func(context.Context, string) (syntax.Expr, error)
 	limits    Limits
+	timeout   time.Duration
 	evaluator Evaluator
 	record    bool
 }
@@ -222,13 +227,21 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	queryTimeout := time.Minute * 5
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
-	} else {
-		queryTimeout = q.limits.QueryTimeout(userID)
+	queryTimeout := q.timeout
+	if q.timeout == 0 {
+		// Engine didn't set query timeout or user already migrated to new limits:query_timeout configuration.
+		// In this case, we can safely use the new limits timeout.
+		// If the limits timeout isn't configured either, use former 5 min timeout.
+		queryTimeout = time.Minute * 5
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
+		} else {
+			queryTimeout = q.limits.QueryTimeout(userID) + time.Second
+		}
 	}
+	level.Warn(q.logger).Log("msg", "USING TIMEOUT X", "timeout", queryTimeout)
+
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
