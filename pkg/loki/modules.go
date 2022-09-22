@@ -690,11 +690,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) supportIndexDeleteRequest() bool {
-	// TODO(owen-d): enable delete request storage in tsdb
-	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
-		return false
-	}
-	return config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs)
+	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
