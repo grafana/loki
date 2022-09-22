@@ -263,7 +263,13 @@ func (f *FSObjectClient) purgeOldFiles(diskUsage DiskStatus) error {
 // (f *FSObjectClient) bytesToDelete
 func (f *FSObjectClient) bytesToDelete(diskUsage DiskStatus) (bytes float64) {
 	percentajeOfExcessToBeDeleted := 5.0
-	return (((diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage) - percentajeOfExcessToBeDeleted) / 100) * float64(diskUsage.All))
+	percentajeToBeDeleted := diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage) - percentajeOfExcessToBeDeleted
+
+	if percentajeToBeDeleted < 0.0 {
+		percentajeToBeDeleted = 0.0
+	}
+
+	return ((percentajeToBeDeleted / 100) * float64(diskUsage.All))
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
