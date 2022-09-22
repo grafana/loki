@@ -12,6 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const sumEntriesQuery = "sum(loki_canary_entries_total)"
+const sumEntriesMissingQuery = "sum(loki_canary_missing_entries_total)"
+
 func TestCanary(t *testing.T) {
 	testContext := func(query func(string) (model.Value, v1.Warnings, error)) (*canary.Client, *mockAPI) {
 		api := &mockAPI{
@@ -74,8 +77,8 @@ func TestCanary(t *testing.T) {
 	})
 
 	t.Run("Run expects there to be more than 0 log entries produced by the canary", func(t *testing.T) {
-    client, _ := testContext(func(query string) (model.Value, v1.Warnings, error) {
-			if query == "sum(loki_canary_entries_total)" {
+		client, _ := testContext(func(query string) (model.Value, v1.Warnings, error) {
+			if query == sumEntriesQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 0,
@@ -83,7 +86,7 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-			if query == "sum(loki_canary_missing_entries_total)" {
+			if query == sumEntriesMissingQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 0,
@@ -91,14 +94,14 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-      return model.Vector{}, nil, nil
+			return model.Vector{}, nil, nil
 		})
 
 		err := client.Run(1)
 		assert.Error(t, err)
 
 		client, _ = testContext(func(query string) (model.Value, v1.Warnings, error) {
-			if query == "sum(loki_canary_entries_total)" {
+			if query == sumEntriesQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 100,
@@ -106,7 +109,7 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-			if query == "sum(loki_canary_missing_entries_total)" {
+			if query == sumEntriesMissingQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 0,
@@ -114,7 +117,7 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-      return model.Vector{}, nil, nil
+			return model.Vector{}, nil, nil
 		})
 
 		err = client.Run(1)
@@ -122,8 +125,8 @@ func TestCanary(t *testing.T) {
 	})
 
 	t.Run("Run expects there to be no log entries missing", func(t *testing.T) {
-    client, _ := testContext(func(query string) (model.Value, v1.Warnings, error) {
-			if query == "sum(loki_canary_entries_total)" {
+		client, _ := testContext(func(query string) (model.Value, v1.Warnings, error) {
+			if query == sumEntriesQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 100,
@@ -131,7 +134,7 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-			if query == "sum(loki_canary_missing_entries_total)" {
+			if query == sumEntriesMissingQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 100,
@@ -139,14 +142,14 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-      return model.Vector{}, nil, nil
+			return model.Vector{}, nil, nil
 		})
 
 		err := client.Run(1)
 		assert.Error(t, err)
 
 		client, _ = testContext(func(query string) (model.Value, v1.Warnings, error) {
-			if query == "sum(loki_canary_entries_total)" {
+			if query == sumEntriesQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 100,
@@ -154,7 +157,7 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-			if query == "sum(loki_canary_missing_entries_total)" {
+			if query == sumEntriesMissingQuery {
 				return model.Vector{
 					&model.Sample{
 						Value: 0,
@@ -162,7 +165,7 @@ func TestCanary(t *testing.T) {
 				}, nil, nil
 			}
 
-      return model.Vector{}, nil, nil
+			return model.Vector{}, nil, nil
 		})
 
 		err = client.Run(1)
