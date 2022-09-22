@@ -149,6 +149,15 @@ loki-canary: cmd/loki-canary/loki-canary
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
+###############
+# Loki-Canary-Test #
+###############
+.PHONY: cmd/loki-canary-test/loki-canary-test
+loki-canary-test: cmd/loki-canary-test/loki-canary-test
+
+cmd/loki-canary-test/loki-canary-test:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+
 #################
 # Loki-QueryTee #
 #################
@@ -534,6 +543,8 @@ loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+loki-canary-test-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary-test:$(IMAGE_TAG) -f cmd/loki-canary-test/Dockerfile .
 
 # loki-querytee
 loki-querytee-image:

@@ -46,6 +46,46 @@ workspace:
   path: loki
 ---
 kind: pipeline
+name: loki-canary-test-image
+steps:
+- image: plugins/docker
+  name: test-image
+  settings:
+    dockerfile: cmd/loki-canary-test/Dockerfile
+    dry_run: true
+    repo: grafana/loki-canary-test
+  when:
+    event:
+    - pull_request
+    paths:
+    - cmd/loki-canary-test/**
+- image: plugins/docker
+  name: push-image
+  settings:
+    dockerfile: cmd/loki-canary-test/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-test
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - cmd/loki-canary-test/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: check
 steps:
 - commands:
