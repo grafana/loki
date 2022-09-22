@@ -323,7 +323,7 @@ monitoring:
 | monitoring.selfMonitoring.lokiCanary.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
 | monitoring.selfMonitoring.lokiCanary.nodeSelector | object | `{}` | Node selector for canary pods |
 | monitoring.selfMonitoring.lokiCanary.resources | object | `{}` | Resource requests and limits for the canary |
-| monitoring.selfMonitoring.lokiCanary.test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null},"labels":{},"prometheusAddress":""}` | Sub section for configuring the loki canary helm test |
+| monitoring.selfMonitoring.lokiCanary.test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null},"labels":{},"prometheusAddress":"http://prometheus:9090"}` | Sub section for configuring the loki canary helm test |
 | monitoring.selfMonitoring.lokiCanary.test.annotations | object | `{}` | Additional annotations for test pods |
 | monitoring.selfMonitoring.lokiCanary.test.image | object | `{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null}` | Image to use for loki canary |
 | monitoring.selfMonitoring.lokiCanary.test.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
@@ -331,7 +331,7 @@ monitoring:
 | monitoring.selfMonitoring.lokiCanary.test.image.repository | string | `"grafana/loki-canary-test"` | Docker image repository |
 | monitoring.selfMonitoring.lokiCanary.test.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
 | monitoring.selfMonitoring.lokiCanary.test.labels | object | `{}` | Additional labels for the test pods |
-| monitoring.selfMonitoring.lokiCanary.test.prometheusAddress | string | `""` | Address of the prometheus server to query for the test |
+| monitoring.selfMonitoring.lokiCanary.test.prometheusAddress | string | `"http://prometheus:9090"` | Address of the prometheus server to query for the test |
 | monitoring.selfMonitoring.lokiCanary.tolerations | list | `[]` | Tolerations for canary pods |
 | monitoring.selfMonitoring.podLogs.annotations | object | `{}` | PodLogs annotations |
 | monitoring.selfMonitoring.podLogs.labels | object | `{}` | Additional PodLogs labels |
