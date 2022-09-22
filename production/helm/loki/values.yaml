@@ -728,7 +728,7 @@ monitoring:
       test:
         enabled: true
         # -- Address of the prometheus server to query for the test
-        prometheusAddress: ""
+        prometheusAddress: "http://prometheus:9090"
         # -- Additional labels for the test pods
         labels: {}
         # -- Additional annotations for test pods
