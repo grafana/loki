@@ -204,7 +204,7 @@ func (m *TableManager) starting(ctx context.Context) error {
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
-	} else if m.bucketClient != nil { // Need to check valid conditions
+	} else if m.bucketClient != nil { // FIXME: Need to check valid conditions
 		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketBlockSizeRetentionPercentage, nil, m.bucketBlockSizeRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketBlockSizeRetentionLoop)
 	}
