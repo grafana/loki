@@ -58,6 +58,8 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL().Host,
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
 			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+			"-querier.split-queries-by-interval=30s",
+			"-querier.parallelise-shardable-queries=true",
 		)
 	)
 
@@ -102,10 +104,12 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		}
 		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
 		assert.Equal(t, 4, resp.Data.Stats.Summary.TotalLinesProcessed)
+		assert.Equal(t, 1, resp.Data.Stats.Summary.Subqueries)
 
 		t.Run("query-frontend doesn't duplicate queries with filters", func(t *testing.T) {
-			require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", now.Add(-45*time.Minute), map[string]string{"job": "test"}))
-			require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", now.Add(-45*time.Minute), map[string]string{"job": "test"}))
+			require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", now.Add(-1*time.Hour), map[string]string{"job": "test"}))
+			require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", now.Add(-2*time.Hour), map[string]string{"job": "test"}))
+			require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA1", now.Add(-2*time.Hour), map[string]string{"job": "test"}))
 
 			resp, err := cliQueryFrontend.RunRangeQuery(`{job="test"} |= "lineA"`)
 			require.NoError(t, err)
@@ -117,8 +121,9 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 					lines = append(lines, val[1])
 				}
 			}
-			assert.ElementsMatch(t, []string{"lineA"}, lines)
-			assert.Equal(t, 2, resp.Data.Stats.Summary.TotalLinesProcessed)
+			assert.ElementsMatch(t, []string{"lineA1", "lineA"}, lines)
+			assert.Equal(t, 6, resp.Data.Stats.Summary.Subqueries)
+			assert.Equal(t, 3, resp.Data.Stats.Summary.TotalLinesProcessed)
 		})
 	})
 

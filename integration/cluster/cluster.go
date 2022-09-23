@@ -59,6 +59,10 @@ schema_config:
         prefix: index_
         period: 24h
 
+query_range:
+  align_queries_with_step: true
+  parallelise_shardable_queries: true
+
 compactor:
   working_directory: {{.dataPath}}/retention
   shared_store: filesystem

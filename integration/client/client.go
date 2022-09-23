@@ -327,6 +327,8 @@ type SummaryReport struct {
 	BytesProcessedPersecond int
 	LinesProcessedPersecond int
 	TotalLinesProcessed     int
+	TotalEntriesReturned    int
+	Subqueries              int
 }
 
 func (s *SummaryReport) UnmarshalJSON(b []byte) error {
@@ -334,6 +336,8 @@ func (s *SummaryReport) UnmarshalJSON(b []byte) error {
 		BytesProcessedPersecond int `json:"bytesProcessedPerSecond"`
 		LinesProcessedPersecond int `json:"linesProcessedPerSecond"`
 		TotalLinesProcessed     int `json:"totalLinesProcessed"`
+		TotalEntriesReturned    int `json:"totalEntriesReturned"`
+		Subqueries              int `json:"subqueries"`
 	}
 
 	if err := json.Unmarshal(b, &r); err != nil {
@@ -343,6 +347,8 @@ func (s *SummaryReport) UnmarshalJSON(b []byte) error {
 	s.BytesProcessedPersecond = r.BytesProcessedPersecond
 	s.LinesProcessedPersecond = r.LinesProcessedPersecond
 	s.TotalLinesProcessed = r.TotalLinesProcessed
+	s.TotalEntriesReturned = r.TotalEntriesReturned
+	s.Subqueries = r.Subqueries
 
 	return nil
 }
