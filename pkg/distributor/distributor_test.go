@@ -405,6 +405,11 @@ func TestStreamShard(t *testing.T) {
 
 	totalEntries := generateEntries(100)
 
+	d := Distributor{
+		rateStore: NewRateStore(),
+		sharder:   shardCountFor,
+	}
+
 	for _, tc := range []struct {
 		name              string
 		entries           []logproto.Entry
@@ -615,9 +620,6 @@ func TestStreamShard(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := Distributor{
-				streamSharder: NewStreamSharderMock(tc.shards),
-			}
 			baseStream.Entries = tc.entries
 
 			_, derivedStreams, err := d.shardStream(baseStream, "fake")
@@ -651,7 +653,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("high number of entries, low number of shards", func(b *testing.B) {
 		d := Distributor{
-			streamSharder: NewStreamSharderMock(2),
+			sharder: NewStreamSharderMock(2).ShardCountFor,
 		}
 		stream.Entries = allEntries
 
@@ -663,7 +665,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("low number of entries, low number of shards", func(b *testing.B) {
 		d := Distributor{
-			streamSharder: NewStreamSharderMock(2),
+			sharder: NewStreamSharderMock(2).ShardCountFor,
 		}
 		stream.Entries = nil
 
@@ -676,7 +678,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("high number of entries, high number of shards", func(b *testing.B) {
 		d := Distributor{
-			streamSharder: NewStreamSharderMock(64),
+			sharder: NewStreamSharderMock(64).ShardCountFor,
 		}
 		stream.Entries = allEntries
 
@@ -688,7 +690,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	b.Run("low number of entries, high number of shards", func(b *testing.B) {
 		d := Distributor{
-			streamSharder: NewStreamSharderMock(64),
+			sharder: NewStreamSharderMock(64).ShardCountFor,
 		}
 		stream.Entries = nil
 
