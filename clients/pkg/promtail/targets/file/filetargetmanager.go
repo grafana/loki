@@ -111,10 +111,7 @@ func NewFileTargetManager(
 		// download metadata for all pods running on a cluster, which may be a long operation.
 		for _, kube := range cfg.ServiceDiscoveryConfig.KubernetesSDConfigs {
 			if kube.Role == kubernetes.RolePod {
-				selector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, hostname)
-				kube.Selectors = []kubernetes.SelectorConfig{
-					{Role: kubernetes.RolePod, Field: selector},
-				}
+				kube.Selectors = tm.fulfillKubePodSelector(kube.Selectors, hostname)
 			}
 		}
 
@@ -242,6 +239,24 @@ func (tm *FileTargetManager) AllTargets() map[string][]target.Target {
 		result[jobName] = append(result[jobName], syncer.DroppedTargets()...)
 	}
 	return result
+}
+
+func (tm *FileTargetManager) fulfillKubePodSelector(selectors []kubernetes.SelectorConfig, host string) []kubernetes.SelectorConfig {
+	nodeSelector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, host)
+	if len(selectors) == 0 {
+		return []kubernetes.SelectorConfig{{Role: kubernetes.RolePod, Field: nodeSelector}}
+	}
+
+	for _, selector := range selectors {
+		if selector.Field == "" {
+			selector.Field = nodeSelector
+		} else if !strings.Contains(selector.Field, nodeSelector) {
+			selector.Field += "," + nodeSelector
+		}
+		selector.Role = kubernetes.RolePod
+	}
+
+	return selectors
 }
 
 // targetSyncer sync targets based on service discovery changes.

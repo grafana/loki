@@ -592,7 +592,7 @@ store: boltdb-shipper
 	require.Equal(t, expected, cfg)
 }
 
-func TestUsingBoltdbShipper(t *testing.T) {
+func TestUsingObjectStorageIndex(t *testing.T) {
 	var cfg SchemaConfig
 
 	// just one PeriodConfig in the past using boltdb-shipper
@@ -600,18 +600,18 @@ func TestUsingBoltdbShipper(t *testing.T) {
 		From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
 		IndexType: "boltdb-shipper",
 	}}
-	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
+	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
 
-	// just one PeriodConfig in the past not using boltdb-shipper
+	// just one PeriodConfig in the past not using object storge index
 	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, UsingBoltdbShipper(cfg.Configs))
+	assert.Equal(t, false, UsingObjectStorageIndex(cfg.Configs))
 
-	// add a newer PeriodConfig in the future using boltdb-shipper
+	// add a newer PeriodConfig in the future using tsdb
 	cfg.Configs = append(cfg.Configs, PeriodConfig{
 		From:      DayTime{Time: model.Now().Add(time.Hour)},
-		IndexType: "boltdb-shipper",
+		IndexType: "tsdb",
 	})
-	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
+	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
 }
 
 func TestActiveIndexType(t *testing.T) {

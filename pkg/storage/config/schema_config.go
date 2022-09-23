@@ -253,23 +253,6 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 	return usingForPeriodConfigs(configs, fn)
 }
 
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == BoltDBShipperType
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
-func UsingTSDB(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == TSDBType
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
 func defaultRowShards(schema string) uint32 {
 	switch schema {
 	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":

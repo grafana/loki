@@ -710,12 +710,12 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
 // helper only used in building TSDBs
