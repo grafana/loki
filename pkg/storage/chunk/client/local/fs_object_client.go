@@ -228,7 +228,7 @@ func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context, diskU
 func (f *FSObjectClient) purgeOldFiles(diskUsage util_storage.DiskStatus) error {
 	files, error := ioutil.ReadDir(f.cfg.Directory)
 	bytesToDelete := f.bytesToDelete(diskUsage)
-	deletedAmount := 0.0
+	bytesDeleted := 0.0
 
 	if error != nil {
 		// TODO: handle the error in a better way!
@@ -241,15 +241,15 @@ func (f *FSObjectClient) purgeOldFiles(diskUsage util_storage.DiskStatus) error 
 	})
 
 	for _, file := range files {
-		if bytesToDelete > deletedAmount {
-			deletedAmount = deletedAmount + float64(file.Size())
+		if bytesToDelete >= (bytesDeleted + float64(file.Size())) {
+			bytesDeleted = bytesDeleted + float64(file.Size())
 			level.Info(util_log.Logger).Log("msg", "block size retention exceded, removing file", "filepath", file.Name())
 			if error := os.Remove(file.Name()); error != nil {
 				// TODO: handle the error in a better way!
 				return error
 			}
 		} else {
-			return nil
+			break
 		}
 	}
 	return nil
@@ -257,8 +257,7 @@ func (f *FSObjectClient) purgeOldFiles(diskUsage util_storage.DiskStatus) error 
 
 // (f *FSObjectClient) bytesToDelete
 func (f *FSObjectClient) bytesToDelete(diskUsage util_storage.DiskStatus) (bytes float64) {
-	percentajeOfExcessToBeDeleted := 5.0
-	percentajeToBeDeleted := diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage) - percentajeOfExcessToBeDeleted
+	percentajeToBeDeleted := diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage)
 
 	if percentajeToBeDeleted < 0.0 {
 		percentajeToBeDeleted = 0.0

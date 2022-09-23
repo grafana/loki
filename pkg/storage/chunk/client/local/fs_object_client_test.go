@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -202,74 +203,75 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
 }
 
-func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete_all(t *testing.T) {
-	fsChunksDir := t.TempDir()
+func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
+	totalFiles := 10000
+	fileContent := []byte("Diego - 10") // 10 bytes content
+	fsChunksDir := generateFiles(t, totalFiles, fileContent)
+	bytesFullDisk := uint64(totalFiles * 10)
+	sizeBasedRetentionPercentage := 80
+	remainingFilesAfterDelete := totalFiles * (sizeBasedRetentionPercentage) / 100
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
 		Directory:                    fsChunksDir,
-		SizeBasedRetentionPercentage: 80,
+		SizeBasedRetentionPercentage: sizeBasedRetentionPercentage,
 	})
 	require.NoError(t, err)
 
-	file1 := "file1"
-	file2 := "file2"
-
-	// Creating dummy files
-	require.NoError(t, os.Chdir(fsChunksDir))
-
-	f, err := os.Create(file1)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	f, err = os.Create(file2)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
 	// Verify whether all files are created
 	files, _ := ioutil.ReadDir(".")
-	require.Equal(t, 2, len(files), "Number of files should be 2")
+	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
 
-	// All should be deleted
+	// Check remainingFilesAfterDelete
 	diskUsage, _ := util_storage.DiskUsage(fsChunksDir)
 	diskUsage.UsedPercent = 100.0
-	diskUsage.All = 10000
+	diskUsage.All = bytesFullDisk
 	require.NoError(t, bucketClient.DeleteChunksBasedOnBlockSize(context.Background(), diskUsage))
 	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, 0, len(files), "Number of files should be 0")
+	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
 }
 
 func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
-	fsChunksDir := t.TempDir()
+	totalFiles := 10000
+	fileContent := []byte("Diego - 10") // 10 bytes content
+	fsChunksDir := generateFiles(t, totalFiles, fileContent)
+	bytesFullDisk := uint64(totalFiles * 10)
+	sizeBasedRetentionPercentage := 80
+	remainingFilesAfterDelete := totalFiles
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
 		Directory:                    fsChunksDir,
-		SizeBasedRetentionPercentage: 80,
+		SizeBasedRetentionPercentage: sizeBasedRetentionPercentage,
 	})
 	require.NoError(t, err)
 
-	file1 := "file1"
-	file2 := "file2"
-
-	// Creating dummy files
-	require.NoError(t, os.Chdir(fsChunksDir))
-
-	f, err := os.Create(file1)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	f, err = os.Create(file2)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
 	// Verify whether all files are created
 	files, _ := ioutil.ReadDir(".")
-	require.Equal(t, 2, len(files), "Number of files should be 2")
+	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
 
-	// Nothing should be deleted
+	// Check remainingFilesAfterDelete
 	diskUsage, _ := util_storage.DiskUsage(fsChunksDir)
-	diskUsage.UsedPercent = 4.0
-	diskUsage.All = 10000
+	diskUsage.UsedPercent = float64(sizeBasedRetentionPercentage - 10) // 70 < 80 No need to delete
+	diskUsage.All = bytesFullDisk
 	require.NoError(t, bucketClient.DeleteChunksBasedOnBlockSize(context.Background(), diskUsage))
 	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, 2, len(files), "Number of files should be 2")
+	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
+}
+
+func generateFiles(t *testing.T, files int, content []byte) (fsChunkDir string) {
+	fsChunksDir := t.TempDir()
+	totalFiles := files
+	fileContent := content
+
+	file := "file_"
+	require.NoError(t, os.Chdir(fsChunksDir))
+
+	for i := 0; i < totalFiles; i++ {
+		filename := file + strconv.Itoa(i)
+		f, err := os.Create(filename)
+		os.WriteFile(filename, fileContent, 0666)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+	}
+
+	return fsChunkDir
 }
