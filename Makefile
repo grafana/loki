@@ -494,7 +494,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
+images: promtail-image loki-image loki-canary-image loki-canary-test-image docker-driver fluent-bit-image fluentd-image
 
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
@@ -545,6 +545,8 @@ loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 loki-canary-test-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary-test:$(IMAGE_TAG) -f cmd/loki-canary-test/Dockerfile .
+loki-canary-test-push: loki-canary-test-image
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
