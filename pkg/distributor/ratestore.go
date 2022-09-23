@@ -37,7 +37,7 @@ func (r *rateStore) RateFor(stream logproto.Stream) (int, error) {
 	return 0, fmt.Errorf("no rate for stream %s", stream.Labels)
 }
 
-func (r *rateStore) StoreRate(stream logproto.Stream, rate int) error {
+func (r *rateStore) storeRate(stream logproto.Stream, rate int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

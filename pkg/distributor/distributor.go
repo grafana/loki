@@ -83,7 +83,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
 	RateFor(stream logproto.Stream) (int, error)
-	StoreRate(stream logproto.Stream, rate int) error
 }
 
 // Distributor coordinates replicates and distribution of log streams.
