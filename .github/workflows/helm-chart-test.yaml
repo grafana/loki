@@ -67,8 +67,12 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
         run: |
           helm install prometheus prometheus-community/kube-prometheus-stack \
+            --namespace prometheus \
             --set grafana.enabled=false \
             --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus
+
+          kubectl --namespace prometheus get pods -l "release=prometheus"
+          kubectl --namespace prometheus get services -l "release=prometheus"
 
       - name: Run chart-testing (install)
         run: |
