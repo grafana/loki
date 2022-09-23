@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'production/helm/**'
+      - '.github/workflows/helm-test.yaml'
 
 jobs:
   call-lint:
