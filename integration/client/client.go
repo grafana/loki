@@ -584,6 +584,9 @@ func (c *Client) run(u string) ([]byte, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("request failed with status code %v: %w", res.StatusCode, err)
 	}
+	if res.StatusCode != 200 {
+		return nil, 0, fmt.Errorf("request failed with status code %v: %s", res.Status, buf)
+	}
 
 	return buf, res.StatusCode, nil
 }

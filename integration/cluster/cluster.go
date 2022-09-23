@@ -33,6 +33,7 @@ server:
 
 common:
   path_prefix: {{.dataPath}}
+  compactor_address: 127.0.0.1
   storage:
     filesystem:
       chunks_directory: {{.sharedDataPath}}/chunks

@@ -26,6 +26,11 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 			"write",
 			"-target=write",
 		)
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.downstream-url="+tRead.HTTPURL().String(),
+		)
 	)
 
 	require.NoError(t, clu.Run())
@@ -37,6 +42,8 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 	cliWrite.Now = now
 	cliRead := client.New(tenantID, "", tRead.HTTPURL().String())
 	cliRead.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL().String())
+	cliQueryFrontend.Now = now
 
 	t.Run("ingest logs", func(t *testing.T) {
 		// ingest some log lines
@@ -59,6 +66,20 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 			}
 		}
 		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
+	})
+
+	t.Run("query with filter", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"} |= "lineA"`)
+		require.NoError(t, err)
+		assert.Equal(t, "streams", resp.Data.ResultType)
+
+		var lines []string
+		for _, stream := range resp.Data.Stream {
+			for _, val := range stream.Values {
+				lines = append(lines, val[1])
+			}
+		}
+		assert.ElementsMatch(t, []string{"lineA"}, lines)
 	})
 
 	t.Run("label-names", func(t *testing.T) {
