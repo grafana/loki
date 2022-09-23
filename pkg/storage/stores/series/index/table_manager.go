@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/grafana/loki/pkg/storage/config"
+	util_storage "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -153,7 +154,7 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 // BucketClient is used to enforce retention on chunk buckets.
 type BucketClient interface {
 	DeleteChunksBefore(ctx context.Context, ts time.Time) error
-	DeleteChunksBasedOnBlockSize(ctx context.Context) error
+	DeleteChunksBasedOnBlockSize(ctx context.Context, diskUsage util_storage.DiskStatus) error
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
@@ -324,9 +325,15 @@ func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 }
 
 func (m *TableManager) bucketBlockSizeRetentionIteration(ctx context.Context) error {
-	err := m.bucketClient.DeleteChunksBasedOnBlockSize(ctx)
+	diskUsage, error := util_storage.DiskUsage("/tmp") // FIXME: We need to get SizeBasedRetentionPercentage from FSConfig
+
+	if error != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", error)
+	}
+
+	err := m.bucketClient.DeleteChunksBasedOnBlockSize(ctx, diskUsage)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
 
 	// don't return error, otherwise timer service would stop.

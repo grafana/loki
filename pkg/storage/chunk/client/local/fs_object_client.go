@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	util_storage "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -213,14 +214,7 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 }
 
 // DeleteChunksBasedOnBlockSize
-func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context) error {
-	diskUsage, error := util.DiskUsage(f.cfg.Directory)
-
-	if error != nil {
-		// TODO: handle the error in a better way!
-		return error
-	}
-
+func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context, diskUsage util_storage.DiskStatus) error {
 	if diskUsage.UsedPercent >= float64(f.cfg.SizeBasedRetentionPercentage) {
 		if error := f.purgeOldFiles(diskUsage); error != nil {
 			// TODO: handle the error in a better way!
@@ -231,7 +225,7 @@ func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context) error
 }
 
 // (f *FSObjectClient) purgeOldFiles
-func (f *FSObjectClient) purgeOldFiles(diskUsage util.DiskStatus) error {
+func (f *FSObjectClient) purgeOldFiles(diskUsage util_storage.DiskStatus) error {
 	files, error := ioutil.ReadDir(f.cfg.Directory)
 	bytesToDelete := f.bytesToDelete(diskUsage)
 	deletedAmount := 0.0
@@ -254,13 +248,15 @@ func (f *FSObjectClient) purgeOldFiles(diskUsage util.DiskStatus) error {
 				// TODO: handle the error in a better way!
 				return error
 			}
+		} else {
+			return nil
 		}
 	}
 	return nil
 }
 
 // (f *FSObjectClient) bytesToDelete
-func (f *FSObjectClient) bytesToDelete(diskUsage util.DiskStatus) (bytes float64) {
+func (f *FSObjectClient) bytesToDelete(diskUsage util_storage.DiskStatus) (bytes float64) {
 	percentajeOfExcessToBeDeleted := 5.0
 	percentajeToBeDeleted := diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage) - percentajeOfExcessToBeDeleted
 
@@ -289,26 +285,3 @@ func isDirEmpty(name string) (ok bool, err error) {
 	}
 	return false, err
 }
-
-// // Creating structure for DiskStatus
-// type DiskStatus struct {
-// 	All         uint64  `json:"All"`
-// 	Used        uint64  `json:"Used"`
-// 	Free        uint64  `json:"Free"`
-// 	UsedPercent float64 `json:UsedPercent`
-// }
-
-// // Function to get
-// // disk usage of path/disk
-// func DiskUsage(path string) (disk DiskStatus, err error) {
-// 	fs := syscall.Statfs_t{}
-// 	error := syscall.Statfs(path, &fs)
-// 	if error != nil {
-// 		return disk, error
-// 	}
-// 	disk.All = fs.Blocks * uint64(fs.Bsize)
-// 	disk.Free = fs.Bfree * uint64(fs.Bsize)
-// 	disk.Used = disk.All - disk.Free
-// 	disk.UsedPercent = (float64(disk.Used) / float64(disk.All)) * float64(100)
-// 	return disk, nil
-// }

@@ -3,7 +3,6 @@ package local
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -12,9 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	util_storage "github.com/grafana/loki/pkg/util"
 )
 
 func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
@@ -202,10 +202,74 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
 }
 
-func TestDiskUsage(t *testing.T) {
-	fsObjectsDir := t.TempDir()
-	diskUsage, _ := DiskUsage(fsObjectsDir)
+func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete_all(t *testing.T) {
+	fsChunksDir := t.TempDir()
 
-	require.Equal(t, "float64", fmt.Sprintf("%T", diskUsage.UsedPercent), "diskUsage.UsedPercent is not float64")
-	require.LessOrEqual(t, diskUsage.UsedPercent, float64(100), "diskUsage.UsedPercent is miscalculated")
+	bucketClient, err := NewFSObjectClient(FSConfig{
+		Directory:                    fsChunksDir,
+		SizeBasedRetentionPercentage: 80,
+	})
+	require.NoError(t, err)
+
+	file1 := "file1"
+	file2 := "file2"
+
+	// Creating dummy files
+	require.NoError(t, os.Chdir(fsChunksDir))
+
+	f, err := os.Create(file1)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	f, err = os.Create(file2)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Verify whether all files are created
+	files, _ := ioutil.ReadDir(".")
+	require.Equal(t, 2, len(files), "Number of files should be 2")
+
+	// All should be deleted
+	diskUsage, _ := util_storage.DiskUsage(fsChunksDir)
+	diskUsage.UsedPercent = 100.0
+	diskUsage.All = 10000
+	require.NoError(t, bucketClient.DeleteChunksBasedOnBlockSize(context.Background(), diskUsage))
+	files, _ = ioutil.ReadDir(".")
+	require.Equal(t, 0, len(files), "Number of files should be 0")
+}
+
+func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
+	fsChunksDir := t.TempDir()
+
+	bucketClient, err := NewFSObjectClient(FSConfig{
+		Directory:                    fsChunksDir,
+		SizeBasedRetentionPercentage: 80,
+	})
+	require.NoError(t, err)
+
+	file1 := "file1"
+	file2 := "file2"
+
+	// Creating dummy files
+	require.NoError(t, os.Chdir(fsChunksDir))
+
+	f, err := os.Create(file1)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	f, err = os.Create(file2)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Verify whether all files are created
+	files, _ := ioutil.ReadDir(".")
+	require.Equal(t, 2, len(files), "Number of files should be 2")
+
+	// Nothing should be deleted
+	diskUsage, _ := util_storage.DiskUsage(fsChunksDir)
+	diskUsage.UsedPercent = 4.0
+	diskUsage.All = 10000
+	require.NoError(t, bucketClient.DeleteChunksBasedOnBlockSize(context.Background(), diskUsage))
+	files, _ = ioutil.ReadDir(".")
+	require.Equal(t, 2, len(files), "Number of files should be 2")
 }
