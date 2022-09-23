@@ -747,6 +747,47 @@ func Benchmark_Push(b *testing.B) {
 	}
 }
 
+func TestShardCalculation(t *testing.T) {
+	megabyte := 1000
+	desiredRate := 3 * megabyte
+
+	for _, tc := range []struct {
+		name       string
+		streamSize int
+		rate       int
+		wantShards int
+	}{
+		{
+			streamSize: 1 * megabyte,
+			rate:       0,
+			wantShards: 1,
+		},
+		{
+			streamSize: 1 * megabyte,
+			rate:       desiredRate + 1,
+			wantShards: 2,
+		},
+		{
+			streamSize: 4 * megabyte,
+			rate:       0,
+			wantShards: 2,
+		},
+		{
+			streamSize: 1 * megabyte,
+			rate:       300 * megabyte,
+			wantShards: 101,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := calculateShards(tc.rate, tc.streamSize, desiredRate)
+			require.Equal(t, tc.wantShards, got)
+		})
+	}
+}
+
+func TestShardCountFor(t *testing.T) {
+}
+
 func Benchmark_PushWithLineTruncation(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)

@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -608,7 +609,7 @@ func shardCountFor(stream logproto.Stream, desiredRate int, rateStore RateStore)
 		return 1, err
 	}
 
-	shards := (rate + stream.Size()) / desiredRate
+	shards := calculateShards(rate, stream.Size(), desiredRate)
 	if shards > len(stream.Entries) {
 		return 1, &unshardableStreamErr{labels: stream.Labels, entriesNum: len(stream.Entries), shardNum: shards}
 	} else if shards == 0 {
@@ -616,4 +617,12 @@ func shardCountFor(stream logproto.Stream, desiredRate int, rateStore RateStore)
 		return 1, nil
 	}
 	return shards, nil
+}
+
+func calculateShards(rate, streamSize, desiredRate int) int {
+	shards := float64((rate + streamSize)) / float64(desiredRate)
+	if shards <= 1 {
+		return 1
+	}
+	return int(math.Ceil(shards))
 }
