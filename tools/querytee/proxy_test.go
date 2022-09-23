@@ -2,7 +2,7 @@ package querytee
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -179,7 +179,7 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			require.NoError(t, err)
 
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err)
 
 			assert.Equal(t, testData.expectedStatus, res.StatusCode)
@@ -330,7 +330,7 @@ func TestProxy_Passthrough(t *testing.T) {
 				require.NoError(t, err)
 
 				defer res.Body.Close()
-				body, err := ioutil.ReadAll(res.Body)
+				body, err := io.ReadAll(res.Body)
 				require.NoError(t, err)
 
 				assert.Equal(t, query.expectedStatusCode, res.StatusCode)

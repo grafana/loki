@@ -2,7 +2,7 @@ package cfg
 
 import (
 	"flag"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -21,7 +21,7 @@ server:
 		data := NewDynamicConfig(mockApplyDynamicConfig)
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
-		file, err := ioutil.TempFile("", "config.yaml")
+		file, err := os.CreateTemp("", "config.yaml")
 		require.NoError(t, err)
 		_, err = file.WriteString(config)
 		require.NoError(t, err)

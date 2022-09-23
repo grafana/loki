@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -55,7 +55,7 @@ func Test_writeError(t *testing.T) {
 			rec := httptest.NewRecorder()
 			WriteError(tt.err, rec)
 			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
-			b, err := ioutil.ReadAll(rec.Result().Body)
+			b, err := io.ReadAll(rec.Result().Body)
 			if err != nil {
 				t.Fatal(err)
 			}
