@@ -317,49 +317,12 @@ func (a *VectorValues) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// StatsReport wraps the stats summary of a query execution.
-type StatsReport struct {
-	Summary SummaryReport `json:"summary"`
-}
-
-// SummaryReport holds statistics of a query execution.
-type SummaryReport struct {
-	BytesProcessedPersecond int
-	LinesProcessedPersecond int
-	TotalLinesProcessed     int
-	TotalEntriesReturned    int
-	Subqueries              int
-}
-
-func (s *SummaryReport) UnmarshalJSON(b []byte) error {
-	var r struct {
-		BytesProcessedPersecond int `json:"bytesProcessedPerSecond"`
-		LinesProcessedPersecond int `json:"linesProcessedPerSecond"`
-		TotalLinesProcessed     int `json:"totalLinesProcessed"`
-		TotalEntriesReturned    int `json:"totalEntriesReturned"`
-		Subqueries              int `json:"subqueries"`
-	}
-
-	if err := json.Unmarshal(b, &r); err != nil {
-		return err
-	}
-
-	s.BytesProcessedPersecond = r.BytesProcessedPersecond
-	s.LinesProcessedPersecond = r.LinesProcessedPersecond
-	s.TotalLinesProcessed = r.TotalLinesProcessed
-	s.TotalEntriesReturned = r.TotalEntriesReturned
-	s.Subqueries = r.Subqueries
-
-	return nil
-}
-
 // DataType holds the result type and a list of StreamValues
 type DataType struct {
 	ResultType string
 	Stream     []StreamValues
 	Matrix     []MatrixValues
 	Vector     []VectorValues
-	Stats      StatsReport
 }
 
 func (a *DataType) UnmarshalJSON(b []byte) error {
@@ -367,14 +330,9 @@ func (a *DataType) UnmarshalJSON(b []byte) error {
 	var s struct {
 		ResultType string          `json:"resultType"`
 		Result     json.RawMessage `json:"result"`
-		Stats      json.RawMessage `json:"stats"`
 	}
 
 	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-
-	if err := json.Unmarshal(s.Stats, &a.Stats); err != nil {
 		return err
 	}
 
