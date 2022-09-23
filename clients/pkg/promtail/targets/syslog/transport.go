@@ -366,15 +366,24 @@ func (t *UDPTransport) acceptPackets() {
 			continue
 		}
 
-		stream, ok := streams[addr.String()]
-		if !ok {
-			stream = NewConnPipe(addr)
-			streams[addr.String()] = stream
-			t.openConnections.Add(1)
-			go t.handleRcv(stream)
-		}
+		// `streams` is not being used because of the `stream.PipeWriter.Close()` added below;
+		// if the closed streams were persisted, they would immediately error the next time a packet came in from the same address.
+		stream := NewConnPipe(addr)
+		t.openConnections.Add(1)
+		go t.handleRcv(stream)
+
 		if _, err := stream.Write(buf[:n]); err != nil {
 			level.Warn(t.logger).Log("msg", "failed to write to stream", "addr", addr, "err", err)
+		}
+		// The underlying `go-syslog` stream-based parser requires a newline after every message, even if it's the only message before EOF.
+		// (another way would be to *prepend* an octet count...)
+		if _, err := stream.Write([]byte("\n")); err != nil {
+			level.Warn(t.logger).Log("msg", "failed to write to stream", "addr", addr, "err", err)
+		}
+		// Finally, messages don't seem to emit from the parser even when it does see newlines,
+		// so we do need to explicitly close the stream.
+		if err := stream.PipeWriter.Close(); err != nil {
+			level.Warn(t.logger).Log("msg", "failed to close UDP PipeWriter", "addr", addr, "err", err)
 		}
 	}
 }
