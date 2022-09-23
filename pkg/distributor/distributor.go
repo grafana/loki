@@ -330,10 +330,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			validatedLineCount++
 		}
 		stream.Entries = stream.Entries[:n]
-		if n > 0 {
-			keys = append(keys, util.TokenFor(userID, stream.Labels))
-			streams = append(streams, streamTracker{stream: stream})
-		}
 
 		if d.cfg.ShardStreams.Enabled {
 			derivedKeys, derivedStreams := d.shardStream(stream, userID)
