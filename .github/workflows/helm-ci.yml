@@ -11,7 +11,7 @@ jobs:
     with:
       filter_regex_include: .*production/helm/.*
 
-  call-lint-test:
+  call-test:
     uses: ./.github/workflows/helm-test.yaml@main
     with:
       ct_configfile: production/helm/ct.yaml
