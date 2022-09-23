@@ -163,6 +163,7 @@ A service(s) is slower than expected at processing data.
 
 - Check the logs of all the services
 - Check to ensure that the Loki components can reach the storage
+  - Particularly for queriers, examine metrics for a small query queue: `cortex_query_scheduler_inflight_requests`
 
 ## Loki Tenant Rate Limit
 
@@ -190,6 +191,8 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 
 - Examine the metrics for the reason and tenant that is being limited: `loki_discarded_samples_total{namespace="<namespace>"}`
 - Increase the limits allocated to the tenant in the LokiStack CRD
+  - For ingestion limits, please consult the table below
+  - For query limits, the `MaxEntriesLimitPerQuery`, `MaxChunksPerQuery`, or `MaxQuerySeries` can be changed to raise the limit
 
 | Reason | Corresponding Ingestion Limit Keys |
 | --- | --- |
