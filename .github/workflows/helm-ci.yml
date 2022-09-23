@@ -12,7 +12,7 @@ jobs:
       filter_regex_include: .*production/helm/.*
 
   call-test:
-    uses: ./.github/workflows/helm-test.yaml
+    uses: ./.github/workflows/helm-chart-test.yaml
     with:
       ct_configfile: production/helm/ct.yaml
       ct_check_version_increment: false

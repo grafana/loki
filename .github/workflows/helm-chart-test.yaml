@@ -24,7 +24,7 @@ env:
   CT_CONFIGFILE: ${{ inputs.ct_configfile }}
 
 jobs:
-  lint-test:
+  chart-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -66,7 +66,7 @@ jobs:
         id: install-prometheus
         if: steps.list-changed.outputs.changed == 'true'
         run: |
-          helm install prometheus-community/kube-prometheus-stack \
+          helm install prometheus prometheus-community/kube-prometheus-stack \
             --set grafana.enabled=false \
             --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus
 
