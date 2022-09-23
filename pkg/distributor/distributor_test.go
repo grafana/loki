@@ -405,11 +405,6 @@ func TestStreamShard(t *testing.T) {
 
 	totalEntries := generateEntries(100)
 
-	d := Distributor{
-		rateStore: NewRateStore(),
-		sharder:   shardCountFor,
-	}
-
 	for _, tc := range []struct {
 		name              string
 		entries           []logproto.Entry
@@ -621,6 +616,10 @@ func TestStreamShard(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			baseStream.Entries = tc.entries
+
+			d := Distributor{
+				sharder: NewStreamSharderMock(tc.shards).ShardCountFor,
+			}
 
 			_, derivedStreams, err := d.shardStream(baseStream, "fake")
 			require.NoError(t, err)
