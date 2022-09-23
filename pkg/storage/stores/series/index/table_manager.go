@@ -29,7 +29,7 @@ const (
 	writeLabel = "write"
 
 	bucketRetentionEnforcementInterval = 12 * time.Hour
-	bucketBlockSizeRetentionPercentage = 80
+	bucketBlockSizeRetentionInterval   = time.Hour / 12 // 5 minutes
 )
 
 type tableManagerMetrics struct {
@@ -205,7 +205,7 @@ func (m *TableManager) starting(ctx context.Context) error {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
 	} else if m.bucketClient != nil { // FIXME: Need to check valid conditions
-		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketBlockSizeRetentionPercentage, nil, m.bucketBlockSizeRetentionIteration, nil)
+		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketBlockSizeRetentionInterval, nil, m.bucketBlockSizeRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketBlockSizeRetentionLoop)
 	}
 
