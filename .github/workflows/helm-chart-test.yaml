@@ -66,6 +66,8 @@ jobs:
         id: install-prometheus
         if: steps.list-changed.outputs.changed == 'true'
         run: |
+          kubectl create namespace prometheus
+
           helm install prometheus prometheus-community/kube-prometheus-stack \
             --namespace prometheus \
             --set grafana.enabled=false \
