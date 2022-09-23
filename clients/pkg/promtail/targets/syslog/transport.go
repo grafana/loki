@@ -6,8 +6,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -207,7 +207,7 @@ func newTLSConfig(certFile string, keyFile string, caFile string) (*tls.Config, 
 	}
 
 	if caFile != "" {
-		caCert, err := ioutil.ReadFile(caFile)
+		caCert, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to load client CA certificate: %w", err)
 		}

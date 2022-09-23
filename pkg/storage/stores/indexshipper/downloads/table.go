@@ -3,7 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -76,7 +76,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	filesInfo, err := ioutil.ReadDir(cacheLocation)
+	dirEntries, err := os.ReadDir(cacheLocation)
 	if err != nil {
 		return nil, err
 	}
@@ -93,15 +93,15 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		metrics:            metrics,
 	}
 
-	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
+	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(dirEntries))
 
 	// common index files are outside the directories and user index files are in the directories
-	for _, fileInfo := range filesInfo {
-		if !fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		userID := fileInfo.Name()
+		userID := entry.Name()
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
 			table.baseUserIndexSet, openIndexFileFunc, loggerWithUserID(table.logger, userID))
 		if err != nil {

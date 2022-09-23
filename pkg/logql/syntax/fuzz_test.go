@@ -4,7 +4,6 @@
 package syntax
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -15,7 +14,7 @@ const fuzzTestCaseEnvName = "FUZZ_TESTCASE_PATH"
 
 func Test_Fuzz(t *testing.T) {
 	fuzzTestPath := os.Getenv(fuzzTestCaseEnvName)
-	data, err := ioutil.ReadFile(fuzzTestPath)
+	data, err := os.ReadFile(fuzzTestPath)
 	require.NoError(t, err)
 	_, _ = ParseExpr(string(data))
 }

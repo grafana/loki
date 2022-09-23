@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/flate"
@@ -187,7 +186,7 @@ func parseLokiBlock(compression Encoding, data []byte) ([]byte, []LokiEntry, err
 		return nil, nil, err
 	}
 
-	decompressed, err := ioutil.ReadAll(r)
+	decompressed, err := io.ReadAll(r)
 	origDecompressed := decompressed
 	if err != nil {
 		return nil, nil, err
