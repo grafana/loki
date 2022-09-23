@@ -354,7 +354,7 @@ func TestCompactor(t *testing.T) {
 
 			var indices []*TSDBIndex
 			for _, cases := range tc.input {
-				idx := BuildIndex(t, dir, "fake", cases)
+				idx := BuildIndex(t, dir, cases)
 				defer idx.Close()
 				casted, ok := idx.Index.(*TSDBIndex)
 				require.Equal(t, true, ok)
