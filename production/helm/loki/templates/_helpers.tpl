@@ -128,7 +128,6 @@ Docker image name for enterprise logs
 {{- define "loki.enterpriseImage" -}}
 {{- $dict := dict "service" .Values.enterprise.image "global" .Values.global.image "defaultVersion" .Values.enterprise.version -}}
 {{- include "loki.baseImage" $dict -}}
-{{/* {{- printf "foo" -}} */}}
 {{- end -}}
 
 {{/*
@@ -136,6 +135,14 @@ Docker image name
 */}}
 {{- define "loki.image" -}}
 {{- if .Values.enterprise.enabled -}}{{- include "loki.enterpriseImage" . -}}{{- else -}}{{- include "loki.lokiImage" . -}}{{- end -}}
+{{- end -}}
+
+{{/*
+Docker image name for kubectl container
+*/}}
+{{- define "loki.kubectlImage" -}}
+{{- $dict := dict "service" .Values.kubectlImage "global" .Values.global.image "defaultVersion" "latest" -}}
+{{- include "loki.baseImage" $dict -}}
 {{- end -}}
 
 {{/*
@@ -322,3 +329,33 @@ Create the service endpoint including port for MinIO.
 {{ include "loki.name" . }}-memberlist
 {{- end -}}
 
+{{/* Determine the public host for the Loki cluster */}}
+{{- define "loki.host" -}}
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- $url := printf "%s.%s.svc.%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
+  {{- $url = printf "%s.%s.svc.%s:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- end }}
+{{- printf "%s" $url -}}
+{{- end -}}
+
+{{/* Determine the public endpoint for the Loki cluster */}}
+{{- define "loki.address" -}}
+{{- printf "http://%s" (include "loki.host" . ) -}}
+{{- end -}}
+
+{{/* Name of the cluster */}}
+{{- define "loki.clusterName" -}}
+{{- $name := .Values.enterprise.cluster_name | default .Release.Name }}
+{{- printf "%s" $name -}}
+{{- end -}}
+
+{{/* Name of kubernetes secret to persist GEL admin token to */}}
+{{- define "enterprise-logs.adminTokenSecret" }}
+{{- .Values.enterprise.adminTokenSecret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
+
+{{/* Name of kubernetes secret to persist canary credentials in */}}
+{{- define "enterprise-logs.canarySecret" }}
+{{- .Values.enterprise.canarySecret | default (printf "%s-canary-secret" (include "loki.name" . )) -}}
+{{- end -}}

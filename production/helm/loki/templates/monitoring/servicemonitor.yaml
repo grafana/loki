@@ -4,7 +4,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "loki.readFullname" $ }}
+  name: {{ include "loki.fullname" $ }}
   {{- with .namespace }}
   namespace: {{ . }}
   {{- end }}
@@ -13,7 +13,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    {{- include "loki.readLabels" $ | nindent 4 }}
+    {{- include "loki.labels" $ | nindent 4 }}
     {{- with .labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -32,6 +32,7 @@ spec:
           - "false"
   endpoints:
     - port: http-metrics
+      path: /metrics
       {{- with .interval }}
       interval: {{ . }}
       {{- end }}
