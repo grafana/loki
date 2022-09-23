@@ -3,9 +3,12 @@ package storage
 import (
 	"bytes"
 	"context"
-	"github.com/prometheus/common/model"
 	"strings"
 	"time"
+
+	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -15,9 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
