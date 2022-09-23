@@ -785,9 +785,6 @@ func TestShardCalculation(t *testing.T) {
 	}
 }
 
-func TestShardCountFor(t *testing.T) {
-}
-
 func Benchmark_PushWithLineTruncation(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
