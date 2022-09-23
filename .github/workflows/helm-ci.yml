@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'production/helm/**'
-      - '.github/workflows/helm-test.yaml'
 
 jobs:
   call-lint:
@@ -13,7 +12,7 @@ jobs:
       filter_regex_include: .*production/helm/.*
 
   call-test:
-    uses: ./.github/workflows/helm-test.yaml@main
+    uses: ./.github/workflows/helm-test.yaml
     with:
       ct_configfile: production/helm/ct.yaml
       ct_check_version_increment: false
