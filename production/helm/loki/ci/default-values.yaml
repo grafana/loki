@@ -6,3 +6,7 @@ read:
   replicas: 1
 write:
   replicas: 1
+monitoring:
+  serviceMonitor:
+    labels:
+      release: "prometheus"

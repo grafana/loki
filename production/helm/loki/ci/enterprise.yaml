@@ -23,3 +23,7 @@ write:
   persistence:
     enabled: true
     size: 100Mi
+monitoring:
+  serviceMonitor:
+    labels:
+      release: "prometheus"

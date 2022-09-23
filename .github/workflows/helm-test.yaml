@@ -1,0 +1,80 @@
+---
+name: Test Chart
+
+on:
+  workflow_call:
+    inputs:
+      ct_configfile:
+        description: location of the ct config file
+        default: ct.yaml
+        required: false
+        type: string
+      ct_check_version_increment:
+        description: whether to check for version bump requirement
+        default: true
+        required: false
+        type: boolean
+      helm_version:
+        description: version of the helm binary
+        default: v3.8.2
+        required: false
+        type: string
+
+env:
+  CT_CONFIGFILE: ${{ inputs.ct_configfile }}
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: ${{ inputs.helm_version }}
+
+      # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
+      # yamllint (https://github.com/adrienverge/yamllint) which require Python
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.1.0
+
+      - name: Run chart-testing (list-changed)
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --config "${CT_CONFIGFILE}")
+          if [[ -n "$changed" ]]; then
+            echo "::set-output name=changed::true"
+          fi
+
+      - name: Run chart-testing (lint)
+        run: ct lint --config "${CT_CONFIGFILE}" --check-version-increment=${{ inputs.ct_check_version_increment }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.2.0
+        if: steps.list-changed.outputs.changed == 'true'
+
+      - name: Install prometheus operator
+        id: install-prometheus
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          helm install prometheus-community/kube-prometheus-stack \
+            --set grafana.enabled=false \
+            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus
+
+      - name: Run chart-testing (install)
+        run: |
+          changed=$(ct list-changed --config "${CT_CONFIGFILE}")
+          if [[ "$changed" == "charts/enterprise-metrics" ]]; then
+            # Do not run `ct install` for enterprise-metrics
+            exit 0
+          fi
+          ct install --config "${CT_CONFIGFILE}"
