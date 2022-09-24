@@ -581,14 +581,25 @@ func (s *ObjectClient) reconnectReadSession() error {
 // PutChunks implements chunk.ObjectClient.
 func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	err := s.putChunks(ctx, chunks)
+	if err != nil {
+		fmt.Println(time.Now(), " - cassandra PutChunks fail,err:", err, ",errors.Cause(err):", errors.Cause(err))
+	}
 	//
 	if errors.Cause(err) == gocql.ErrNoConnections {
+		fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect,err:", err, ",errors.Cause(err):", errors.Cause(err))
 		connectErr := s.reconnectWriteSession()
 		if connectErr != nil {
+			fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect fail,connectErr:", connectErr)
 			return errors.Wrap(err, "ObjectClient BatchWrite reconnect fail")
 		}
+		fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect success,connectErr:", connectErr)
 		// retry after reconnect
 		err = s.putChunks(ctx, chunks)
+		if err != nil {
+			fmt.Println(time.Now(), " - cassandra PutChunks retry fail ,do reconnect success,err:", err)
+			return err
+		}
+		fmt.Println(time.Now(), " - cassandra PutChunks retry success ,do reconnect success,err:", err)
 	}
 	return err
 }
