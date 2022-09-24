@@ -82,7 +82,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
-	RateFor(stream logproto.Stream) (int, error)
+	RateFor(stream *logproto.Stream) (int, error)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -98,7 +98,7 @@ type Distributor struct {
 	pool             *ring_client.Pool
 
 	rateStore RateStore
-	sharder   func(stream logproto.Stream, desiredRate int, rateStore RateStore) (int, error)
+	sharder   func(stream *logproto.Stream, desiredRate int, rateStore RateStore) (int, error)
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -206,7 +206,7 @@ func New(
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
-	d.rateStore = NewRateStore()
+	d.rateStore = &noopRateStore{}
 
 	return &d, nil
 }
@@ -410,7 +410,7 @@ func min(x1, x2 int) int {
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
 func (d *Distributor) shardStream(stream logproto.Stream, userID string) ([]uint32, []streamTracker, error) {
-	shardCount, err := d.sharder(stream, d.cfg.ShardStreams.DesiredRate, d.rateStore)
+	shardCount, err := d.sharder(&stream, d.cfg.ShardStreams.DesiredRate, d.rateStore)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -602,7 +602,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func shardCountFor(stream logproto.Stream, desiredRate int, rateStore RateStore) (int, error) {
+func shardCountFor(stream *logproto.Stream, desiredRate int, rateStore RateStore) (int, error) {
 	rate, err := rateStore.RateFor(stream)
 	if err != nil {
 		return 1, err

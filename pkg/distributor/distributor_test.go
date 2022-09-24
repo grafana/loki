@@ -755,24 +755,29 @@ func TestShardCalculation(t *testing.T) {
 		name       string
 		streamSize int
 		rate       int
+
 		wantShards int
 	}{
 		{
+			name:       "not enough data to be sharded, stream size (1mb) + ingested rate (0mb) < 3mb",
 			streamSize: 1 * megabyte,
 			rate:       0,
 			wantShards: 1,
 		},
 		{
+			name:       "enough data to have two shards, stream size (1mb) + ingested rate (4mb) > 3mb",
 			streamSize: 1 * megabyte,
 			rate:       desiredRate + 1,
 			wantShards: 2,
 		},
 		{
+			name:       "enough data to have two shards, stream size (4mb) + ingested rate (0mb) > 3mb",
 			streamSize: 4 * megabyte,
 			rate:       0,
 			wantShards: 2,
 		},
 		{
+			name:       "a lot of shards, stream size (1mb) + ingested rate (300mb) > 3mb",
 			streamSize: 1 * megabyte,
 			rate:       300 * megabyte,
 			wantShards: 101,
@@ -780,6 +785,81 @@ func TestShardCalculation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := calculateShards(tc.rate, tc.streamSize, desiredRate)
+			require.Equal(t, tc.wantShards, got)
+		})
+	}
+}
+
+func TestShardCountFor(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		stream      *logproto.Stream
+		rate        int
+		desiredRate int
+
+		wantStreamSize int // used for sanity check.
+		wantShards     int
+		wantErr        bool
+	}{
+		{
+			// although in this scenario we have enough size to be sharded, we can't divide the number of entries between the ingesters
+			// because the number of entries is lower than the number of shards.
+			name:           "not enough entries to be sharded, stream size (2b) + ingested rate (0b) < 3b = 1 shard but 0 entries",
+			stream:         &logproto.Stream{Hash: 1},
+			rate:           0,
+			desiredRate:    3, // in bytes
+			wantStreamSize: 2, // in bytes
+			wantShards:     1,
+			wantErr:        true,
+		},
+		{
+			name:           "not enough data to be sharded, stream size (18b) + ingested rate (0b) < 20b",
+			stream:         &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}}},
+			rate:           0,
+			desiredRate:    20, // in bytes
+			wantStreamSize: 18, // in bytes
+			wantShards:     1,
+			wantErr:        false,
+		},
+		{
+			name:           "enough data to have two shards, stream size (36b) + ingested rate (24b) > 40b",
+			stream:         &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:           24, // in bytes
+			desiredRate:    40, // in bytes
+			wantStreamSize: 36, // in bytes
+			wantShards:     2,
+			wantErr:        false,
+		},
+		{
+			// although the ingested rate by an ingester is 0, the stream is big enough to be sharded.
+			name:           "enough data to have two shards, stream size (36b) + ingested rate (0b) > 22b",
+			stream:         &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:           0,  // in bytes
+			desiredRate:    22, // in bytes
+			wantStreamSize: 36, // in bytes
+			wantShards:     2,
+			wantErr:        false,
+		},
+		{
+			name: "a lot of shards, stream size (1mb) + ingested rate (300mb) > 3mb",
+			stream: &logproto.Stream{Entries: []logproto.Entry{
+				{Line: "a"}, {Line: "b"}, {Line: "c"}, {Line: "d"}, {Line: "e"},
+			}},
+			rate:           0,  // in bytes
+			desiredRate:    22, // in bytes
+			wantStreamSize: 90, // in bytes
+			wantShards:     5,
+			wantErr:        false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.wantStreamSize, tc.stream.Size())
+			got, err := shardCountFor(tc.stream, tc.desiredRate, &noopRateStore{tc.rate})
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 			require.Equal(t, tc.wantShards, got)
 		})
 	}

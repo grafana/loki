@@ -16,7 +16,7 @@ func NewStreamSharderMock(shards int) *StreamSharderMock {
 	}
 }
 
-func (s *StreamSharderMock) ShardCountFor(logproto.Stream, int, RateStore) (int, error) {
+func (s *StreamSharderMock) ShardCountFor(*logproto.Stream, int, RateStore) (int, error) {
 	if s.wantShards < 0 {
 		return 0, fmt.Errorf("unshardable stream")
 	}
