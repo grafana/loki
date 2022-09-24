@@ -280,7 +280,8 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				TLS: &storage.TLSConfig{
-					CA: "test",
+					CA:  "test",
+					Key: "service-ca.crt",
 				},
 			},
 			dpl: &appsv1.Deployment{
@@ -396,7 +397,8 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				TLS: &storage.TLSConfig{
-					CA: "test",
+					CA:  "test",
+					Key: "service-ca.crt",
 				},
 			},
 			sts: &appsv1.StatefulSet{
