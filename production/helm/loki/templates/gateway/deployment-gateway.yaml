@@ -37,14 +37,8 @@ spec:
         {{- end }}
         {{- include "loki.gatewaySelectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "loki.serviceAccountName" . -}}
-      {{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.GitVersion }}
-      {{- if or (.Values.loki.enableServiceLinks) (eq (.Values.loki.enableServiceLinks | toString) "<nil>") }}
-      enableServiceLinks: true
-      {{- else }}
-      enableServiceLinks: false
-      {{- end }}
-      {{- end }}
+      serviceAccountName: {{ include "loki.serviceAccountName" . }}
+      {{ include "loki.enableServiceLinks" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
