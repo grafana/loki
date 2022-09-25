@@ -148,6 +148,30 @@ resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
   source_arn    = "arn:aws:s3:::${each.value}"
 }
 
+resource "aws_kinesis_stream" "kinesis_stream" {
+  for_each          = toset(var.kinesis_stream_name)
+  name             = each.value
+  shard_count      = 1
+  retention_period = 48
+
+  shard_level_metrics = [
+    "IncomingBytes",
+    "OutgoingBytes",
+  ]
+
+  stream_mode_details {
+    stream_mode = "PROVISIONED"
+  }
+}
+
+resource "aws_lambda_event_source_mapping" "kinesis_event_source" {
+  for_each          = toset(var.kinesis_stream_name)
+  event_source_arn  = aws_kinesis_stream.kinesis_stream[each.key].arn
+  function_name     = aws_lambda_function.lambda_promtail.arn
+  starting_position = "LATEST"
+  depends_on        = [aws_kinesis_stream.kinesis_stream]
+}
+
 resource "aws_s3_bucket_notification" "push-to-lambda-promtail" {
   for_each = toset(var.bucket_names)
   bucket   = each.value
