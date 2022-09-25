@@ -338,14 +338,26 @@ func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
 // BatchWrite implement chunk.IndexClient.
 func (s *StorageClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	err := s.batchWrite(ctx, batch)
+	if err != nil {
+		fmt.Println(time.Now(), " - cassandra BatchWrite fail,err:", err, ",errors.Cause(err):", errors.Cause(err))
+	}
 	//
 	if errors.Cause(err) == gocql.ErrNoConnections {
+		fmt.Println(time.Now(), " - cassandra BatchWrite fail,do reconnect,err:", err, ",errors.Cause(err):", errors.Cause(err))
 		connectErr := s.reconnectWriteSession()
 		if connectErr != nil {
-			return errors.Wrap(err, "StorageClient BatchWrite reconnect fail")
+			fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect fail,connectErr:", connectErr)
+			return errors.Wrap(err, "BatchWrite BatchWrite reconnect fail")
 		}
+		fmt.Println(time.Now(), " - cassandra BatchWrite fail,do reconnect success,connectErr:", connectErr)
 		// retry after reconnect
 		err = s.batchWrite(ctx, batch)
+		if err != nil {
+			fmt.Println(time.Now(), " - cassandra BatchWrite retry fail ,do reconnect success,err:", err)
+			return err
+		}
+		fmt.Println(time.Now(), " - cassandra BatchWrite retry success ,do reconnect success,err:", err)
+
 	}
 	return err
 }
