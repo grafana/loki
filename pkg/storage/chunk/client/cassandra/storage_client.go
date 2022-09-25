@@ -339,7 +339,7 @@ func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
 func (s *StorageClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	err := s.batchWrite(ctx, batch)
 	//
-	if err == gocql.ErrNoConnections {
+	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := s.reconnectWriteSession()
 		if connectErr != nil {
 			return errors.Wrap(err, "StorageClient BatchWrite reconnect fail")
