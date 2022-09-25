@@ -10,19 +10,22 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
+type indexShipperIterator interface {
+	ForEach(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
+}
+
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
-	shipper     indexshipper.IndexShipper
+	shipper     indexShipperIterator
 	chunkFilter chunk.RequestChunkFilterer
 	tableRanges config.TableRanges
 }
 
-func newIndexShipperQuerier(shipper indexshipper.IndexShipper, tableRanges config.TableRanges) Index {
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRanges config.TableRanges) Index {
 	return &indexShipperQuerier{shipper: shipper, tableRanges: tableRanges}
 }
 
@@ -30,10 +33,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 	var indices []Index
 
 	// Ensure we query both per tenant and multitenant TSDBs
-	idxBuckets, err := indexBuckets(from, through, i.tableRanges)
-	if err != nil {
-		return nil, err
-	}
+	idxBuckets := indexBuckets(from, through, i.tableRanges)
 	for _, bkt := range idxBuckets {
 		if err := i.shipper.ForEach(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
 			impl, ok := idx.(Index)
@@ -115,11 +115,11 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }

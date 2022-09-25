@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -250,10 +249,10 @@ groups:
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			var loader GroupLoader
-			f, err := ioutil.TempFile(os.TempDir(), "rules")
+			f, err := os.CreateTemp(os.TempDir(), "rules")
 			require.Nil(t, err)
 			defer os.Remove(f.Name())
-			err = ioutil.WriteFile(f.Name(), []byte(tc.data), 0777)
+			err = os.WriteFile(f.Name(), []byte(tc.data), 0777)
 			require.Nil(t, err)
 
 			_, errs := loader.Load(f.Name())
@@ -291,7 +290,7 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 		Config: ruler.Config{},
 		RemoteWrite: RemoteWriteConfig{
 			Enabled: true,
-			Client: config.RemoteWriteConfig{
+			Client: &config.RemoteWriteConfig{
 				URL: nil,
 			},
 		},

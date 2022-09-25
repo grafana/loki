@@ -16,7 +16,6 @@ metadata:
     {{- end }}
 spec:
   clients:
-    #TODO: need to support auth here
     {{- include "loki.logsInstanceClient" $ | nindent 4}}
 
   # Supply an empty namespace selector to look in all namespaces. Remove

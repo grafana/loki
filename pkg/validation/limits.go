@@ -9,18 +9,21 @@ import (
 
 	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
+
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+	util_log "github.com/grafana/loki/pkg/util/log"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -101,20 +104,36 @@ type Limits struct {
 
 	// this field is the inversion of the general remote_write.enabled because the zero value of a boolean is false,
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
-	RulerRemoteWriteDisabled               bool                         `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
-	RulerRemoteWriteURL                    string                       `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
-	RulerRemoteWriteTimeout                time.Duration                `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
-	RulerRemoteWriteHeaders                OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
-	RulerRemoteWriteRelabelConfigs         []*util.RelabelConfig        `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty"`
-	RulerRemoteWriteQueueCapacity          int                          `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
-	RulerRemoteWriteQueueMinShards         int                          `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
-	RulerRemoteWriteQueueMaxShards         int                          `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
-	RulerRemoteWriteQueueMaxSamplesPerSend int                          `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
-	RulerRemoteWriteQueueBatchSendDeadline time.Duration                `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
-	RulerRemoteWriteQueueMinBackoff        time.Duration                `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
-	RulerRemoteWriteQueueMaxBackoff        time.Duration                `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
-	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
-	RulerRemoteWriteSigV4Config            *sigv4.SigV4Config           `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
+	RulerRemoteWriteDisabled bool `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
+
+	// deprecated use RulerRemoteWriteConfig instead.
+	RulerRemoteWriteURL string `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteTimeout time.Duration `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteHeaders OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteRelabelConfigs []*util.RelabelConfig `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueCapacity int `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueMinShards int `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueMaxShards int `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueMaxSamplesPerSend int `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueBatchSendDeadline time.Duration `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueMinBackoff time.Duration `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueMaxBackoff time.Duration `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteQueueRetryOnRateLimit bool `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
+	// deprecated use RulerRemoteWriteConfig instead
+	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
+
+	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty"`
 
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
@@ -485,68 +504,90 @@ func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteURL returns the remote-write URL to use for a given user.
 func (o *Overrides) RulerRemoteWriteURL(userID string) string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteURL
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteTimeout returns the duration after which to timeout a remote-write request for a given user.
 func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders.Map()
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig {
 	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueMinShards returns the minimum shards to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueMaxShards returns the maximum shards to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueMaxSamplesPerSend returns the max samples to send in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueBatchSendDeadline returns the maximum time a sample will be buffered before being discarded for a given user.
 func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueMinBackoff returns the minimum time for an exponential backoff for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueMaxBackoff returns the maximum time for an exponential backoff for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 // RulerRemoteWriteQueueRetryOnRateLimit returns whether to retry failed remote-write requests (429 response) for a given user.
 func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
 }
 
+// Deprecated: use RulerRemoteWriteConfig instead
 func (o *Overrides) RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config {
 	return o.getOverridesForUser(userID).RulerRemoteWriteSigV4Config
+}
+
+// RulerRemoteWriteConfig returns the remote-write configurations to use for a given user and a given remote client.
+func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig {
+	if c, ok := o.getOverridesForUser(userID).RulerRemoteWriteConfig[id]; ok {
+		return &c
+	}
+
+	return nil
 }
 
 // RetentionPeriod returns the retention period for a given user.

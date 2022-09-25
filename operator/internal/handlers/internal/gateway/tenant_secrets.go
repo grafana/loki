@@ -19,7 +19,7 @@ import (
 
 // GetTenantSecrets returns the list to gateway tenant secrets for a tenant mode.
 // For modes static and dynamic the secrets are fetched from external provided
-// secrets. For mode openshift-logging a secret per default tenants are created.
+// secrets. For modes openshift-logging and openshift-network a secret per default tenants are created.
 // All secrets live in the same namespace as the lokistack request.
 func GetTenantSecrets(
 	ctx context.Context,

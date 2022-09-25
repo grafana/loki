@@ -26,6 +26,8 @@ type Options struct {
 	EnableRemoteReporting bool
 
 	ObjectStorage storage.Options
+
+	Retention RetentionOptions
 }
 
 // Address FQDN and port for a k8s service.
@@ -154,4 +156,10 @@ type WriteAheadLog struct {
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
 	value := int64(math.Ceil(float64(w.IngesterMemoryRequest) * float64(0.5)))
 	return fmt.Sprintf("%d", value)
+}
+
+// RetentionOptions configures global retention options on the compactor.
+type RetentionOptions struct {
+	Enabled           bool
+	DeleteWorkerCount uint
 }

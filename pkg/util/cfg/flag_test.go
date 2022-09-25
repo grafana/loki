@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"bytes"
 	"flag"
 	"testing"
 	"time"
@@ -55,4 +56,23 @@ func TestFlags(t *testing.T) {
 			Key:  "DEFAULTKEY",
 		},
 	}, data)
+}
+
+// TestCategorizedUsage checks that the name of every flag can be "Titled" correctly
+func TestCategorizedUsage(t *testing.T) {
+	output := &bytes.Buffer{}
+	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+	fs.SetOutput(output)
+	// "TestAPI" expected
+	fs.String("testAPI.one", "", "")
+	fs.String("testAPI.two", "", "")
+	// "TESTapi" expected
+	fs.String("tESTapi.one", "", "")
+	fs.String("tESTapi.two", "", "")
+	// "TestAPI" expected
+	fs.String("TestAPI.one", "", "")
+	fs.String("TestAPI.two", "", "")
+	categorizedUsage(fs)()
+	expected := "Usage of TestCategorizedUsage:\n\n TestAPI:\n   -TestAPI.one string:\n      \n   -TestAPI.two string:\n      \n\n TESTapi:\n   -tESTapi.one string:\n      \n   -tESTapi.two string:\n      \n\n TestAPI:\n   -testAPI.one string:\n      \n   -testAPI.two string:\n      \n\n"
+	assert.Equal(t, expected, output.String())
 }

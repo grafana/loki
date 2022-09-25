@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -86,7 +86,7 @@ type TSDBIndex struct {
 // Return the index as well as the underlying []byte which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
 func NewTSDBIndexFromFile(location string, gzip bool) (*TSDBIndex, []byte, error) {
-	raw, err := ioutil.ReadFile(location)
+	raw, err := os.ReadFile(location)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -263,15 +263,13 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
-	queryBounds := newBounds(from, through)
-
+func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	if err := i.forSeries(ctx, shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
 			var addedStream bool
 			for _, chk := range chks {
-				if Overlap(queryBounds, chk) {
+				if shouldIncludeChunk(chk) {
 					if !addedStream {
 						acc.AddStream(fp)
 						addedStream = true

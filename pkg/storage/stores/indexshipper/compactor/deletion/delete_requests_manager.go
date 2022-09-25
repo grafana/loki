@@ -270,6 +270,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			level.Info(util_log.Logger).Log(
 				"msg", "no chunks to retain: the whole chunk is deleted",
 				"delete_request_id", deleteRequest.RequestID,
+				"sequence_num", deleteRequest.SequenceNum,
 				"user", deleteRequest.UserID,
 				"chunkID", string(ref.ChunkID),
 			)
@@ -325,6 +326,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 				level.Error(util_log.Logger).Log(
 					"msg", "failed to mark delete request for user as processed",
 					"delete_request_id", deleteRequest.RequestID,
+					"sequence_num", deleteRequest.SequenceNum,
 					"user", deleteRequest.UserID,
 					"err", err,
 					"deleted_lines", deleteRequest.DeletedLines,
@@ -333,6 +335,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 				level.Info(util_log.Logger).Log(
 					"msg", "delete request for user marked as processed",
 					"delete_request_id", deleteRequest.RequestID,
+					"sequence_num", deleteRequest.SequenceNum,
 					"user", deleteRequest.UserID,
 					"deleted_lines", deleteRequest.DeletedLines,
 				)
