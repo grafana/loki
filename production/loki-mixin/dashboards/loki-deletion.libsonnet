@@ -46,11 +46,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
             g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, container="compactor"}' % $.namespaceMatcher(), '{{pod}}'),
           )
           .addPanel(
-            g.panel('Compactor memory usage') +
+            g.panel('Compactor memory usage (MiB)') +
             g.queryPanel('go_memstats_heap_inuse_bytes{%s, container="compactor"} / 1024 / 1024 ' % $.namespaceMatcher(), ' {{pod}} '),
           )
           .addPanel(
-            g.panel('Compaction run duration') +
+            g.panel('Compaction run duration (seconds)') +
             g.queryPanel('loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher(), '{{pod}}'),
           )
         ).addRow(
