@@ -574,6 +574,10 @@ func (s *stream) resetCounter() {
 	s.entryCt = 0
 }
 
+func (s *stream) Stop() {
+	s.rateCalculator.Stop()
+}
+
 func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
 	if unorderedWrites {
 		return chunkenc.UnorderedHeadBlockFmt

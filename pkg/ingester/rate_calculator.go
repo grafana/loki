@@ -16,11 +16,14 @@ type RateCalculator struct {
 	buckets []int64
 	idx     int
 	sample  atomic.Int64
+
+	stopped atomic.Bool
 }
 
 func NewRateCalculator() *RateCalculator {
 	c := &RateCalculator{
 		buckets: make([]int64, bucketCount),
+		stopped: *atomic.NewBool(false),
 	}
 
 	go c.recordSample()
@@ -34,6 +37,10 @@ func (c *RateCalculator) recordSample() {
 	for range t.C {
 		rate := c.sample.Swap(0)
 		c.storeNewRate(rate)
+
+		if c.stopped.Load() {
+			break
+		}
 	}
 }
 
@@ -58,4 +65,8 @@ func (c *RateCalculator) Rate() int64 {
 		sum += n
 	}
 	return sum
+}
+
+func (c *RateCalculator) Stop() {
+	c.stopped.Store(true)
 }
