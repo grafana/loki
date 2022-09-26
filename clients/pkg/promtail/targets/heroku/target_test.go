@@ -297,7 +297,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, []*relabel.Config{
+	tenantIDRelabelConfig := []*relabel.Config{
 		{
 			SourceLabels: model.LabelNames{"__tenant_id__"},
 			TargetLabel:  "tenant_id",
@@ -305,7 +305,8 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 			Action:       relabel.Replace,
 			Regex:        relabel.MustNewRegexp("(.*)"),
 		},
-	})
+	}
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, tenantIDRelabelConfig)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()

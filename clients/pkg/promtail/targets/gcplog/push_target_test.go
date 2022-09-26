@@ -275,7 +275,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, []*relabel.Config{
+	tenantIDRelabelConfig := []*relabel.Config{
 		{
 			SourceLabels: model.LabelNames{"__tenant_id__"},
 			Regex:        relabel.MustNewRegexp("(.*)"),
@@ -283,7 +283,8 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 			TargetLabel:  "tenant_id",
 			Action:       relabel.Replace,
 		},
-	}, "test_job", config)
+	}
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tenantIDRelabelConfig, "test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
