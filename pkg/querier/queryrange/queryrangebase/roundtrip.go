@@ -19,7 +19,6 @@ import (
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -176,7 +175,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 	defer func() {
-		_, _ = io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
 		response.Body.Close()
 	}()
 

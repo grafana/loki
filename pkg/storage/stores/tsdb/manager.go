@@ -3,7 +3,7 @@ package tsdb
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -95,7 +95,7 @@ func (m *tsdbManager) Start() (err error) {
 
 	// load list of multitenant tsdbs
 	mulitenantDir := managerMultitenantDir(m.dir)
-	files, err := ioutil.ReadDir(mulitenantDir)
+	files, err := os.ReadDir(mulitenantDir)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (m *tsdbManager) Start() (err error) {
 		}
 		buckets++
 
-		tsdbs, err := ioutil.ReadDir(filepath.Join(mulitenantDir, bucket))
+		tsdbs, err := os.ReadDir(filepath.Join(mulitenantDir, bucket))
 		if err != nil {
 			level.Warn(m.log).Log(
 				"msg", "failed to open period bucket dir",

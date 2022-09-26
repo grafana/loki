@@ -1,7 +1,7 @@
 package unmarshal
 
 import (
-	"io/ioutil"
+	"io"
 	"log"
 	"strings"
 	"testing"
@@ -49,7 +49,7 @@ func Test_DecodePushRequest(t *testing.T) {
 
 	for i, pushTest := range pushTests {
 		var actual logproto.PushRequest
-		closer := ioutil.NopCloser(strings.NewReader(pushTest.actual))
+		closer := io.NopCloser(strings.NewReader(pushTest.actual))
 
 		err := DecodePushRequest(closer, &actual)
 		require.NoError(t, err)

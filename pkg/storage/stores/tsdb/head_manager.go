@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -423,7 +422,7 @@ func walsByPeriod(dir string, period period) ([]WalGroup, error) {
 }
 
 func walGroups(dir string, period period) (map[int]*WalGroup, error) {
-	files, err := ioutil.ReadDir(managerWalDir(dir))
+	files, err := os.ReadDir(managerWalDir(dir))
 	if err != nil {
 		return nil, err
 	}
