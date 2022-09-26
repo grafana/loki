@@ -30,6 +30,7 @@ func NewRateCalculator() *RateCalculator {
 
 func (c *RateCalculator) recordSample() {
 	t := time.NewTicker(1000 / bucketCount * time.Millisecond)
+	defer t.Stop()
 	for range t.C {
 		rate := c.sample.Swap(0)
 		c.storeNewRate(rate)
