@@ -29,7 +29,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Churn')
           .addPanel(
             g.panel('# of Delete Requests (received - processed) ') +
-            g.queryPanel('(loki_compactor_delete_requests_received_total{%s} or on() vector(0)) - on () (loki_compactor_delete_requests_processed_total{%s} or on () vector(0))' % $.namespaceMatcher(), 'in progress'),
+            g.queryPanel('(loki_compactor_delete_requests_received_total{%s} or on() vector(0)) - on () (loki_compactor_delete_requests_processed_total{%s} or on () vector(0))' % [$.namespaceMatcher(),$.namespaceMatcher()], 'in progress'),
           )
           .addPanel(
             g.panel('Delete Requests Received / Day') +
