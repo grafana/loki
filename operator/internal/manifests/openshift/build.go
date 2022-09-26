@@ -25,6 +25,8 @@ func BuildLokiStackObjects(opts Options) []client.Object {
 	}
 }
 
+// BuildRulerObjects returns a list of auxiliary openshift/k8s objects
+// for lokistack ruler deployments on OpenShift.
 func BuildRulerObjects(opts Options) []client.Object {
 	return []client.Object{
 		BuildRulerServiceAccount(opts),

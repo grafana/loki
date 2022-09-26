@@ -76,6 +76,8 @@ func BuildGatewayClusterRoleBinding(opts Options) *rbacv1.ClusterRoleBinding {
 	}
 }
 
+// BuildRulerClusterRole returns a k8s ClusterRole object for the
+// lokistack ruler serviceaccount to allow patching sending alerts to alertmanagers.
 func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
@@ -102,6 +104,8 @@ func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 	}
 }
 
+// BuildRulerClusterRoleBinding returns a k8s ClusterRoleBinding object for
+// the lokistack ruler serviceaccount to grant access to alertmanagers.
 func BuildRulerClusterRoleBinding(opts Options) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{

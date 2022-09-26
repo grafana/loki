@@ -280,6 +280,7 @@ func ConfigureQueryFrontendDeployment(
 	return nil
 }
 
+// ConfigureRulerStatefulSet configures the ruler to use the cluster monitoring alertmanager.
 func ConfigureRulerStatefulSet(
 	ss *appsv1.StatefulSet,
 	token, caBundleVolumeName, caDir, caFile string,

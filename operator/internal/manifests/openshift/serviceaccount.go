@@ -26,6 +26,9 @@ func BuildGatewayServiceAccount(opts Options) client.Object {
 	}
 }
 
+// BuildRulerServiceAccount returns a k8s object for the LokiStack Ruler
+// serviceaccount.
+// This ServiceAccount is used to autheticate and access the alertmanager host.
 func BuildRulerServiceAccount(opts Options) client.Object {
 	return &corev1.ServiceAccount{
 		TypeMeta: metav1.TypeMeta{

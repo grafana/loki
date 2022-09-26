@@ -72,8 +72,7 @@ func ConfigOptions(opt Options) (config.Options, error) {
 		}
 
 		ams := lokiv1beta1.AlertManagerSpec{
-			// "http://_grpc._tcp.alertmanager-operated.openshift-monitoring.svc"
-			Endpoints: []string{"https://alertmanager-operated.openshift-monitoring.svc:9095"},
+			Endpoints: []string{"https://_web._tcp.alertmanager-operated.openshift-monitoring.svc"},
 			EnableV2:  true,
 			DiscoverySpec: &lokiv1beta1.AlertManagerDiscoverySpec{
 				EnableSRV:       true,
