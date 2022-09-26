@@ -311,6 +311,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALR
 // removeStream removes a stream from the instance.
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
+		s.Stop()
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
@@ -333,7 +334,7 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) StreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
 	var buf []byte
 	resp := &logproto.StreamRatesResponse{
 		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),

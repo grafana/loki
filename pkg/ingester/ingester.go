@@ -622,8 +622,8 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
-// StreamRates returns a response containing all streams and their current rate
-func (i *Ingester) StreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+// GetStreamRates returns a response containing all streams and their current rate
+func (i *Ingester) GetStreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -636,7 +636,7 @@ func (i *Ingester) StreamRates(ctx context.Context, req *logproto.StreamRatesReq
 		return &logproto.StreamRatesResponse{}, err
 	}
 
-	return instance.StreamRates(ctx, req)
+	return instance.GetStreamRates(ctx, req)
 }
 
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive

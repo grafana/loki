@@ -37,7 +37,7 @@ service Ingester {
 }
 
 service StreamData {
-  rpc StreamRates(StreamRatesRequest) returns (StreamRatesResponse) {}
+  rpc GetStreamRates(StreamRatesRequest) returns (StreamRatesResponse) {}
 }
 
 message StreamRatesRequest {}

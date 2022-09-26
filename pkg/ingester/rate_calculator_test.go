@@ -21,5 +21,5 @@ func TestRateCalculator(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return c.Rate() == 0
-	}, time.Second*3, time.Second)
+	}, time.Second*2, 100*time.Millisecond)
 }

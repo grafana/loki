@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"sync"
 	"time"
 
 	"go.uber.org/atomic"
@@ -12,10 +11,10 @@ const bucketCount = 100
 
 // RateCalculator buckets rate measurements and returns a per-second rate of the recorded values
 type RateCalculator struct {
-	lock    sync.RWMutex
 	buckets []int64
 	idx     int
 	sample  atomic.Int64
+	rate    atomic.Int64
 
 	stopChan chan struct{}
 }
@@ -34,23 +33,28 @@ func NewRateCalculator() *RateCalculator {
 func (c *RateCalculator) recordSample() {
 	t := time.NewTicker(1000 / bucketCount * time.Millisecond)
 	defer t.Stop()
+
 	for {
 		select {
+		case <-t.C:
+			sample := c.sample.Swap(0)
+			c.storeNewRate(sample)
 		case <-c.stopChan:
 			return
-		case <-t.C:
-			rate := c.sample.Swap(0)
-			c.storeNewRate(rate)
 		}
 	}
 }
 
-func (c *RateCalculator) storeNewRate(newRate int64) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	c.buckets[c.idx] = newRate
+func (c *RateCalculator) storeNewRate(sample int64) {
+	c.buckets[c.idx] = sample
 	c.idx = (c.idx + 1) % bucketCount
+
+	var sum int64
+	for _, n := range c.buckets {
+		sum += n
+	}
+
+	c.rate.Store(sum)
 }
 
 func (c *RateCalculator) Record(sample int64) {
@@ -58,14 +62,7 @@ func (c *RateCalculator) Record(sample int64) {
 }
 
 func (c *RateCalculator) Rate() int64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	var sum int64
-	for _, n := range c.buckets {
-		sum += n
-	}
-	return sum
+	return c.rate.Load()
 }
 
 func (c *RateCalculator) Stop() {

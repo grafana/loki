@@ -143,7 +143,7 @@ func TestStreamRates(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	const (
 		concurrent          = 10
@@ -194,7 +194,7 @@ func TestStreamRates(t *testing.T) {
 
 	var rates *logproto.StreamRatesResponse
 	require.Eventually(t, func() bool {
-		rates, err = inst.StreamRates(context.Background(), &logproto.StreamRatesRequest{})
+		rates, err = inst.GetStreamRates(context.Background(), &logproto.StreamRatesRequest{})
 		require.NoError(t, err)
 
 		if len(rates.StreamRates) != 10 {
@@ -202,6 +202,8 @@ func TestStreamRates(t *testing.T) {
 		}
 
 		for _, r := range rates.StreamRates {
+			// Each push goes from [hello 0, hello 100) resulting
+			// in 790 bytes. There are 100 pushes per stream
 			if r.Rate != 79000 {
 				return false
 			}
