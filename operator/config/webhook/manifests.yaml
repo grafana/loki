@@ -33,7 +33,7 @@ webhooks:
       namespace: system
       path: /validate-loki-grafana-com-v1beta1-alertingrule
   failurePolicy: Fail
-  name: valertingrule.kb.io
+  name: valertingrule.loki.grafana.com
   rules:
   - apiGroups:
     - loki.grafana.com
@@ -53,7 +53,7 @@ webhooks:
       namespace: system
       path: /validate-loki-grafana-com-v1beta1-recordingrule
   failurePolicy: Fail
-  name: vrecordingrule.kb.io
+  name: vrecordingrule.loki.grafana.com
   rules:
   - apiGroups:
     - loki.grafana.com

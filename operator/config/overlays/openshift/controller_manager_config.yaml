@@ -42,3 +42,4 @@ featureGates:
   openshift:
     servingCertsService: true
     gatewayRoute: true
+    ruleExtendedValidation: true
