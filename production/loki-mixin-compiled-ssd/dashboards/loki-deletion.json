@@ -549,7 +549,7 @@
                   "thresholds": [ ],
                   "timeFrom": null,
                   "timeShift": null,
-                  "title": "Compactor memory usage",
+                  "title": "Compactor memory usage (MiB)",
                   "tooltip": {
                      "shared": true,
                      "sort": 2,
@@ -625,7 +625,7 @@
                   "thresholds": [ ],
                   "timeFrom": null,
                   "timeShift": null,
-                  "title": "Compaction run duration",
+                  "title": "Compaction run duration (seconds)",
                   "tooltip": {
                      "shared": true,
                      "sort": 2,
