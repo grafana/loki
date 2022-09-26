@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sync"
 
 	// embed time zone data
 	_ "time/tzdata"
@@ -21,7 +22,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
-
 	"github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
@@ -32,6 +32,8 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("promtail"))
 }
 
+var mtx sync.Mutex
+
 type Config struct {
 	config.Config   `yaml:",inline"`
 	printVersion    bool
@@ -41,6 +43,8 @@ type Config struct {
 	configFile      string
 	configExpandEnv bool
 	inspect         bool
+
+	cnt int
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -64,55 +68,66 @@ func (c *Config) Clone() flagext.Registerer {
 }
 
 func main() {
-	// Load config, merging config file and CLI flags
-	var config Config
-	if err := cfg.DefaultUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
-		fmt.Println("Unable to parse config:", err)
+	// Load configWrap, merging configWrap file and CLI flags
+	var configWrap Config
+	args := os.Args[1:]
+	if err := cfg.DefaultUnmarshal(&configWrap, args, flag.CommandLine); err != nil {
+		fmt.Println("Unable to parse configWrap:", err)
 		os.Exit(1)
 	}
-
 	// Handle -version CLI flag
-	if config.printVersion {
+	if configWrap.printVersion {
 		fmt.Println(version.Print("promtail"))
 		os.Exit(0)
 	}
 
 	// Init the logger which will honor the log level set in cfg.Server
-	if reflect.DeepEqual(&config.Config.ServerConfig.Config.LogLevel, &logging.Level{}) {
+	if reflect.DeepEqual(&configWrap.Config.ServerConfig.Config.LogLevel, &logging.Level{}) {
 		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&configWrap.Config.ServerConfig.Config, prometheus.DefaultRegisterer)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
 
-	if config.inspect {
+	if configWrap.inspect {
 		stages.Inspect = true
 	}
 
 	// Set the global debug variable in the stages package which is used to conditionally log
 	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed
-	if config.Config.ServerConfig.Config.LogLevel.String() == "debug" {
+	if configWrap.Config.ServerConfig.Config.LogLevel.String() == "debug" {
 		stages.Debug = true
 	}
 
-	if config.printConfig {
-		err := util.PrintConfig(os.Stderr, &config)
+	if configWrap.printConfig {
+		err := util.PrintConfig(os.Stderr, &configWrap)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
+			level.Error(util_log.Logger).Log("msg", "failed to print configWrap to stderr", "err", err.Error())
 		}
 	}
 
-	if config.logConfig {
-		err := util.LogConfig(&config)
+	if configWrap.logConfig {
+		err := util.LogConfig(&configWrap)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
+			level.Error(util_log.Logger).Log("msg", "failed to log configWrap object", "err", err.Error())
 		}
 	}
 
-	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
-	p, err := promtail.New(config.Config, clientMetrics, config.dryRun)
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, configWrap.Config.Options.StreamLagLabels)
+	newConfigFunc := func() config.Config {
+		mtx.Lock()
+		defer mtx.Unlock()
+		var config Config
+		fmt.Println("msg", "reload config file", "os.Args[1:]", os.Args[1:], "flag.CommandLine", flag.CommandLine)
+		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
+			fmt.Println("Unable to parse configWrap:", err)
+			os.Exit(1)
+		}
+		return config.Config
+	}
+	p, err := promtail.New(configWrap.Config, newConfigFunc, clientMetrics, configWrap.dryRun)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)

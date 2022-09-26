@@ -1,11 +1,15 @@
 package promtail
 
 import (
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
@@ -42,17 +46,24 @@ type Promtail struct {
 	logger         log.Logger
 	reg            prometheus.Registerer
 
-	stopped bool
-	mtx     sync.Mutex
+	stopped    bool
+	mtx        sync.Mutex
+	configFile string
+	newConfig  func() config.Config
+	metrics    *client.Metrics
+	dryRun     bool
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option) (*Promtail, error) {
+func New(cfg config.Config, newConfig func() config.Config, metrics *client.Metrics, dryRun bool, opts ...Option) (*Promtail, error) {
 	// Initialize promtail with some defaults and allow the options to override
 	// them.
+
 	promtail := &Promtail{
-		logger: util_log.Logger,
-		reg:    prometheus.DefaultRegisterer,
+		logger:  util_log.Logger,
+		reg:     prometheus.DefaultRegisterer,
+		metrics: metrics,
+		dryRun:  dryRun,
 	}
 	for _, o := range opts {
 		// todo (callum) I don't understand why I needed to add this check
@@ -61,37 +72,61 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 		}
 		o(promtail)
 	}
-
-	cfg.Setup(promtail.logger)
-
-	if cfg.LimitsConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
-	}
-	var err error
-	if dryRun {
-		promtail.client, err = client.NewLogger(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
-		if err != nil {
-			return nil, err
-		}
-		cfg.PositionsConfig.ReadOnly = true
-	} else {
-		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	tms, err := targets.NewTargetManagers(promtail, promtail.reg, promtail.logger, cfg.PositionsConfig, promtail.client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	err := promtail.reloadConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	promtail.targetManagers = tms
-	server, err := server.New(cfg.ServerConfig, promtail.logger, tms, cfg.String())
+	server, err := server.New(cfg.ServerConfig, promtail.logger, promtail.targetManagers, cfg.String())
 	if err != nil {
 		return nil, err
 	}
 	promtail.server = server
+	promtail.newConfig = newConfig
+
 	return promtail, nil
+}
+
+func (p *Promtail) reloadConfig(cfg config.Config) error {
+	level.Info(p.logger).Log("msg", "Loading configuration file")
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if p.targetManagers != nil {
+		p.targetManagers.Stop()
+	}
+	if p.client != nil {
+		p.client.Stop()
+	}
+
+	cfg.Setup(p.logger)
+	if cfg.LimitsConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
+	}
+	var err error
+	if p.dryRun {
+		p.client, err = client.NewLogger(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.ClientConfigs...)
+		if err != nil {
+			return err
+		}
+		cfg.PositionsConfig.ReadOnly = true
+	} else {
+		p.client, err = client.NewMulti(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
+		if err != nil {
+			return err
+		}
+	}
+
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	if err != nil {
+		return err
+	}
+	p.targetManagers = tms
+
+	if p.server != nil {
+		promtailServer := p.server.(*server.PromtailServer)
+		promtailServer.ReloadTms(p.targetManagers)
+	}
+
+	return nil
 }
 
 // Run the promtail; will block until a signal is received.
@@ -103,6 +138,7 @@ func (p *Promtail) Run() error {
 		return nil
 	}
 	p.mtx.Unlock() // unlock before blocking
+	go p.watchConfig()
 	return p.server.Run()
 }
 
@@ -132,4 +168,34 @@ func (p *Promtail) Shutdown() {
 // ActiveTargets returns active targets per jobs from the target manager
 func (p *Promtail) ActiveTargets() map[string][]target.Target {
 	return p.targetManagers.ActiveTargets()
+}
+
+func (p *Promtail) watchConfig() {
+	// Reload handler.
+	// Make sure that sighup handler is registered with a redirect to the channel before the potentially
+	if p.newConfig == nil {
+		level.Warn(p.logger).Log("msg", "disable watchConfig")
+		return
+	}
+	level.Warn(p.logger).Log("msg", "enable watchConfig")
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	promtailServer := p.server.(*server.PromtailServer)
+	for {
+		select {
+		case <-hup:
+			cfg := p.newConfig()
+			if err := p.reloadConfig(cfg); err != nil {
+				level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
+			}
+		case rc := <-promtailServer.Reload():
+			cfg := p.newConfig()
+			if err := p.reloadConfig(cfg); err != nil {
+				level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
+				rc <- err
+			} else {
+				rc <- nil
+			}
+		}
+	}
 }
