@@ -29,7 +29,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Churn')
           .addPanel(
             g.panel('# of Delete Requests (received - processed) ') +
-            g.queryPanel('(loki_compactor_delete_requests_received_total{%s} or on() vector(0)) - on () (loki_compactor_delete_requests_processed_total{%s} or on () vector(0))' % [$.namespaceMatcher(),$.namespaceMatcher()], 'in progress'),
+            g.queryPanel('(loki_compactor_delete_requests_received_total{%s} or on() vector(0)) - on () (loki_compactor_delete_requests_processed_total{%s} or on () vector(0))' % [$.namespaceMatcher(), $.namespaceMatcher()], 'in progress'),
           )
           .addPanel(
             g.panel('Delete Requests Received / Day') +
@@ -43,15 +43,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Compactor')
           .addPanel(
             g.panel('Compactor CPU usage') +
-            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, pod=~"compactor.*"}' % $.namespaceMatcher(), 'percentage'),
+            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, container="compactor"}' % $.namespaceMatcher(), '{{pod}}'),
           )
           .addPanel(
             g.panel('Compactor memory usage') +
-            g.queryPanel('go_memstats_heap_inuse_bytes{%s, container="compactor"} / 1024 / 1024 ' % $.namespaceMatcher(), 'MiB'),
+            g.queryPanel('go_memstats_heap_inuse_bytes{%s, container="compactor"} / 1024 / 1024 ' % $.namespaceMatcher(), ' {{pod}} '),
           )
           .addPanel(
             g.panel('Compaction run duration') +
-            g.queryPanel('loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher(), 'seconds'),
+            g.queryPanel('loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher(), '{{pod}}'),
           )
         ).addRow(
           g.row('Deletion metrics')
