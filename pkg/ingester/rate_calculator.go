@@ -16,11 +16,14 @@ type RateCalculator struct {
 	buckets []int64
 	idx     int
 	sample  atomic.Int64
+
+	stopChan chan struct{}
 }
 
 func NewRateCalculator() *RateCalculator {
 	c := &RateCalculator{
-		buckets: make([]int64, bucketCount),
+		buckets:  make([]int64, bucketCount),
+		stopChan: make(chan struct{}),
 	}
 
 	go c.recordSample()
@@ -31,9 +34,14 @@ func NewRateCalculator() *RateCalculator {
 func (c *RateCalculator) recordSample() {
 	t := time.NewTicker(1000 / bucketCount * time.Millisecond)
 	defer t.Stop()
-	for range t.C {
-		rate := c.sample.Swap(0)
-		c.storeNewRate(rate)
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case <-t.C:
+			rate := c.sample.Swap(0)
+			c.storeNewRate(rate)
+		}
 	}
 }
 
@@ -58,4 +66,8 @@ func (c *RateCalculator) Rate() int64 {
 		sum += n
 	}
 	return sum
+}
+
+func (c *RateCalculator) Stop() {
+	close(c.stopChan)
 }

@@ -9,6 +9,7 @@ import (
 
 func TestRateCalculator(t *testing.T) {
 	c := NewRateCalculator()
+	defer c.Stop()
 
 	for i := 0; i < 100; i++ {
 		c.Record(50)
@@ -20,5 +21,5 @@ func TestRateCalculator(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return c.Rate() == 0
-	}, time.Second*2, time.Second)
+	}, time.Second*3, time.Second)
 }

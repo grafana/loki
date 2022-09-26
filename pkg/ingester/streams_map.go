@@ -45,6 +45,7 @@ func (m *streamsMap) StoreByFP(fp model.Fingerprint, s *stream) {
 
 // Delete must be called inside WithLock
 func (m *streamsMap) Delete(s *stream) bool {
+	s.Stop()
 	_, loaded := m.streams.LoadAndDelete(s.labelsString)
 	if loaded {
 		m.streamsByFP.Delete(s.fp)
