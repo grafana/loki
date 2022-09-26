@@ -297,7 +297,15 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, []*relabel.Config{
+		{
+			SourceLabels: model.LabelNames{"__tenant_id__"},
+			TargetLabel:  "tenant_id",
+			Replacement:  "$1",
+			Action:       relabel.Replace,
+			Regex:        relabel.MustNewRegexp("(.*)"),
+		},
+	})
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -319,6 +327,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	require.Equal(t, 1, len(eh.Received()))
 
 	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels[lokiClient.ReservedLabelTenantID])
+	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels["tenant_id"])
 }
 
 func waitForMessages(eh *fake.Client) {

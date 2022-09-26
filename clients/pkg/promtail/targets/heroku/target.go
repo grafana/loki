@@ -117,10 +117,9 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			ts = message.Timestamp
 		}
 
-		// If the incoming request carries the tenant id, inject it as the reserved label so it's used by the
-		// remote write client.
 		tenantIDHeaderValue := r.Header.Get("X-Scope-OrgID")
 		if tenantIDHeaderValue != "" {
+			// If present, first inject the tenant ID in, so it can be relabeled if necessary
 			lb.Set(lokiClient.ReservedLabelTenantID, tenantIDHeaderValue)
 		}
 
@@ -129,10 +128,15 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 		// Start with the set of labels fixed in the configuration
 		filtered := h.Labels().Clone()
 		for _, lbl := range processed {
-			if strings.HasPrefix(lbl.Name, "__") && lbl.Name != lokiClient.ReservedLabelTenantID {
+			if strings.HasPrefix(lbl.Name, "__") {
 				continue
 			}
 			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+		}
+
+		// Then, inject it as the reserved label, so it's used by the remote write client
+		if tenantIDHeaderValue != "" {
+			filtered[lokiClient.ReservedLabelTenantID] = model.LabelValue(tenantIDHeaderValue)
 		}
 
 		entries <- api.Entry{

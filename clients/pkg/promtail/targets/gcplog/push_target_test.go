@@ -275,7 +275,15 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, []*relabel.Config{
+		{
+			SourceLabels: model.LabelNames{"__tenant_id__"},
+			Regex:        relabel.MustNewRegexp("(.*)"),
+			Replacement:  "$1",
+			TargetLabel:  "tenant_id",
+			Action:       relabel.Replace,
+		},
+	}, "test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -297,6 +305,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	require.Equal(t, 1, len(eh.Received()))
 
 	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels[lokiClient.ReservedLabelTenantID])
+	require.Equal(t, model.LabelValue("42"), eh.Received()[0].Labels["tenant_id"])
 }
 
 func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
