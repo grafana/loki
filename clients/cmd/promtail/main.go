@@ -120,7 +120,6 @@ func main() {
 		mtx.Lock()
 		defer mtx.Unlock()
 		var config Config
-		fmt.Println("msg", "reload config file", "os.Args[1:]", os.Args[1:], "flag.CommandLine", flag.CommandLine)
 		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
 			fmt.Println("Unable to parse configWrap:", err)
 			os.Exit(1)
