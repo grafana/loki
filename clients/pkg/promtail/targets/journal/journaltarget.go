@@ -6,7 +6,6 @@ package journal
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"syscall"
 	"time"
@@ -201,7 +200,7 @@ func journalTargetWithReader(
 
 	go func() {
 		for {
-			err := t.r.Follow(until, ioutil.Discard)
+			err := t.r.Follow(until, io.Discard)
 			if err != nil {
 				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
 

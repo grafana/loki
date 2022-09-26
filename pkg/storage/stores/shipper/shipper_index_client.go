@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"sync"
@@ -126,11 +125,11 @@ func (i *indexClient) getUploaderName() (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := ioutil.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
+		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
 			return "", err
 		}
 	} else {
-		ub, err := ioutil.ReadFile(uploaderFilePath)
+		ub, err := os.ReadFile(uploaderFilePath)
 		if err != nil {
 			return "", err
 		}

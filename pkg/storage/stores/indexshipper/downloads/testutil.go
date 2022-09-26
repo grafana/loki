@@ -2,7 +2,6 @@ package downloads
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -40,7 +39,7 @@ func setupIndexesAtPath(t *testing.T, userID, path string, start, end int) []str
 		fileName := buildIndexFilename(userID, start)
 		indexPath := filepath.Join(path, fileName)
 
-		require.NoError(t, ioutil.WriteFile(indexPath, []byte(fileName), 0755))
+		require.NoError(t, os.WriteFile(indexPath, []byte(fileName), 0755))
 		testIndexes = append(testIndexes, indexPath)
 	}
 

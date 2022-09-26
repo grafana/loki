@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -223,7 +222,7 @@ schema_config:
 
 	defer resp.Body.Close()
 
-	bBytes, err := ioutil.ReadAll(resp.Body)
+	bBytes, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, string(bBytes), "abc")
 	assert.True(t, customHandlerInvoked)

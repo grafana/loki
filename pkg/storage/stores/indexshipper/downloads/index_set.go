@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,18 +112,18 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 		t.indexMtx.markReady()
 	}()
 
-	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
+	dirEntries, err := os.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
 	}
 
 	// open all the locally present files first to avoid downloading them again during sync operation below.
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
 			continue
 		}
 
-		fullPath := filepath.Join(t.cacheLocation, fileInfo.Name())
+		fullPath := filepath.Join(t.cacheLocation, entry.Name())
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
@@ -138,7 +137,7 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 			continue
 		}
 
-		t.index[fileInfo.Name()] = idx
+		t.index[entry.Name()] = idx
 	}
 
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.index)))

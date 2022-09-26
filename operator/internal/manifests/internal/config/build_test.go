@@ -1670,11 +1670,11 @@ limits_config:
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
-  retention_period: 7d
+  retention_period: 15d
   retention_stream:
-  - selector: '{log_type="audit"}'
+  - selector: '{environment="development"}'
     priority: 1
-    period: 14d
+    period: 3d
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
@@ -1748,6 +1748,11 @@ overrides:
     ingestion_burst_size_mb: 5
     max_global_streams_per_user: 1
     max_chunks_per_query: 1000000
+    retention_period: 7d
+    retention_stream:
+    - period: 15d
+      priority: 1
+      selector: "{environment=\"production\"}"
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
@@ -1768,6 +1773,16 @@ overrides:
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 					},
+					Retention: &lokiv1.RetentionLimitSpec{
+						Days: 15,
+						Streams: []*lokiv1.RetentionStreamSpec{
+							{
+								Days:     3,
+								Priority: 1,
+								Selector: `{environment="development"}`,
+							},
+						},
+					},
 				},
 				Tenants: map[string]lokiv1.LimitsTemplateSpec{
 					"test-a": {
@@ -1778,6 +1793,16 @@ overrides:
 						},
 						QueryLimits: &lokiv1.QueryLimitSpec{
 							MaxChunksPerQuery: 1000000,
+						},
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 7,
+							Streams: []*lokiv1.RetentionStreamSpec{
+								{
+									Days:     15,
+									Priority: 1,
+									Selector: `{environment="production"}`,
+								},
+							},
 						},
 					},
 				},
@@ -1829,16 +1854,6 @@ overrides:
 		Retention: RetentionOptions{
 			Enabled:           true,
 			DeleteWorkerCount: 50,
-			Globals: &lokiv1.RetentionLimitSpec{
-				Days: 7,
-				Streams: []*lokiv1.RetentionStreamSpec{
-					{
-						Days:     14,
-						Priority: 1,
-						Selector: `{log_type="audit"}`,
-					},
-				},
-			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
