@@ -22,10 +22,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -81,14 +80,14 @@ func (m *mockIndexSet) ListSourceFiles() []storage.IndexFile {
 }
 
 func (m *mockIndexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
-	decompress := shipper_util.IsCompressedFile(indexFile.Name)
+	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(m.workingDir, indexFile.Name)
 	if decompress {
 		dst = strings.Trim(dst, ".gz")
 	}
 
-	err := shipper_util.DownloadFileFromStorage(dst, shipper_util.IsCompressedFile(indexFile.Name),
-		false, shipper_util.LoggerWithFilename(util_log.Logger, indexFile.Name),
+	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
+		false, storage.LoggerWithFilename(util_log.Logger, indexFile.Name),
 		func() (io.ReadCloser, error) {
 			rc, _, err := m.objectClient.GetObject(context.Background(), path.Join(m.tableName, m.userID, indexFile.Name))
 			return rc, err
@@ -200,6 +199,7 @@ func buildChunkMetas(from, to int64) index.ChunkMetas {
 			MinTime:  i,
 			MaxTime:  i,
 			Checksum: uint32(i),
+			Entries:  1,
 		})
 	}
 
@@ -231,8 +231,7 @@ func TestCompactor_Compact(t *testing.T) {
 		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
 		Schema:      "v12",
 	}
-	indexBkts, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
-	require.NoError(t, err)
+	indexBkts := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
 	tableName := indexBkts[0]
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
@@ -640,6 +639,198 @@ func chunkMetaToChunkRef(userID string, chunkMeta index.ChunkMeta, lbls labels.L
 }
 
 func TestCompactedIndex(t *testing.T) {
+	testCtx := setupCompactedIndex(t)
+
+	for name, tc := range map[string]struct {
+		deleteChunks map[string]index.ChunkMetas
+		addChunks    []chunk.Chunk
+		deleteSeries []labels.Labels
+
+		shouldErr           bool
+		finalExpectedChunks map[string]index.ChunkMetas
+	}{
+		"no changes": {
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(10)),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"delete some chunks from a stream": {
+			deleteChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): append(buildChunkMetas(testCtx.shiftTableStart(3), testCtx.shiftTableStart(5)), buildChunkMetas(testCtx.shiftTableStart(7), testCtx.shiftTableStart(8))...),
+			},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): append(buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(2)), append(buildChunkMetas(testCtx.shiftTableStart(6), testCtx.shiftTableStart(6)), buildChunkMetas(testCtx.shiftTableStart(9), testCtx.shiftTableStart(10))...)...),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"delete all chunks from a stream": {
+			deleteChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(10)),
+			},
+			deleteSeries: []labels.Labels{testCtx.lbls1},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"add some chunks to a stream": {
+			addChunks: []chunk.Chunk{
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(12), testCtx.shiftTableStart(12))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+			},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"add some chunks out of table interval to a stream": {
+			addChunks: []chunk.Chunk{
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(12), testCtx.shiftTableStart(12))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				// these chunks should not be added
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(int64(testCtx.tableInterval.End+100), int64(testCtx.tableInterval.End+100))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(int64(testCtx.tableInterval.End+200), int64(testCtx.tableInterval.End+200))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+			},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"add and delete some chunks in a stream": {
+			addChunks: []chunk.Chunk{
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(12), testCtx.shiftTableStart(12))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+			},
+			deleteChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(3), testCtx.shiftTableStart(5)),
+			},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): append(buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(2)), buildChunkMetas(testCtx.shiftTableStart(6), testCtx.shiftTableStart(12))...),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"adding chunk to non-existing stream should error": {
+			addChunks: []chunk.Chunk{
+				{
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set("new", "label").Labels(),
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+			},
+			shouldErr: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			compactedIndex := testCtx.buildCompactedIndex()
+
+			foundChunkEntries := map[string][]retention.ChunkEntry{}
+			err := compactedIndex.ForEachChunk(context.Background(), func(chunkEntry retention.ChunkEntry) (deleteChunk bool, err error) {
+				seriesIDStr := string(chunkEntry.SeriesID)
+				foundChunkEntries[seriesIDStr] = append(foundChunkEntries[seriesIDStr], chunkEntry)
+				if chks, ok := tc.deleteChunks[string(chunkEntry.SeriesID)]; ok {
+					for _, chk := range chks {
+						if chk.MinTime == int64(chunkEntry.From) && chk.MaxTime == int64(chunkEntry.Through) {
+							return true, nil
+						}
+					}
+				}
+
+				return false, nil
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, testCtx.expectedChunkEntries, foundChunkEntries)
+
+			for _, lbls := range tc.deleteSeries {
+				require.NoError(t, compactedIndex.CleanupSeries(nil, lbls))
+			}
+
+			for _, chk := range tc.addChunks {
+				_, err := compactedIndex.IndexChunk(chk)
+				require.NoError(t, err)
+			}
+
+			indexFile, err := compactedIndex.ToIndexFile()
+			if tc.shouldErr {
+				require.NotNil(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			foundChunks := map[string]index.ChunkMetas{}
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
+			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+			require.NoError(t, err)
+
+			require.Equal(t, tc.finalExpectedChunks, foundChunks)
+		})
+	}
+
+}
+
+func TestIteratorContextCancelation(t *testing.T) {
+	tc := setupCompactedIndex(t)
+	compactedIndex := tc.buildCompactedIndex()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var foundChunkEntries []retention.ChunkEntry
+	err := compactedIndex.ForEachChunk(ctx, func(chunkEntry retention.ChunkEntry) (deleteChunk bool, err error) {
+		foundChunkEntries = append(foundChunkEntries, chunkEntry)
+
+		return false, nil
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+type testContext struct {
+	lbls1                labels.Labels
+	lbls2                labels.Labels
+	userID               string
+	tableInterval        model.Interval
+	shiftTableStart      func(ms int64) int64
+	buildCompactedIndex  func() *compactedIndex
+	expectedChunkEntries map[string][]retention.ChunkEntry
+}
+
+func setupCompactedIndex(t *testing.T) *testContext {
+	t.Helper()
+
 	now := model.Now()
 	periodConfig := config.PeriodConfig{
 		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
@@ -648,8 +839,7 @@ func TestCompactedIndex(t *testing.T) {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{periodConfig},
 	}
-	indexBuckets, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
-	require.NoError(t, err)
+	indexBuckets := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 	tableName := indexBuckets[0]
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	// shiftTableStart shift tableInterval.Start by the given amount of milliseconds.
@@ -680,164 +870,7 @@ func TestCompactedIndex(t *testing.T) {
 		lbls2.String(): chunkMetasToChunkEntry(schemaCfg, userID, lbls2, buildChunkMetas(shiftTableStart(0), shiftTableStart(20))),
 	}
 
-	for name, tc := range map[string]struct {
-		deleteChunks map[string]index.ChunkMetas
-		addChunks    []chunk.Chunk
-		deleteSeries []labels.Labels
-
-		shouldErr           bool
-		finalExpectedChunks map[string]index.ChunkMetas
-	}{
-		"no changes": {
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				lbls1.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(10)),
-				lbls2.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(20)),
-			},
-		},
-		"delete some chunks from a stream": {
-			deleteChunks: map[string]index.ChunkMetas{
-				lbls1.String(): append(buildChunkMetas(shiftTableStart(3), shiftTableStart(5)), buildChunkMetas(shiftTableStart(7), shiftTableStart(8))...),
-			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				lbls1.String(): append(buildChunkMetas(shiftTableStart(0), shiftTableStart(2)), append(buildChunkMetas(shiftTableStart(6), shiftTableStart(6)), buildChunkMetas(shiftTableStart(9), shiftTableStart(10))...)...),
-				lbls2.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(20)),
-			},
-		},
-		"delete all chunks from a stream": {
-			deleteChunks: map[string]index.ChunkMetas{
-				lbls1.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(10)),
-			},
-			deleteSeries: []labels.Labels{lbls1},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				lbls2.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(20)),
-			},
-		},
-		"add some chunks to a stream": {
-			addChunks: []chunk.Chunk{
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(11), shiftTableStart(11))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(12), shiftTableStart(12))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				lbls1.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(12)),
-				lbls2.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(20)),
-			},
-		},
-		"add some chunks out of table interval to a stream": {
-			addChunks: []chunk.Chunk{
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(11), shiftTableStart(11))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(12), shiftTableStart(12))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-				// these chunks should not be added
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(int64(tableInterval.End+100), int64(tableInterval.End+100))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(int64(tableInterval.End+200), int64(tableInterval.End+200))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				lbls1.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(12)),
-				lbls2.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(20)),
-			},
-		},
-		"add and delete some chunks in a stream": {
-			addChunks: []chunk.Chunk{
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(11), shiftTableStart(11))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-				{
-					Metric:   lbls1,
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(12), shiftTableStart(12))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-			},
-			deleteChunks: map[string]index.ChunkMetas{
-				lbls1.String(): buildChunkMetas(shiftTableStart(3), shiftTableStart(5)),
-			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				lbls1.String(): append(buildChunkMetas(shiftTableStart(0), shiftTableStart(2)), buildChunkMetas(shiftTableStart(6), shiftTableStart(12))...),
-				lbls2.String(): buildChunkMetas(shiftTableStart(0), shiftTableStart(20)),
-			},
-		},
-		"adding chunk to non-existing stream should error": {
-			addChunks: []chunk.Chunk{
-				{
-					Metric:   labels.NewBuilder(lbls1).Set("new", "label").Labels(),
-					ChunkRef: chunkMetaToChunkRef(userID, buildChunkMetas(shiftTableStart(11), shiftTableStart(11))[0], lbls1),
-					Data:     dummyChunkData{},
-				},
-			},
-			shouldErr: true,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			compactedIndex := buildCompactedIndex()
-
-			foundChunkEntries := map[string][]retention.ChunkEntry{}
-			err := compactedIndex.ForEachChunk(func(chunkEntry retention.ChunkEntry) (deleteChunk bool, err error) {
-				seriesIDStr := string(chunkEntry.SeriesID)
-				foundChunkEntries[seriesIDStr] = append(foundChunkEntries[seriesIDStr], chunkEntry)
-				if chks, ok := tc.deleteChunks[string(chunkEntry.SeriesID)]; ok {
-					for _, chk := range chks {
-						if chk.MinTime == int64(chunkEntry.From) && chk.MaxTime == int64(chunkEntry.Through) {
-							return true, nil
-						}
-					}
-				}
-
-				return false, nil
-			})
-			require.NoError(t, err)
-
-			require.Equal(t, expectedChunkEntries, foundChunkEntries)
-
-			for _, lbls := range tc.deleteSeries {
-				require.NoError(t, compactedIndex.CleanupSeries(nil, lbls))
-			}
-
-			for _, chk := range tc.addChunks {
-				_, err := compactedIndex.IndexChunk(chk)
-				require.NoError(t, err)
-			}
-
-			indexFile, err := compactedIndex.ToIndexFile()
-			if tc.shouldErr {
-				require.NotNil(t, err)
-				return
-			}
-			require.NoError(t, err)
-
-			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
-			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
-			require.NoError(t, err)
-
-			require.Equal(t, tc.finalExpectedChunks, foundChunks)
-		})
-	}
-
+	return &testContext{lbls1, lbls2, userID, tableInterval, shiftTableStart, buildCompactedIndex, expectedChunkEntries}
 }
 
 type dummyChunkData struct {
@@ -845,5 +878,5 @@ type dummyChunkData struct {
 }
 
 func (d dummyChunkData) Entries() int {
-	return 0
+	return 1
 }

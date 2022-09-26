@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -226,7 +225,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		r.backoffMtx.Lock()
 		r.nextQuery = nextBackoff(r.w, resp.StatusCode, r.backoff)
 		r.backoffMtx.Unlock()
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := io.ReadAll(resp.Body)
 		return 0, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
 	// No Errors, reset backoff
@@ -317,7 +316,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		r.backoffMtx.Lock()
 		r.nextQuery = nextBackoff(r.w, resp.StatusCode, r.backoff)
 		r.backoffMtx.Unlock()
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
 	// No Errors, reset backoff

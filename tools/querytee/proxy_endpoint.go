@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -69,21 +69,22 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, r.Method, p.routeName).Inc()
+	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, r.Method, p.routeName, detectIssuer(r)).Inc()
 }
 
 func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *backendResponse) {
 	var (
-		wg           = sync.WaitGroup{}
-		err          error
-		body         []byte
-		responses    = make([]*backendResponse, 0, len(p.backends))
-		responsesMtx = sync.Mutex{}
-		query        = r.URL.RawQuery
+		wg                  = sync.WaitGroup{}
+		err                 error
+		body                []byte
+		expectedResponseIdx int
+		responses           = make([]*backendResponse, len(p.backends))
+		query               = r.URL.RawQuery
+		issuer              = detectIssuer(r)
 	)
 
 	if r.Body != nil {
-		body, err = ioutil.ReadAll(r.Body)
+		body, err = io.ReadAll(r.Body)
 		if err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to read request body", "err", err)
 			return
@@ -92,7 +93,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			level.Warn(p.logger).Log("msg", "Unable to close request body", "err", err)
 		}
 
-		r.Body = ioutil.NopCloser(bytes.NewReader(body))
+		r.Body = io.NopCloser(bytes.NewReader(body))
 		if err := r.ParseForm(); err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to parse form", "err", err)
 		}
@@ -102,7 +103,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", query)
 
 	wg.Add(len(p.backends))
-	for _, b := range p.backends {
+	for i, b := range p.backends {
+		i := i
 		b := b
 
 		go func() {
@@ -112,7 +114,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				start      = time.Now()
 			)
 			if len(body) > 0 {
-				bodyReader = ioutil.NopCloser(bytes.NewReader(body))
+				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
 			status, body, err := b.ForwardRequest(r, bodyReader)
@@ -132,13 +134,20 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			}
 
 			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", b.name, "status", status, "elapsed", elapsed)
-			p.metrics.requestDuration.WithLabelValues(res.backend.name, r.Method, p.routeName, strconv.Itoa(res.statusCode())).Observe(elapsed.Seconds())
+			p.metrics.requestDuration.WithLabelValues(
+				res.backend.name,
+				r.Method,
+				p.routeName,
+				strconv.Itoa(res.statusCode()),
+				issuer,
+			).Observe(elapsed.Seconds())
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
-				responsesMtx.Lock()
-				responses = append(responses, res)
-				responsesMtx.Unlock()
+				if b.preferred {
+					expectedResponseIdx = i
+				}
+				responses[i] = res
 			}
 
 			resCh <- res
@@ -151,21 +160,25 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	// Compare responses.
 	if p.comparator != nil {
-		expectedResponse := responses[0]
-		actualResponse := responses[1]
-		if responses[1].backend.preferred {
-			expectedResponse, actualResponse = actualResponse, expectedResponse
-		}
+		expectedResponse := responses[expectedResponseIdx]
+		for i := range responses {
+			if i == expectedResponseIdx {
+				continue
+			}
+			actualResponse := responses[i]
 
-		result := comparisonSuccess
-		err := p.compareResponses(expectedResponse, actualResponse)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "response comparison failed", "route-name", p.routeName,
-				"query", r.URL.RawQuery, "err", err)
-			result = comparisonFailed
-		}
+			result := comparisonSuccess
+			err := p.compareResponses(expectedResponse, actualResponse)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "response comparison failed",
+					"backend-name", p.backends[i].name,
+					"route-name", p.routeName,
+					"query", r.URL.RawQuery, "err", err)
+				result = comparisonFailed
+			}
 
-		p.metrics.responsesComparedTotal.WithLabelValues(p.routeName, result).Inc()
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
+		}
 	}
 }
 
@@ -243,4 +256,11 @@ func (r *backendResponse) statusCode() int {
 	}
 
 	return r.status
+}
+
+func detectIssuer(r *http.Request) string {
+	if strings.HasPrefix(r.Header.Get("User-Agent"), "loki-canary") {
+		return canaryIssuer
+	}
+	return unknownIssuer
 }

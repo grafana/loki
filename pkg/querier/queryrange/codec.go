@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	io "io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -267,7 +266,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
-		return &indexgatewaypb.IndexStatsRequest{
+		return &logproto.IndexStatsRequest{
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
@@ -379,7 +378,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		return req.WithContext(ctx), nil
-	case *indexgatewaypb.IndexStatsRequest:
+	case *logproto.IndexStatsRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
@@ -408,7 +407,7 @@ type Buffer interface {
 
 func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
-		body, _ := ioutil.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
@@ -417,7 +416,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	if buffer, ok := r.Body.(Buffer); ok {
 		buf = buffer.Bytes()
 	} else {
-		buf, err = ioutil.ReadAll(r.Body)
+		buf, err = io.ReadAll(r.Body)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
@@ -455,8 +454,8 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Data:    resp.Data,
 			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
-	case *indexgatewaypb.IndexStatsRequest:
-		var resp indexgatewaypb.IndexStatsResponse
+	case *logproto.IndexStatsRequest:
+		var resp logproto.IndexStatsResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
@@ -591,7 +590,7 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(&buf),
+		Body:       io.NopCloser(&buf),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil

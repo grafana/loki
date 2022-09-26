@@ -5,6 +5,7 @@ title: Retention
 
 Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#compactor).
 
+By default, when `table_manager.retention_deletes_enabled` or `compactor.retention_enabled` flags are not set, then logs sent to Loki live forever.
 
 Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
 

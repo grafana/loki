@@ -1,0 +1,31 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- with .Values.monitoring.dashboards }}
+{{- if and $isSimpleScalable .enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "loki.dashboardsName" $ }}-2
+  namespace: {{ .namespace | default $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  "loki-reads-resources.json": |
+    {{ $.Files.Get "src/dashboards/loki-reads-resources.json" | fromJson | toJson }}
+  "loki-reads.json": |
+    {{ $.Files.Get "src/dashboards/loki-reads.json" | fromJson | toJson }}
+  "loki-retention.json": |
+    {{ $.Files.Get "src/dashboards/loki-retention.json" | fromJson | toJson }}
+  "loki-writes-resources.json": |
+    {{ $.Files.Get "src/dashboards/loki-writes-resources.json" | fromJson | toJson }}
+  "loki-writes.json": |
+    {{ $.Files.Get "src/dashboards/loki-writes.json" | fromJson | toJson }}
+{{- end -}}
+{{- end -}}

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -63,7 +63,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 	}
 	defer func() { _ = reader.Close() }()
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to read rule group %s", objectKey)
 	}

@@ -1,41 +1,27 @@
 {
       "annotations": {
-         "list": [
-            {
-               "builtIn": 1,
-               "datasource": "-- Grafana --",
-               "enable": true,
-               "hide": true,
-               "iconColor": "rgba(0, 211, 255, 1)",
-               "name": "Annotations & Alerts",
-               "target": {
-                  "limit": 100,
-                  "matchAny": false,
-                  "tags": [ ],
-                  "type": "dashboard"
-               },
-               "type": "dashboard"
-            },
-            {
-               "datasource": "${datasource}",
-               "enable": false,
-               "expr": "sum by (tenant) (changes(loki_ruler_wal_prometheus_tsdb_wal_truncations_total{tenant=~\"${tenant}\"}[$__rate_interval]))",
-               "iconColor": "red",
-               "name": "WAL Truncations",
-               "target": {
-                  "queryType": "Azure Monitor",
-                  "refId": "Anno"
-               },
-               "titleFormat": "{{tenant}}"
-            }
-         ]
+         "list": [ ]
       },
       "editable": true,
       "fiscalYearStartMonth": 0,
       "gnetId": null,
       "graphTooltip": 0,
+      "hideControls": false,
       "iteration": 1635347545534,
-      "links": [ ],
+      "links": [
+         {
+            "asDropdown": true,
+            "icon": "external link",
+            "includeVars": true,
+            "keepTime": true,
+            "tags": [
+               "loki"
+            ],
+            "targetBlank": false,
+            "title": "Loki Dashboards",
+            "type": "dashboards"
+         }
+      ],
       "liveNow": false,
       "panels": [
          {
@@ -599,59 +585,63 @@
             "type": "timeseries"
          }
       ],
-      "schemaVersion": 31,
+      "refresh": "10s",
+      "rows": [ ],
+      "schemaVersion": 14,
       "style": "dark",
-      "tags": [ ],
+      "tags": [
+         "loki"
+      ],
       "templating": {
          "list": [
             {
-               "description": null,
-               "error": null,
+               "current": {
+                  "text": "default",
+                  "value": "default"
+               },
                "hide": 0,
-               "includeAll": false,
-               "label": "Datasource",
-               "multi": false,
+               "label": "Data Source",
                "name": "datasource",
                "options": [ ],
                "query": "prometheus",
-               "queryValue": "",
                "refresh": 1,
                "regex": "",
-               "skipUrlSync": false,
                "type": "datasource"
-            },
-            {
-               "allValue": null,
-               "datasource": "${datasource}",
-               "definition": "label_values(loki_ruler_wal_samples_appended_total, tenant)",
-               "description": null,
-               "error": null,
-               "hide": 0,
-               "includeAll": true,
-               "label": "Tenant",
-               "multi": true,
-               "name": "tenant",
-               "options": [ ],
-               "query": {
-                  "query": "label_values(loki_ruler_wal_samples_appended_total, tenant)",
-                  "refId": "StandardVariableQuery"
-               },
-               "refresh": 2,
-               "regex": "",
-               "skipUrlSync": false,
-               "sort": 0,
-               "type": "query"
             }
          ]
       },
       "time": {
-         "from": "now-6h",
+         "from": "now-1h",
          "to": "now"
       },
-      "timepicker": { },
-      "timezone": "",
-      "title": "Recording Rules",
-      "uid": "2xKA_ZK7k",
-      "version": 9,
+      "timepicker": {
+         "refresh_intervals": [
+            "5s",
+            "10s",
+            "30s",
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "1d"
+         ],
+         "time_options": [
+            "5m",
+            "15m",
+            "1h",
+            "6h",
+            "12h",
+            "24h",
+            "2d",
+            "7d",
+            "30d"
+         ]
+      },
+      "timezone": "utc",
+      "title": "Loki / Recording Rules",
+      "uid": "recording-rules",
+      "version": 0,
       "weekStart": ""
    }

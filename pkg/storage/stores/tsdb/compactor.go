@@ -18,9 +18,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -269,7 +269,7 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 }
 
 // ForEachChunk iterates over all the chunks in the builder and calls the callback function.
-func (c *compactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) error {
+func (c *compactedIndex) ForEachChunk(ctx context.Context, callback retention.ChunkEntryCallback) error {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{c.periodConfig},
 	}
@@ -287,7 +287,8 @@ func (c *compactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) err
 		chunkEntry.SeriesID = getUnsafeBytes(seriesID)
 		chunkEntry.Labels = withoutTenantLabel(stream.labels)
 
-		for _, chk := range stream.chunks {
+		for i := 0; i < len(stream.chunks) && ctx.Err() == nil; i++ {
+			chk := stream.chunks[i]
 			logprotoChunkRef.From = chk.From()
 			logprotoChunkRef.Through = chk.Through()
 			logprotoChunkRef.Checksum = chk.Checksum
@@ -308,7 +309,7 @@ func (c *compactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) err
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 // IndexChunk adds the chunk to the list of chunks to index.

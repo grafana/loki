@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -23,10 +24,9 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"-target=compactor",
 			"-boltdb.shipper.compactor.compaction-interval=1s",
 			"-boltdb.shipper.compactor.retention-delete-delay=1s",
-			"-boltdb.shipper.compactor.deletion-mode=filter-and-delete",
-			// By default a minute is added to the delete request start time. This compensates for that.
+			// By default, a minute is added to the delete request start time. This compensates for that.
 			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
-			"-compactor.allow-deletes=true",
+			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
@@ -61,7 +61,42 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
 			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
+		tRuler = clu.AddComponent(
+			"ruler",
+			"-target=ruler",
+			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+		)
 	)
+
+	remoteCalled := []bool{false, false}
+
+	handler1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/write" {
+			t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
+		}
+		remoteCalled[0] = true
+
+		w.WriteHeader(http.StatusOK)
+	})
+	server1 := cluster.NewRemoteWriteServer(&handler1)
+
+	handler2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/write" {
+			t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
+		}
+		remoteCalled[1] = true
+
+		w.WriteHeader(http.StatusOK)
+	})
+	server2 := cluster.NewRemoteWriteServer(&handler2)
+
+	defer server1.Close()
+	defer server2.Close()
+
+	tRuler.RemoteWriteUrls = []string{
+		server1.URL,
+		server2.URL,
+	}
 
 	require.NoError(t, clu.Run())
 
@@ -76,6 +111,8 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	cliQueryFrontend.Now = now
 	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL().String())
 	cliCompactor.Now = now
+	cliRuler := client.New(tRuler.RulesTenant, "", tRuler.HTTPURL().String())
+	cliRuler.Now = now
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
 		// ingest some log lines
@@ -108,7 +145,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 
 	t.Run("add-delete-request", func(t *testing.T) {
-		params := client.DeleteRequestParams{Query: `{job="fake"} |= "lineB"`}
+		params := client.DeleteRequestParams{Start: "0000000000", Query: `{job="fake"} |= "lineB"`}
 		require.NoError(t, cliCompactor.AddDeleteRequest(params))
 	})
 
@@ -152,6 +189,25 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		}
 		// Remove lineB once flush works
 		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines, "lineB should not be there")
+	})
+
+	t.Run("ruler", func(t *testing.T) {
+		// Check rules are read correctly.
+		resp, err := cliRuler.GetRules()
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		require.Equal(t, "success", resp.Status)
+
+		require.Len(t, resp.Data.Groups, 1)
+		require.Len(t, resp.Data.Groups[0].Rules, 1)
+
+		// Wait for remote write to be called.
+		time.Sleep(5 * time.Second)
+
+		// Check remote write was successful.
+		require.EqualValues(t, []bool{true, true}, remoteCalled, "one or both of the remote write target were not called")
 	})
 }
 

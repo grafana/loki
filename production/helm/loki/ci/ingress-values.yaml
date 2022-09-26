@@ -1,0 +1,17 @@
+---
+gateway:
+  ingress:
+    enabled: true
+    annotations: {}
+    hosts:
+      - host: gateway.loki.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+loki:
+  commonConfig:
+    replication_factor: 1
+read:
+  replicas: 1
+write:
+  replicas: 1

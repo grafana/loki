@@ -330,6 +330,9 @@ job_name: <string>
 # Describes how to scrape logs from the Windows event logs.
 [windows_events: <windows_events_config>]
 
+# Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
+[gcplog: <gcplog_config>]
+
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
 
@@ -930,6 +933,58 @@ labels:
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
+### GCP Log
+
+The `gcplog` block configures how Promtail receives GCP logs. There are two strategies, based on the configuration of `subscription_type`:
+- **Pull**: Using GCP Pub/Sub [pull subscriptions](https://cloud.google.com/pubsub/docs/pull). Promtail will consume log messages directly from the configured GCP Pub/Sub topic.
+- **Push**: Using GCP Pub/Sub [push subscriptions](https://cloud.google.com/pubsub/docs/push). Promtail will expose an HTTP server, and GCP will deliver logs to that server.
+
+When using the `push` subscription type, keep in mind:
+- The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for target that requires so.
+- An endpoint at `POST /gcp/api/v1/push`, which expects requests from GCP PubSub message delivery system.
+
+```yaml
+# Type of subscription used to fetch logs from GCP. Can be either `pull` (default) or `push`.
+[subscription_type: <string> | default = "pull"]
+
+# If the subscription_type is pull,  the GCP project ID
+[project_id: <string>]
+
+# If the subscription_type is pull, GCP PubSub subscription from where Promtail will pull logs from
+[subscription: <string>]
+
+# If the subscription_type is push, the server configuration options
+[server: <server_config>]
+
+# Whether Promtail should pass on the timestamp from the incoming GCP Log message.
+# When false, or if no timestamp is present in the GCP Log message, Promtail will assign the current
+# timestamp to the log when it was processed.
+[use_incoming_timestamp: <boolean> | default = false]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+### Available Labels
+
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling). This depends on the subscription type chosen.
+
+**Internal labels available for pull**
+
+- `__gcp_logname`
+- `__gcp_resource_type`
+- `__gcp_resource_labels_<NAME>`
+
+**Internal labels available for push**
+
+- `__gcp_message_id`
+- `__gcp_subscription_name`
+- `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
+- `__gcp_logname`
+- `__gcp_resource_type`
+- `__gcp_resource_labels_<NAME>`
+
 ### kafka
 
 The `kafka` block configures Promtail to scrape logs from [Kafka](https://kafka.apache.org/) using a group consumer.
@@ -1114,7 +1169,7 @@ Here are the different set of fields type available and the fields they include 
 "WorkerCPUTime", "WorkerStatus", "WorkerSubrequest", "WorkerSubrequestCount", "OriginIP", "OriginResponseStatus", "OriginSSLProtocol",
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
-- `all` includes all `extended` fields and adds `"ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
+- `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
 "FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
@@ -1546,6 +1601,25 @@ tls_config:
 namespaces:
   names:
     [ - <string> ]
+
+# Optional label and field selectors to limit the discovery process to a subset of available
+#  resources. See
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/
+# and https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ to learn
+# more about the possible filters that can be used. The endpoints role supports pod,
+# service, and endpoint selectors. Roles only support selectors matching the role itself;
+# for example, the node role can only contain node selectors.
+# Note: When making decisions about using field/label selectors, make sure that this
+# is the best approach. It will prevent Promtail from reusing single list/watch
+# for all scrape configurations. This might result in a bigger load on the Kubernetes API,
+# because for each selector combination, there will be additional LIST/WATCH.
+# On the other hand, if you want to monitor a small subset of pods of a large cluster,
+# we recommend using selectors. The decision on the use of selectors or not depends
+# on the particular situation.
+[ selectors:
+          [ - role: <string>
+                  [ label: <string> ]
+                  [ field: <string> ] ]]
 ```
 
 Where `<role>` must be `endpoints`, `service`, `pod`, `node`, or

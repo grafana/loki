@@ -138,8 +138,11 @@ func (c *Copier) callRewrite(ctx context.Context, rawObj *raw.Object) (*raw.Rewr
 	var res *raw.RewriteResponse
 	var err error
 	setClientHeader(call.Header())
-	err = runWithRetry(ctx, func() error { res, err = call.Do(); return err })
-	if err != nil {
+
+	retryCall := func() error { res, err = call.Do(); return err }
+	isIdempotent := c.dst.conds != nil && (c.dst.conds.GenerationMatch != 0 || c.dst.conds.DoesNotExist)
+
+	if err := run(ctx, retryCall, c.dst.retry, isIdempotent, setRetryHeaderHTTP(call)); err != nil {
 		return nil, err
 	}
 	c.RewriteToken = res.RewriteToken
@@ -230,8 +233,11 @@ func (c *Composer) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
 	}
 	var obj *raw.Object
 	setClientHeader(call.Header())
-	err = runWithRetry(ctx, func() error { obj, err = call.Do(); return err })
-	if err != nil {
+
+	retryCall := func() error { obj, err = call.Do(); return err }
+	isIdempotent := c.dst.conds != nil && (c.dst.conds.GenerationMatch != 0 || c.dst.conds.DoesNotExist)
+
+	if err := run(ctx, retryCall, c.dst.retry, isIdempotent, setRetryHeaderHTTP(call)); err != nil {
 		return nil, err
 	}
 	return newObject(obj), nil

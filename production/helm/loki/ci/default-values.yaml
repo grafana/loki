@@ -1,0 +1,8 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+read:
+  replicas: 1
+write:
+  replicas: 1

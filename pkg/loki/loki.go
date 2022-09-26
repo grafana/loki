@@ -9,8 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -42,11 +40,13 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
+	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -66,6 +66,7 @@ type Config struct {
 
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
+	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
@@ -132,6 +133,7 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
 	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
 	c.Server.RegisterFlags(throwaway)
+	c.InternalServer.RegisterFlags(throwaway)
 
 	throwaway.VisitAll(func(f *flag.Flag) {
 		// Ignore errors when setting new values. We have a test to verify that it works.
@@ -233,6 +235,7 @@ type Loki struct {
 	SignalHandler *signals.Handler
 
 	Server                   *server.Server
+	InternalServer           *server.Server
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
@@ -256,7 +259,7 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
-	groupcacheRingManager    *cache.GroupcacheRingManager
+	embeddedcacheRingManager *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -364,6 +367,9 @@ func (t *Loki) Run(opts RunOpts) error {
 	}
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
+	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
@@ -372,6 +378,9 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.bindConfigEndpoint(opts)
 
 	// Each component serves its version.
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
+	}
 	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
 
 	t.Server.HTTP.Path("/debug/fgprof").Methods("GET", "POST").Handler(fgprof.Handler())
@@ -474,10 +483,15 @@ func (t *Loki) setupModuleManager() error {
 	mm := modules.NewManager(util_log.Logger)
 
 	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
+
+	if t.Cfg.InternalServer.Enable {
+		mm.RegisterModule(InternalServer, t.initInternalServer, modules.UserInvisibleModule)
+	}
+
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
-	mm.RegisterModule(GroupCache, t.initGroupcache, modules.UserInvisibleModule)
+	mm.RegisterModule(Embededcache, t.initEmbeddedCache, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -504,16 +518,16 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		GroupCache:               {RuntimeConfig, Server, MemberlistKV},
+		Embededcache:             {RuntimeConfig, Server, MemberlistKV},
 		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, GroupCache, IndexGatewayRing},
+		Store:                    {Overrides, Embededcache, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
-		QueryFrontendTripperware: {Server, GroupCache, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Embededcache, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
@@ -543,6 +557,26 @@ func (t *Loki) setupModuleManager() error {
 	// first to initialize the ring that will also be used by the query frontend
 	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	if t.Cfg.InternalServer.Enable {
+		depsToUpdate := []string{Distributor, Ingester, Querier, QueryFrontend, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
+
+		for _, dep := range depsToUpdate {
+			var idx int
+			for i, v := range deps[dep] {
+				if v == Server {
+					idx = i
+					break
+				}
+			}
+
+			lhs := deps[dep][0:idx]
+			rhs := deps[dep][idx+1:]
+
+			deps[dep] = append(lhs, InternalServer)
+			deps[dep] = append(deps[dep], rhs...)
+		}
 	}
 
 	for mod, targets := range deps {

@@ -10,16 +10,62 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
     expr: |
       sum(
-          rate(
-              loki_request_duration_seconds_count{status_code=~"5.."}[1m]
-          )
+        rate(
+          loki_request_duration_seconds_count{status_code=~"5.."}[1m]
+        )
       ) by (namespace, job, route)
       /
       sum(
-          rate(
-              loki_request_duration_seconds_count[1m]
-          )
+        rate(
+          loki_request_duration_seconds_count[1m]
+        )
       ) by (namespace, job, route)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiStackWriteRequestErrors
+    annotations:
+      message: |-
+        {{ printf "%.2f" $value }}% of write requests from {{ $labels.job }} are returned with server errors.
+      summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
+    expr: |
+      sum(
+        rate(
+          http_requests_total{code=~"5..", group="logsv1", handler="push"}[1m]
+        )
+      ) by (namespace, job, tenant)
+      /
+      sum(
+        rate(
+          http_requests_total{group="logsv1", handler="push"}[1m]
+        )
+      ) by (namespace, job, tenant)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiStackReadRequestErrors
+    annotations:
+      message: |-
+        {{ printf "%.2f" $value }}% of query requests from {{ $labels.job }} are returned with server errors.
+      summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
+    expr: |
+      sum(
+        rate(
+          http_requests_total{code=~"5..", group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
+        )
+      ) by (namespace, job, tenant)
+      /
+      sum(
+        rate(
+          http_requests_total{group="logsv1", handler=~"query|query_range|label|labels|label_values"}[1m]
+        )
+      ) by (namespace, job, tenant)
       * 100
       > 10
     for: 15m
@@ -33,9 +79,9 @@ groups:
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
     expr: |
       sum(
-          increase(
-              loki_panic_total[10m]
-          )
+        increase(
+          loki_panic_total[10m]
+        )
       ) by (namespace, job)
       > 0
     labels:

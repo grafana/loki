@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,10 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -85,14 +83,14 @@ func (m *mockIndexSet) ListSourceFiles() []storage.IndexFile {
 }
 
 func (m *mockIndexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
-	decompress := shipper_util.IsCompressedFile(indexFile.Name)
+	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(m.workingDir, indexFile.Name)
 	if decompress {
 		dst = strings.Trim(dst, ".gz")
 	}
 
-	err := shipper_util.DownloadFileFromStorage(dst, shipper_util.IsCompressedFile(indexFile.Name),
-		false, shipper_util.LoggerWithFilename(util_log.Logger, indexFile.Name),
+	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
+		false, storage.LoggerWithFilename(util_log.Logger, indexFile.Name),
 		func() (io.ReadCloser, error) {
 			rc, _, err := m.objectClient.GetObject(context.Background(), path.Join(m.tableName, m.userID, indexFile.Name))
 			return rc, err
@@ -447,7 +445,11 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				compareCompactedTable(t, tablePathInStorage, tCompactor)
 			} else if tt.dbCount <= 1 {
 				require.Nil(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex)
-				require.Len(t, tCompactor.userCompactedIndexSet, 0)
+				uploadedCompactedIndexSets := make([]*compactedIndexSet, 0, len(tCompactor.userCompactedIndexSet))
+				for _, is := range tCompactor.userCompactedIndexSet {
+					uploadedCompactedIndexSets = append(uploadedCompactedIndexSets, is)
+				}
+				require.Len(t, uploadedCompactedIndexSets, 0)
 			} else {
 				require.False(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex.(*CompactedIndex).compactedFileRecreated)
 				for _, userCompactedIndexSet := range tCompactor.userCompactedIndexSet {
@@ -520,7 +522,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 func readIndexFromFiles(t *testing.T, tablePath string) map[string]map[string]string {
 	tempDir := t.TempDir()
 
-	filesInfo, err := ioutil.ReadDir(tablePath)
+	dirEntries, err := os.ReadDir(tablePath)
 	if err != nil && os.IsNotExist(err) {
 		return map[string]map[string]string{}
 	}
@@ -528,15 +530,15 @@ func readIndexFromFiles(t *testing.T, tablePath string) map[string]map[string]st
 
 	dbRecords := make(map[string]map[string]string)
 
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
 			continue
 		}
 
-		filePath := filepath.Join(tablePath, fileInfo.Name())
+		filePath := filepath.Join(tablePath, entry.Name())
 		if strings.HasSuffix(filePath, ".gz") {
-			filePath = filepath.Join(tempDir, fileInfo.Name())
-			testutil.DecompressFile(t, filepath.Join(tablePath, fileInfo.Name()), filePath)
+			filePath = filepath.Join(tempDir, entry.Name())
+			testutil.DecompressFile(t, filepath.Join(tablePath, entry.Name()), filePath)
 		}
 
 		db, err := openBoltdbFileWithNoSync(filePath)
