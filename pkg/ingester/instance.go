@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor"
-
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -40,6 +38,11 @@ import (
 )
 
 const (
+	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
+	// Possible values are only increasing integers starting from 0.
+	ShardLbName        = "__stream_shard__"
+	ShardLbPlaceholder = "__placeholder__"
+
 	queryBatchSize       = 128
 	queryBatchSampleSize = 512
 )
@@ -341,7 +344,7 @@ func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequ
 	}
 
 	err := i.streams.ForEach(func(s *stream) (bool, error) {
-		hashWithoutShard, b := s.labels.HashWithoutLabels(buf, distributor.ShardLbName)
+		hashWithoutShard, b := s.labels.HashWithoutLabels(buf, ShardLbName)
 		resp.StreamRates = append(resp.StreamRates, &logproto.StreamRate{
 			StreamHash:        s.labels.Hash(),
 			StreamHashNoShard: hashWithoutShard,

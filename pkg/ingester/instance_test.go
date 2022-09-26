@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor"
-
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -164,7 +162,7 @@ func TestStreamRates(t *testing.T) {
 		}
 		uniqueLabels[l.String()] = true
 
-		hashWithoutShard, _ := l.HashWithoutLabels(buf, distributor.ShardLbName)
+		hashWithoutShard, _ := l.HashWithoutLabels(buf, ShardLbName)
 		hashes[l.Hash()] = hashWithoutShard
 
 		wg.Add(1)
@@ -466,7 +464,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 	return result
 }
 
-var labelNames = []string{"app", "instance", "namespace", "user", "cluster", distributor.ShardLbName}
+var labelNames = []string{"app", "instance", "namespace", "user", "cluster", ShardLbName}
 
 func makeRandomLabels() labels.Labels {
 	ls := labels.NewBuilder(nil)
