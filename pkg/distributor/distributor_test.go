@@ -853,7 +853,7 @@ func TestShardCountFor(t *testing.T) {
 	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "loki",
-			Name:      "stream_sharding_failures",
+			Name:      "test_shard_count_for",
 			Help:      "Total number of failures when sharding a stream",
 		}, []string{
 			"reason",
