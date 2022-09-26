@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -212,6 +213,10 @@ func (ds *deleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID
 		return nil, ErrDeleteRequestNotFound
 	}
 
+	sort.Slice(deleteRequests, func(i, j int) bool {
+		return deleteRequests[i].SequenceNum < deleteRequests[j].SequenceNum
+	})
+
 	return deleteRequests, nil
 }
 
@@ -238,16 +243,24 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 
 func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.Query) ([]DeleteRequest, error) {
 	var deleteRequests []DeleteRequest
-	err := ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+	var err error
+	err = ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		// No need to lock inside the callback since we run a single index query.
 		itr := batch.Iterator()
 		for itr.Next() {
-			userID, requestID := splitUserIDAndRequestID(string(itr.RangeValue()))
+			userID, requestID, seqID := splitUserIDAndRequestID(string(itr.RangeValue()))
+
+			var seqNum int64
+			seqNum, err = strconv.ParseInt(seqID, 10, 64)
+			if err != nil {
+				return false
+			}
 
 			deleteRequests = append(deleteRequests, DeleteRequest{
-				UserID:    userID,
-				RequestID: requestID,
-				Status:    DeleteRequestStatus(itr.Value()),
+				UserID:      userID,
+				RequestID:   requestID,
+				SequenceNum: seqNum,
+				Status:      DeleteRequestStatus(itr.Value()),
 			})
 		}
 		return true
@@ -262,8 +275,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 func (ds *deleteRequestsStore) deleteRequestsWithDetails(ctx context.Context, partialDeleteRequests []DeleteRequest) ([]DeleteRequest, error) {
 	deleteRequests := make([]DeleteRequest, 0, len(partialDeleteRequests))
 	for _, group := range partitionByRequestID(partialDeleteRequests) {
-		for i, deleteRequest := range group {
-			deleteRequest.SequenceNum = int64(i)
+		for _, deleteRequest := range group {
 			requestWithDetails, err := ds.queryDeleteRequestDetails(ctx, deleteRequest)
 			if err != nil {
 				return nil, err
@@ -390,9 +402,13 @@ func encodeUniqueID(t uint32) []byte {
 	return encodedThroughBytes
 }
 
-func splitUserIDAndRequestID(rangeValue string) (userID, requestID string) {
+func splitUserIDAndRequestID(rangeValue string) (userID, requestID, seqID string) {
 	parts := strings.Split(rangeValue, ":")
-	return parts[0], parts[1]
+
+	if len(parts) == 2 {
+		return parts[0], parts[1], "0"
+	}
+	return parts[0], parts[1], parts[2]
 }
 
 // unsafeGetString is like yolostring but with a meaningful name

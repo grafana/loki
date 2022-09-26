@@ -17,7 +17,7 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBFile {
+func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	b := NewBuilder()
 
 	for _, s := range cases {

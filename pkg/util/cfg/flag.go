@@ -94,7 +94,7 @@ func categorizedUsage(fs *flag.FlagSet) func() {
 			if name == "" {
 				continue
 			}
-			fmt.Fprintf(fs.Output(), " %s:\n", cases.Title(language.Und).String(name))
+			fmt.Fprintf(fs.Output(), " %s:\n", cases.Title(language.Und, cases.NoLower).String(name))
 			for _, u := range categories[name] {
 				fmt.Fprintln(fs.Output(), u)
 			}

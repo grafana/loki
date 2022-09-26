@@ -21,6 +21,16 @@ fullnameOverride: null
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
 
+kubectlImage:
+  # -- The Docker registry
+  registry: docker.io
+  # -- Docker image repository
+  repository: bitnami/kubectl
+  # -- Overrides the image tag whose default is the chart's appVersion
+  tag: null
+  # -- Docker image pull policy
+  pullPolicy: IfNotPresent
+
 loki:
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
@@ -66,9 +76,10 @@ loki:
     auth_enabled: {{ .Values.loki.auth_enabled }}
     {{- end }}
 
+    {{- with .Values.loki.server }}
     server:
-      http_listen_port: 3100
-      grpc_listen_port: 9095
+      {{- toYaml . | nindent 2}}
+    {{- end}}
 
     memberlist:
       join_members:
@@ -81,12 +92,10 @@ loki:
       {{- include "loki.commonStorageConfig" . | nindent 4}}
     {{- end}}
 
+    {{- with .Values.loki.limits_config }}
     limits_config:
-      enforce_metric_name: false
-      reject_old_samples: true
-      reject_old_samples_max_age: 168h
-      max_cache_freshness_per_query: 10m
-      split_queries_by_interval: 15m
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled .host }}
@@ -122,11 +131,14 @@ loki:
             period: 24h
     {{- end }}
 
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
     ruler:
       storage:
+      {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
       {{- include "loki.rulerStorageConfig" . | nindent 4}}
-    {{- end -}}
+      {{- end }}
+    {{- with .Values.loki.rulerConfig}}
+    {{- toYaml . | nindent 2}}
+    {{- end }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -153,14 +165,33 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.compactor }}
+    compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
+
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
+  server:
+    http_listen_port: 3100
+    grpc_listen_port: 9095
+
+  # -- Limits config
+  limits_config:
+    enforce_metric_name: false
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    max_cache_freshness_per_query: 10m
+    split_queries_by_interval: 15m
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
 
+  # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
     bucketNames:
       chunks: chunks
@@ -175,6 +206,7 @@ loki:
       accessKeyId: null
       s3ForcePathStyle: false
       insecure: false
+      http_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
@@ -202,6 +234,9 @@ loki:
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
 
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
+  rulerConfig: {}
+
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
 
@@ -215,12 +250,19 @@ loki:
       max_per_second: 20
       up_to: 3
 
+  # --  Optional compactor configuration
+  compactor: {}
+
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
 
   # Default verion of GEL to deploy
-  version: v1.5.0
+  version: v1.5.2
+
+  # -- Optional name of the GEL cluster, otherwise will use .Release.Name
+  # The cluster name must match what is in your GEL license
+  cluster_name: null
 
   # -- Grafana Enterprise Logs license
   # In order to use Grafana Enterprise Logs features, you will need to provide
@@ -255,7 +297,7 @@ enterprise:
     auth:
       type: {{ .Values.enterprise.adminApi.enabled | ternary "enterprise" "trust" }}
     auth_enabled: {{ .Values.loki.auth_enabled }}
-    cluster_name: {{ .Release.Name }}
+    cluster_name: {{ include "loki.clusterName" . }}
     license:
       path: /etc/loki/license/license.jwt
 
@@ -269,12 +311,16 @@ enterprise:
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
 
+  # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
+  adminTokenSecret: null
+
+  # -- Alternative name of the secret to store token for the canary
+  canarySecret: null
+
   # -- Configuration for `tokengen` target
   tokengen:
     # -- Whether the job should be part of the deployment
     enabled: true
-    # -- Name of the secret to store the admin token in
-    adminTokenSecret: "gel-admin-token"
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -283,6 +329,8 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `tokengen` Job
     annotations: {}
+    # -- Tolerations for tokengen Job
+    tolerations: []
     # -- Additional volumes for Pods
     extraVolumes: []
     # -- Additional volume mounts for Pods
@@ -293,6 +341,40 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+
+  # -- Configuration for `provisioner` target
+  provisioner:
+    # -- Whether the job should be part of the deployment
+    enabled: true
+    # -- Name of the secret to store provisioned tokens in
+    provisionedSecretPrefix: '{{ include "loki.name" . }}-provisioned'
+    # -- Tenants to be created. Each tenant will get a read and write policy
+    # and associated token.
+    tenants: []
+    # -- Additional Kubernetes environment
+    env: []
+    # -- Additional labels for the `provisioner` Job
+    labels: {}
+    # -- Additional annotations for the `provisioner` Job
+    annotations: {}
+    # -- The name of the PriorityClass for provisioner Job
+    priorityClassName: null
+    # -- Run containers as user `enterprise-logs(uid=10001)`
+    securityContext:
+      runAsNonRoot: true
+      runAsGroup: 10001
+      runAsUser: 10001
+      fsGroup: 10001
+    # -- Provisioner image to Utilize
+    image:
+      # -- The Docker registry
+      registry: docker.io
+      # -- Docker image repository
+      repository: grafana/enterprise-logs-provisioner
+      # -- Overrides the image tag whose default is the chart's appVersion
+      tag: null
+      # -- Docker image pull policy
+      pullPolicy: IfNotPresent
 
   nginxConfig:
     file: |
@@ -518,6 +600,9 @@ monitoring:
   selfMonitoring:
     enabled: true
 
+    # -- Tenant to use for self monitoring
+    tenant: "self-monitoring"
+
     # Grafana Agent configuration
     grafanaAgent:
       # -- Controls whether to install the Grafana Agent Operator and its CRDs.
@@ -553,6 +638,35 @@ monitoring:
       annotations: {}
       # -- Additional LogsInstance labels
       labels: {}
+
+    # The Loki canary pushes logs to and queries from this loki installation to test
+    # that it's working correctly
+    lokiCanary:
+      enabled: true
+      # -- Additional annotations for the `loki-canary` Daemonset
+      annotations: {}
+      # -- Additional CLI arguments for the `loki-canary' command
+      extraArgs: []
+      # -- Environment variables to add to the canary pods
+      extraEnv: []
+      # -- Environment variables from secrets or configmaps to add to the canary pods
+      extraEnvFrom: []
+      # -- Resource requests and limits for the canary
+      resources: {}
+      # -- Node selector for canary pods
+      nodeSelector: {}
+      # -- Tolerations for canary pods
+      tolerations: []
+      # -- Image to use for loki canary
+      image:
+        # -- The Docker registry
+        registry: docker.io
+        # -- Docker image repository
+        repository: grafana/loki-canary
+        # -- Overrides the image tag whose default is the chart's appVersion
+        tag: null
+        # -- Docker image pull policy
+        pullPolicy: IfNotPresent
 
 # Configuration for the write
 write:
@@ -728,7 +842,7 @@ singleBinary:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.readSelectorLabels" . | nindent 10 }}
+              {{- include "loki.singleBinarySelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- Node selector for single binary pods
   nodeSelector: {}
@@ -991,6 +1105,14 @@ gateway:
             proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
           }
 
+          location ~ /prometheus/api/v1/alerts.* {
+            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+          }
+
+          location ~ /prometheus/api/v1/rules.* {
+            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+          }
+
           location = /loki/api/v1/push {
             proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
           }
@@ -1060,8 +1182,13 @@ tracing:
 # -------------------------------------
 minio:
   enabled: false
-  accessKey: enterprise-logs
-  secretKey: supersecret
+  replicas: 1
+  # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
+  # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
+  # Since we only have 1 replica, that means 2 drives must be used.
+  drivesPerNode: 2
+  rootUser: enterprise-logs
+  rootPassword: supersecret
   buckets:
     - name: chunks
       policy: none

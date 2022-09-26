@@ -47,6 +47,11 @@ common:
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
+{{- if .Retention.Enabled }}{{- with .Retention }}
+  retention_enabled: true
+  retention_delete_delay: 4h
+  retention_delete_worker_count: {{.DeleteWorkerCount}}
+{{- end }}{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
   compress_responses: true
@@ -114,6 +119,17 @@ limits_config:
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
+{{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
+  retention_period: {{.Days}}d
+{{- with .Streams }}
+  retention_stream:
+{{- range . }}
+  - selector: '{{ .Selector }}'
+    priority: {{ .Priority }}
+    period: {{ .Days }}d
+{{- end }}
+{{- end }}
+{{- end }}{{- end }}
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB

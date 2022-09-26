@@ -16,7 +16,8 @@ import (
 )
 
 // ApplyGatewayDefaultOptions applies defaults on the LokiStackSpec depending on selected
-// tenant mode. Currently nothing is applied for modes static and dynamic. For mode openshift-logging
+// tenant mode. Currently nothing is applied for modes static and dynamic.
+// For modes openshift-logging and openshift-network
 // the tenant spec is filled with defaults for authentication and authorization.
 func ApplyGatewayDefaultOptions(opts *Options) error {
 	if opts.Stack.Tenants == nil {
@@ -27,7 +28,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // continue using user input
 
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
 			tenantData[name] = openshift.TenantData{
@@ -36,6 +37,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		}
 
 		defaults := openshift.NewOptions(
+			opts.Stack.Tenants.Mode,
 			opts.Name,
 			opts.Namespace,
 			GatewayName(opts.Name),
@@ -47,7 +49,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
-			return kverrors.Wrap(err, "failed to merge defaults for mode openshift logging")
+			return kverrors.Wrap(err, "failed to merge defaults for mode openshift")
 		}
 
 	}
@@ -55,17 +57,22 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, stackName, stackNs string) error {
+func configureGatewayDeploymentForMode(
+	d *appsv1.Deployment, mode lokiv1.ModeType,
+	fg configv1.FeatureGates, stackName, stackNs string,
+	minTLSVersion string, ciphers string,
+) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		caBundleName := signingCABundleName(stackName)
 		serviceName := serviceNameGatewayHTTP(stackName)
 		secretName := signingServiceSecretName(serviceName)
 		serverName := fqdn(serviceName, stackNs)
 		return openshift.ConfigureGatewayDeployment(
 			d,
+			mode,
 			gatewayContainerName,
 			tlsSecretVolume,
 			httpTLSDir,
@@ -79,6 +86,8 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeTyp
 			secretName,
 			serverName,
 			gatewayHTTPPort,
+			minTLSVersion,
+			ciphers,
 		)
 	}
 
@@ -89,7 +98,7 @@ func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType)
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureGatewayService(s)
 	}
 
@@ -100,7 +109,7 @@ func configureLokiStackObjsForMode(objs []client.Object, opts Options) []client.
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		openShiftObjs := openshift.BuildLokiStackObjects(opts.OpenShiftOptions)
 		objs = append(objs, openShiftObjs...)
 	}
@@ -112,7 +121,7 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
 
 		var cObjs []client.Object
@@ -138,7 +147,7 @@ func configureGatewayServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureGatewayServiceMonitor(sm, fg.ServiceMonitorTLSEndpoints)
 	}
 

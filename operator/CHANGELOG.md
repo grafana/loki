@@ -1,5 +1,11 @@
 ## Main
 
+- [7214](https://github.com/grafana/loki/pull/7214) **periklis**: Fix ruler GRPC tls client configuration
+- [7201](https://github.com/grafana/loki/pull/7201) **xperimental**: Write configuration for per-tenant retention
+- [7037](https://github.com/grafana/loki/pull/7037) **xperimental**: Skip enforcing matcher for certain tenants on OpenShift
+- [7106](https://github.com/grafana/loki/pull/7106) **xperimental**: Manage global stream-based retention
+- [7092](https://github.com/grafana/loki/pull/7092) **aminesnow**: Configure kube-rbac-proxy sidecar to use Intermediate TLS security profile in OCP
+- [6870](https://github.com/grafana/loki/pull/6870) **aminesnow**: Configure gateway to honor the global tlsSecurityProfile on Openshift
 - [6999](https://github.com/grafana/loki/pull/6999) **Red-GV**: Adding LokiStack Gateway alerts
 - [7000](https://github.com/grafana/loki/pull/7000) **xperimental**: Configure default node affinity for all pods
 - [6923](https://github.com/grafana/loki/pull/6923) **xperimental**: Reconcile owner reference for existing objects

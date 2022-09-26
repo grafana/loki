@@ -957,7 +957,7 @@ When using the `push` subscription type, keep in mind:
 [server: <server_config>]
 
 # Whether Promtail should pass on the timestamp from the incoming GCP Log message.
-# When false, or if no timestamp is present in the syslog message, Promtail will assign the current
+# When false, or if no timestamp is present in the GCP Log message, Promtail will assign the current
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
@@ -979,7 +979,11 @@ When Promtail receives GCP logs, various internal labels are made available for 
 **Internal labels available for push**
 
 - `__gcp_message_id`
-- `__gcp_attributes_*`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
+- `__gcp_subscription_name`
+- `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
+- `__gcp_logname`
+- `__gcp_resource_type`
+- `__gcp_resource_labels_<NAME>`
 
 ### kafka
 
@@ -1597,6 +1601,25 @@ tls_config:
 namespaces:
   names:
     [ - <string> ]
+
+# Optional label and field selectors to limit the discovery process to a subset of available
+#  resources. See
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/
+# and https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ to learn
+# more about the possible filters that can be used. The endpoints role supports pod,
+# service, and endpoint selectors. Roles only support selectors matching the role itself;
+# for example, the node role can only contain node selectors.
+# Note: When making decisions about using field/label selectors, make sure that this
+# is the best approach. It will prevent Promtail from reusing single list/watch
+# for all scrape configurations. This might result in a bigger load on the Kubernetes API,
+# because for each selector combination, there will be additional LIST/WATCH.
+# On the other hand, if you want to monitor a small subset of pods of a large cluster,
+# we recommend using selectors. The decision on the use of selectors or not depends
+# on the particular situation.
+[ selectors:
+          [ - role: <string>
+                  [ label: <string> ]
+                  [ field: <string> ] ]]
 ```
 
 Where `<role>` must be `endpoints`, `service`, `pod`, `node`, or

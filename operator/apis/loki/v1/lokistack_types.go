@@ -199,7 +199,7 @@ type AuthenticationSpec struct {
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
 //
-// +kubebuilder:validation:Enum=static;dynamic;openshift-logging
+// +kubebuilder:validation:Enum=static;dynamic;openshift-logging;openshift-network
 type ModeType string
 
 const (
@@ -208,8 +208,10 @@ const (
 	Static ModeType = "static"
 	// Dynamic mode delegates the authorization to a third-party OPA-compatible endpoint.
 	Dynamic ModeType = "dynamic"
-	// OpenshiftLogging mode provides fully automatic OpenShift in-cluster authentication and authorization support.
+	// OpenshiftLogging mode provides fully automatic OpenShift in-cluster authentication and authorization support for application, infrastructure and audit logs.
 	OpenshiftLogging ModeType = "openshift-logging"
+	// OpenshiftNetwork mode provides fully automatic OpenShift in-cluster authentication and authorization support for network logs only.
+	OpenshiftNetwork ModeType = "openshift-network"
 )
 
 // TenantsSpec defines the mode, authentication and authorization
@@ -220,7 +222,7 @@ type TenantsSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=openshift-logging
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging"},displayName="Mode"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging","urn:alm:descriptor:com.tectonic.ui:select:openshift-network"},displayName="Mode"
 	Mode ModeType `json:"mode"`
 	// Authentication defines the lokistack-gateway component authentication configuration spec per tenant.
 	//
@@ -520,6 +522,45 @@ type IngestionLimitSpec struct {
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 }
 
+// RetentionStreamSpec defines a log stream with separate retention time.
+type RetentionStreamSpec struct {
+	// Days contains the number of days logs are kept.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum:=1
+	Days uint `json:"days"`
+
+	// Priority defines the priority of this selector compared to other retention rules.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=1
+	Priority uint32 `json:"priority,omitempty"`
+
+	// Selector contains the LogQL query used to define the log stream.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	Selector string `json:"selector"`
+}
+
+// RetentionLimitSpec controls how long logs will be kept in storage.
+type RetentionLimitSpec struct {
+	// Days contains the number of days logs are kept.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum:=1
+	Days uint `json:"days"`
+
+	// Stream defines the log stream.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Streams []*RetentionStreamSpec `json:"streams,omitempty"`
+}
+
 // LimitsTemplateSpec defines the limits  applied at ingestion or query path.
 type LimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
@@ -533,6 +574,12 @@ type LimitsTemplateSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
+
+	// Retention defines how long logs are kept in storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
 // LimitsSpec defines the spec for limits applied at ingestion or query
@@ -553,7 +600,7 @@ type LimitsSpec struct {
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
-// RulesSpec deifnes the spec for the ruler component.
+// RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
 	//

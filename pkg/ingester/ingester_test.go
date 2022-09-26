@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/types"
-	"github.com/gogo/status"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
@@ -21,7 +19,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -42,68 +39,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
-
-func TestRateLimitedStreamsReturn(t *testing.T) {
-	// setup.
-	ingesterConfig := defaultIngesterTestConfig(t)
-	limits := defaultLimitsTestConfig()
-	limits.PerStreamRateLimit.Set("1") //nolint:errcheck
-	limits.IngestionBurstSizeMB = 1
-	limits.PerStreamRateLimitBurst.Set("1") //nolint:errcheck
-	overrides, err := validation.NewOverrides(limits, nil)
-	limit := overrides.PerStreamRateLimit("test")
-	require.Equal(t, limit.Limit, rate.Limit(1))
-	require.NoError(t, err)
-
-	store := &mockStore{
-		chunks: map[string][]chunk.Chunk{},
-	}
-
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil)
-	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	req := logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Labels: `{bar="baz1", foo="bar"}`,
-			},
-			{
-				Labels: `{bar="baz2", foo="bar"}`,
-			},
-		},
-	}
-	for i := 0; i < 10; i++ {
-		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
-			Timestamp: time.Unix(0, 0),
-			Line:      fmt.Sprintf("line %d", i),
-		})
-		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
-			Timestamp: time.Unix(0, 0),
-			Line:      fmt.Sprintf("line %d", i),
-		})
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = i.Push(ctx, &req)
-	require.Error(t, err)
-
-	s, ok := status.FromError(err)
-	require.True(t, ok)
-	details := s.Proto().Details
-
-	var rateLimitedLabels []string
-	for _, detail := range details {
-		rls := &logproto.RateLimitedStream{}
-		err := types.UnmarshalAny(detail, rls)
-		require.NoError(t, err)
-		rateLimitedLabels = append(rateLimitedLabels, rls.Labels)
-	}
-
-	// note that streams[0], although rate-limited, isn't present in the details.
-	// that's because push as of now is only returning the last errored stream.
-	require.EqualValues(t, []string{req.Streams[1].Labels}, rateLimitedLabels)
-}
 
 func TestIngester(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)

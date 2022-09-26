@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -170,11 +169,8 @@ func (m *HeadManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			m.metrics.tsdbHeadRotationsTotal.Inc()
-
 			// retry tsdb build failures from previous run
 			if err := buildPrev(); err != nil {
-				m.metrics.tsdbHeadRotationsFailedTotal.Inc()
 				level.Error(m.log).Log(
 					"msg", "failed building tsdb head",
 					"period", m.period.PeriodFor(m.prev.initialized),
@@ -185,16 +181,17 @@ func (m *HeadManager) loop() {
 			}
 
 			now := time.Now()
-			if curPeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > curPeriod {
+			if activePeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > activePeriod {
 				if err := m.Rotate(now); err != nil {
-					m.metrics.tsdbHeadRotationsFailedTotal.Inc()
+					m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
 					level.Error(m.log).Log(
 						"msg", "failed rotating tsdb head",
-						"period", curPeriod,
+						"period", activePeriod,
 						"err", err,
 					)
 					continue
 				}
+				m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
 			}
 
 			// build tsdb from rotated-out period
@@ -286,11 +283,11 @@ func (m *HeadManager) Start() error {
 		return errors.Wrap(err, "building tsdb")
 	}
 
-	m.metrics.tsdbWALTruncationsTotal.Inc()
 	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
-		m.metrics.tsdbWALTruncationsFailedTotal.Inc()
+		m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
 		return errors.New("cleaning (removing) wal dir")
 	}
+	m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
 
 	err = m.Rotate(now)
 	if err != nil {
@@ -379,11 +376,13 @@ func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
 }
 
 func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
-	m.metrics.tsdbWALTruncationsTotal.Inc()
 	defer func() {
+		status := statusSuccess
 		if err != nil {
-			m.metrics.tsdbWALTruncationsFailedTotal.Inc()
+			status = statusFailure
 		}
+
+		m.metrics.walTruncations.WithLabelValues(status).Inc()
 	}()
 
 	grp, _, err := walsForPeriod(m.dir, m.period, period)
@@ -423,7 +422,7 @@ func walsByPeriod(dir string, period period) ([]WalGroup, error) {
 }
 
 func walGroups(dir string, period period) (map[int]*WalGroup, error) {
-	files, err := ioutil.ReadDir(managerWalDir(dir))
+	files, err := os.ReadDir(managerWalDir(dir))
 	if err != nil {
 		return nil, err
 	}
@@ -710,12 +709,12 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
 // helper only used in building TSDBs
