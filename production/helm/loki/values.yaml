@@ -258,7 +258,7 @@ enterprise:
   enabled: false
 
   # Default verion of GEL to deploy
-  version: v1.5.0
+  version: v1.5.2
 
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
