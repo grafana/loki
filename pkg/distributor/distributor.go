@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -58,7 +59,13 @@ type ShardStreamsConfig struct {
 
 	// DesiredRate is the threshold used to shard the stream into smaller pieces.
 	// Expected to be in bytes.
-	DesiredRate int `yaml:"desired_rate"`
+	DesiredRate flagext.ByteSize `yaml:"desired_rate"`
+}
+
+func (cfg *ShardStreamsConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
+	fs.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Automatically shard streams to keep them under the per-stream rate limit")
+	fs.BoolVar(&cfg.LoggingEnabled, prefix+".logging-enabled", false, "Enable logging when sharding streams")
+	fs.Var(&cfg.DesiredRate, prefix+".desired-rate", "threshold used to cut a new shard. Default (3MB) means if a rate is above 3MB, it will be sharded.")
 }
 
 // Config for a Distributor.
@@ -76,8 +83,7 @@ type Config struct {
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
-	fs.BoolVar(&cfg.ShardStreams.Enabled, "distributor.stream-sharding.enabled", false, "Automatically shard streams to keep them under the per-stream rate limit")
-	fs.BoolVar(&cfg.ShardStreams.LoggingEnabled, "distributor.stream-sharding.logging-enabled", false, "Enable logging when sharding streams")
+	cfg.ShardStreams.RegisterFlagsWithPrefix("distributor.stream-sharding", fs)
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
@@ -405,7 +411,7 @@ func min(x1, x2 int) int {
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
 func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID string) ([]uint32, []streamTracker) {
-	shardCount := d.shardCountFor(&stream, streamSize, d.cfg.ShardStreams.DesiredRate, d.rateStore)
+	shardCount := d.shardCountFor(&stream, streamSize, d.cfg.ShardStreams.DesiredRate.Val(), d.rateStore)
 
 	if shardCount <= 1 {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}

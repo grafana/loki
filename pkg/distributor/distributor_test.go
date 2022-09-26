@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
+	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
@@ -491,7 +492,7 @@ func TestStreamShard(t *testing.T) {
 		},
 	)
 
-	desiredRate := 100
+	desiredRate := loki_flagext.ByteSize(300)
 
 	for _, tc := range []struct {
 		name       string
@@ -522,7 +523,7 @@ func TestStreamShard(t *testing.T) {
 		},
 		{
 			name:       "two shards with 3 entries",
-			streamSize: desiredRate + 1, // pass the desired rate for 1 byte to force two shards.
+			streamSize: desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
 			entries:    totalEntries[0:3],
 			wantDerivedStream: []streamTracker{
 				{ // shard 1.
@@ -544,7 +545,7 @@ func TestStreamShard(t *testing.T) {
 		{
 			name:       "two shards with 5 entries",
 			entries:    totalEntries[0:5],
-			streamSize: desiredRate + 1, // pass the desired rate for 1 byte to force two shards.
+			streamSize: desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
 			wantDerivedStream: []streamTracker{
 				{ // shard 1.
 					stream: logproto.Stream{
@@ -579,7 +580,7 @@ func TestStreamShard(t *testing.T) {
 		{
 			name:       "two shards with 20 entries",
 			entries:    totalEntries[0:20],
-			streamSize: desiredRate + 1, // pass desired rate by 1 to force two shards.
+			streamSize: desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
 			wantDerivedStream: []streamTracker{
 				{ // shard 1.
 					stream: logproto.Stream{
@@ -600,7 +601,7 @@ func TestStreamShard(t *testing.T) {
 		{
 			name:       "four shards with 20 entries",
 			entries:    totalEntries[0:20],
-			streamSize: 1 + (desiredRate * 3), // force 4 shards.
+			streamSize: 1 + (desiredRate.Val() * 3), // force 4 shards.
 			wantDerivedStream: []streamTracker{
 				{ // shard 1.
 					stream: logproto.Stream{
@@ -634,7 +635,7 @@ func TestStreamShard(t *testing.T) {
 		},
 		{
 			name:       "size for four shards with 2 entries, ends up with 4 shards ",
-			streamSize: 1 + (desiredRate * 3), // force 4 shards.
+			streamSize: 1 + (desiredRate.Val() * 3), // force 4 shards.
 			entries:    totalEntries[0:2],
 			wantDerivedStream: []streamTracker{
 				{
@@ -849,6 +850,16 @@ func TestShardCalculation(t *testing.T) {
 }
 
 func TestShardCountFor(t *testing.T) {
+	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "stream_sharding_failures",
+			Help:      "Total number of failures when sharding a stream",
+		}, []string{
+			"reason",
+		},
+	)
+
 	for _, tc := range []struct {
 		name        string
 		stream      *logproto.Stream
@@ -923,8 +934,10 @@ func TestShardCountFor(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.EnforceMetricName = false
-			d := prepare(t, limits, nil, nil)
 
+			d := &Distributor{
+				streamShardingFailures: shardingFailureMetric,
+			}
 			got := d.shardCountFor(tc.stream, tc.wantStreamSize, tc.desiredRate, &noopRateStore{tc.rate})
 			require.Equal(t, tc.wantShards, got)
 		})
