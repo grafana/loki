@@ -464,6 +464,12 @@ spec:
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Key
+        path: storage.tls.caKey
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: CA is the name of a ConfigMap containing a CA certificate. It
           needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
