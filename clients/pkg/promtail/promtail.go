@@ -121,8 +121,9 @@ func (p *Promtail) reloadConfig(cfg config.Config) error {
 	}
 	p.targetManagers = tms
 
-	if p.server != nil {
-		promtailServer := p.server.(*server.PromtailServer)
+	promServer := p.server
+	if promServer != nil {
+		promtailServer := promServer.(*server.PromtailServer)
 		promtailServer.ReloadTms(p.targetManagers)
 	}
 

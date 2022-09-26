@@ -285,7 +285,6 @@ func NewTargetManagers(
 	return &TargetManagers{
 		targetManagers: targetManagers,
 		positions:      positionFile,
-		logger:         logger,
 	}, nil
 }
 
