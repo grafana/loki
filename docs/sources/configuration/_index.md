@@ -311,15 +311,23 @@ ring:
 shard_streams:
   # Whether to enable stream sharding
   #
-  # CLI flag: -distributor.stream-sharding.enabled
+  # CLI flag: -distributor.shard-streams.enabled
   [enabled: <boolean> | default = false]
 
   # Enable logging when sharding streams because logging on the read path may
   # impact performance. When disabled, stream sharding will emit no logs 
   # regardless of log level
   #
-  # CLI flag: -distributor.stream-sharding.logging-enabled
+  # CLI flag: -distributor.shard-streams.logging-enabled
   [logging_enabled: <boolean> | default = false]
+
+  # Threshold that determines how much the stream should be sharded.
+  # The formula used is n = ceil(stream size + ingested rate / desired rate), where n is the number of shards.
+  # For instance, if a stream ingestion is at 10MB, desired rate is 3MB (default), and a stream of size 1MB is
+  # received, the given stream will be split into n = ceil((1 + 10)/3) = 4 shards.
+  #
+  # CLI flag: -distributor.shard-streams.desired-rate
+  [desired_rate: <string> | default = 3MB]
 ```
 
 ## querier

@@ -83,7 +83,7 @@ type Config struct {
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
-	cfg.ShardStreams.RegisterFlagsWithPrefix("distributor.stream-sharding", fs)
+	cfg.ShardStreams.RegisterFlagsWithPrefix("distributor.shard-streams", fs)
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
