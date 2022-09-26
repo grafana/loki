@@ -46,6 +46,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			tenantData,
+			RulerName(opts.Name),
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {

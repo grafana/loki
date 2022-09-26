@@ -29,7 +29,8 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	// that every value is present in the result
 	opts := randomConfigOptions()
 
-	res := manifests.ConfigOptions(opts)
+	res, err := manifests.ConfigOptions(opts)
+	require.NoError(t, err)
 
 	expected, err := json.Marshal(opts.Stack)
 	require.NoError(t, err)

@@ -279,3 +279,38 @@ func ConfigureQueryFrontendDeployment(
 
 	return nil
 }
+
+func ConfigureRulerStatefulSet(
+	ss *appsv1.StatefulSet,
+	token, caBundleVolumeName, caDir, caFile string,
+	monitorServerName, rulerContainerName string,
+) error {
+	var rulerIndex int
+	for i, c := range ss.Spec.Template.Spec.Containers {
+		if c.Name == rulerContainerName {
+			rulerIndex = i
+			break
+		}
+	}
+
+	rulerContainer := ss.Spec.Template.Spec.Containers[rulerIndex].DeepCopy()
+
+	rulerContainer.Args = append(rulerContainer.Args,
+		fmt.Sprintf("-ruler.alertmanager-client.tls-ca-path=%s/%s", caDir, caFile),
+		fmt.Sprintf("-ruler.alertmanager-client.tls-server-name=%s", monitorServerName),
+		fmt.Sprintf("-ruler.alertmanager-client.credentials-file=%s", token),
+	)
+
+	p := corev1.PodSpec{
+		ServiceAccountName: ss.GetName(),
+		Containers: []corev1.Container{
+			*rulerContainer,
+		},
+	}
+
+	if err := mergo.Merge(&ss.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge ruler container spec ")
+	}
+
+	return nil
+}

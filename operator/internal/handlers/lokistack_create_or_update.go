@@ -250,6 +250,20 @@ func CreateOrUpdateLokiStack(
 
 	opts.TLSProfileSpec = spec
 
+	if stack.Spec.Tenants != nil && opts.Stack.Tenants.Mode == lokiv1.OpenshiftLogging {
+		var svc corev1.Service
+		key := client.ObjectKey{Name: manifests.MonitoringSVCOperated, Namespace: manifests.MonitoringNS}
+
+		err = k.Get(ctx, key, &svc)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return kverrors.Wrap(err, "failed to lookup alertmanager service", "name", key)
+		}
+
+		if err == nil {
+			opts.Ruler.OCPAlertManagerEnabled = true
+		}
+	}
+
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")

@@ -33,8 +33,8 @@ var (
 	InjectCABundleKey = "service.beta.openshift.io/inject-cabundle"
 )
 
-func authorizerRbacName(opts Options) string {
-	return fmt.Sprintf("%s-authorizer", opts.BuildOpts.GatewayName)
+func authorizerRbacName(componentName string) string {
+	return fmt.Sprintf("%s-authorizer", componentName)
 }
 
 func monitoringRbacName(stackName string) string {
@@ -49,8 +49,12 @@ func routeName(opts Options) string {
 	return opts.BuildOpts.LokiStackName
 }
 
-func serviceAccountName(opts Options) string {
+func gatewayServiceAccountName(opts Options) string {
 	return opts.BuildOpts.GatewayName
+}
+
+func rulerServiceAccountName(opts Options) string {
+	return opts.BuildOpts.RulerName
 }
 
 func serviceCABundleName(opts Options) string {

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/imdario/mergo"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +17,11 @@ import (
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
-	cfg := ConfigOptions(opt)
+	cfg, err := ConfigOptions(opt)
+	if err != nil {
+		return nil, "", err
+	}
+
 	c, rc, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
@@ -45,7 +51,7 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 }
 
 // ConfigOptions converts Options to config.Options
-func ConfigOptions(opt Options) config.Options {
+func ConfigOptions(opt Options) (config.Options, error) {
 	rulerEnabled := opt.Stack.Rules != nil && opt.Stack.Rules.Enabled
 
 	var (
@@ -54,9 +60,33 @@ func ConfigOptions(opt Options) config.Options {
 		rwConfig                   *config.RemoteWriteConfig
 	)
 
-	if rulerEnabled {
+	mode := opt.Stack.Tenants.Mode
+
+	if mode == lokiv1.OpenshiftLogging && opt.Ruler.OCPAlertManagerEnabled {
 		rulerEnabled = true
 
+		if opt.Ruler.Spec == nil {
+			opt.Ruler.Spec = &lokiv1beta1.RulerConfigSpec{
+				AlertManagerSpec: &lokiv1beta1.AlertManagerSpec{},
+			}
+		}
+
+		ams := lokiv1beta1.AlertManagerSpec{
+			// "http://_grpc._tcp.alertmanager-operated.openshift-monitoring.svc"
+			Endpoints: []string{"https://alertmanager-operated.openshift-monitoring.svc:9095"},
+			EnableV2:  true,
+			DiscoverySpec: &lokiv1beta1.AlertManagerDiscoverySpec{
+				EnableSRV:       true,
+				RefreshInterval: "1m",
+			},
+		}
+
+		if err := mergo.Merge(opt.Ruler.Spec.AlertManagerSpec, ams); err != nil {
+			return config.Options{}, kverrors.Wrap(err, "failed merging RulerSpec options")
+		}
+	}
+
+	if rulerEnabled {
 		// Map alertmanager config from CRD to config options
 		if opt.Ruler.Spec != nil {
 			evalInterval = string(opt.Ruler.Spec.EvalutionInterval)
@@ -115,7 +145,7 @@ func ConfigOptions(opt Options) config.Options {
 			RemoteWrite:           rwConfig,
 		},
 		Retention: retentionConfig(&opt.Stack),
-	}
+	}, nil
 }
 
 func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
