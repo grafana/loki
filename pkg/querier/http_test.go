@@ -46,8 +46,12 @@ type slowConnectionSimulator struct {
 }
 
 func (s *slowConnectionSimulator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(s.sleepFor)
 	ctx := r.Context()
+	if err := ctx.Err(); err != nil {
+		panic(fmt.Sprintf("context already errored: %s", err))
+
+	}
+	time.Sleep(s.sleepFor)
 
 	select {
 	case <-ctx.Done():
@@ -55,7 +59,7 @@ func (s *slowConnectionSimulator) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		case context.DeadlineExceeded:
 			s.didTimeout = true
 		case context.Canceled:
-			panic("lol")
+			panic("context already canceled")
 		}
 	case <-time.After(s.deadline):
 	}
@@ -115,7 +119,9 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		// although it is longer than the limits timeout, it should supersede it.
 		api.cfg.QueryTimeout = time.Millisecond * 100
 
-		// querier:query_timeout is 5ms but it sleeps for 100ms, so timeout injected in the request is expected.
+		// although limits:query_timeout is shorter than querier:query_timeout,
+		// limits:query_timeout should be ignored.
+		// here we configure it to sleep for 100ms and we want it to timeout at the 100ms.
 		connSimulator := &slowConnectionSimulator{
 			sleepFor: time.Millisecond * 100,
 			deadline: api.cfg.QueryTimeout,
