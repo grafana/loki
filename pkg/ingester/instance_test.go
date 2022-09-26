@@ -214,8 +214,6 @@ func TestStreamRates(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, hashNoShard, r.StreamHashNoShard)
 	}
-
-	fmt.Println(rates.StreamRates)
 }
 
 func TestSyncPeriod(t *testing.T) {
