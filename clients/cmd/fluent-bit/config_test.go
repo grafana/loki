@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"net/url"
 	"os"
 	"reflect"
@@ -229,7 +228,7 @@ func mustParseDuration(u string) time.Duration {
 }
 
 func createTempLabelMap(t *testing.T) string {
-	file, err := ioutil.TempFile("", "labelmap")
+	file, err := os.CreateTemp("", "labelmap")
 	if err != nil {
 		t.Fatal(err)
 	}

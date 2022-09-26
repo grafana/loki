@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"flag"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 	if testing.Verbose() {
 		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
+		logger = log.NewLogger("testing", log.WithOutput(io.Discard))
 	}
 
 	// Register the clientgo and CRD schemes

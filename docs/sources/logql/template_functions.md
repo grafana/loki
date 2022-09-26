@@ -149,8 +149,6 @@ Signature:
 `{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
 ```
 
-You can combine multiple functions using pipe. For example, to strip out spaces and make the request method in capital, you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
-
 ## lower
 
 > Added in Loki 2.1

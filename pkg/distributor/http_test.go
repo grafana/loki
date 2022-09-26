@@ -1,14 +1,12 @@
 package distributor
 
 import (
-	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -19,11 +17,10 @@ func TestDistributorRingHandler(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	runServer := func() *httptest.Server {
-		d := prepare(t, limits, nil, nil)
-		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+		distributors, _ := prepare(t, 1, 3, limits, nil)
 
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			d.ServeHTTP(w, r)
+			distributors[0].ServeHTTP(w, r)
 		}))
 	}
 
@@ -36,7 +33,7 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), "<th>Instance ID</th>")
 		require.NotContains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
@@ -51,7 +48,7 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
 		require.NotContains(t, string(body), "<th>Instance ID</th>")

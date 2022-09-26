@@ -3,7 +3,6 @@ package positions
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -215,7 +214,7 @@ func (p *positions) cleanup() {
 
 func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error) {
 	cleanfn := filepath.Clean(cfg.PositionsFile)
-	buf, err := ioutil.ReadFile(cleanfn)
+	buf, err := os.ReadFile(cleanfn)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil

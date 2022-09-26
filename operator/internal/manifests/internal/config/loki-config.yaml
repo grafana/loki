@@ -119,9 +119,9 @@ limits_config:
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
-{{- if .Retention.Enabled }}{{- with .Retention }}
-  retention_period: {{.Globals.Days}}d
-{{- with .Globals.Streams }}
+{{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
+  retention_period: {{.Days}}d
+{{- with .Streams }}
   retention_stream:
 {{- range . }}
   - selector: '{{ .Selector }}'
