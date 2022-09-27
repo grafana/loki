@@ -1931,6 +1931,10 @@ redis:
   # CLI flag: -<prefix>.redis.pool-size
   [pool_size: <int> | default = 0]
 
+  # Username to use when connecting to redis.
+  # CLI flag: -<prefix>.redis.username
+  [username: <string>]
+
   # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
   [password: <string>]
