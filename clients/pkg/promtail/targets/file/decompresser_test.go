@@ -99,6 +99,9 @@ func TestGigantiqueGunzipFile(t *testing.T) {
 	require.Equal(t, 100000, len(entries))
 }
 
+// TestOnelineFiles test the supported formats for log lines that only contain 1 line.
+//
+// Based on our experience, this is the scenario with the most edge cases.
 func TestOnelineFiles(t *testing.T) {
 	fileContent, err := os.ReadFile("test_fixtures/onelinelog.log")
 	require.NoError(t, err)

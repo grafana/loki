@@ -53,6 +53,8 @@ parsed data to Loki. Important details are:
       compressed file, **the first parsed line will contains metadata together with
       your log line**. It is illustrated at
       `./clients/pkg/promtail/targets/file/decompresser_test.go`.
+* `.zip` extension isn't supported as of now because it doesn't support some of the interfaces
+  Promtail requires. We have plans to add support for it in the near future.
 * The decompression is quite CPU intensive and a lot of allocations are expected
   to work, especially depending on the size of the file. You can expect the number
   of garbage collection runs and the CPU usage to skyrocket, but no memory leak is
