@@ -44,7 +44,7 @@ func TestPullTarget_Run(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tt.run()
+		tt.run() //nolint:errcheck
 	}()
 
 	publishMessage(ctx, t, tp)
