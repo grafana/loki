@@ -44,13 +44,6 @@ var (
 	// Noop is the no compression pool
 	Noop NoopPool
 
-	// BufReaderPool is bufio.Reader pool
-	BufReaderPool = &BufioReaderPool{
-		pool: sync.Pool{
-			New: func() interface{} { return bufio.NewReader(nil) },
-		},
-	}
-
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
 	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
@@ -117,21 +110,32 @@ type GzipPool struct {
 	level   int
 }
 
+// Gzip needs buffering to read efficiently.
+// We need to be able to see the underlying gzip.Reader to Reset it.
+type gzipBufferedReader struct {
+	*bufio.Reader
+	gzipReader *gzip.Reader
+}
+
 // GetReader gets or creates a new CompressionReader and reset it to read from src
 func (pool *GzipPool) GetReader(src io.Reader) io.Reader {
 	if r := pool.readers.Get(); r != nil {
-		reader := r.(*gzip.Reader)
-		err := reader.Reset(src)
+		reader := r.(*gzipBufferedReader)
+		err := reader.gzipReader.Reset(src)
 		if err != nil {
 			panic(err)
 		}
+		reader.Reader.Reset(reader.gzipReader)
 		return reader
 	}
-	reader, err := gzip.NewReader(src)
+	gzipReader, err := gzip.NewReader(src)
 	if err != nil {
 		panic(err)
 	}
-	return reader
+	return &gzipBufferedReader{
+		gzipReader: gzipReader,
+		Reader:     bufio.NewReaderSize(gzipReader, 4*1024),
+	}
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -267,14 +271,25 @@ type LZ4Pool struct {
 	bufferSize uint32 // available values: 1<<16 (64k), 1<<18 (256k), 1<<20 (1M), 1<<22 (4M). Defaults to 4MB, if not set.
 }
 
+// We need to be able to see the underlying lz4.Reader to Reset it.
+type lz4BufferedReader struct {
+	*bufio.Reader
+	lz4Reader *lz4.Reader
+}
+
 // GetReader gets or creates a new CompressionReader and reset it to read from src
 func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
-	var r *lz4.Reader
+	var r *lz4BufferedReader
 	if pooled := pool.readers.Get(); pooled != nil {
-		r = pooled.(*lz4.Reader)
-		r.Reset(src)
+		r = pooled.(*lz4BufferedReader)
+		r.lz4Reader.Reset(src)
+		r.Reader.Reset(r.lz4Reader)
 	} else {
-		r = lz4.NewReader(src)
+		lz4Reader := lz4.NewReader(src)
+		r = &lz4BufferedReader{
+			lz4Reader: lz4Reader,
+			Reader:    bufio.NewReaderSize(lz4Reader, 4*1024),
+		}
 	}
 	return r
 }
@@ -367,23 +382,3 @@ func (pool *NoopPool) GetWriter(dst io.Writer) io.WriteCloser {
 
 // PutWriter places back in the pool a CompressionWriter
 func (pool *NoopPool) PutWriter(writer io.WriteCloser) {}
-
-// BufioReaderPool is a bufio reader that uses sync.Pool.
-type BufioReaderPool struct {
-	pool sync.Pool
-}
-
-// Get returns a bufio.Reader which reads from r. The buffer size is that of the pool.
-func (bufPool *BufioReaderPool) Get(r io.Reader) *bufio.Reader {
-	buf := bufPool.pool.Get().(*bufio.Reader)
-	if buf == nil {
-		return bufio.NewReaderSize(r, 4*1024)
-	}
-	buf.Reset(r)
-	return buf
-}
-
-// Put puts the bufio.Reader back into the pool.
-func (bufPool *BufioReaderPool) Put(b *bufio.Reader) {
-	bufPool.pool.Put(b)
-}

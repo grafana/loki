@@ -1,7 +1,6 @@
 package chunkenc
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -1114,11 +1113,13 @@ type bufferedIterator struct {
 	origBytes []byte
 	stats     *stats.Context
 
-	bufReader *bufio.Reader
-	reader    io.Reader
-	pool      ReaderPool
+	reader io.Reader
+	pool   ReaderPool
 
 	err error
+
+	readBuf      [20]byte // Enough bytes to store two varints.
+	readBufValid int      // How many bytes are left in readBuf from previous read.
 
 	buf      []byte // The buffer for a single entry.
 	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
@@ -1134,7 +1135,6 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 		stats:     stats,
 		origBytes: b,
 		reader:    nil, // will be initialized later
-		bufReader: nil, // will be initialized later
 		pool:      pool,
 	}
 }
@@ -1147,7 +1147,6 @@ func (si *bufferedIterator) Next() bool {
 	if !si.closed && si.reader == nil {
 		// initialize reader now, hopefully reusing one of the previous readers
 		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))
-		si.bufReader = BufReaderPool.Get(si.reader)
 	}
 
 	ts, line, ok := si.moveNext()
@@ -1166,22 +1165,25 @@ func (si *bufferedIterator) Next() bool {
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
-	ts, err := binary.ReadVarint(si.bufReader)
-	if err != nil {
-		if err != io.EOF {
-			si.err = err
+	var ts int64
+	var tWidth, lWidth, lineSize int
+	for lWidth == 0 { // Read until both varints have enough bytes.
+		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+		si.readBufValid += n
+		if err != nil {
+			if err != io.EOF {
+				si.err = err
+				return 0, nil, false
+			}
+			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+				return 0, nil, false
+			}
 		}
-		return 0, nil, false
+		var l uint64
+		ts, tWidth = binary.Varint(si.readBuf[:si.readBufValid])
+		l, lWidth = binary.Uvarint(si.readBuf[tWidth:si.readBufValid])
+		lineSize = int(l)
 	}
-
-	l, err := binary.ReadUvarint(si.bufReader)
-	if err != nil {
-		if err != io.EOF {
-			si.err = err
-			return 0, nil, false
-		}
-	}
-	lineSize := int(l)
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
@@ -1199,14 +1201,15 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 			return 0, nil, false
 		}
 	}
+	si.buf = si.buf[:lineSize]
+	// Take however many bytes are left in the read buffer.
+	n := copy(si.buf, si.readBuf[tWidth+lWidth:si.readBufValid])
+	// Shift down what is still left in the fixed-size read buffer, if any.
+	si.readBufValid = copy(si.readBuf[:], si.readBuf[tWidth+lWidth+n:si.readBufValid])
+
 	// Then process reading the line.
-	n, err := si.bufReader.Read(si.buf[:lineSize])
-	if err != nil && err != io.EOF {
-		si.err = err
-		return 0, nil, false
-	}
 	for n < lineSize {
-		r, err := si.bufReader.Read(si.buf[n:lineSize])
+		r, err := si.reader.Read(si.buf[n:lineSize])
 		if err != nil && err != io.EOF {
 			si.err = err
 			return 0, nil, false
@@ -1230,10 +1233,6 @@ func (si *bufferedIterator) close() {
 	if si.reader != nil {
 		si.pool.PutReader(si.reader)
 		si.reader = nil
-	}
-	if si.bufReader != nil {
-		BufReaderPool.Put(si.bufReader)
-		si.bufReader = nil
 	}
 
 	if si.buf != nil {
