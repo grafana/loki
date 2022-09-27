@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -78,7 +79,7 @@ func New(cfg config.Config, newConfig func() *config.Config, metrics *client.Met
 	}
 	server, err := server.New(cfg.ServerConfig, promtail.logger, promtail.targetManagers, cfg.String())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error creating loki server")
 	}
 	promtail.server = server
 	promtail.newConfig = newConfig
