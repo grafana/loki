@@ -120,7 +120,7 @@ func (t *tailer) updatePosition() {
 	for {
 		select {
 		case <-positionWait.C:
-			err := t.markPositionAndSize()
+			err := t.MarkPositionAndSize()
 			if err != nil {
 				level.Error(t.logger).Log("msg", "position timer: error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
 				err := t.tail.Stop()
@@ -190,7 +190,7 @@ func (t *tailer) readLines() {
 	}
 }
 
-func (t *tailer) markPositionAndSize() error {
+func (t *tailer) MarkPositionAndSize() error {
 	// Lock this update as there are 2 timers calling this routine, the sync in filetarget and the positions sync in this file.
 	t.posAndSizeMtx.Lock()
 	defer t.posAndSizeMtx.Unlock()
@@ -216,7 +216,7 @@ func (t *tailer) markPositionAndSize() error {
 	return nil
 }
 
-func (t *tailer) stop() {
+func (t *tailer) Stop() {
 	// stop can be called by two separate threads in filetarget, to avoid a panic closing channels more than once
 	// we wrap the stop in a sync.Once.
 	t.stopOnce.Do(func() {
@@ -225,7 +225,7 @@ func (t *tailer) stop() {
 		<-t.posdone
 
 		// Save the current position before shutting down tailer
-		err := t.markPositionAndSize()
+		err := t.MarkPositionAndSize()
 		if err != nil {
 			level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
 		}
@@ -242,7 +242,7 @@ func (t *tailer) stop() {
 	})
 }
 
-func (t *tailer) isRunning() bool {
+func (t *tailer) IsRunning() bool {
 	return t.running.Load()
 }
 
@@ -262,4 +262,8 @@ func (t *tailer) cleanupMetrics() {
 	t.metrics.readLines.DeleteLabelValues(t.path)
 	t.metrics.readBytes.DeleteLabelValues(t.path)
 	t.metrics.totalBytes.DeleteLabelValues(t.path)
+}
+
+func (t *tailer) Path() string {
+	return t.path
 }
