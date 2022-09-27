@@ -289,3 +289,61 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigOptions_RulerAlertManager(t *testing.T) {
+	tt := []struct {
+		desc        string
+		spec        lokiv1.LokiStackSpec
+		wantOptions *config.AlertManagerConfig
+	}{
+		{
+			desc: "static mode",
+			spec: lokiv1.LokiStackSpec{
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "dynamic mode",
+			spec: lokiv1.LokiStackSpec{
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Dynamic,
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "openshift-logging mode",
+			spec: lokiv1.LokiStackSpec{
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.OpenshiftLogging,
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        true,
+				EnableDiscovery: true,
+				RefreshInterval: "1m",
+				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			inOpt := manifests.Options{
+				Stack: tc.spec,
+				Ruler: manifests.Ruler{
+					OCPAlertManagerEnabled: tc.spec.Tenants.Mode == lokiv1.OpenshiftLogging,
+				},
+			}
+			options, err := manifests.ConfigOptions(inOpt)
+			require.Nil(t, err)
+			require.Equal(t, tc.wantOptions, options.Ruler.AlertManager)
+		})
+	}
+}

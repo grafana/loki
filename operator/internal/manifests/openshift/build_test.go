@@ -12,7 +12,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-func TestBuild_ServiceAccountRefMatches(t *testing.T) {
+func TestBuildGatewayObjects_ServiceAccountRefMatches(t *testing.T) {
 	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildGatewayObjects(opts)
@@ -24,7 +24,7 @@ func TestBuild_ServiceAccountRefMatches(t *testing.T) {
 	require.Equal(t, sa.Namespace, rb.Subjects[0].Namespace)
 }
 
-func TestBuild_ClusterRoleRefMatches(t *testing.T) {
+func TestBuildGatewayObjects_ClusterRoleRefMatches(t *testing.T) {
 	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildGatewayObjects(opts)
@@ -35,7 +35,7 @@ func TestBuild_ClusterRoleRefMatches(t *testing.T) {
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
-func TestBuild_MonitoringClusterRoleRefMatches(t *testing.T) {
+func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
 	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildGatewayObjects(opts)
@@ -46,7 +46,7 @@ func TestBuild_MonitoringClusterRoleRefMatches(t *testing.T) {
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
-func TestBuild_ServiceAccountAnnotationsRouteRefMatches(t *testing.T) {
+func TestBuildGatewayObjects_ServiceAccountAnnotationsRouteRefMatches(t *testing.T) {
 	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildGatewayObjects(opts)
@@ -70,4 +70,19 @@ func TestBuild_ServiceAccountAnnotationsRouteRefMatches(t *testing.T) {
 		require.Equal(t, rt.Name, oauthRef.Ref.Name)
 		require.Equal(t, rt.Kind, oauthRef.Ref.Kind)
 	}
+}
+
+func TestBuildRulerObjects(t *testing.T) {
+	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+
+	objs := BuildRulerObjects(opts)
+	sa := objs[0].(*corev1.ServiceAccount)
+	cr := objs[1].(*rbacv1.ClusterRole)
+	rb := objs[2].(*rbacv1.ClusterRoleBinding)
+
+	require.Equal(t, sa.Kind, rb.Subjects[0].Kind)
+	require.Equal(t, sa.Name, rb.Subjects[0].Name)
+	require.Equal(t, sa.Namespace, rb.Subjects[0].Namespace)
+	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
+	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
