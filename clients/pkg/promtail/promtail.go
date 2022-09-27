@@ -87,7 +87,7 @@ func New(cfg config.Config, newConfig func() *config.Config, metrics *client.Met
 }
 
 func (p *Promtail) reloadConfig(cfg *config.Config) error {
-	level.Info(p.logger).Log("msg", "Loading configuration file")
+	level.Info(p.logger).Log("msg", "Reloading configuration file")
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	if p.targetManagers != nil {
