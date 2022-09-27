@@ -35,6 +35,7 @@ func supportedCompressedFormats() map[string]struct{} {
 		".tar.gz": {},
 		".z":      {},
 		".bz2":    {},
+		// TODO: add support for .zip extension.
 	}
 }
 
@@ -116,6 +117,7 @@ func mountReader(f *os.File, logger log.Logger) (reader io.Reader, err error) {
 		decompressLib = "bzip2"
 		reader = bzip2.NewReader(f)
 	}
+	// TODO: add support for .zip extension.
 
 	level.Debug(logger).Log("msg", fmt.Sprintf("using %q to decompress file %q", decompressLib, f.Name()))
 
@@ -187,9 +189,8 @@ func (t *decompressor) readLines() {
 
 	level.Info(t.logger).Log("msg", "successfully mounted reader", "path", t.path, "ext", filepath.Ext(t.path))
 
-	megabyte := 1000000
-	maxLoglineSize := 2 * megabyte
-	buffer := make([]byte, 3*megabyte)
+	maxLoglineSize := 4096
+	buffer := make([]byte, maxLoglineSize)
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(buffer, maxLoglineSize)
 	for line := 1; ; line++ {
