@@ -124,7 +124,10 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 
 	promServer := p.server
 	if promServer != nil {
-		promtailServer := promServer.(*server.PromtailServer)
+		promtailServer, ok := promServer.(*server.PromtailServer)
+		if !ok {
+			return errors.New("promtailServer cast fail")
+		}
 		promtailServer.ReloadServer(p.targetManagers, cfg.String())
 	}
 
