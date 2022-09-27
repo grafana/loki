@@ -283,7 +283,8 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 			inOpt := manifests.Options{
 				Stack: tc.spec,
 			}
-			options := manifests.ConfigOptions(inOpt)
+			options, err := manifests.ConfigOptions(inOpt)
+			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, options.Retention)
 		})
 	}

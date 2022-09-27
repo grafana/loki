@@ -44,8 +44,10 @@ const (
 
 	rulerContainerName = "loki-ruler"
 
-	monitoringSVCMain     = "alertmanager-main"
-	MonitoringNS          = "openshift-monitoring"
+	monitoringSVCMain = "alertmanager-main"
+	// MonitoringNS is the namespace containing cluster monitoring objects such as alertmanager.
+	MonitoringNS = "openshift-monitoring"
+	// MonitoringSVCOperated is the name of the alertmanager service used for alerts.
 	MonitoringSVCOperated = "alertmanager-operated"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.

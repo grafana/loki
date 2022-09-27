@@ -60,9 +60,7 @@ func ConfigOptions(opt Options) (config.Options, error) {
 		rwConfig                   *config.RemoteWriteConfig
 	)
 
-	mode := opt.Stack.Tenants.Mode
-
-	if mode == lokiv1.OpenshiftLogging && opt.Ruler.OCPAlertManagerEnabled {
+	if opt.Stack.Tenants != nil && opt.Stack.Tenants.Mode == lokiv1.OpenshiftLogging && opt.Ruler.OCPAlertManagerEnabled {
 		rulerEnabled = true
 
 		if opt.Ruler.Spec == nil {

@@ -185,7 +185,7 @@ ruler:
   {{ end }}
   {{ with .Ruler.AlertManager }}
   {{ with .ExternalURL }}
-  external_url: {{ .ExternalURL }}
+  external_url: {{ . }}
   {{ end}}
   {{ with .ExternalLabels }}
   external_labels:
