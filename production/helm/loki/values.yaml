@@ -170,6 +170,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.analytics }}
+    analytics:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
 
@@ -252,6 +257,9 @@ loki:
 
   # --  Optional compactor configuration
   compactor: {}
+
+  # --  Optional analytics configuration
+  analytics: {}
 
 enterprise:
   # Enable enterprise features, license must be provided

@@ -255,6 +255,7 @@ monitoring:
 | kubectlImage.repository | string | `"bitnami/kubectl"` | Docker image repository |
 | kubectlImage.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
 | loki.auth_enabled | bool | `true` |  |
+| loki.analytics | object | `{}` | Optional analytics configuration |
 | loki.commonConfig | object | `{"path_prefix":"/var/loki","replication_factor":3}` | Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration |
 | loki.compactor | object | `{}` | Optional compactor configuration |
 | loki.config | string | See values.yaml | Config file contents for Loki |
