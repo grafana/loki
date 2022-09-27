@@ -21,10 +21,11 @@ import (
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
-	promtail_config "github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
+
+	promtail_config "github.com/grafana/loki/clients/pkg/promtail/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

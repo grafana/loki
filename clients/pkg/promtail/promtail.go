@@ -72,7 +72,7 @@ func New(cfg config.Config, newConfig func() config.Config, metrics *client.Metr
 		}
 		o(promtail)
 	}
-	err := promtail.reloadConfig(cfg)
+	err := promtail.reloadConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func New(cfg config.Config, newConfig func() config.Config, metrics *client.Metr
 	return promtail, nil
 }
 
-func (p *Promtail) reloadConfig(cfg config.Config) error {
+func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	level.Info(p.logger).Log("msg", "Loading configuration file")
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
@@ -186,12 +186,12 @@ func (p *Promtail) watchConfig() {
 		select {
 		case <-hup:
 			cfg := p.newConfig()
-			if err := p.reloadConfig(cfg); err != nil {
+			if err := p.reloadConfig(&cfg); err != nil {
 				level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
 			}
 		case rc := <-promtailServer.Reload():
 			cfg := p.newConfig()
-			if err := p.reloadConfig(cfg); err != nil {
+			if err := p.reloadConfig(&cfg); err != nil {
 				level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
 				rc <- err
 			} else {
