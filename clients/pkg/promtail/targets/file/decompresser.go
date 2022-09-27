@@ -189,8 +189,9 @@ func (t *decompressor) readLines() {
 
 	level.Info(t.logger).Log("msg", "successfully mounted reader", "path", t.path, "ext", filepath.Ext(t.path))
 
-	maxLoglineSize := 4096
-	buffer := make([]byte, maxLoglineSize)
+	bufferSize := 4096
+	buffer := make([]byte, bufferSize)
+	maxLoglineSize := 2000000 // 2 MB
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(buffer, maxLoglineSize)
 	for line := 1; ; line++ {

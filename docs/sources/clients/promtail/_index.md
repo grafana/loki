@@ -43,7 +43,7 @@ relies on file extensions. If a discovered file has an expected compression file
 extension, Promtail will **lazily** decompress the compressed file and push the
 parsed data to Loki. Important details are:
 * It relies on the `\n` character to separate the data into different log lines.
-* The max expected log line is 4096 bytes within the compressed file.
+* The max expected log line is 2MB bytes within the compressed file.
 * The data is decompressed in blocks of 4096 bytes. i.e: it first fetches a block of 4096 bytes
   from the compressed file and process it. After processing this block and pushing the data to Loki,
   it fetches the following 4096 bytes, and so on.
