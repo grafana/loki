@@ -186,13 +186,17 @@ func (p *Promtail) watchConfig() {
 	// Reload handler.
 	// Make sure that sighup handler is registered with a redirect to the channel before the potentially
 	if p.newConfig == nil {
-		level.Warn(p.logger).Log("msg", "disable watchConfig")
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail newConfig func is Empty")
+		return
+	}
+	promtailServer, ok := p.server.(*server.PromtailServer)
+	if !ok {
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "promtailServer cast fail")
 		return
 	}
 	level.Warn(p.logger).Log("msg", "enable watchConfig")
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
-	promtailServer := p.server.(*server.PromtailServer)
 	for {
 		select {
 		case <-hup:
