@@ -45,8 +45,6 @@ type Config struct {
 	configFile             string
 	configExpandEnv        bool
 	inspect                bool
-
-	cnt int
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
