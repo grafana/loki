@@ -50,13 +50,13 @@ type Promtail struct {
 	stopped    bool
 	mtx        sync.Mutex
 	configFile string
-	newConfig  func() *config.Config
+	newConfig  func() (*config.Config, error)
 	metrics    *client.Metrics
 	dryRun     bool
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config, newConfig func() *config.Config, metrics *client.Metrics, dryRun bool, opts ...Option) (*Promtail, error) {
+func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *client.Metrics, dryRun bool, opts ...Option) (*Promtail, error) {
 	// Initialize promtail with some defaults and allow the options to override
 	// them.
 
@@ -189,18 +189,26 @@ func (p *Promtail) watchConfig() {
 	for {
 		select {
 		case <-hup:
-			cfg := p.newConfig()
-			if err := p.reloadConfig(cfg); err != nil {
-				level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
-			}
+			_ = p.reload()
 		case rc := <-promtailServer.Reload():
-			cfg := p.newConfig()
-			if err := p.reloadConfig(cfg); err != nil {
-				level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
+			if err := p.reload(); err != nil {
 				rc <- err
 			} else {
 				rc <- nil
 			}
 		}
 	}
+}
+
+func (p *Promtail) reload() error {
+	cfg, err := p.newConfig()
+	if err != nil {
+		return errors.Wrap(err, "Error new Config")
+	}
+	err = p.reloadConfig(cfg)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
+		return err
+	}
+	return nil
 }

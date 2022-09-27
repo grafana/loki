@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"reflect"
 	"sync"
@@ -117,15 +118,15 @@ func main() {
 	}
 
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
-	newConfigFunc := func() *promtail_config.Config {
+	newConfigFunc := func() (*promtail_config.Config, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		var config Config
 		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
 			fmt.Println("Unable to parse config:", err)
-			os.Exit(1)
+			return nil, errors.Wrap(err, "Unable to parse config")
 		}
-		return &config.Config
+		return &config.Config, nil
 	}
 	p, err := promtail.New(config.Config, newConfigFunc, clientMetrics, config.dryRun)
 	if err != nil {
