@@ -3,6 +3,7 @@ package promtail
 import (
 	"context"
 	"fmt"
+	dto "github.com/prometheus/client_model/go"
 	"io"
 	"math"
 	"math/rand"
@@ -730,9 +731,6 @@ func Test_Reload(t *testing.T) {
 		return expectedConfig, nil
 	}, clientMetrics, true, nil)
 	require.NoError(t, err)
-
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -755,6 +753,12 @@ func Test_Reload(t *testing.T) {
 	require.Equal(t, expectedReloadResult, result)
 	require.Equal(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.Equal(t, expectedConfig.String(), svr.PromtailConfig())
+	val, err := reloadTotal.GetMetricWith(prometheus.Labels{"code": "200"})
+	require.NoError(t, err)
+	pb := &dto.Metric{}
+	err = val.Write(pb)
+	require.NoError(t, err)
+	require.Equal(t, 1.0, pb.Counter.GetValue())
 }
 
 func Test_ReloadFail_NotPanic(t *testing.T) {
@@ -792,8 +796,6 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	}, clientMetrics, true, nil)
 	require.NoError(t, err)
 
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -807,13 +809,20 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
 
 	svr := promtailServer.server.(*pserver.PromtailServer)
-
+	httpListenAddr := svr.Server.HTTPListenAddr()
 	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
-	result, err := reload(t, svr.Server.HTTPListenAddr())
+	result, err := reload(t, httpListenAddr)
 	require.Error(t, err)
 	expectedReloadResult := fmt.Sprintf("failed to reload config: Error new Config: %s\n", newConfigErr)
 	require.Equal(t, expectedReloadResult, result)
+	val, err := reloadTotal.GetMetricWith(prometheus.Labels{"code": "500"})
+	require.NoError(t, err)
+	pb := &dto.Metric{}
+	err = val.Write(pb)
+	require.NoError(t, err)
+	require.Equal(t, 1.0, pb.Counter.GetValue())
+
 }
 
 func reload(t *testing.T, httpListenAddr net.Addr) (string, error) {

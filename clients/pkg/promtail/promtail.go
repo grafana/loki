@@ -21,6 +21,12 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+var reloadTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "promtail",
+	Name:      "config_reload_total",
+	Help:      "Number of reload times.",
+}, []string{"code"})
+
 // Option is a function that can be passed to the New method of Promtail and
 // customize the Promtail that is created.
 type Option func(p *Promtail)
@@ -66,6 +72,7 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
+	promtail.reg.Register(reloadTotal)
 	for _, o := range opts {
 		// todo (callum) I don't understand why I needed to add this check
 		if o == nil {
@@ -203,12 +210,15 @@ func (p *Promtail) watchConfig() {
 func (p *Promtail) reload() error {
 	cfg, err := p.newConfig()
 	if err != nil {
+		reloadTotal.With(prometheus.Labels{"code": "500"}).Inc()
 		return errors.Wrap(err, "Error new Config")
 	}
 	err = p.reloadConfig(cfg)
 	if err != nil {
+		reloadTotal.With(prometheus.Labels{"code": "500"}).Inc()
 		level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
 		return err
 	}
+	reloadTotal.With(prometheus.Labels{"code": "200"}).Inc()
 	return nil
 }
