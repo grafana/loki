@@ -64,11 +64,11 @@ parsed data to Loki. Important details are:
   of your compressed file Loki will rate-limit your ingestion. In that case you
   might configure Promtail's [`limits` stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
   [ingestion limits on Loki](https://grafana.com/docs/loki/latest/configuration/#limits_config).
-* Log rotations **aren't supported as of now**, mostly because it requires substantial
-changes on Promtail. If you'd like to see support for it, please create a new
-issue on Github asking for it and explaining your use case.
+* Log rotations **aren't supported as of now**, mostly because it requires us modifying Promtail to
+  rely on file inodes instead of file names. If you'd like to see support for it, please create a new
+  issue on Github asking for it and explaining your use case.
 * If you would like to see support for a compression protocol that isn't listed here, please
-create a new issue on Github asking for it and explaining your use case.
+  create a new issue on Github asking for it and explaining your use case.
 
 
 ## Loki Push API
