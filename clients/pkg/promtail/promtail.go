@@ -27,6 +27,8 @@ var reloadTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 	Help:      "Number of reload times.",
 }, []string{"code"})
 
+var errConfigNotChange = errors.New("config has not changed")
+
 // Option is a function that can be passed to the New method of Promtail and
 // customize the Promtail that is created.
 type Option func(p *Promtail)
@@ -53,12 +55,12 @@ type Promtail struct {
 	logger         log.Logger
 	reg            prometheus.Registerer
 
-	stopped    bool
-	mtx        sync.Mutex
-	configFile string
-	newConfig  func() (*config.Config, error)
-	metrics    *client.Metrics
-	dryRun     bool
+	stopped      bool
+	mtx          sync.Mutex
+	configLoaded string
+	newConfig    func() (*config.Config, error)
+	metrics      *client.Metrics
+	dryRun       bool
 }
 
 // New makes a new Promtail.
@@ -98,6 +100,11 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	level.Info(p.logger).Log("msg", "Reloading configuration file")
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
+	newConfigFile := cfg.String()
+	if newConfigFile == p.configLoaded {
+		return errConfigNotChange
+	}
+	newConf := cfg.String()
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
@@ -137,7 +144,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 		promtailServer.ReloadServer(p.targetManagers, cfg.String())
 	}
-
+	p.configLoaded = newConf
 	return nil
 }
 

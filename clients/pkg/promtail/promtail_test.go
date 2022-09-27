@@ -823,6 +823,12 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1.0, pb.Counter.GetValue())
 
+	promtailServer.newConfig = func() (*config.Config, error) {
+		return &cfg, nil
+	}
+	result, err = reload(t, httpListenAddr)
+	require.Error(t, err)
+	require.Equal(t, fmt.Sprintf("failed to reload config: %s\n", errConfigNotChange), result)
 }
 
 func reload(t *testing.T, httpListenAddr net.Addr) (string, error) {
