@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/pkg/errors"
 	"os"
 	"reflect"
 	"sync"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"

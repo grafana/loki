@@ -3,7 +3,6 @@ package promtail
 import (
 	"context"
 	"fmt"
-	dto "github.com/prometheus/client_model/go"
 	"io"
 	"math"
 	"math/rand"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"

@@ -74,7 +74,10 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
-	promtail.reg.Register(reloadTotal)
+	err := promtail.reg.Register(reloadTotal)
+	if err != nil {
+		return nil, err
+	}
 	for _, o := range opts {
 		// todo (callum) I don't understand why I needed to add this check
 		if o == nil {
@@ -82,7 +85,7 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		}
 		o(promtail)
 	}
-	err := promtail.reloadConfig(&cfg)
+	err = promtail.reloadConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
