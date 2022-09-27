@@ -245,10 +245,17 @@ func (s *PromtailServer) reload(rw http.ResponseWriter, req *http.Request) {
 func (s *PromtailServer) Reload() <-chan chan error {
 	return s.reloadCh
 }
-func (s *PromtailServer) ReloadTms(tms *targets.TargetManagers) {
+
+// Reload returns the receive-only channel that signals configuration reload requests.
+func (s *PromtailServer) PromtailConfig() string {
+	return s.promtailCfg
+}
+
+func (s *PromtailServer) ReloadServer(tms *targets.TargetManagers, promtailCfg string) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	s.tms = tms
+	s.promtailCfg = promtailCfg
 }
 
 // ready serves the ready endpoint

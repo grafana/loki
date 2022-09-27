@@ -697,3 +697,75 @@ func Test_DryRun(t *testing.T) {
 	require.NoError(t, err)
 	require.IsType(t, &client.MultiClient{}, p.client)
 }
+
+func Test_Reload(t *testing.T) {
+	f, err := os.CreateTemp("/tmp", "Test_Reload")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	cfg := config.Config{
+		ServerConfig: server.Config{
+			Reload: true,
+		},
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}
+
+	expectedConfig := &config.Config{
+		ServerConfig: server.Config{
+			Reload: true,
+		},
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	promtailServer, err := New(cfg, func() *config.Config {
+		return expectedConfig
+	}, clientMetrics, true, nil)
+	require.NoError(t, err)
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = promtailServer.Run()
+		if err != nil {
+			err = errors.Wrap(err, "Failed to start promtail")
+		}
+	}()
+	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
+
+	svr := promtailServer.server.(*pserver.PromtailServer)
+
+	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
+	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
+	reload(t, svr.Server.HTTPListenAddr())
+	require.Equal(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
+	require.Equal(t, expectedConfig.String(), svr.PromtailConfig())
+}
+
+func reload(t *testing.T, httpListenAddr net.Addr) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/reload", httpListenAddr))
+	if err != nil {
+		t.Fatal("Could not query reload endpoint", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Received a non 200 status code from /reload endpoint", resp.StatusCode)
+	}
+
+	_, err = io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Error reading response body from /reload endpoint", err)
+	}
+}

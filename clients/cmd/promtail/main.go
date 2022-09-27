@@ -117,7 +117,7 @@ func main() {
 	}
 
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
-	newConfigFunc := func() promtail_config.Config {
+	newConfigFunc := func() *promtail_config.Config {
 		mtx.Lock()
 		defer mtx.Unlock()
 		var config Config
@@ -125,7 +125,7 @@ func main() {
 			fmt.Println("Unable to parse config:", err)
 			os.Exit(1)
 		}
-		return config.Config
+		return &config.Config
 	}
 	p, err := promtail.New(config.Config, newConfigFunc, clientMetrics, config.dryRun)
 	if err != nil {
