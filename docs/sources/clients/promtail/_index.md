@@ -53,13 +53,17 @@ parsed data to Loki. Important details are:
       compressed file, **the first parsed line will contains metadata together with
       your log line**. It is illustrated at
       `./clients/pkg/promtail/targets/file/decompresser_test.go`.
+* The decompression is quite CPU intensive and a lot of allocations are expected
+  to work, especially depending on the size of the file. You can expect the number
+  of garbage collection runs and the CPU usage to skyrocket, but no memory leak is
+  expected.
 * Positions are supported. That means that, if you interrupt Promtail after
   parsing and pushing (for example) 45% of your compressed file data, you can expect Promtail
   to resume work from the last scraped line and process the rest of the remaining 55%.
 * Since decompression and pushing can be very fast, depending on the size
   of your compressed file Loki will rate-limit your ingestion. In that case you
   might configure Promtail's [`limits` stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
-  ingestion limits on Loki.
+  [ingestion limits on Loki](https://grafana.com/docs/loki/latest/configuration/#limits_config).
 * Log rotations **aren't supported as of now**, mostly because it requires substantial
 changes on Promtail. If you'd like to see support for it, please create a new
 issue on Github asking for it and explaining your use case.
