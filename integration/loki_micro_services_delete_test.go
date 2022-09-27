@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
@@ -209,8 +208,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	t.Run("ruler", func(t *testing.T) {
 		// Check rules are read correctly.
-		ctx := user.InjectOrgID(context.Background(), "fake")
-		resp, err := cliRuler.GetRules(ctx)
+		resp, err := cliRuler.GetRules(context.Background())
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
