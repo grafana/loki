@@ -165,6 +165,17 @@ func New() *Cluster {
 
 func (c *Cluster) Run() error {
 	for _, component := range c.components {
+		var err error
+		component.httpPort, err = getFreePort()
+		if err != nil {
+			panic(fmt.Errorf("error allocating HTTP port: %w", err))
+		}
+
+		component.grpcPort, err = getFreePort()
+		if err != nil {
+			panic(fmt.Errorf("error allocating GRPC port: %w", err))
+		}
+
 		if err := component.run(); err != nil {
 			return err
 		}
@@ -210,17 +221,6 @@ func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 		name:    name,
 		cluster: c,
 		flags:   flags,
-	}
-
-	var err error
-	component.httpPort, err = getFreePort()
-	if err != nil {
-		panic(fmt.Errorf("error allocating HTTP port: %w", err))
-	}
-
-	component.grpcPort, err = getFreePort()
-	if err != nil {
-		panic(fmt.Errorf("error allocating GRPC port: %w", err))
 	}
 
 	c.components = append(c.components, component)
