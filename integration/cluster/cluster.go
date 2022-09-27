@@ -270,10 +270,6 @@ func (c *Component) GRPCURL() *url.URL {
 	}
 }
 
-func (c *Component) AppendFlag(flag string) {
-	c.flags = append(c.flags, flag)
-}
-
 func (c *Component) writeConfig() error {
 	var err error
 
