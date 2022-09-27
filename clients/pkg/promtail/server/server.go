@@ -54,8 +54,7 @@ type Config struct {
 	ExternalURL       string `yaml:"external_url"`
 	HealthCheckTarget *bool  `yaml:"health_check_target"`
 	Disable           bool   `yaml:"disable"`
-	Reload            bool   `yaml:"reload"`
-	NewByReload       bool
+	Reload            bool   `yaml:"enable_runtime_reload"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
