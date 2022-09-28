@@ -27,7 +27,7 @@ logfmt:
     expressions  { setScannerData(LogfmtExprlex, $1) }
 
 expressions:
-    key              { $$ = []interface{}{$1} }
+    key                { $$ = []interface{}{$1} }
   | value              { $$ = []interface{}{$1} }
   | expressions value  { $$ = append($1, $2) }
   ;

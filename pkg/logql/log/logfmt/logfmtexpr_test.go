@@ -8,6 +8,8 @@ import (
 )
 
 func TestLogfmtExpressionParser(t *testing.T) {
+	// `app=foo level=error spaces="value with ÜFT8👌" ts=2021-02-12T19:18:10.037940878Z`
+
 	tests := []struct {
 		name       string
 		expression string
@@ -27,39 +29,21 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			nil,
 		},
 		{
-			"field with spaces",
-			`"field with spaces"`,
-			[]interface{}{"field with spaces"},
+			"field with UTF8",
+			"fieldwithÜFT8👌",
 			nil,
-		},
-		{
-			"field with UTF9",
-			`"field with ÜFT8👌"`,
-			[]interface{}{"field with ÜFT8👌"},
-			nil,
-		},
-		{
-			"ip address",
-			`"124.133.52.161"`,
-			[]interface{}{"124.133.52.161"},
-			nil,
+			fmt.Errorf("unexpected char Ü"),
 		},
 		{
 			"invalid field with spaces",
 			`field with spaces`,
 			nil,
-			fmt.Errorf("syntax error: unexpected FIELD"),
-		},
-		{ //remove this test case
-			"missing closing double quote",
-			`"missing closure`,
-			[]interface{}{"missing closure"},
-			nil,
+			fmt.Errorf("syntax error: unexpected KEY"),
 		},
 		{
 			"identifier with number",
-			`utf8`,
-			[]interface{}{"utf8"},
+			`id8`,
+			[]interface{}{"id8"},
 			nil,
 		},
 	}
