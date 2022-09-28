@@ -38,14 +38,14 @@ func (s *Server) Export(ctx context.Context, req plogotlp.Request) (plogotlp.Res
 		if pushRep.NumSubmitted == 0 {
 			// if we couldn't process any items, we consider the operation an error
 			return resp, multierror.New(pushRep.Errors...).Err()
-		} else {
-			level.Info(util_log.Logger).Log(
-				"msg", "one or more items couldn't be converted from OTLP to Loki",
-				"submitted", pushRep.NumSubmitted,
-				"dropped", pushRep.NumDropped,
-				"errors", multierror.New(pushRep.Errors...).Err(),
-			)
 		}
+
+		level.Info(util_log.Logger).Log(
+			"msg", "one or more items couldn't be converted from OTLP to Loki",
+			"submitted", pushRep.NumSubmitted,
+			"dropped", pushRep.NumDropped,
+			"errors", multierror.New(pushRep.Errors...).Err(),
+		)
 	}
 
 	level.Debug(util_log.Logger).Log(

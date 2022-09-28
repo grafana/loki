@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestExport(t *testing.T) {
