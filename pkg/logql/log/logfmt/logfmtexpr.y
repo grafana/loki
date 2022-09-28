@@ -11,14 +11,14 @@ func setScannerData(lex interface{}, data []interface{}) {
 
 %union {
     str     string
-    field   string
+    key     string
     list    []interface{}
 }
 
-%token<str>     STRING
-%token<field>   FIELD
+%token<str>   STRING
+%token<key>   KEY
 
-%type<str>  field value
+%type<str>  key value
 %type<list> expressions
 
 %%
@@ -27,13 +27,13 @@ logfmt:
     expressions  { setScannerData(LogfmtExprlex, $1) }
 
 expressions:
-    field              { $$ = []interface{}{$1} }
+    key              { $$ = []interface{}{$1} }
   | value              { $$ = []interface{}{$1} }
   | expressions value  { $$ = append($1, $2) }
   ;
 
-field:
-  FIELD     { $$ = $1 }
+key:
+  KEY     { $$ = $1 }
 
 value:
   STRING    { $$ = $1 }

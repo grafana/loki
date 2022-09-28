@@ -864,7 +864,7 @@ func TestLogfmtExpressionParserFailures(t *testing.T) {
 		{
 			"invalid field name",
 			NewLogfmtExpr("app", `field with space`),
-			"unexpected FIELD",
+			"unexpected KEY",
 		},
 	}
 	for _, tt := range tests {

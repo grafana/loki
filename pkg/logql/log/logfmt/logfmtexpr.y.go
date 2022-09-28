@@ -13,21 +13,21 @@ func setScannerData(lex interface{}, data []interface{}) {
 
 //line logfmtexpr.y:12
 type LogfmtExprSymType struct {
-	yys   int
-	str   string
-	field string
-	list  []interface{}
+	yys  int
+	str  string
+	key  string
+	list []interface{}
 }
 
 const STRING = 57346
-const FIELD = 57347
+const KEY = 57347
 
 var LogfmtExprToknames = [...]string{
 	"$end",
 	"error",
 	"$unk",
 	"STRING",
-	"FIELD",
+	"KEY",
 }
 
 var LogfmtExprStatenames = [...]string{}
@@ -452,7 +452,7 @@ LogfmtExprdefault:
 		LogfmtExprDollar = LogfmtExprS[LogfmtExprpt-1 : LogfmtExprpt+1]
 //line logfmtexpr.y:36
 		{
-			LogfmtExprVAL.str = LogfmtExprDollar[1].field
+			LogfmtExprVAL.str = LogfmtExprDollar[1].key
 		}
 	case 6:
 		LogfmtExprDollar = LogfmtExprS[LogfmtExprpt-1 : LogfmtExprpt+1]

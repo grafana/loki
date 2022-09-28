@@ -51,8 +51,8 @@ func (sc *Scanner) lex(lval *LogfmtExprSymType) int {
 		switch true {
 		case isStartIdentifier(r):
 			sc.unread()
-			lval.field = sc.scanField()
-			return FIELD
+			lval.key = sc.scanField()
+			return KEY
 		case r == '"':
 			sc.unread()
 			lval.str = sc.scanStr()
