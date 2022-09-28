@@ -69,18 +69,21 @@ func ConfigOptions(opt Options) (config.Options, error) {
 			}
 		}
 
-		ams := lokiv1beta1.AlertManagerSpec{
-			Endpoints: []string{"https://_web._tcp.alertmanager-operated.openshift-monitoring.svc"},
-			EnableV2:  true,
-			DiscoverySpec: &lokiv1beta1.AlertManagerDiscoverySpec{
-				EnableSRV:       true,
-				RefreshInterval: "1m",
-			},
+		if opt.Ruler.Spec.AlertManagerSpec == nil || len(opt.Ruler.Spec.AlertManagerSpec.Endpoints) == 0 {
+			ams := &lokiv1beta1.AlertManagerSpec{
+				Endpoints: []string{"https://_web._tcp.alertmanager-operated.openshift-monitoring.svc"},
+				EnableV2:  true,
+				DiscoverySpec: &lokiv1beta1.AlertManagerDiscoverySpec{
+					EnableSRV:       true,
+					RefreshInterval: "1m",
+				},
+			}
+
+			if err := mergo.Merge(opt.Ruler.Spec.AlertManagerSpec, ams); err != nil {
+				return config.Options{}, kverrors.Wrap(err, "failed merging RulerSpec options")
+			}
 		}
 
-		if err := mergo.Merge(opt.Ruler.Spec.AlertManagerSpec, ams); err != nil {
-			return config.Options{}, kverrors.Wrap(err, "failed merging RulerSpec options")
-		}
 	}
 
 	if rulerEnabled {
