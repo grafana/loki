@@ -24,6 +24,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
@@ -260,6 +261,7 @@ type Loki struct {
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
 	embeddedcacheRingManager *cache.GroupcacheRingManager
+	otlp                     plogotlp.Server
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -510,6 +512,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
+	mm.RegisterModule(OTLP, t.initOTLP)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -536,10 +539,11 @@ func (t *Loki) setupModuleManager() error {
 		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV, IndexGatewayRing},
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
-		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
+		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, OTLP},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor, IndexGateway},
-		Write:                    {Ingester, Distributor},
+		Write:                    {Ingester, Distributor, OTLP},
 		MemberlistKV:             {Server},
+		OTLP:                     {Server, Ingester},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.

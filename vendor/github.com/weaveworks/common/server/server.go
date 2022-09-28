@@ -181,19 +181,36 @@ type Server struct {
 
 // New makes a new Server
 func New(cfg Config) (*Server, error) {
+	// If user doesn't supply a logging implementation, by default instantiate
+	// logrus.
+	log := cfg.Log
+	if log == nil {
+		log = logging.NewLogrus(cfg.LogLevel)
+	}
+
+	// If user doesn't supply a registerer/gatherer, use Prometheus' by default.
+	reg := cfg.Registerer
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+	gatherer := cfg.Gatherer
+	if gatherer == nil {
+		gatherer = prometheus.DefaultGatherer
+	}
+
 	tcpConnections := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: cfg.MetricsNamespace,
 		Name:      "tcp_connections",
 		Help:      "Current number of accepted TCP connections.",
 	}, []string{"protocol"})
-	prometheus.MustRegister(tcpConnections)
+	reg.MustRegister(tcpConnections)
 
 	tcpConnectionsLimit := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: cfg.MetricsNamespace,
 		Name:      "tcp_connections_limit",
 		Help:      "The max number of TCP connections that can be accepted (0 means no limit).",
 	}, []string{"protocol"})
-	prometheus.MustRegister(tcpConnectionsLimit)
+	reg.MustRegister(tcpConnectionsLimit)
 
 	network := cfg.HTTPListenNetwork
 	if network == "" {
@@ -224,23 +241,6 @@ func New(cfg Config) (*Server, error) {
 	tcpConnectionsLimit.WithLabelValues("grpc").Set(float64(cfg.GRPCConnLimit))
 	if cfg.GRPCConnLimit > 0 {
 		grpcListener = netutil.LimitListener(grpcListener, cfg.GRPCConnLimit)
-	}
-
-	// If user doesn't supply a logging implementation, by default instantiate
-	// logrus.
-	log := cfg.Log
-	if log == nil {
-		log = logging.NewLogrus(cfg.LogLevel)
-	}
-
-	// If user doesn't supply a registerer/gatherer, use Prometheus' by default.
-	reg := cfg.Registerer
-	if reg == nil {
-		reg = prometheus.DefaultRegisterer
-	}
-	gatherer := cfg.Gatherer
-	if gatherer == nil {
-		gatherer = prometheus.DefaultGatherer
 	}
 
 	// Setup TLS

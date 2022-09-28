@@ -28,6 +28,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
@@ -38,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/otlp"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -97,6 +99,7 @@ const (
 	Read                     string = "read"
 	Write                    string = "write"
 	UsageReport              string = "usage-report"
+	OTLP                     string = "otlp"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -1098,6 +1101,13 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	}
 	t.usageReport = ur
 	return ur, nil
+}
+
+func (t *Loki) initOTLP() (services.Service, error) {
+	level.Info(util_log.Logger).Log("msg", "initializing OTLP gRPC endpoint")
+	t.otlp = otlp.NewServer(t.Ingester)
+	plogotlp.RegisterServer(t.Server.GRPC, t.otlp)
+	return nil, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
