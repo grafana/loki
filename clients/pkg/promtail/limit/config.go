@@ -5,11 +5,11 @@ import (
 )
 
 type Config struct {
-	ReadlineRate        float64 `yaml:"readline_rate" json:"readline_rate"`
-	ReadlineBurst       int     `yaml:"readline_burst" json:"readline_burst"`
-	ReadlineRateEnabled bool    `yaml:"readline_rate_enabled,omitempty"  json:"readline_rate_enabled"`
-	ReadlineRateDrop    bool    `yaml:"readline_rate_drop,omitempty"  json:"readline_rate_drop"`
-	MaxStreams          int     `yaml:"max_streams" json:"max_streams"`
+	ReadlineRate        float64 `mapstructure:"readline_rate" yaml:"readline_rate" json:"readline_rate"`
+	ReadlineBurst       int     `mapstructure:"readline_burst" yaml:"readline_burst" json:"readline_burst"`
+	ReadlineRateEnabled bool    `mapstructure:"readline_rate_enabled,omitempty" yaml:"readline_rate_enabled,omitempty"  json:"readline_rate_enabled"`
+	ReadlineRateDrop    bool    `mapstructure:"readline_rate_drop,omitempty" yaml:"readline_rate_drop,omitempty"  json:"readline_rate_drop"`
+	MaxStreams          int     `mapstructure:"max_streams" yaml:"max_streams" json:"max_streams"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
