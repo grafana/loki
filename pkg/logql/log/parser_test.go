@@ -5,10 +5,9 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
@@ -718,6 +717,163 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			_, _ = p.Process(0, tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
+		})
+	}
+}
+
+func TestLogfmtExpressionParser(t *testing.T) {
+	testLine := []byte(`app=foo level=error spaces="value with ÜFT8👌" ts=2021-02-12T19:18:10.037940878Z`)
+
+	tests := []struct {
+		name        string
+		line        []byte
+		expressions []LogfmtExpression
+		lbs         labels.Labels
+		want        labels.Labels
+	}{
+		{
+			"single field",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("app", "app"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+		},
+		{
+			"empty line",
+			[]byte("{}"),
+			[]LogfmtExpression{},
+			labels.Labels{},
+			labels.Labels{},
+		},
+		{
+			"multiple fields",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("app", "app"),
+				NewLogfmtExpr("level", "level"),
+				NewLogfmtExpr("ts", "ts"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "level", Value: "error"},
+				{Name: "ts", Value: "2021-02-12T19:18:10.037940878Z"},
+			},
+		},
+		{
+			"label renaming",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("test", "level"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "test", Value: "error"},
+			},
+		},
+		{
+			"multiple fields with label renaming",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("app", "app"),
+				NewLogfmtExpr("lvl", "level"),
+				NewLogfmtExpr("timestamp", "ts"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "lvl", Value: "error"},
+				{Name: "timestamp", Value: "2021-02-12T19:18:10.037940878Z"},
+			},
+		},
+		{
+			"value with spaces and ÜFT8👌",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("spaces", "spaces"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "spaces", Value: "value with ÜFT8👌"},
+			},
+		},
+		{
+			"expression matching nothing",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("nope", "nope"),
+			},
+			labels.Labels{},
+			labels.Labels{},
+		},
+		{
+			"double property logfmt",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("app", "app"),
+			},
+			labels.Labels{
+				{Name: "ap", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "ap", Value: "bar"},
+				{Name: "app", Value: "foo"},
+			},
+		},
+		{
+			"label override",
+			testLine,
+			[]LogfmtExpression{
+				NewLogfmtExpr("app", "app"),
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "app_extracted", Value: "foo"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		j, err := NewLogfmtExpressionParser(tt.expressions)
+		if err != nil {
+			t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+			_, _ = j.Process(0, tt.line, b)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+		})
+	}
+}
+
+func TestLogfmtExpressionParserFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		expression LogfmtExpression
+		error      string
+	}{
+		{
+			"invalid field name",
+			NewLogfmtExpr("app", `field with space`),
+			"unexpected FIELD",
+		},
+	}
+	for _, tt := range tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewLogfmtExpressionParser([]LogfmtExpression{tt.expression})
+
+			require.NotNil(t, err)
+			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))
 		})
 	}
 }

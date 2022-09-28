@@ -341,6 +341,92 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
+type LogfmtExpressionParser struct {
+	/* dec  *logfmt.Decoder
+	keys internedStringSet */
+	expressions map[string][]interface{}
+	keys        internedStringSet
+}
+
+func NewLogfmtExpressionParser(expressions []LogfmtExpression) (*LogfmtExpressionParser, error) {
+	paths := make(map[string][]interface{})
+
+	for _, exp := range expressions {
+		path, err := logfmt.Parse(exp.Expression, false)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
+		}
+
+		if !model.LabelName(exp.Identifier).IsValid() {
+			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
+		}
+		paths[exp.Identifier] = path
+	}
+	return &LogfmtExpressionParser{
+		expressions: paths,
+		keys:        internedStringSet{},
+	}, nil
+}
+
+func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+	// Convert LogfmtExpression to Logfmt type to parse the key value pairs
+	j := NewLogfmtParser()
+	originalLabels := NewBaseLabelsBuilder().ForLabels(lbs.labels(), lbs.labels().Hash())
+	originalLabels.Reset()
+
+	j.dec.Reset(line)
+
+	for j.dec.ScanKeyval() {
+		key, ok := j.keys.Get(j.dec.Key(), func() (string, bool) {
+			sanitized := sanitizeLabelKey(string(j.dec.Key()), true)
+			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+				return "", false
+			}
+			if len(sanitized) == 0 {
+				return "", false
+			}
+			if lbs.BaseHas(sanitized) {
+				sanitized = sanitized + duplicateSuffix
+				lbs.Set(sanitized, string(j.dec.Value()))
+			}
+			return sanitized, true
+		})
+		if !ok {
+			continue
+		}
+
+		val := j.dec.Value()
+
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
+		}
+		originalLabels.Set(key, string(val))
+	}
+	if j.dec.Err() != nil {
+		lbs.SetErr(errLogfmt)
+		lbs.SetErrorDetails(j.dec.Err().Error())
+		return line, true
+	}
+
+	for identifier, paths := range l.expressions {
+		result, ok := originalLabels.Get(paths[0].(string))
+		if ok {
+			lbs.Set(identifier, result)
+		} else {
+			fmt.Printf("invalid extracted label name '%s'", identifier)
+			return nil, false
+		}
+	}
+
+	return line, true
+}
+
+func (j *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
+
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
 
@@ -390,7 +476,6 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		lbs.Set(key, result)
 	}
-
 	return line, true
 }
 
