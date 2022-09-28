@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -165,6 +166,21 @@ func New() *Cluster {
 
 func (c *Cluster) Run() error {
 	for _, component := range c.components {
+		if component.running {
+			continue
+		}
+
+		var err error
+		component.httpPort, err = getFreePort()
+		if err != nil {
+			panic(fmt.Errorf("error allocating HTTP port: %w", err))
+		}
+
+		component.grpcPort, err = getFreePort()
+		if err != nil {
+			panic(fmt.Errorf("error allocating GRPC port: %w", err))
+		}
+
 		if err := component.run(); err != nil {
 			return err
 		}
@@ -172,6 +188,9 @@ func (c *Cluster) Run() error {
 	return nil
 }
 func (c *Cluster) Cleanup() error {
+	_, cancelFunc := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancelFunc()
+
 	var (
 		files []string
 		dirs  []string
@@ -210,17 +229,7 @@ func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 		name:    name,
 		cluster: c,
 		flags:   flags,
-	}
-
-	var err error
-	component.httpPort, err = getFreePort()
-	if err != nil {
-		panic(fmt.Errorf("error allocating HTTP port: %w", err))
-	}
-
-	component.grpcPort, err = getFreePort()
-	if err != nil {
-		panic(fmt.Errorf("error allocating GRPC port: %w", err))
+		running: false,
 	}
 
 	c.components = append(c.components, component)
@@ -241,6 +250,8 @@ type Component struct {
 	rulerWALPath string
 	rulesPath    string
 	RulesTenant  string
+
+	running bool
 
 	RemoteWriteUrls []string
 }
@@ -325,6 +336,8 @@ func (c *Component) writeConfig() error {
 }
 
 func (c *Component) run() error {
+	c.running = true
+
 	if err := c.writeConfig(); err != nil {
 		return err
 	}
@@ -359,7 +372,7 @@ func (c *Component) run() error {
 	go func() {
 		for {
 			time.Sleep(time.Millisecond * 200)
-			if c.loki.Server.HTTP == nil {
+			if c.loki == nil || c.loki.Server == nil || c.loki.Server.HTTP == nil {
 				continue
 			}
 
