@@ -363,6 +363,7 @@ func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
 			req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
 			require.NoError(t, err, "expected request to be created successfully")
 			res, err := http.DefaultClient.Do(req)
+			res.Request.Body.Close()
 			require.NoError(t, err)
 			require.Equal(t, http.StatusBadRequest, res.StatusCode, "expected bad request status code")
 		})

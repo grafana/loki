@@ -150,6 +150,7 @@ func testPullTarget(ctx context.Context, t *testing.T) (*pullTarget, *fake.Clien
 		cancel()
 		conn.Close()
 		mockSvr.Close()
+		mockpubsubClient.Close()
 	}
 }
 

@@ -147,5 +147,6 @@ func (t *pullTarget) Stop() error {
 	t.cancel()
 	t.wg.Wait()
 	t.handler.Stop()
+	t.ps.Close()
 	return nil
 }
