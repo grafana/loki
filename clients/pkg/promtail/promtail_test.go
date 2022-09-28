@@ -715,6 +715,8 @@ func Test_Reload(t *testing.T) {
 		},
 	}
 
+	expectCfgStr := cfg.String()
+
 	expectedConfig := &config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
@@ -726,11 +728,15 @@ func Test_Reload(t *testing.T) {
 		},
 	}
 
+	expectedConfigReloaded := expectedConfig.String()
+
 	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
 	promtailServer, err := New(cfg, func() (*config.Config, error) {
 		return expectedConfig, nil
 	}, clientMetrics, true, nil)
 	require.NoError(t, err)
+	require.Equal(t, len(expectCfgStr), len(promtailServer.configLoaded))
+	require.Equal(t, expectCfgStr, promtailServer.configLoaded)
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -753,6 +759,8 @@ func Test_Reload(t *testing.T) {
 	require.Equal(t, expectedReloadResult, result)
 	require.Equal(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.Equal(t, expectedConfig.String(), svr.PromtailConfig())
+	require.Equal(t, len(expectedConfigReloaded), len(promtailServer.configLoaded))
+	require.Equal(t, expectedConfigReloaded, promtailServer.configLoaded)
 	val, err := reloadTotal.GetMetricWith(prometheus.Labels{"code": "200"})
 	require.NoError(t, err)
 	pb := &dto.Metric{}
