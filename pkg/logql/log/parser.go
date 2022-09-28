@@ -425,7 +425,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	return line, true
 }
 
-func (j *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
+func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
