@@ -16,6 +16,8 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+const requestTimeout = 30 * time.Second
+
 type roundTripper struct {
 	instanceID    string
 	token         string
@@ -381,7 +383,7 @@ type Rules struct {
 
 // RunRangeQuery runs a query and returns an error if anything went wrong
 func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query))
@@ -394,7 +396,7 @@ func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, er
 
 // RunQuery runs a query and returns an error if anything went wrong
 func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	v := url.Values{}
@@ -419,7 +421,7 @@ func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) 
 
 // GetRules returns the loki ruler rules
 func (c *Client) GetRules(ctx context.Context) (*RulesResponse, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	u, err := url.Parse(c.baseURL)
@@ -472,7 +474,7 @@ func (c *Client) rangeQueryURL(query string) string {
 }
 
 func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	url := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
@@ -504,7 +506,7 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 
 // LabelValues return a LabelValues query
 func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	url := fmt.Sprintf("%s/loki/api/v1/label/%s/values", c.baseURL, url.PathEscape(labelName))
