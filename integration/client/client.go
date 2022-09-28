@@ -472,7 +472,7 @@ func (c *Client) rangeQueryURL(query string) string {
 }
 
 func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelFunc()
 
 	url := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
@@ -504,7 +504,7 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 
 // LabelValues return a LabelValues query
 func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, error) {
-	ctx, cancelFunc := context.WithTimeout(ctx, time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelFunc()
 
 	url := fmt.Sprintf("%s/loki/api/v1/label/%s/values", c.baseURL, url.PathEscape(labelName))

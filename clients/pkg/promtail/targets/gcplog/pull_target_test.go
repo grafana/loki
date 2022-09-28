@@ -50,7 +50,7 @@ func TestPullTarget_Run(t *testing.T) {
 	publishMessage(ctx, t, tp)
 	// Wait till message is received by the run loop.
 	// NOTE(kavi): sleep is not ideal. but not other way to confirm if api.Handler received messages
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	err = tt.Stop()
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestPullTarget_Run(t *testing.T) {
 	wg.Wait()
 
 	// Sleep one more time before reading from api.Received.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, 1, len(apiclient.Received()))
 }
 
