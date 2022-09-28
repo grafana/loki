@@ -1,5 +1,6 @@
 ## Main
 
+- [7272](https://github.com/grafana/loki/pull/7272) **aminesnow**: Use cluster monitoring alertmanager by default on openshift clusters
 - [7214](https://github.com/grafana/loki/pull/7214) **periklis**: Fix ruler GRPC tls client configuration
 - [7201](https://github.com/grafana/loki/pull/7201) **xperimental**: Write configuration for per-tenant retention
 - [7037](https://github.com/grafana/loki/pull/7037) **xperimental**: Skip enforcing matcher for certain tenants on OpenShift
