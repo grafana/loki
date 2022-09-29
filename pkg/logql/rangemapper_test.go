@@ -1472,6 +1472,23 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				)
 			)`,
 		},
+		// should split splittable operands from binary operation
+		{
+			`count_over_time({app="foo"}[3m]) or vector(0)`,
+			`(sum without(
+				downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+			) or vector(0.000000))`,
+		},
+		{
+			`vector(0) and count_over_time({app="foo"}[3m])`,
+			`(vector(0.000000) and sum without(
+				downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+			))`,
+		},
 
 		// Multi vector aggregator layer queries
 		{
@@ -1703,14 +1720,10 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`min by (foo) (bytes_rate({app="foo"} | json [3m]))`,
 		},
 
-		// if one side of a binary expression is a noop, the full query is a noop as well
+		// should be noop if both operands are noop
 		{
-			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
-			`(sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
-		},
-		{
-			`count_over_time({app="foo"}[3m]) or vector(0)`,
-			`(count_over_time({app="foo"}[3m]) or vector(0.000000))`,
+			`count by (foo) (bytes_rate({app="foo"} | json [3m])) + count_over_time({app="foo"} | json [6m])`,
+			`(count by (foo) (bytes_rate({app="foo"} | json [3m])) + count_over_time({app="foo"} | json [6m]))`,
 		},
 		{
 			`sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0)`,

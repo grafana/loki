@@ -124,24 +124,12 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		if err != nil {
 			return nil, err
 		}
-		// if left-hand side is a noop, we need to return the original expression
-		// so the whole expression is a noop and thus not executed using the
-		// downstream engine.
-		// Note: literal expressions are identical to their mapped expression,
-		// map binary expression if left-hand size is a literal
-		if _, ok := e.SampleExpr.(*syntax.LiteralExpr); e.SampleExpr.String() == lhsMapped.String() && !ok {
-			return e, nil
-		}
 		rhsMapped, err := m.Map(e.RHS, vectorAggrPushdown, recorder)
 		if err != nil {
 			return nil, err
 		}
-		// if right-hand side is a noop, we need to return the original expression
-		// so the whole expression is a noop and thus not executed using the
-		// downstream engine
-		// Note: literal expressions are identical to their mapped expression,
-		// map binary expression if right-hand size is a literal
-		if _, ok := e.RHS.(*syntax.LiteralExpr); e.RHS.String() == rhsMapped.String() && !ok {
+		// if both operands are a noop, then the binary operation is also a noop
+		if e.SampleExpr.String() == lhsMapped.String() && e.RHS.String() == rhsMapped.String() {
 			return e, nil
 		}
 		e.SampleExpr = lhsMapped
@@ -433,11 +421,7 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 		_, ok := splittableRangeVectorOp[e.Operation]
 		return ok
 	case *syntax.BinOpExpr:
-		_, literalLHS := e.SampleExpr.(*syntax.LiteralExpr)
-		_, literalRHS := e.RHS.(*syntax.LiteralExpr)
-		// Note: if both left-hand side and right-hand side are literal expressions,
-		// the syntax.ParseSampleExpr returns a literal expression
-		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
+		return isSplittableByRange(e.SampleExpr) || isSplittableByRange(e.RHS)
 	case *syntax.LabelReplaceExpr:
 		return isSplittableByRange(e.Left)
 	case *syntax.VectorExpr:
