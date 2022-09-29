@@ -44,6 +44,7 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{- end }}
+  compactor_address: {{ .Compactor.Protocol }}://{{ .Compactor.FQDN }}:{{ .Compactor.Port }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor

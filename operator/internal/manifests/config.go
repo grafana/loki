@@ -79,6 +79,11 @@ func ConfigOptions(opt Options) config.Options {
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
+		Compactor: config.Address{
+			FQDN:     fqdn(NewCompactorHTTPService(opt).GetName(), opt.Namespace),
+			Port:     httpPort,
+			Protocol: protocol,
+		},
 		FrontendWorker: config.Address{
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,

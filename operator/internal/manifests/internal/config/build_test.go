@@ -26,6 +26,7 @@ common:
       access_key_id: test
       secret_access_key: test123
       s3forcepathstyle: true
+  compactor_address: http://loki-compactor-http-lokistack-dev.default.svc.cluster.local:3100
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -189,6 +190,11 @@ overrides:
 		},
 		Namespace: "test-ns",
 		Name:      "test",
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
+		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
@@ -256,6 +262,7 @@ common:
       access_key_id: test
       secret_access_key: test123
       s3forcepathstyle: true
+  compactor_address: http://loki-compactor-http-lokistack-dev.default.svc.cluster.local:3100
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -436,6 +443,11 @@ overrides:
 		},
 		Namespace: "test-ns",
 		Name:      "test",
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
+		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
@@ -506,6 +518,11 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		},
 		Namespace: "test-ns",
 		Name:      "test",
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
+		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
@@ -572,6 +589,7 @@ common:
       access_key_id: test
       secret_access_key: test123
       s3forcepathstyle: true
+  compactor_address: http://loki-compactor-http-lokistack-dev.default.svc.cluster.local:3100
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -789,6 +807,11 @@ overrides:
 		},
 		Namespace: "test-ns",
 		Name:      "test",
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
+		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
@@ -903,6 +926,7 @@ common:
       access_key_id: test
       secret_access_key: test123
       s3forcepathstyle: true
+  compactor_address: http://loki-compactor-http-lokistack-dev.default.svc.cluster.local:3100
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -1120,6 +1144,11 @@ overrides:
 		},
 		Namespace: "test-ns",
 		Name:      "test",
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
+		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
@@ -1235,6 +1264,7 @@ common:
       access_key_id: test
       secret_access_key: test123
       s3forcepathstyle: true
+  compactor_address: http://loki-compactor-http-lokistack-dev.default.svc.cluster.local:3100
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -1465,6 +1495,11 @@ overrides:
 		},
 		Namespace: "test-ns",
 		Name:      "test",
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
+		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
@@ -1597,6 +1632,7 @@ common:
       access_key_id: test
       secret_access_key: test123
       s3forcepathstyle: true
+  compactor_address: http://loki-compactor-http-lokistack-dev.default.svc.cluster.local:3100
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -1826,6 +1862,11 @@ overrides:
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
+		},
+		Compactor: Address{
+			FQDN:     "loki-compactor-http-lokistack-dev.default.svc.cluster.local",
+			Port:     3100,
+			Protocol: "http",
 		},
 		StorageDirectory: "/tmp/loki",
 		MaxConcurrent: MaxConcurrent{
