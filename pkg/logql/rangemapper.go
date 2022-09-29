@@ -156,6 +156,8 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		return e, nil
 	case *syntax.LiteralExpr:
 		return e, nil
+	case *syntax.VectorExpr:
+		return e, nil
 	default:
 		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
@@ -438,6 +440,8 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
 	case *syntax.LabelReplaceExpr:
 		return isSplittableByRange(e.Left)
+	case *syntax.VectorExpr:
+		return false
 	default:
 		return false
 	}
