@@ -1154,7 +1154,7 @@ lifecycler:
     [heartbeat_timeout: <duration> | default = 1m]
 
     # The number of ingesters to write to and read from.
-    # CLI flag: -distributor.replication-factor
+    # CLI flag: -ingester.replication-factor
     [replication_factor: <int> | default = 3]
 
   # The number of tokens the lifecycler will generate and put into the ring if
