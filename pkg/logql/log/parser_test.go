@@ -5,9 +5,10 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
