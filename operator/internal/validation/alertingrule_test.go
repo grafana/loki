@@ -188,6 +188,33 @@ var att = []struct {
 			},
 		),
 	},
+	{
+		desc: "LogQL not sample-expression",
+		spec: v1beta1.AlertingRuleSpec{
+			Groups: []*v1beta1.AlertingRuleGroup{
+				{
+					Name:     "first",
+					Interval: v1beta1.PrometheusDuration("1m"),
+					Rules: []*v1beta1.AlertingRuleGroupSpec{
+						{
+							Expr: `{message=~".+"}`,
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "AlertingRule"},
+			"testing-rule",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
+					`{message=~".+"}`,
+					v1beta1.ErrParseLogQLNotSample.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {

@@ -157,6 +157,33 @@ var rtt = []struct {
 			},
 		),
 	},
+	{
+		desc: "LogQL not sample-expression",
+		spec: v1beta1.RecordingRuleSpec{
+			Groups: []*v1beta1.RecordingRuleGroup{
+				{
+					Name:     "first",
+					Interval: v1beta1.PrometheusDuration("1m"),
+					Rules: []*v1beta1.RecordingRuleGroupSpec{
+						{
+							Expr: `{message=~".+"}`,
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "RecordingRule"},
+			"testing-rule",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
+					`{message=~".+"}`,
+					v1beta1.ErrParseLogQLNotSample.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {

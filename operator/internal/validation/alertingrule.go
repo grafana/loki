@@ -95,12 +95,23 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			}
 
 			// Check if the LogQL parser can parse the rule expression
-			_, err := syntax.ParseExpr(rule.Expr)
+			expr, err := syntax.ParseExpr(rule.Expr)
 			if err != nil {
 				allErrs = append(allErrs, field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
 					rule.Expr,
 					lokiv1beta1.ErrParseLogQLExpression.Error(),
+				))
+
+				continue
+			}
+
+			// Validate that the expression is a sample-expression (metrics as result) and not for logs
+			if _, ok := expr.(syntax.SampleExpr); !ok {
+				allErrs = append(allErrs, field.Invalid(
+					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					rule.Expr,
+					lokiv1beta1.ErrParseLogQLNotSample.Error(),
 				))
 			}
 		}
