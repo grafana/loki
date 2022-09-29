@@ -123,8 +123,8 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		// limits:query_timeout should be ignored.
 		// here we configure it to sleep for 100ms and we want it to timeout at the 100ms.
 		connSimulator := &slowConnectionSimulator{
-			sleepFor: time.Millisecond * 100,
-			deadline: api.cfg.QueryTimeout,
+			sleepFor: api.cfg.QueryTimeout,
+			deadline: time.Millisecond * 200,
 		}
 
 		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
