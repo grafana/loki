@@ -1166,7 +1166,7 @@ func (si *bufferedIterator) Next() bool {
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	var ts int64
-	var tWidth, lWidth, lineSize int
+	var tWidth, lWidth, lineSize, lastAttempt int
 	for lWidth == 0 { // Read until both varints have enough bytes.
 		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
 		si.readBufValid += n
@@ -1178,11 +1178,16 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
 				return 0, nil, false
 			}
+			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+				si.err = fmt.Errorf("invalid data in chunk")
+				return 0, nil, false
+			}
 		}
 		var l uint64
 		ts, tWidth = binary.Varint(si.readBuf[:si.readBufValid])
 		l, lWidth = binary.Uvarint(si.readBuf[tWidth:si.readBufValid])
 		lineSize = int(l)
+		lastAttempt = si.readBufValid
 	}
 
 	if lineSize >= maxLineLength {
@@ -1210,11 +1215,16 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	// Then process reading the line.
 	for n < lineSize {
 		r, err := si.reader.Read(si.buf[n:lineSize])
-		if err != nil && err != io.EOF {
+		n += r
+		if err != nil {
+			// We might get EOF after reading enough bytes to fill the buffer, which is OK.
+			// EOF and zero bytes read when the buffer isn't full is an error.
+			if err == io.EOF && r != 0 {
+				continue
+			}
 			si.err = err
 			return 0, nil, false
 		}
-		n += r
 	}
 	return ts, si.buf[:lineSize], true
 }
