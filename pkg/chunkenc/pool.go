@@ -26,7 +26,7 @@ type WriterPool interface {
 
 // ReaderPool similar to WriterPool but for reading chunks.
 type ReaderPool interface {
-	GetReader(io.Reader) io.Reader
+	GetReader(io.Reader) (io.Reader, error)
 	PutReader(io.Reader)
 }
 
@@ -118,24 +118,24 @@ type gzipBufferedReader struct {
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *GzipPool) GetReader(src io.Reader) io.Reader {
+func (pool *GzipPool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
 		reader := r.(*gzipBufferedReader)
 		err := reader.gzipReader.Reset(src)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		reader.Reader.Reset(reader.gzipReader)
-		return reader
+		return reader, nil
 	}
 	gzipReader, err := gzip.NewReader(src)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return &gzipBufferedReader{
 		gzipReader: gzipReader,
 		Reader:     bufio.NewReaderSize(gzipReader, 4*1024),
-	}
+	}, nil
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -175,16 +175,16 @@ type FlatePool struct {
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *FlatePool) GetReader(src io.Reader) io.Reader {
+func (pool *FlatePool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
 		reader := r.(flate.Resetter)
 		err := reader.Reset(src, nil)
 		if err != nil {
 			panic(err)
 		}
-		return reader.(io.Reader)
+		return reader.(io.Reader), nil
 	}
-	return flate.NewReader(src)
+	return flate.NewReader(src), nil
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -223,21 +223,21 @@ type ZstdPool struct {
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *ZstdPool) GetReader(src io.Reader) io.Reader {
+func (pool *ZstdPool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
 		reader := r.(*zstd.Decoder)
 		err := reader.Reset(src)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
-		return reader
+		return reader, nil
 	}
 	reader, err := zstd.NewReader(src)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	runtime.SetFinalizer(reader, (*zstd.Decoder).Close)
-	return reader
+	return reader, nil
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -278,7 +278,7 @@ type lz4BufferedReader struct {
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
+func (pool *LZ4Pool) GetReader(src io.Reader) (io.Reader, error) {
 	var r *lz4BufferedReader
 	if pooled := pool.readers.Get(); pooled != nil {
 		r = pooled.(*lz4BufferedReader)
@@ -291,7 +291,7 @@ func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
 			Reader:    bufio.NewReaderSize(lz4Reader, 4*1024),
 		}
 	}
-	return r
+	return r, nil
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -330,13 +330,13 @@ type SnappyPool struct {
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *SnappyPool) GetReader(src io.Reader) io.Reader {
+func (pool *SnappyPool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
 		reader := r.(*snappy.Reader)
 		reader.Reset(src)
-		return reader
+		return reader, nil
 	}
-	return snappy.NewReader(src)
+	return snappy.NewReader(src), nil
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -362,8 +362,8 @@ func (pool *SnappyPool) PutWriter(writer io.WriteCloser) {
 type NoopPool struct{}
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *NoopPool) GetReader(src io.Reader) io.Reader {
-	return src
+func (pool *NoopPool) GetReader(src io.Reader) (io.Reader, error) {
+	return src, nil
 }
 
 // PutReader places back in the pool a CompressionReader
