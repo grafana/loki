@@ -149,6 +149,54 @@ func Test_dropStage_Process(t *testing.T) {
 			shouldDrop: false,
 		},
 		{
+			name: "Matched Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 50,
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Matched Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "50",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Did not match Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 100,
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Did not match Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "100",
+			},
+			shouldDrop: false,
+		},
+		{
 			name: "Regex Matched Source and Value",
 			config: &DropConfig{
 				Source:     ptrFromString("key"),
