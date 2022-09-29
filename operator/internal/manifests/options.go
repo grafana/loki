@@ -75,9 +75,8 @@ type TenantOpenShiftSpec struct {
 
 // Ruler configuration for manifests generation.
 type Ruler struct {
-	Spec                   *lokiv1beta1.RulerConfigSpec
-	Secret                 *RulerSecret
-	OCPAlertManagerEnabled bool
+	Spec   *lokiv1beta1.RulerConfigSpec
+	Secret *RulerSecret
 }
 
 // RulerSecret defines the ruler secret for remote write client auth

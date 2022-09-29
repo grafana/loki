@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/imdario/mergo"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +19,12 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg, err := ConfigOptions(opt)
 	if err != nil {
 		return nil, "", err
+	}
+
+	if opt.OpenShiftOptions.BuildOpts.OCPAlertManagerEnabled {
+		if err = ConfigureOptionsForMode(&cfg, opt.Stack.Tenants.Mode); err != nil {
+			return nil, "", err
+		}
 	}
 
 	c, rc, err := config.Build(cfg)
@@ -59,32 +64,6 @@ func ConfigOptions(opt Options) (config.Options, error) {
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
 	)
-
-	if opt.Stack.Tenants != nil && opt.Ruler.OCPAlertManagerEnabled && opt.Stack.Tenants.Mode == lokiv1.OpenshiftLogging {
-		rulerEnabled = true
-
-		if opt.Ruler.Spec == nil {
-			opt.Ruler.Spec = &lokiv1beta1.RulerConfigSpec{
-				AlertManagerSpec: &lokiv1beta1.AlertManagerSpec{},
-			}
-		}
-
-		if opt.Ruler.Spec.AlertManagerSpec == nil || len(opt.Ruler.Spec.AlertManagerSpec.Endpoints) == 0 {
-			ams := &lokiv1beta1.AlertManagerSpec{
-				Endpoints: []string{"https://_web._tcp.alertmanager-operated.openshift-monitoring.svc"},
-				EnableV2:  true,
-				DiscoverySpec: &lokiv1beta1.AlertManagerDiscoverySpec{
-					EnableSRV:       true,
-					RefreshInterval: "1m",
-				},
-			}
-
-			if err := mergo.Merge(opt.Ruler.Spec.AlertManagerSpec, ams); err != nil {
-				return config.Options{}, kverrors.Wrap(err, "failed merging RulerSpec options")
-			}
-		}
-
-	}
 
 	if rulerEnabled {
 		// Map alertmanager config from CRD to config options
@@ -260,4 +239,16 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 		Enabled:           true,
 		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
 	}
+}
+
+// ConfigureOptionsForMode applies configuration depending on the mode type.
+func ConfigureOptionsForMode(cfg *config.Options, mode lokiv1.ModeType) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		return openshift.ConfigureOptions(cfg)
+	}
+
+	return nil
 }

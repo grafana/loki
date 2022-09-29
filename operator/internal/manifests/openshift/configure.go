@@ -10,6 +10,7 @@ import (
 	"github.com/imdario/mergo"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -311,6 +312,28 @@ func ConfigureRulerStatefulSet(
 
 	if err := mergo.Merge(&ss.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge ruler container spec ")
+	}
+
+	return nil
+}
+
+// ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
+func ConfigureOptions(configOpt *config.Options) error {
+	if configOpt.Ruler.AlertManager == nil {
+		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
+	}
+
+	if len(configOpt.Ruler.AlertManager.Hosts) == 0 {
+		amc := &config.AlertManagerConfig{
+			Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			EnableV2:        true,
+			EnableDiscovery: true,
+			RefreshInterval: "1m",
+		}
+
+		if err := mergo.Merge(configOpt.Ruler.AlertManager, amc); err != nil {
+			return kverrors.Wrap(err, "failed merging AlertManager config")
+		}
 	}
 
 	return nil

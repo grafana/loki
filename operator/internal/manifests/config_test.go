@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -327,8 +328,10 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
-				Ruler: manifests.Ruler{
-					OCPAlertManagerEnabled: true,
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						OCPAlertManagerEnabled: true,
+					},
 				},
 			},
 			wantOptions: &config.AlertManagerConfig{
@@ -345,9 +348,13 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			options, err := manifests.ConfigOptions(tc.opts)
+			cfg, err := manifests.ConfigOptions(tc.opts)
 			require.Nil(t, err)
-			require.Equal(t, tc.wantOptions, options.Ruler.AlertManager)
+
+			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts.Stack.Tenants.Mode)
+
+			require.Nil(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
 }
@@ -387,9 +394,11 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
 					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
 				},
 				Ruler: manifests.Ruler{
-					OCPAlertManagerEnabled: true,
 					Spec: &v1beta1.RulerConfigSpec{
 						AlertManagerSpec: &v1beta1.AlertManagerSpec{
 							EnableV2: false,
@@ -399,6 +408,11 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 							},
 							Endpoints: []string{"http://my-alertmanager"},
 						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						OCPAlertManagerEnabled: true,
 					},
 				},
 			},
@@ -416,9 +430,12 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			options, err := manifests.ConfigOptions(tc.opts)
+			cfg, err := manifests.ConfigOptions(tc.opts)
 			require.Nil(t, err)
-			require.Equal(t, tc.wantOptions, options.Ruler.AlertManager)
+
+			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts.Stack.Tenants.Mode)
+			require.Nil(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
 }
