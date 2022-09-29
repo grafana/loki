@@ -2,12 +2,24 @@
 groups:
 - name: logging_loki.rules
   rules:
-  - record: code_handler:http_requests:irate1m
+  - record: code_handler_job_namespace:lokistack_gateway_http_requests:irate1m
     expr: |
-      irate(http_requests_total{group="logsv1"}[1m])
-  - record: code:loki_request_duration_seconds_count:irate1m
+      sum(
+        irate(
+          http_requests_total{container="gateway", group="logsv1"}[1m]
+        )
+      ) by (code, handler, job, namespace)
+  - record: job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m
     expr: |
-      irate(loki_request_duration_seconds_count[1m])
-  - record: operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m
+      sum(
+        irate(
+          loki_request_duration_seconds_count[1m]
+        )
+      ) by (job, namespace, route, status_code)
+  - record: job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m
     expr: |
-      rate(loki_boltdb_shipper_request_duration_seconds_bucket[5m])
+      sum(
+        rate(
+          loki_boltdb_shipper_request_duration_seconds_bucket[5m]
+        )
+      ) by (job, le, namespace, operation)
