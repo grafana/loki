@@ -19,5 +19,5 @@ spec:
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "loki.selectorLabels" . | nindent 4 }}
+    {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
 {{- end }}
