@@ -429,14 +429,14 @@ The **logfmt** parser can operate in two modes:
 
 2. **with** parameters:
 
-    Similar to json, using `| logfmt label="expression", another="expression"` in the pipeline will result in extracting only the fields specified by the labels.
+    Similar to [JSON]({{< relref "./log_queries.md#JSON" >}}), using `| logfmt label="expression", another="expression"` in the pipeline will result in extracting only the fields specified by the labels.
 
-    For example, `| logfmt host_address="host", fwd_ip="fwd"` will extract the labels `host` and `fwd` from the following log line:
+    For example, `| logfmt host, fwd_ip="fwd"` will extract the labels `host` and `fwd` from the following log line:
     ```logfmt
     at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
     ```
     
-    And rename them to `host_address` and `fwd_ip` respectively:
+    And rename `fwd` to `fwd_ip`:
     ```kv
     "host_address" => "grafana.net"
     "fwd_ip" => "124.133.124.161"

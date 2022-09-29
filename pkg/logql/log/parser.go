@@ -342,8 +342,6 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtExpressionParser struct {
-	/* dec  *logfmt.Decoder
-	keys internedStringSet */
 	expressions map[string][]interface{}
 	keys        internedStringSet
 }
@@ -383,10 +381,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	for j.dec.ScanKeyval() {
 		key, ok := j.keys.Get(j.dec.Key(), func() (string, bool) {
 			sanitized := sanitizeLabelKey(string(j.dec.Key()), true)
-			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			if len(sanitized) == 0 {
 				return "", false
 			}
-			if len(sanitized) == 0 {
+			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			if lbs.BaseHas(sanitized) {
