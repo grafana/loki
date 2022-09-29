@@ -159,6 +159,7 @@ func (h *pushTarget) Details() interface{} {
 
 func (h *pushTarget) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping gcp push target", "job", h.jobName)
+	h.server.Stop()
 	h.server.Shutdown()
 	h.handler.Stop()
 	return nil

@@ -153,6 +153,7 @@ func TestPushTarget(t *testing.T) {
 		},
 	}
 	for name, tc := range cases {
+		outerName := t.Name()
 		t.Run(name, func(t *testing.T) {
 			// Create fake promtail client
 			eh := fake.New(func() {})
@@ -169,7 +170,7 @@ func TestPushTarget(t *testing.T) {
 
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
 			metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-			pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tc.args.RelabelConfigs, "test_job", config)
+			pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tc.args.RelabelConfigs, outerName+"_test_job", config)
 			require.NoError(t, err)
 			defer func() {
 				_ = pt.Stop()
@@ -231,7 +232,7 @@ func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, t.Name()+"_test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -284,7 +285,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 			Action:       relabel.Replace,
 		},
 	}
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tenantIDRelabelConfig, "test_job", config)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tenantIDRelabelConfig, t.Name()+"_test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -327,7 +328,7 @@ func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, "test_job", config)
+	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, nil, t.Name()+"_test_job", config)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -363,6 +364,7 @@ func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
 			req, err := makeGCPPushRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
 			require.NoError(t, err, "expected request to be created successfully")
 			res, err := http.DefaultClient.Do(req)
+			res.Request.Body.Close()
 			require.NoError(t, err)
 			require.Equal(t, http.StatusBadRequest, res.StatusCode, "expected bad request status code")
 		})

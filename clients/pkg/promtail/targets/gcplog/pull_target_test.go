@@ -138,7 +138,7 @@ func testPullTarget(ctx context.Context, t *testing.T) (*pullTarget, *fake.Clien
 		handler:       handler,
 		relabelConfig: nil,
 		config:        testConfig,
-		jobName:       "job-test-gcplogtarget",
+		jobName:       t.Name() + "job-test-gcplogtarget",
 		ctx:           ctx,
 		cancel:        cancel,
 		ps:            mockpubsubClient,
@@ -150,6 +150,7 @@ func testPullTarget(ctx context.Context, t *testing.T) (*pullTarget, *fake.Clien
 		cancel()
 		conn.Close()
 		mockSvr.Close()
+		mockpubsubClient.Close()
 	}
 }
 
