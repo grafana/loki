@@ -240,7 +240,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 			queryTimeout = q.limits.QueryTimeout(userID) + time.Second
 		}
 	}
-	level.Warn(q.logger).Log("msg", "USING TIMEOUT X", "timeout", queryTimeout)
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
