@@ -162,7 +162,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 				s, err := getString(v)
 				if err != nil {
 					if Debug {
-						level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test value line will not be dropped.", "err", err, "type", reflect.TypeOf(v))
+						level.Debug(m.logger).Log("msg", "line will not be dropped, failed to convert extracted map value to string", "err", err, "type", reflect.TypeOf(v))
 					}
 					return false
 				}
