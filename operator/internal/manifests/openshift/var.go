@@ -31,6 +31,13 @@ var (
 	// cert-signing service to inject the service CA into the annotated
 	// configmap.
 	InjectCABundleKey = "service.beta.openshift.io/inject-cabundle"
+
+	// MonitoringNS is the namespace containing cluster monitoring objects such as alertmanager.
+	MonitoringNS = "openshift-monitoring"
+	// MonitoringSVCMain is the name of the alertmanager main service used for alerts.
+	MonitoringSVCMain = "alertmanager-main"
+	// MonitoringSVCOperated is the name of the alertmanager operator service used for alerts.
+	MonitoringSVCOperated = "alertmanager-operated"
 )
 
 func authorizerRbacName(componentName string) string {

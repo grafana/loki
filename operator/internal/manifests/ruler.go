@@ -231,7 +231,7 @@ func configureRulerStatefulSetForMode(
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		caBundleName := signingCABundleName(stackName)
-		monitorServerName := fqdn(monitoringSVCMain, MonitoringNS)
+		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
 		return openshift.ConfigureRulerStatefulSet(
 			ss,
 			BearerTokenFile,

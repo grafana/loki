@@ -8,6 +8,7 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -125,7 +126,7 @@ func selectRecordingRules(ctx context.Context, k k8s.Client, rs *lokiv1.RulesSpe
 func OCPAlertManagerEnabled(ctx context.Context, opts manifests.Options, k k8s.Client) (bool, error) {
 	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Mode == lokiv1.OpenshiftLogging {
 		var svc corev1.Service
-		key := client.ObjectKey{Name: manifests.MonitoringSVCOperated, Namespace: manifests.MonitoringNS}
+		key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringNS}
 
 		err := k.Get(ctx, key, &svc)
 		if err != nil && !apierrors.IsNotFound(err) {

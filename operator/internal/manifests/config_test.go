@@ -341,6 +341,27 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
 			},
 		},
+		{
+			desc: "openshift-network mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						OCPAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        true,
+				EnableDiscovery: true,
+				RefreshInterval: "1m",
+				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			},
+		},
 	}
 
 	for _, tc := range tt {
@@ -393,6 +414,42 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Ruler: manifests.Ruler{
+					Spec: &v1beta1.RulerConfigSpec{
+						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						OCPAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+		},
+		{
+			desc: "openshift-network mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
 					},
 					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
