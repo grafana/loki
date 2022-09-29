@@ -364,6 +364,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	httpMiddleware := middleware.Merge(
 		httpreq.ExtractQueryMetricsMiddleware(),
+		serverutil.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 	)
 
 	logger := log.With(util_log.Logger, "component", "querier")
@@ -680,20 +681,20 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-// Can be nil if deletions are not supported
 func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
+	var client generationnumber.CacheGenClient
 	if t.supportIndexDeleteRequest() {
 		compactorAddress, err := t.compactorAddress()
 		if err != nil {
 			return nil, err
 		}
-		client, err := generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+		client, err = generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 		if err != nil {
 			return nil, err
 		}
-		t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
 	}
 
+	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
 	return services.NewIdleService(nil, nil), nil
 }
 
