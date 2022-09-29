@@ -40,6 +40,28 @@ func TestAlertingRuleValidator(t *testing.T) {
 			wantErrors: nil,
 		},
 		{
+			desc: "allow audit in openshift-logging",
+			spec: &lokiv1beta1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "openshift-logging",
+				},
+				Spec: lokiv1beta1.AlertingRuleSpec{
+					TenantID: "audit",
+					Groups: []*lokiv1beta1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1beta1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: nil,
+		},
+		{
 			desc: "wrong tenant",
 			spec: &lokiv1beta1.AlertingRule{
 				ObjectMeta: metav1.ObjectMeta{
@@ -64,7 +86,7 @@ func TestAlertingRuleValidator(t *testing.T) {
 					Type:     field.ErrorTypeInvalid,
 					Field:    "Spec.TenantID",
 					BadValue: "application",
-					Detail:   `AlertingRule does not use correct tenant "infrastructure"`,
+					Detail:   `AlertingRule does not use correct tenant ["infrastructure"]`,
 				},
 			},
 		},

@@ -64,7 +64,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 					Type:     field.ErrorTypeInvalid,
 					Field:    "Spec.TenantID",
 					BadValue: "application",
-					Detail:   `RecordingRule does not use correct tenant "infrastructure"`,
+					Detail:   `RecordingRule does not use correct tenant ["infrastructure"]`,
 				},
 			},
 		},

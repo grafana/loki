@@ -9,7 +9,16 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-func validateRuleExpression(namespace, rawExpr string) error {
+const (
+	namespaceLabelName        = "kubernetes_namespace_name"
+	namespaceOpenshiftLogging = "openshift-logging"
+
+	tenantAudit          = "audit"
+	tenantApplication    = "application"
+	tenantInfrastructure = "infrastructure"
+)
+
+func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	// Check if the LogQL parser can parse the rule expression
 	expr, err := syntax.ParseExpr(rawExpr)
 	if err != nil {
@@ -22,7 +31,7 @@ func validateRuleExpression(namespace, rawExpr string) error {
 	}
 
 	matchers := sampleExpr.Selector().Matchers()
-	if !validateIncludesNamespace(namespace, matchers) {
+	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
 		return lokiv1beta1.ErrRuleMustMatchNamespace
 	}
 
@@ -39,12 +48,16 @@ func validateIncludesNamespace(namespace string, matchers []*labels.Matcher) boo
 	return false
 }
 
-func tenantForNamespace(namespace string) string {
+func tenantForNamespace(namespace string) []string {
 	if strings.HasPrefix(namespace, "openshift") ||
 		strings.HasPrefix(namespace, "kube-") ||
 		namespace == "default" {
-		return "infrastructure"
+		if namespace == namespaceOpenshiftLogging {
+			return []string{tenantAudit, tenantInfrastructure}
+		}
+
+		return []string{tenantInfrastructure}
 	}
 
-	return "application"
+	return []string{tenantApplication}
 }
