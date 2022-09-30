@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -117,7 +116,7 @@ func main() {
 
 	cfg.validateFlags(logger)
 
-	b, err := ioutil.ReadFile(cfg.crFilepath)
+	b, err := os.ReadFile(cfg.crFilepath)
 	if err != nil {
 		logger.Info("failed to read custom resource file", "path", cfg.crFilepath)
 		os.Exit(1)
@@ -169,7 +168,7 @@ func main() {
 		if cfg.writeToDir != "" {
 			basename := fmt.Sprintf("%s-%s.yaml", o.GetObjectKind().GroupVersionKind().Kind, o.GetName())
 			fname := strings.ToLower(path.Join(cfg.writeToDir, basename))
-			if err := ioutil.WriteFile(fname, b, 0o644); err != nil {
+			if err := os.WriteFile(fname, b, 0o644); err != nil {
 				logger.Error(err, "failed to write file to directory", "path", fname)
 				os.Exit(1)
 			}

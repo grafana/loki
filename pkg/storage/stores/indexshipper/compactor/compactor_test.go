@@ -3,7 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -139,7 +139,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	for i := tableNumStart; i <= tableNumEnd; i++ {
 		name := fmt.Sprintf("%s%d", indexTablePrefix, i)
 		// verify that we have only 1 file left in storage after compaction.
-		files, err := ioutil.ReadDir(filepath.Join(tablesPath, name))
+		files, err := os.ReadDir(filepath.Join(tablesPath, name))
 		require.NoError(t, err)
 		require.Len(t, files, 1)
 		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))

@@ -719,7 +719,7 @@
             "bars": false,
             "dashLength": 10,
             "dashes": false,
-            "datasource": "$logs",
+            "datasource": "$loki_datasources",
             "fill": 1,
             "fillGradient": 0,
             "gridPos": {
@@ -820,7 +820,7 @@
             }
          },
          {
-            "datasource": "$logs",
+            "datasource": "$loki_datasources",
             "gridPos": {
                "h": 19,
                "w": 24,
@@ -919,7 +919,7 @@
             {
                "hide": 0,
                "label": null,
-               "name": "logs",
+               "name": "loki_datasource",
                "options": [ ],
                "query": "loki",
                "refresh": 1,

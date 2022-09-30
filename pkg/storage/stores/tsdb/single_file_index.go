@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -86,7 +86,7 @@ type TSDBIndex struct {
 // Return the index as well as the underlying []byte which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
 func NewTSDBIndexFromFile(location string, gzip bool) (*TSDBIndex, []byte, error) {
-	raw, err := ioutil.ReadFile(location)
+	raw, err := os.ReadFile(location)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -95,10 +95,12 @@ func NewTSDBIndexFromFile(location string, gzip bool) (*TSDBIndex, []byte, error
 
 	// decompress if needed
 	if gzip {
-		r := chunkenc.Gzip.GetReader(bytes.NewReader(raw))
+		r, err := chunkenc.Gzip.GetReader(bytes.NewReader(raw))
+		if err != nil {
+			return nil, nil, err
+		}
 		defer chunkenc.Gzip.PutReader(r)
 
-		var err error
 		cleaned, err = io.ReadAll(r)
 		if err != nil {
 			return nil, nil, err
