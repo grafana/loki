@@ -2040,7 +2040,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasources",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -2128,7 +2128,7 @@
                   }
                },
                {
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasources",
                   "gridPos": {
                      "h": 18,
                      "w": 12,
@@ -2713,7 +2713,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasources",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -2801,7 +2801,7 @@
                   }
                },
                {
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasources",
                   "gridPos": {
                      "h": 18,
                      "w": 18,
@@ -3653,7 +3653,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasources",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -3741,7 +3741,7 @@
                   }
                },
                {
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasources",
                   "gridPos": {
                      "h": 18,
                      "w": 18,
@@ -6584,7 +6584,7 @@
             {
                "hide": 0,
                "label": null,
-               "name": "logs",
+               "name": "loki_datasource",
                "options": [ ],
                "query": "loki",
                "refresh": 1,

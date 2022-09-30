@@ -65,10 +65,10 @@ func (f LazyIndex) LabelValues(ctx context.Context, userID string, from, through
 	return i.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	i, err := f()
 	if err != nil {
 		return err
 	}
-	return i.Stats(ctx, userID, from, through, acc, shard, matchers...)
+	return i.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }

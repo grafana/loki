@@ -25,31 +25,32 @@ import (
 
 func TestPullTarget_Run(t *testing.T) {
 	// Goal: Check message written to pubsub topic is received by the target.
-	tt, apiclient, pubsubClient, teardown := testPullTarget(t)
+	ctx := context.Background()
+	tt, apiclient, pubsubClient, teardown := testPullTarget(ctx, t)
 	defer teardown()
 
 	// seed pubsub
-	ctx := context.Background()
 	tp, err := pubsubClient.CreateTopic(ctx, topic)
 	require.NoError(t, err)
+	defer tp.Stop()
+
 	_, err = pubsubClient.CreateSubscription(ctx, subscription, pubsub.SubscriptionConfig{
 		Topic: tp,
 	})
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
-
 	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
-		_ = tt.run()
+		tt.run() //nolint:errcheck
 	}()
 
-	publishMessage(t, tp)
-
+	publishMessage(ctx, t, tp)
 	// Wait till message is received by the run loop.
 	// NOTE(kavi): sleep is not ideal. but not other way to confirm if api.Handler received messages
-	time.Sleep(1 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	err = tt.Stop()
 	require.NoError(t, err)
@@ -57,6 +58,8 @@ func TestPullTarget_Run(t *testing.T) {
 	// wait till `run` stops.
 	wg.Wait()
 
+	// Sleep one more time before reading from api.Received.
+	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, 1, len(apiclient.Received()))
 }
 
@@ -65,7 +68,8 @@ func TestPullTarget_Stop(t *testing.T) {
 
 	errs := make(chan error, 1)
 
-	tt, _, _, teardown := testPullTarget(t)
+	ctx := context.Background()
+	tt, _, _, teardown := testPullTarget(ctx, t)
 	defer teardown()
 
 	var wg sync.WaitGroup
@@ -90,30 +94,33 @@ func TestPullTarget_Stop(t *testing.T) {
 }
 
 func TestPullTarget_Type(t *testing.T) {
-	tt, _, _, teardown := testPullTarget(t)
+	ctx := context.Background()
+	tt, _, _, teardown := testPullTarget(ctx, t)
 	defer teardown()
 
 	assert.Equal(t, target.TargetType("Gcplog"), tt.Type())
 }
 
 func TestPullTarget_Ready(t *testing.T) {
-	tt, _, _, teardown := testPullTarget(t)
+	ctx := context.Background()
+	tt, _, _, teardown := testPullTarget(ctx, t)
 	defer teardown()
 
 	assert.Equal(t, true, tt.Ready())
 }
 
 func TestPullTarget_Labels(t *testing.T) {
-	tt, _, _, teardown := testPullTarget(t)
+	ctx := context.Background()
+	tt, _, _, teardown := testPullTarget(ctx, t)
 	defer teardown()
 
 	assert.Equal(t, model.LabelSet{"job": "test-gcplogtarget"}, tt.Labels())
 }
 
-func testPullTarget(t *testing.T) (*pullTarget, *fake.Client, *pubsub.Client, func()) {
+func testPullTarget(ctx context.Context, t *testing.T) (*pullTarget, *fake.Client, *pubsub.Client, func()) {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 
 	mockSvr := pstest.NewServer()
 	conn, err := grpc.Dial(mockSvr.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -131,7 +138,7 @@ func testPullTarget(t *testing.T) (*pullTarget, *fake.Client, *pubsub.Client, fu
 		handler:       handler,
 		relabelConfig: nil,
 		config:        testConfig,
-		jobName:       "job-test-gcplogtarget",
+		jobName:       t.Name() + "job-test-gcplogtarget",
 		ctx:           ctx,
 		cancel:        cancel,
 		ps:            mockpubsubClient,
@@ -143,14 +150,15 @@ func testPullTarget(t *testing.T) (*pullTarget, *fake.Client, *pubsub.Client, fu
 		cancel()
 		conn.Close()
 		mockSvr.Close()
+		mockpubsubClient.Close()
 	}
 }
 
-func publishMessage(t *testing.T, topic *pubsub.Topic) {
+func publishMessage(ctx context.Context, t *testing.T, topic *pubsub.Topic) {
 	t.Helper()
 
-	ctx := context.Background()
 	res := topic.Publish(ctx, &pubsub.Message{Data: []byte(gcpLogEntry)})
+
 	_, err := res.Get(ctx) // wait till message is actully published
 	require.NoError(t, err)
 }

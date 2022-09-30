@@ -435,6 +435,12 @@ spec:
                     description: TLS configuration for reaching the object storage
                       endpoint.
                     properties:
+                      caKey:
+                        default: service-ca.crt
+                        description: Key is the data key of a ConfigMap containing
+                          a CA certificate. It needs to be in the same namespace as
+                          the LokiStack custom resource.
+                        type: string
                       caName:
                         description: CA is the name of a ConfigMap containing a CA
                           certificate. It needs to be in the same namespace as the

@@ -162,5 +162,4 @@ func (w WriteAheadLog) ReplayMemoryCeiling() string {
 type RetentionOptions struct {
 	Enabled           bool
 	DeleteWorkerCount uint
-	Globals           *lokiv1.RetentionLimitSpec
 }

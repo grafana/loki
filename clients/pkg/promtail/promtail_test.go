@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net"
@@ -510,7 +509,7 @@ func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
 		t.Fatal("Received a non 200 status code from /metrics endpoint", resp.StatusCode)
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal("Error reading response body from /metrics endpoint", err)
 	}
@@ -656,7 +655,7 @@ func randName() string {
 }
 
 func Test_DryRun(t *testing.T) {
-	f, err := ioutil.TempFile("/tmp", "Test_DryRun")
+	f, err := os.CreateTemp("/tmp", "Test_DryRun")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 

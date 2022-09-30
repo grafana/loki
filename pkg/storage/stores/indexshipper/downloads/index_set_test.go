@@ -3,7 +3,6 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -135,14 +134,14 @@ func TestIndexSet_Sync(t *testing.T) {
 
 	// first, let us add a new file and refresh the index list cache
 	oneMoreDB := "one-more-db"
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
 	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
 
 	// now, without syncing the indexset, let us compact the index in storage
 	compactedDBName := "compacted-db"
 	require.NoError(t, os.RemoveAll(tablePathInStorage))
 	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
 	indexesSetup = []string{compactedDBName}
 
 	// verify that we are getting errIndexListCacheTooStale without refreshing the list cache

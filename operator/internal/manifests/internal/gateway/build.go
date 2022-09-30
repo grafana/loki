@@ -3,7 +3,7 @@ package gateway
 import (
 	"bytes"
 	"embed"
-	"io/ioutil"
+	"io"
 	"text/template"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -47,7 +47,7 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to create loki gateway rbac configuration")
 	}
-	rbacCfg, err = ioutil.ReadAll(w)
+	rbacCfg, err = io.ReadAll(w)
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
@@ -57,7 +57,7 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to create loki gateway tenants configuration")
 	}
-	tenantsCfg, err = ioutil.ReadAll(w)
+	tenantsCfg, err = io.ReadAll(w)
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
@@ -68,7 +68,7 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 		if err != nil {
 			return nil, nil, nil, kverrors.Wrap(err, "failed to create lokistack gateway rego configuration")
 		}
-		regoCfg, err = ioutil.ReadAll(w)
+		regoCfg, err = io.ReadAll(w)
 		if err != nil {
 			return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 		}
