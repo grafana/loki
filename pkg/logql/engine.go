@@ -234,9 +234,8 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		if err != nil {
 			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
 			return nil, err
-		} else {
-			queryTimeout = q.limits.QueryTimeout(userID) + time.Second
 		}
+		queryTimeout = q.limits.QueryTimeout(userID) + time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
