@@ -1173,7 +1173,7 @@ spec:
                   value: docker.io/grafana/loki:2.6.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
-                image: docker.io/grafana/loki-operator:v0.0.1
+                image: docker.io/theperiklis/loki-operator:v0.0.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1207,27 +1207,6 @@ spec:
                 - mountPath: /controller_manager_config.yaml
                   name: manager-config
                   subPath: controller_manager_config.yaml
-              - args:
-                - --secure-listen-address=0.0.0.0:8443
-                - --upstream=http://127.0.0.1:8080/
-                - --logtostderr=true
-                - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
-                - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
-                - --v=0
-                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.11.0
-                name: kube-rbac-proxy
-                ports:
-                - containerPort: 8443
-                  name: https
-                resources: {}
-                securityContext:
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop:
-                    - ALL
-                volumeMounts:
-                - mountPath: /var/run/secrets/serving-cert
-                  name: loki-operator-metrics-cert
               nodeSelector:
                 kubernetes.io/os: linux
               securityContext:
@@ -1241,11 +1220,6 @@ spec:
               - configMap:
                   name: loki-operator-manager-config
                 name: manager-config
-              - name: loki-operator-metrics-cert
-                secret:
-                  defaultMode: 420
-                  optional: true
-                  secretName: loki-operator-metrics
       permissions:
       - rules:
         - apiGroups:
