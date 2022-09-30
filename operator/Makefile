@@ -168,12 +168,28 @@ oci-build: ## Build the image
 oci-push: ## Push the image
 	$(OCI_RUNTIME) push ${IMG}
 
-.PHONY: bundle ## Generate bundle manifests and metadata, then validate generated files.
-bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
-	$(OPERATOR_SDK) generate kustomize manifests -q
+.PHONY: bundle
+bundle: bundle-openshift bundle-community
+
+MANIFESTS_OPENSHIFT_DIR = ./config/manifests/openshift
+BUNDLE_OPENSHIFT_DIR = ./bundle/openshift
+BUNDLE_OPENSHIFT_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir $(BUNDLE_OPENSHIFT_DIR) --kustomize-dir $(MANIFESTS_OPENSHIFT_DIR)
+.PHONY: bundle-openshift ## Generate openshift-logging bundle manifests and metadata, then validate generated files.
+bundle-openshift: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
+	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_OPENSHIFT_DIR)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
-	$(OPERATOR_SDK) bundle validate ./bundle
+	$(KUSTOMIZE) build $(MANIFESTS_OPENSHIFT_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_OPENSHIFT_GEN_FLAGS)
+	$(OPERATOR_SDK) bundle validate $(BUNDLE_OPENSHIFT_DIR)
+
+MANIFESTS_COMMUNITY_DIR = ./config/manifests/community
+BUNDLE_COMMUNITY_DIR = ./bundle/community
+BUNDLE_COMMUNITY_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir $(BUNDLE_COMMUNITY_DIR) --kustomize-dir $(MANIFESTS_COMMUNITY_DIR)
+.PHONY: bundle-community ## Generate operatorhub.io bundle manifests and metadata, then validate generated files.
+bundle-community: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
+	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_COMMUNITY_DIR)
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build $(MANIFESTS_COMMUNITY_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_COMMUNITY_GEN_FLAGS)
+	$(OPERATOR_SDK) bundle validate $(BUNDLE_COMMUNITY_DIR)
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.

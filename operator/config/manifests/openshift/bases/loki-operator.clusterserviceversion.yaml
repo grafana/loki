@@ -1474,10 +1474,10 @@ spec:
   - name: Loki Operator
     url: https://github.com/grafana/loki
   maintainers:
-  - email: loki-operator-team@googlegroups.com
-    name: Grafana Loki SIG Operator
+  - email: team-logging@redhat.com
+    name: Red Hat, AOS Logging
   maturity: alpha
   minKubeVersion: 1.21.1
   provider:
-    name: Grafana.com
+    name: Red Hat
   version: 0.0.0
