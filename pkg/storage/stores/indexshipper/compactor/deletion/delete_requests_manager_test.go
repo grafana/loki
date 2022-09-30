@@ -508,7 +508,7 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _
 
 func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
 	m.addReqs = reqs
-	return nil, m.addErr
+	return m.addReqs, m.addErr
 }
 
 func (m *mockDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
