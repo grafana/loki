@@ -231,14 +231,8 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	if q.timeout == 0 {
 		// Engine didn't set query timeout or user already migrated to new limits:query_timeout configuration.
 		// In this case, we can safely use the new limits timeout.
-		// If the limits timeout isn't configured either, use former 5 min timeout.
-		queryTimeout = time.Minute * 5
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
-		} else {
-			queryTimeout = q.limits.QueryTimeout(userID) + time.Second
-		}
+		userID, _ := tenant.TenantID(ctx)
+		queryTimeout = q.limits.QueryTimeout(userID) + time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
