@@ -229,10 +229,14 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	queryTimeout := q.timeout
 	if q.timeout == 0 {
-		// Engine didn't set query timeout or user already migrated to new limits:query_timeout configuration.
-		// In this case, we can safely use the new limits timeout.
-		userID, _ := tenant.TenantID(ctx)
-		queryTimeout = q.limits.QueryTimeout(userID) + time.Second
+		queryTimeout = time.Minute * 5
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
+			return nil, err
+		} else {
+			queryTimeout = q.limits.QueryTimeout(userID) + time.Second
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
