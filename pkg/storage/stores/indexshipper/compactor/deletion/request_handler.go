@@ -74,7 +74,8 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, interval)
-	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests); err != nil {
+	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
+	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -82,6 +83,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 
 	level.Info(util_log.Logger).Log(
 		"msg", "delete request for user added",
+		"delete_request_id", createdDeleteRequests[0].RequestID,
 		"user", userID,
 		"query", query,
 		"interval", interval.String(),
