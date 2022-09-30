@@ -290,6 +290,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`, time.Second},
 		{`sum(count_over_time({a=~".+"}[3s]) * count(sum_over_time({a=~".+"} | unwrap b [5s])))`, time.Second},
 		{`sum by (a) (count_over_time({a=~".+"} | logfmt | line > 5 [3s])) / sum by (a) (count_over_time({a=~".+"} [3s]))`, time.Second},
+		// should split a binary expression if at least one operand is splittable
+		{`sum by (a) (sum_over_time({a=~".+"} | logfmt | unwrap b [3s])) / sum_over_time({a=~".+"} | logfmt | unwrap b [6s])`, time.Second},
 		{`count_over_time({a=~".+"}[3s]) or vector(0)`, time.Second},
 		{`vector(0) or count_over_time({a=~".+"}[3s])`, time.Second},
 

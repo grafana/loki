@@ -1472,7 +1472,18 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				)
 			)`,
 		},
-		// should split splittable operands from binary operation
+		// should split a binary expression if at least one operand is splittable
+		{
+			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
+			`(sum by (foo) (
+					sum without (
+					   downstream<sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+						++ downstream<sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+						++ downstream<sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [1m])), shard=<nil>>
+					)
+			) / 
+			sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
+		},
 		{
 			`count_over_time({app="foo"}[3m]) or vector(0)`,
 			`(sum without(
