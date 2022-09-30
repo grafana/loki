@@ -167,6 +167,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
+	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
 	var appendErr error
 	for _, reqStream := range req.Streams {
@@ -190,7 +191,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream)
 		s.chunkMtx.Unlock()
 	}
 
