@@ -177,13 +177,17 @@ oci-build: ## Build the image
 oci-push: ## Push the image
 	$(OCI_RUNTIME) push ${IMG}
 
+.PHONY: bundle-all
+bundle-all: ## Generate both bundles.
+	$(MAKE) bundle USE_COMMUNITY_BUILD=true
+	$(MAKE) bundle
+
 .PHONY: bundle
 ifeq ($(USE_COMMUNITY_BUILD), true)
 MANIFESTS_COMMUNITY_DIR = config/manifests/community
 BUNDLE_COMMUNITY_DIR = ./bundle/community
 BUNDLE_COMMUNITY_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_COMMUNITY_DIR)
-.PHONY: bundle ## Generate operatorhub.io bundle manifests and metadata, then validate generated files.
-bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
+bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate community bundle manifests and metadata, then validate generated files (Requires: USE_COMMUNITY_BUILD=true).
 	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_COMMUNITY_DIR) --output-dir $(MANIFESTS_COMMUNITY_DIR)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd $(BUNDLE_COMMUNITY_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_COMMUNITY_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_COMMUNITY_GEN_FLAGS) && rm PROJECT
@@ -192,8 +196,7 @@ else
 MANIFESTS_OPENSHIFT_DIR = config/manifests/openshift
 BUNDLE_OPENSHIFT_DIR = ./bundle/openshift
 BUNDLE_OPENSHIFT_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_OPENSHIFT_DIR)
-.PHONY: bundle ## Generate openshift-logging bundle manifests and metadata, then validate generated files.
-bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
+bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate openshift bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_OPENSHIFT_DIR) --output-dir $(MANIFESTS_OPENSHIFT_DIR)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd $(BUNDLE_OPENSHIFT_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_OPENSHIFT_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_OPENSHIFT_GEN_FLAGS) && rm PROJECT
@@ -203,10 +206,10 @@ endif
 
 .PHONY: bundle-build
 ifeq ($(USE_COMMUNITY_BUILD), true)
-bundle-build: ## Build the bundle image.
+bundle-build: ## Build the community bundle image (Requires: USE_COMMUNITY_BUILD=true).
 	$(OCI_RUNTIME) build -f $(BUNDLE_COMMUNITY_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_COMMUNITY_DIR)
 else
-bundle-build: ## Build the bundle image.
+bundle-build: ## Build the OpenShift bundle image.
 	$(OCI_RUNTIME) build -f $(BUNDLE_OPENSHIFT_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_OPENSHIFT_DIR)
 endif
 

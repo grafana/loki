@@ -1173,7 +1173,7 @@ spec:
                   value: docker.io/grafana/loki:2.6.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
-                image: docker.io/theperiklis/loki-operator:v0.0.1
+                image: docker.io/grafana/loki-operator:v0.0.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
