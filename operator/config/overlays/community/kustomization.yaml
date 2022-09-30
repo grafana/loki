@@ -44,9 +44,7 @@ patchesStrategicMerge:
 
 images:
 - name: controller
-  # Change this to docker.io/grafana/loki-operator once the following issue is resolved:
-  # https://github.com/grafana/loki/issues/5617
-  newName: quay.io/openshift-logging/loki-operator
+  newName: docker.io/grafana/loki-operator
   newTag: v0.0.1
 
 # the following config is for teaching kustomize how to do var substitution
