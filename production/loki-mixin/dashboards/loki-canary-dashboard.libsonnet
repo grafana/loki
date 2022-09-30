@@ -8,8 +8,6 @@ local grafana = import 'grafonnet/grafana.libsonnet';
     canary+: {
       enabled: false,
     },
-    tags: ['loki'],
-    dashboard_prefix: 'Loki / ',
   },
   grafanaDashboards+: if !$._config.canary.enabled then {} else {
     local dashboard = (
