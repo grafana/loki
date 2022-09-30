@@ -27,6 +27,7 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.0.1
+COMMUNITY_VERSION ?= v0.0.1
 CHANNELS ?= "stable"
 DEFAULT_CHANNEL ?= "stable"
 
@@ -50,6 +51,7 @@ endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 REGISTRY_ORG ?= openshift-logging
+COMMUNITY_ORG ?= grafana
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -78,6 +80,13 @@ ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
+endif
+
+USE_COMMUNITY_BUILD ?= false
+ifeq ($(USE_COMMUNITY_BUILD), true)
+    LOKI_OPERATOR_NS = kubernetes-operators
+	IMG = docker.io/$(COMMUNITY_ORG)/loki-operator:$(COMMUNITY_VERSION)
+    BUNDLE_IMG = docker.io/$(COMMUNITY_ORG)/loki-operator-bundle:$(COMMUNITY_VERSION)
 endif
 
 .PHONY: all
@@ -169,31 +178,37 @@ oci-push: ## Push the image
 	$(OCI_RUNTIME) push ${IMG}
 
 .PHONY: bundle
-bundle: bundle-openshift bundle-community
-
-MANIFESTS_OPENSHIFT_DIR = ./config/manifests/openshift
-BUNDLE_OPENSHIFT_DIR = ./bundle/openshift
-BUNDLE_OPENSHIFT_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir $(BUNDLE_OPENSHIFT_DIR) --kustomize-dir $(MANIFESTS_OPENSHIFT_DIR)
-.PHONY: bundle-openshift ## Generate openshift-logging bundle manifests and metadata, then validate generated files.
-bundle-openshift: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
-	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_OPENSHIFT_DIR)
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build $(MANIFESTS_OPENSHIFT_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_OPENSHIFT_GEN_FLAGS)
-	$(OPERATOR_SDK) bundle validate $(BUNDLE_OPENSHIFT_DIR)
-
-MANIFESTS_COMMUNITY_DIR = ./config/manifests/community
+ifeq ($(USE_COMMUNITY_BUILD), true)
+MANIFESTS_COMMUNITY_DIR = config/manifests/community
 BUNDLE_COMMUNITY_DIR = ./bundle/community
-BUNDLE_COMMUNITY_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir $(BUNDLE_COMMUNITY_DIR) --kustomize-dir $(MANIFESTS_COMMUNITY_DIR)
-.PHONY: bundle-community ## Generate operatorhub.io bundle manifests and metadata, then validate generated files.
-bundle-community: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
-	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_COMMUNITY_DIR)
+BUNDLE_COMMUNITY_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_COMMUNITY_DIR)
+.PHONY: bundle ## Generate operatorhub.io bundle manifests and metadata, then validate generated files.
+bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
+	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_COMMUNITY_DIR) --output-dir $(MANIFESTS_COMMUNITY_DIR)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build $(MANIFESTS_COMMUNITY_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_COMMUNITY_GEN_FLAGS)
+	cd $(BUNDLE_COMMUNITY_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_COMMUNITY_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_COMMUNITY_GEN_FLAGS) && rm PROJECT
 	$(OPERATOR_SDK) bundle validate $(BUNDLE_COMMUNITY_DIR)
+else
+MANIFESTS_OPENSHIFT_DIR = config/manifests/openshift
+BUNDLE_OPENSHIFT_DIR = ./bundle/openshift
+BUNDLE_OPENSHIFT_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_OPENSHIFT_DIR)
+.PHONY: bundle ## Generate openshift-logging bundle manifests and metadata, then validate generated files.
+bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
+	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_OPENSHIFT_DIR) --output-dir $(MANIFESTS_OPENSHIFT_DIR)
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd $(BUNDLE_OPENSHIFT_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_OPENSHIFT_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_OPENSHIFT_GEN_FLAGS) && rm PROJECT
+	$(OPERATOR_SDK) bundle validate $(BUNDLE_OPENSHIFT_DIR)
+endif
+
 
 .PHONY: bundle-build
+ifeq ($(USE_COMMUNITY_BUILD), true)
 bundle-build: ## Build the bundle image.
-	$(OCI_RUNTIME) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(OCI_RUNTIME) build -f $(BUNDLE_COMMUNITY_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_COMMUNITY_DIR)
+else
+bundle-build: ## Build the bundle image.
+	$(OCI_RUNTIME) build -f $(BUNDLE_OPENSHIFT_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_OPENSHIFT_DIR)
+endif
 
 ##@ Deployment
 
