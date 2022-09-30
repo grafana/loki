@@ -81,6 +81,12 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
+	if len(createdDeleteRequests) == 0 {
+		level.Error(util_log.Logger).Log("msg", "zero delete requests created", "user", userID, "query", query)
+		http.Error(w, "Zero delete requests were created due to an internal error. Please contact support.", http.StatusInternalServerError)
+		return
+	}
+
 	level.Info(util_log.Logger).Log(
 		"msg", "delete request for user added",
 		"delete_request_id", createdDeleteRequests[0].RequestID,
