@@ -330,7 +330,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						OCPAlertManagerEnabled: true,
+						AlertManagerEnabled: true,
 					},
 				},
 			},
@@ -351,7 +351,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						OCPAlertManagerEnabled: true,
+						AlertManagerEnabled: true,
 					},
 				},
 			},
@@ -372,7 +372,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 			cfg, err := manifests.ConfigOptions(tc.opts)
 			require.Nil(t, err)
 
-			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts.Stack.Tenants.Mode)
+			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts)
 
 			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
@@ -433,7 +433,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						OCPAlertManagerEnabled: true,
+						AlertManagerEnabled: true,
 					},
 				},
 			},
@@ -469,7 +469,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						OCPAlertManagerEnabled: true,
+						AlertManagerEnabled: true,
 					},
 				},
 			},
@@ -490,7 +490,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 			cfg, err := manifests.ConfigOptions(tc.opts)
 			require.Nil(t, err)
 
-			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts.Stack.Tenants.Mode)
+			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts)
 			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})

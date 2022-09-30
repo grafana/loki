@@ -12,6 +12,7 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
+	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
@@ -250,13 +251,13 @@ func CreateOrUpdateLokiStack(
 
 	opts.TLSProfileSpec = spec
 
-	enabled, err := rules.OCPAlertManagerEnabled(ctx, opts, k)
+	enabled, err := openshift.AlertManagerSVCExists(ctx, opts, k)
 	if err != nil {
 		ll.Error(err, "failed to check OCP AlertManager")
 		return err
 	}
 
-	opts.OpenShiftOptions.BuildOpts.OCPAlertManagerEnabled = enabled
+	opts.OpenShiftOptions.BuildOpts.AlertManagerEnabled = enabled
 
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {

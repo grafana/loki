@@ -21,8 +21,8 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 		return nil, "", err
 	}
 
-	if opt.OpenShiftOptions.BuildOpts.OCPAlertManagerEnabled {
-		if err = ConfigureOptionsForMode(&cfg, opt.Stack.Tenants.Mode); err != nil {
+	if opt.Stack.Tenants != nil {
+		if err = ConfigureOptionsForMode(&cfg, opt); err != nil {
 			return nil, "", err
 		}
 	}
@@ -242,12 +242,15 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 }
 
 // ConfigureOptionsForMode applies configuration depending on the mode type.
-func ConfigureOptionsForMode(cfg *config.Options, mode lokiv1.ModeType) error {
-	switch mode {
+func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
+	switch opt.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		return openshift.ConfigureOptions(cfg)
+		if opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled {
+			return openshift.ConfigureOptions(cfg)
+		}
+		return nil
 	}
 
 	return nil
