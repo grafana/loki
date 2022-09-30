@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliRead.RunRangeQuery(`{job="fake"}`)
+		resp, err := cliRead.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -62,13 +63,13 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 	})
 
 	t.Run("label-names", func(t *testing.T) {
-		resp, err := cliRead.LabelNames()
+		resp, err := cliRead.LabelNames(context.Background())
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {
-		resp, err := cliRead.LabelValues("job")
+		resp, err := cliRead.LabelValues(context.Background(), "job")
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})

@@ -100,12 +100,6 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		return false, nil
 	}
 
-	level.Debug(util_log.Logger).Log(
-		"msg", "starting filter function",
-		"delete_request_id", d.RequestID,
-		"user", d.UserID,
-		"labels", entry.Labels.String(),
-	)
 	ff, err := d.FilterFunction(entry.Labels)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
@@ -118,12 +112,6 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		)
 		return false, nil
 	}
-	level.Debug(util_log.Logger).Log(
-		"msg", "finished filter function",
-		"delete_request_id", d.RequestID,
-		"user", d.UserID,
-		"labels", entry.Labels.String(),
-	)
 
 	if d.StartTime <= entry.From && d.EndTime >= entry.Through {
 		// if the logSelectorExpr has a filter part return the chunk boundaries as intervals
