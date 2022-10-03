@@ -347,9 +347,6 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	l := validation.Limits{
 		PerStreamRateLimit:      10,
 		PerStreamRateLimitBurst: 10,
-		ShardStreams: &shardstreams.Config{
-			Enabled: false,
-		},
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
