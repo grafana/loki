@@ -8,7 +8,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -239,19 +238,4 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 		Enabled:           true,
 		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
 	}
-}
-
-// ConfigureOptionsForMode applies configuration depending on the mode type.
-func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
-	switch opt.Stack.Tenants.Mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		if opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled {
-			return openshift.ConfigureOptions(cfg)
-		}
-		return nil
-	}
-
-	return nil
 }

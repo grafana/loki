@@ -15,17 +15,18 @@ import (
 
 // AlertManagerSVCExists returns true if the Openshift AlertManager is present in the cluster.
 func AlertManagerSVCExists(ctx context.Context, opts manifests.Options, k k8s.Client) (bool, error) {
-	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Mode == lokiv1.OpenshiftLogging {
-		var svc corev1.Service
-		key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringNS}
-
-		err := k.Get(ctx, key, &svc)
-		if err != nil && !apierrors.IsNotFound(err) {
-			return false, kverrors.Wrap(err, "failed to lookup alertmanager service", "name", key)
-		}
-
-		return err == nil, nil
+	if opts.Stack.Tenants == nil || opts.Stack.Tenants.Mode != lokiv1.OpenshiftLogging {
+		return false, nil
 	}
 
-	return false, nil
+	var svc corev1.Service
+	key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringNS}
+
+	err := k.Get(ctx, key, &svc)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return false, kverrors.Wrap(err, "failed to lookup alertmanager service", "name", key)
+	}
+
+	return err == nil, nil
+
 }
