@@ -681,7 +681,6 @@ func TestStreamShard(t *testing.T) {
 			validator, err := NewValidator(overrides)
 			require.NoError(t, err)
 
-			// tenantCfgs := runtime.DefaultTenantConfigs()
 			d := Distributor{
 				rateStore:              &noopRateStore{},
 				streamShardingFailures: shardingFailureMetric,
