@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -644,6 +645,57 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 	}
 
 	require.Equal(t, samples, []float64{1.})
+}
+
+type fakeLimits struct {
+	limits map[string]*validation.Limits
+}
+
+func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
+	limits, ok := f.limits[userID]
+	if !ok {
+		return nil
+	}
+
+	return limits
+}
+
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	return f.limits
+}
+
+func TestStreamShardingConfiguration(t *testing.T) {
+	shardStreamsCfg := &shardstreams.Config{Enabled: true, LoggingEnabled: true}
+	shardStreamsCfg.DesiredRate.Set("6MB")
+
+	customTenant := "my-org"
+
+	limitsDefinition := &fakeLimits{
+		limits: make(map[string]*validation.Limits),
+	}
+	limitsDefinition.limits[customTenant] = &validation.Limits{
+		ShardStreams: shardStreamsCfg,
+	}
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
+	require.NoError(t, err)
+
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	defaultShardStreamsCfg := limiter.limits.ShardStreams("fake")
+	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant)
+
+	t.Run("test default configuration", func(t *testing.T) {
+		require.Equal(t, false, defaultShardStreamsCfg.Enabled)
+		require.Equal(t, "3MB", defaultShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, false, defaultShardStreamsCfg.LoggingEnabled)
+	})
+
+	t.Run("test configuration being applied", func(t *testing.T) {
+		require.Equal(t, true, tenantShardStreamsCfg.Enabled)
+		require.Equal(t, "6MB", tenantShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, true, tenantShardStreamsCfg.LoggingEnabled)
+	})
 }
 
 func defaultInstance(t *testing.T) *instance {
