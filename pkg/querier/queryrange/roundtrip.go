@@ -427,7 +427,7 @@ func NewMetricTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
-			registerer,
+			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
 			return nil, err
