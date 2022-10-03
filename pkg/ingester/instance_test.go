@@ -681,16 +681,16 @@ func TestStreamShardingUsage(t *testing.T) {
 	}
 
 	customTenant1 := "my-org1"
-	customTenant2 := "my-org1"
+	customTenant2 := "my-org2"
 
 	limitsDefinition := &fakeLimits{
 		limits: make(map[string]*validation.Limits),
 	}
-	// testing with 2 because although 2 is enough to accept at least the
-	// first two line entries, because per-stream sharding is enabled,
+	// testing with 1 because although 1 is enough to accept at least the
+	// first line entry, because per-stream sharding is enabled,
 	// all entries are rejected if one of them isn't to be accepted.
-	limitsDefinition.limits[customTenant1] = setupCustomTenantLimit("2")
-	limitsDefinition.limits[customTenant2] = setupCustomTenantLimit("4") // TODO: set this to 6 and see this test pass.
+	limitsDefinition.limits[customTenant1] = setupCustomTenantLimit("1")
+	limitsDefinition.limits[customTenant2] = setupCustomTenantLimit("4")
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
 	require.NoError(t, err)

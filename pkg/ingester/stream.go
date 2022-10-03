@@ -348,7 +348,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		}
 
 		now := time.Now()
-		if rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
+		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
