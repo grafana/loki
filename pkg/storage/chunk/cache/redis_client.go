@@ -23,6 +23,7 @@ type RedisConfig struct {
 	Expiration         time.Duration  `yaml:"expiration"`
 	DB                 int            `yaml:"db"`
 	PoolSize           int            `yaml:"pool_size"`
+	Username           string         `yaml:"username"`
 	Password           flagext.Secret `yaml:"password"`
 	EnableTLS          bool           `yaml:"tls_enabled"`
 	InsecureSkipVerify bool           `yaml:"tls_insecure_skip_verify"`
@@ -38,6 +39,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.DB, prefix+"redis.db", 0, description+"Database index.")
 	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
+	f.StringVar(&cfg.Username, prefix+"redis.username", "", description+"Username to use when connecting to redis.")
 	f.Var(&cfg.Password, prefix+"redis.password", description+"Password to use when connecting to redis.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.tls-enabled", false, description+"Enable connecting to redis with TLS.")
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"redis.tls-insecure-skip-verify", false, description+"Skip validating server certificate.")
@@ -74,6 +76,7 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 	opt := &redis.UniversalOptions{
 		Addrs:       endpoints,
 		MasterName:  cfg.MasterName,
+		Username:    cfg.Username,
 		Password:    cfg.Password.String(),
 		DB:          cfg.DB,
 		PoolSize:    cfg.PoolSize,
