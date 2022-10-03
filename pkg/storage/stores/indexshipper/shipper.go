@@ -70,16 +70,16 @@ type Config struct {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+".shipper.index-gateway-client", f)
+	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
 
-	f.StringVar(&cfg.ActiveIndexDirectory, prefix+".shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
-	f.StringVar(&cfg.SharedStoreType, prefix+".shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, filesystem")
-	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+".shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it")
-	f.StringVar(&cfg.CacheLocation, prefix+".shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
-	f.DurationVar(&cfg.CacheTTL, prefix+".shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
-	f.DurationVar(&cfg.ResyncInterval, prefix+".shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
-	f.IntVar(&cfg.QueryReadyNumDays, prefix+".shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
-	f.BoolVar(&cfg.UseBoltDBShipperAsBackup, prefix+".shipper.use-boltdb-shipper-as-backup", false, "Use boltdb-shipper index store as backup for indexing chunks. When enabled, boltdb-shipper needs to be configured under storage_config")
+	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
+	f.StringVar(&cfg.SharedStoreType, prefix+"shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, filesystem")
+	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it")
+	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
+	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
+	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
+	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
+	f.BoolVar(&cfg.UseBoltDBShipperAsBackup, prefix+"shipper.use-boltdb-shipper-as-backup", false, "Use boltdb-shipper index store as backup for indexing chunks. When enabled, boltdb-shipper needs to be configured under storage_config")
 }
 
 func (cfg *Config) Validate() error {
