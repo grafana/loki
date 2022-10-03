@@ -362,10 +362,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
-	httpMiddleware := middleware.Merge(
+	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
-		serverutil.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
-	)
+	}
+	if t.supportIndexDeleteRequest() {
+		toMerge = append(
+			toMerge,
+			serverutil.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+		)
+	}
+	httpMiddleware := middleware.Merge(toMerge...)
 
 	logger := log.With(util_log.Logger, "component", "querier")
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
