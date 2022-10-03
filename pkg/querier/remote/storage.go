@@ -21,13 +21,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const (
-	namespace  = "loki"
-	subsystem  = "remote_storage"
-	remoteName = "remote_name"
-	endpoint   = "url"
-)
-
 type Storage struct {
 	queriers []querier.Querier
 }

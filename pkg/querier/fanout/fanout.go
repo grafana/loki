@@ -2,12 +2,12 @@ package fanout
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/querier"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 

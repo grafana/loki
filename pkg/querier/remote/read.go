@@ -2,23 +2,24 @@ package remote
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/pkg/errors"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
 // RemoteReadConfig is the configuration for reading from remote storage.
+// code from /github.com/prometheus/prometheus/config/config.go:868
 type RemoteReadConfig struct {
 	URL           *config.URL   `yaml:"url"`
 	RemoteTimeout time.Duration `yaml:"remote_timeout,omitempty"`
