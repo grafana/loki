@@ -1,0 +1,132 @@
+package remote
+
+import (
+	"context"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"net/http"
+	"net/url"
+	"testing"
+	"time"
+
+	serverutil "github.com/grafana/loki/pkg/util/server"
+	config_util "github.com/prometheus/common/config"
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util/marshal"
+)
+
+const (
+	// Custom query timeout used in tests
+	queryTimeout = 12 * time.Second
+)
+
+func TestQuerier_SelectLog(t *testing.T) {
+	server := NewMockLokiHttpServer()
+	from := time.Now().Add(time.Minute * -5)
+	server.Run(t, from)
+	defer server.Stop(t)
+	remoteConf := RemoteReadConfig{
+		Name:          "remote-read-1",
+		RemoteTimeout: queryTimeout,
+		URL: &config_util.URL{
+			URL: &url.URL{
+				Scheme: "http",
+				Host:   "localhost:3100",
+			},
+		},
+		OrgID: "team1",
+	}
+
+	querier, err := NewQuerier("test", remoteConf)
+	require.NoError(t, err)
+
+	request := logproto.QueryRequest{
+		Selector:  `{app="distributor"}`,
+		Limit:     6,
+		Start:     from,
+		End:       time.Now(),
+		Direction: logproto.FORWARD,
+	}
+
+	iter, err := querier.SelectLogs(
+		context.Background(),
+		logql.SelectLogParams{QueryRequest: &request},
+	)
+	require.NoError(t, err)
+	count := 0
+	for iter.Next() {
+		require.Equal(t, true, len(iter.Labels()) > 10)
+		require.Equal(t, true, len(iter.Entry().Line) > 0)
+		count++
+	}
+	require.Equal(t, 6, count)
+
+}
+
+type mockLokiHttpServer struct {
+	server *http.Server
+}
+
+func NewMockLokiHttpServer() *mockLokiHttpServer {
+	server := &http.Server{Addr: ":3100", Handler: nil}
+	return &mockLokiHttpServer{server: server}
+
+}
+
+func (s *mockLokiHttpServer) Run(t *testing.T, from time.Time) {
+	server := &http.Server{Addr: ":3100", Handler: nil}
+
+	http.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
+		mockData := logqlmodel.Result{
+			Statistics: stats.Result{
+				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
+			},
+			Data: logqlmodel.Streams{{
+				Labels: `{foo="bar"}`,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: from,
+						Line:      "1",
+					},
+					{
+						Timestamp: from.Add(time.Millisecond),
+						Line:      "2",
+					},
+					{
+						Timestamp: from.Add(2 * time.Millisecond),
+						Line:      "3",
+					},
+					{
+						Timestamp: from.Add(3 * time.Millisecond),
+						Line:      "4",
+					},
+					{
+						Timestamp: from.Add(4 * time.Millisecond),
+						Line:      "5",
+					},
+					{
+						Timestamp: from.Add(5 * time.Millisecond),
+						Line:      "6",
+					},
+				},
+			}},
+		}
+		if err := marshal.WriteQueryResponseJSON(mockData, w); err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+	})
+	go func() {
+		err := server.ListenAndServe()
+		require.NoError(t, err)
+	}()
+
+}
+
+func (s *mockLokiHttpServer) Stop(t *testing.T) {
+	err := s.server.Shutdown(context.Background())
+	require.NoError(t, err)
+}
