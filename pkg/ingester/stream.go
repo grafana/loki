@@ -68,8 +68,6 @@ type stream struct {
 	entryCt int64
 
 	unorderedWrites bool
-
-	rateCalculator *RateCalculator
 }
 
 type chunkDesc struct {
@@ -98,7 +96,6 @@ func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.
 		metrics:         metrics,
 		tenant:          tenant,
 		unorderedWrites: unorderedWrites,
-		rateCalculator:  NewRateCalculator(),
 	}
 }
 
@@ -193,10 +190,6 @@ func (s *stream) Push(
 	}
 
 	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
-}
-
-func (s *stream) Rate() int64 {
-	return s.rateCalculator.Rate()
 }
 
 func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
@@ -397,7 +390,6 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		}
 	}
 
-	s.rateCalculator.Record(int64(totalBytes))
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }
@@ -572,10 +564,6 @@ func (s *stream) addTailer(t *tailer) {
 
 func (s *stream) resetCounter() {
 	s.entryCt = 0
-}
-
-func (s *stream) Stop() {
-	s.rateCalculator.Stop()
 }
 
 func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {

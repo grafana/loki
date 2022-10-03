@@ -314,7 +314,6 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALR
 // removeStream removes a stream from the instance.
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
-		s.Stop()
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
@@ -338,24 +337,11 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	var buf []byte
 	resp := &logproto.StreamRatesResponse{
 		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),
 	}
 
-	err := i.streams.ForEach(func(s *stream) (bool, error) {
-		hashWithoutShard, b := s.labels.HashWithoutLabels(buf, ShardLbName)
-		resp.StreamRates = append(resp.StreamRates, &logproto.StreamRate{
-			StreamHash:        s.labels.Hash(),
-			StreamHashNoShard: hashWithoutShard,
-			Rate:              s.Rate(),
-		})
-
-		buf = b
-		return true, nil
-	})
-
-	return resp, err
+	return resp, nil
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {

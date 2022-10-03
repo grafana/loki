@@ -373,42 +373,6 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
-func TestRate(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
-	cfg := defaultConfig()
-	cfg.RateLimitWholeStream = true
-
-	s := newStream(
-		cfg,
-		limiter,
-		"fake",
-		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
-		true,
-		NilMetrics,
-	)
-
-	var entries []logproto.Entry
-	for i := 0; i < 100; i++ {
-		entries = append(entries, logproto.Entry{
-			Timestamp: time.Unix(int64(i), 0),
-			Line:      "1",
-		})
-	}
-
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
-	require.NoError(t, err)
-
-	require.Eventually(t, func() bool {
-		return s.Rate() == 100
-	}, 2*time.Second, 250*time.Millisecond)
-}
-
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
