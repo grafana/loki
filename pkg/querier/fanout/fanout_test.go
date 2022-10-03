@@ -25,9 +25,10 @@ const (
 )
 
 func TestQuerier_SelectLog(t *testing.T) {
-	server := NewMockLokiHTTPServer()
+	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
+	//wg.Wait()
 	defer server.Stop(t)
 	remoteConf := remote.RemoteReadConfig{
 		Name:          "remote-read-1",
@@ -82,45 +83,6 @@ func TestQuerier_SelectLog(t *testing.T) {
 	}
 	require.Equal(t, 12, count)
 
-}
-
-func TestQuerier_Label(t *testing.T) {
-	server := NewMockLokiHTTPServer()
-	from := time.Now().Add(time.Minute * -5)
-	server.Run(t, from)
-	defer server.Stop(t)
-	remoteConf := remote.RemoteReadConfig{
-		Name:          "remote-read-1",
-		RemoteTimeout: queryTimeout,
-		URL: &config_util.URL{
-			URL: &url.URL{
-				Scheme: "http",
-				Host:   "localhost:3100",
-			},
-		},
-		OrgID: "team1",
-	}
-
-	querier, err := remote.NewQuerier("test", remoteConf)
-	require.NoError(t, err)
-
-	remoteConf2 := remote.RemoteReadConfig{
-		Name:          "remote-read-2",
-		RemoteTimeout: queryTimeout,
-		URL: &config_util.URL{
-			URL: &url.URL{
-				Scheme: "http",
-				Host:   "localhost:3100",
-			},
-		},
-		OrgID: "team2",
-	}
-
-	querier2, err := remote.NewQuerier("test", remoteConf2)
-	require.NoError(t, err)
-
-	fanoutQuerier := NewFanoutQuerier(querier, querier2)
-
 	end := time.Now()
 	mockLabelRequest := func(name string) *logproto.LabelRequest {
 		return &logproto.LabelRequest{
@@ -130,51 +92,13 @@ func TestQuerier_Label(t *testing.T) {
 			End:    &end,
 		}
 	}
+	require.NoError(t, err)
 
 	_, err = fanoutQuerier.Label(
 		context.Background(),
 		mockLabelRequest("app"),
 	)
 	require.NoError(t, err)
-
-}
-
-func TestQuerier_Series(t *testing.T) {
-	server := NewMockLokiHTTPServer()
-	from := time.Now().Add(time.Minute * -5)
-	server.Run(t, from)
-	defer server.Stop(t)
-	remoteConf := remote.RemoteReadConfig{
-		Name:          "remote-read-1",
-		RemoteTimeout: queryTimeout,
-		URL: &config_util.URL{
-			URL: &url.URL{
-				Scheme: "http",
-				Host:   "localhost:3100",
-			},
-		},
-		OrgID: "team1",
-	}
-
-	querier, err := remote.NewQuerier("test", remoteConf)
-	require.NoError(t, err)
-
-	remoteConf2 := remote.RemoteReadConfig{
-		Name:          "remote-read-2",
-		RemoteTimeout: queryTimeout,
-		URL: &config_util.URL{
-			URL: &url.URL{
-				Scheme: "http",
-				Host:   "localhost:3100",
-			},
-		},
-		OrgID: "team2",
-	}
-
-	querier2, err := remote.NewQuerier("test", remoteConf2)
-	require.NoError(t, err)
-
-	fanoutQuerier := NewFanoutQuerier(querier, querier2)
 
 	req := &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
@@ -184,6 +108,7 @@ func TestQuerier_Series(t *testing.T) {
 		context.Background(),
 		req,
 	)
+
 	require.NoError(t, err)
 
 }
@@ -192,16 +117,9 @@ type mockLokiHTTPServer struct {
 	server *http.Server
 }
 
-func NewMockLokiHTTPServer() *mockLokiHTTPServer {
-	server := &http.Server{Addr: ":3100", Handler: nil}
-	return &mockLokiHTTPServer{server: server}
-
-}
-
 func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
-	server := &http.Server{Addr: ":3100", Handler: nil}
-
-	http.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
+	var mux http.ServeMux
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
 		mockData := logqlmodel.Result{
 			Statistics: stats.Result{
 				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
@@ -241,11 +159,12 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 			return
 		}
 	})
+	s.server.Handler = &mux
 	go func() {
-		err := server.ListenAndServe()
+		err := s.server.ListenAndServe()
 		require.NoError(t, err)
-	}()
 
+	}()
 }
 
 func (s *mockLokiHTTPServer) Stop(t *testing.T) {

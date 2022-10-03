@@ -24,7 +24,7 @@ const (
 )
 
 func TestQuerier_SelectLog(t *testing.T) {
-	server := NewMockLokiHTTPServer()
+	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
 	defer server.Stop(t)
@@ -70,16 +70,9 @@ type mockLokiHTTPServer struct {
 	server *http.Server
 }
 
-func NewMockLokiHTTPServer() *mockLokiHTTPServer {
-	server := &http.Server{Addr: ":3100", Handler: nil}
-	return &mockLokiHTTPServer{server: server}
-
-}
-
 func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
-	server := &http.Server{Addr: ":3100", Handler: nil}
-
-	http.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
+	var mux http.ServeMux
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
 		mockData := logqlmodel.Result{
 			Statistics: stats.Result{
 				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
@@ -119,13 +112,13 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 			return
 		}
 	})
+	s.server.Handler = &mux
 	go func() {
-		err := server.ListenAndServe()
+		err := s.server.ListenAndServe()
 		require.NoError(t, err)
+
 	}()
-
 }
-
 func (s *mockLokiHTTPServer) Stop(t *testing.T) {
 	err := s.server.Shutdown(context.Background())
 	require.NoError(t, err)
