@@ -4,7 +4,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   local ingester_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
   local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*',
-  local ingester_zone_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.+',
+  local ingester_zone_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*',
 
   grafanaDashboards+::
     {

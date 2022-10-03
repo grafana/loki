@@ -630,7 +630,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/ingester-zone.+\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/ingester-zone.*\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{status}}",
@@ -706,7 +706,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/ingester-zone.+\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"})) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/ingester-zone.*\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"})) * 1e3",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{ route }} 99th Percentile",
@@ -714,7 +714,7 @@
                         "step": 10
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/ingester-zone.+\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"})) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/ingester-zone.*\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"})) * 1e3",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{ route }} 50th Percentile",
@@ -722,7 +722,7 @@
                         "step": 10
                      },
                      {
-                        "expr": "1e3 * sum(job_route:loki_request_duration_seconds_sum:sum_rate{job=~\"($namespace)/ingester-zone.+\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"}) by (route)  / sum(job_route:loki_request_duration_seconds_count:sum_rate{job=~\"($namespace)/ingester-zone.+\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"}) by (route) ",
+                        "expr": "1e3 * sum(job_route:loki_request_duration_seconds_sum:sum_rate{job=~\"($namespace)/ingester-zone.*\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"}) by (route)  / sum(job_route:loki_request_duration_seconds_count:sum_rate{job=~\"($namespace)/ingester-zone.*\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=~\"$cluster\"}) by (route) ",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{ route }} Average",
