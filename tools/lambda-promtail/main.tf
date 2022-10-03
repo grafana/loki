@@ -61,6 +61,13 @@ resource "aws_iam_role_policy" "logs" {
         ],
         "Effect" : "Allow",
         "Resource": "*",
+      },
+      {
+        "Action" : [
+          "kinesis:*",
+        ],
+        "Effect" : "Allow",
+        "Resource" : "*"
       }
     ]
   })
