@@ -4,9 +4,10 @@ import (
 	"net/http"
 
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 // NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
