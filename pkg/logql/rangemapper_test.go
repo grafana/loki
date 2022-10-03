@@ -1708,6 +1708,14 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
 			`(sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
 		},
+		{
+			`count_over_time({app="foo"}[3m]) or vector(0)`,
+			`(count_over_time({app="foo"}[3m]) or vector(0.000000))`,
+		},
+		{
+			`sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0)`,
+			`(sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0.000000))`,
+		},
 
 		// should be noop if literal expression
 		{
@@ -1717,6 +1725,11 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 		{
 			`5 * 5`,
 			`25`,
+		},
+		// should be noop if VectorExpr
+		{
+			`vector(0)`,
+			`vector(0.000000)`,
 		},
 	} {
 		tc := tc
