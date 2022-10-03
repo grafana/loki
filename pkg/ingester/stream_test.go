@@ -406,7 +406,7 @@ func TestRate(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return s.Rate() == 100
-	}, 20*time.Millisecond, time.Millisecond)
+	}, 2*time.Second, 250*time.Millisecond)
 }
 
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
