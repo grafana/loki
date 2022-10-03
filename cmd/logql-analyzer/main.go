@@ -17,7 +17,7 @@ func main() {
 	cfg := getConfig()
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	}, prometheus.DefaultRegisterer)
+	}, prometheus.DefaultRegisterer, true, false)
 	s, err := createServer(cfg)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error while creating the server", "err", err)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-
 	// embed time zone data
 	_ "time/tzdata"
 
@@ -82,7 +81,7 @@ func main() {
 		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer, true, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)

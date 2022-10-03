@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"time"
@@ -23,8 +24,8 @@ var (
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
 // default logger for the server.
-func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
-	l := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg)
+func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sync bool) {
+	l := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, buffered, sync)
 
 	// when use util_log.Logger, skip 3 stack frames.
 	Logger = log.With(l, "caller", log.Caller(3))
@@ -41,12 +42,16 @@ type prometheusLogger struct {
 	logger      log.Logger
 	logMessages *prometheus.CounterVec
 	logFlushes  prometheus.Histogram
+
+	useBufferedLogger bool
+	useSyncLogger     bool
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
-func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer) log.Logger {
+func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer, buffered bool, sync bool) log.Logger {
 
+	// buffered logger settings
 	var (
 		logEntries    uint32 = 256                    // buffer up to 256 log lines in memory before flushing to a write(2) syscall
 		logBufferSize uint32 = 10e6                   // 10MB
@@ -65,19 +70,28 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logEntries)))+1),
 	})
 
-	// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
-	// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
-	buf := log.NewLineBufferedLogger(os.Stderr, logEntries,
-		log.WithFlushPeriod(flushTimeout),
-		log.WithPrellocatedBuffer(logBufferSize),
-		log.WithFlushCallback(func(entries uint32) {
-			logFlushes.Observe(float64(entries))
-		}),
-	)
+	var writer io.Writer
+	if buffered {
+		// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
+		// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
+		writer = log.NewLineBufferedLogger(os.Stderr, logEntries,
+			log.WithFlushPeriod(flushTimeout),
+			log.WithPrellocatedBuffer(logBufferSize),
+			log.WithFlushCallback(func(entries uint32) {
+				logFlushes.Observe(float64(entries))
+			}),
+		)
+	} else {
+		writer = os.Stderr
+	}
 
-	logger := log.NewLogfmtLogger(buf)
+	if sync {
+		writer = log.NewSyncWriter(writer)
+	}
+
+	logger := log.NewLogfmtLogger(writer)
 	if format.String() == "json" {
-		logger = log.NewJSONLogger(buf)
+		logger = log.NewJSONLogger(writer)
 	}
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
