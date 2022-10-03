@@ -3,13 +3,16 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"strings"
+
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error {
+func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string, profileSpec projectconfigv1.TLSProfileSpec) error {
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -31,6 +34,8 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 			},
 		},
 		Args: []string{
+			fmt.Sprintf("-server.tls-cipher-suites=%s", strings.Join(profileSpec.Ciphers, ",")),
+			fmt.Sprintf("-server.tls-min-version=%s", profileSpec.MinTLSVersion),
 			fmt.Sprintf("-server.grpc-tls-cert-path=%s", path.Join(grpcTLSDir, tlsCertFile)),
 			fmt.Sprintf("-server.grpc-tls-key-path=%s", path.Join(grpcTLSDir, tlsKeyFile)),
 		},
@@ -47,7 +52,7 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 	return nil
 }
 
-func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName string) error {
+func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName string, profileSpec projectconfigv1.TLSProfileSpec) error {
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -69,6 +74,8 @@ func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 			},
 		},
 		Args: []string{
+			fmt.Sprintf("-server.tls-cipher-suites=%s", strings.Join(profileSpec.Ciphers, ",")),
+			fmt.Sprintf("-server.tls-min-version=%s", profileSpec.MinTLSVersion),
 			fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
 			fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
 		},

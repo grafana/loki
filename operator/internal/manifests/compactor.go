@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -13,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -21,7 +21,7 @@ import (
 func BuildCompactor(opts Options) ([]client.Object, error) {
 	statefulSet := NewCompactorStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureCompactorHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureCompactorHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -31,7 +31,7 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureCompactorGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureCompactorGRPCServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -223,12 +223,12 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameCompactorHTTP(stackName)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
+func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameCompactorHTTP(opts.Name)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfileSpec)
 }
 
-func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameCompactorGRPC(stackName)
-	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
+func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameCompactorGRPC(opts.Name)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName, opts.TLSProfileSpec)
 }
