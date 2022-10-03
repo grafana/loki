@@ -23,10 +23,10 @@ const (
 
 // Config describes where to get position information from.
 type Config struct {
-	SyncPeriod        time.Duration `yaml:"sync_period"`
-	PositionsFile     string        `yaml:"filename"`
-	IgnoreInvalidYaml bool          `yaml:"ignore_invalid_yaml"`
-	ReadOnly          bool          `yaml:"-"`
+	SyncPeriod        time.Duration `mapstructure:"sync_period" yaml:"sync_period"`
+	PositionsFile     string        `mapstructure:"filename" yaml:"filename"`
+	IgnoreInvalidYaml bool          `mapstructure:"ignore_invalid_yaml" yaml:"ignore_invalid_yaml"`
+	ReadOnly          bool          `mapstructure:"-" yaml:"-"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
