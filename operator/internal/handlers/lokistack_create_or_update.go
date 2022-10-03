@@ -235,7 +235,6 @@ func CreateOrUpdateLokiStack(
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
-		TLSProfileType: projectconfigv1.TLSProfileType(fg.TLSProfile),
 		OpenShiftOptions: manifests_openshift.Options{
 			BuildOpts: manifests_openshift.BuildOptions{
 				AlertManagerEnabled: ocpAmEnabled,
@@ -257,13 +256,16 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	spec, err := tlsprofile.GetSecurityProfileInfo(ctx, k, ll, opts.TLSProfileType)
+	tlsProfileType := projectconfigv1.TLSProfileType(fg.TLSProfile)
+	tlsProfile, err := tlsprofile.GetSecurityProfileInfo(ctx, k, tlsProfileType)
 	if err != nil {
-		ll.Error(err, "failed to get security profile info")
-		return err
+		ll.Error(err, "failed to get security profile. will use default tls profile.")
 	}
 
-	opts.TLSProfileSpec = spec
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsProfile); optErr != nil {
+		ll.Error(optErr, "failed to conform options to tls profile settings")
+		return optErr
+	}
 
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {

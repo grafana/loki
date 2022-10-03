@@ -20,7 +20,6 @@ type Options struct {
 	GatewayBaseDomain string
 	ConfigSHA1        string
 
-	TLSProfileType projectconfigv1.TLSProfileType
 	TLSProfileSpec projectconfigv1.TLSProfileSpec
 
 	Gates                configv1.FeatureGates

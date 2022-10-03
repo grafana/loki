@@ -1,11 +1,14 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/v2/kverrors"
+	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
+	openshiftv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -134,6 +137,28 @@ func ApplyDefaultSettings(opts *Options) error {
 
 	opts.ResourceRequirements = internal.ResourceRequirementsTable[opts.Stack.Size]
 	opts.Stack = *spec
+
+	return nil
+}
+
+// ApplyTLSSettings manipulates the options to conform to the
+// TLS profile specifications
+func ApplyTLSSettings(opts *Options, tlsProfile openshiftv1.TLSSecurityProfile) error {
+	profileSpec, ok := openshiftv1.TLSProfiles[tlsProfile.Type]
+
+	if !ok {
+		return kverrors.New("unable to determine tls profile settings")
+	}
+
+	if tlsProfile.Type == openshiftv1.TLSProfileCustomType && tlsProfile.Custom != nil {
+		profileSpec = &tlsProfile.Custom.TLSProfileSpec
+	}
+
+	// need to remap all ciphers to their respective IANA names used by Go
+	opts.TLSProfileSpec = projectconfigv1.TLSProfileSpec{
+		MinTLSVersion: string(profileSpec.MinTLSVersion),
+		Ciphers:       crypto.OpenSSLToIANACipherSuites(profileSpec.Ciphers),
+	}
 
 	return nil
 }
