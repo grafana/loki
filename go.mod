@@ -338,4 +338,4 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 
 // Fork containing a line-buffered logger which should improve logging performance.
 // TODO: submit PR to upstream and remove this
-replace github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20220823062813-c11c260fd86d
+replace github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b

@@ -16,7 +16,7 @@ type LineBufferedLogger struct {
 	cap     uint32
 	w       io.Writer
 
-	onFlush func(bufLen uint32)
+	onFlush func(entries uint32)
 }
 
 // Size returns the number of entries in the buffer.
@@ -62,30 +62,50 @@ func (l *LineBufferedLogger) Flush() error {
 	return err
 }
 
-// OnFlush allows for a callback function to be executed when Flush() is called.
-// The length of the buffer at the time of the Flush() will be passed to the function.
-func (l *LineBufferedLogger) OnFlush(fn func(bufLen uint32)) {
-	l.onFlush = fn
+type LineBufferedLoggerOption func(*LineBufferedLogger)
+
+// WithFlushPeriod creates a new LineBufferedLoggerOption that sets the flush period for the LineBufferedLogger.
+func WithFlushPeriod(d time.Duration) LineBufferedLoggerOption {
+	return func(l *LineBufferedLogger) {
+		go func() {
+			tick := time.NewTicker(d)
+			defer tick.Stop()
+
+			for range tick.C {
+				l.Flush()
+			}
+		}()
+	}
 }
 
-// NewLineBufferedLogger creates a new LineBufferedLogger with a configured capacity and flush period.
+// WithFlushCallback allows for a callback function to be executed when Flush() is called.
+// The length of the buffer at the time of the Flush() will be passed to the function.
+func WithFlushCallback(fn func(entries uint32)) LineBufferedLoggerOption {
+	return func(l *LineBufferedLogger) {
+		l.onFlush = fn
+	}
+}
+
+// WithPrellocatedBuffer preallocates a buffer to reduce GC cycles and slice resizing.
+func WithPrellocatedBuffer(size uint32) LineBufferedLoggerOption {
+	return func(l *LineBufferedLogger) {
+		l.buf = newThreadsafeBuffer(bytes.NewBuffer(make([]byte, size)))
+		l.buf.Reset()
+	}
+}
+
+// NewLineBufferedLogger creates a new LineBufferedLogger with a configured capacity.
 // Lines are flushed when the context is done, the buffer is full, or the flush period is reached.
-func NewLineBufferedLogger(w io.Writer, cap uint32, flushPeriod time.Duration) *LineBufferedLogger {
+func NewLineBufferedLogger(w io.Writer, cap uint32, opts ...LineBufferedLoggerOption) *LineBufferedLogger {
 	l := &LineBufferedLogger{
 		w:   w,
 		buf: newThreadsafeBuffer(bytes.NewBuffer([]byte{})),
 		cap: cap,
 	}
 
-	// flush periodically
-	go func() {
-		tick := time.NewTicker(flushPeriod)
-		defer tick.Stop()
-
-		for range tick.C {
-			l.Flush()
-		}
-	}()
+	for _, opt := range opts {
+		opt(l)
+	}
 
 	return l
 }

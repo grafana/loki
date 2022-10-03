@@ -366,6 +366,8 @@ github.com/cznic/strutil v0.0.0-20171016134553-529a34b1c186/go.mod h1:AHHPPPXTw0
 github.com/cznic/zappy v0.0.0-20160723133515-2533cb5b45cc/go.mod h1:Y1SNZ4dRUOKXshKUbwUapqNncRrho4mkjQebgEHZLj8=
 github.com/dannykopping/go-kit-log v0.2.2-0.20220823062813-c11c260fd86d h1:cWYPuIxuMmtFibckYkoH4apJq8UUB0HzWbMyDm5pcZI=
 github.com/dannykopping/go-kit-log v0.2.2-0.20220823062813-c11c260fd86d/go.mod h1:NwTd00d/i8cPZ3xOwwiv2PO5MOcx78fFErGNcVmBjv0=
+github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b h1:G8g9mAKEj9O3RsU6Hd/ow6lIcHarlcUl5omV6sFKEOU=
+github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b/go.mod h1:NwTd00d/i8cPZ3xOwwiv2PO5MOcx78fFErGNcVmBjv0=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

@@ -47,8 +47,11 @@ type prometheusLogger struct {
 // Prometheus counters for various log levels.
 func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer) log.Logger {
 
-	// buffer up to 64 log lines in memory before flushing to a write(2) syscall
-	var logBufferSize uint32 = 64
+	var (
+		logEntries    uint32 = 256                    // buffer up to 256 log lines in memory before flushing to a write(2) syscall
+		logBufferSize uint32 = 10e6                   // 10MB
+		flushTimeout         = 100 * time.Millisecond // flush the buffer after 100ms regardless of how full it is, to prevent losing many logs in case of ungraceful termination
+	)
 
 	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -59,19 +62,22 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 		Namespace: "loki",
 		Name:      "log_flushes",
 		Help:      "Histogram of log flushes using the line-buffered logger.",
-		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logBufferSize)))+1),
+		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logEntries)))+1),
 	})
 
 	// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
 	// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
-	buf := log.NewLineBufferedLogger(os.Stderr, logBufferSize, 100*time.Millisecond)
-	buf.OnFlush(func(bufLen uint32) {
-		logFlushes.Observe(float64(bufLen))
-	})
+	buf := log.NewLineBufferedLogger(os.Stderr, logEntries,
+		log.WithFlushPeriod(flushTimeout),
+		log.WithPrellocatedBuffer(logBufferSize),
+		log.WithFlushCallback(func(entries uint32) {
+			logFlushes.Observe(float64(entries))
+		}),
+	)
 
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(buf))
+	logger := log.NewLogfmtLogger(buf)
 	if format.String() == "json" {
-		logger = log.NewJSONLogger(log.NewSyncWriter(buf))
+		logger = log.NewJSONLogger(buf)
 	}
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
