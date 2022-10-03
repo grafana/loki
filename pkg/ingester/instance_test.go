@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -664,18 +665,32 @@ func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
 	return f.limits
 }
 
-func TestStreamShardingConfiguration(t *testing.T) {
-	shardStreamsCfg := &shardstreams.Config{Enabled: true, LoggingEnabled: true}
-	shardStreamsCfg.DesiredRate.Set("6MB")
+func TestStreamShardingUsage(t *testing.T) {
+	setupCustomTenantLimit := func(perStreamLimit string) *validation.Limits {
+		shardStreamsCfg := &shardstreams.Config{Enabled: true, LoggingEnabled: true}
+		shardStreamsCfg.DesiredRate.Set("6MB")
 
-	customTenant := "my-org"
+		customTenantLimits := &validation.Limits{}
+		flagext.DefaultValues(customTenantLimits)
+
+		customTenantLimits.PerStreamRateLimit.Set(perStreamLimit)
+		customTenantLimits.PerStreamRateLimitBurst.Set(perStreamLimit)
+		customTenantLimits.ShardStreams = shardStreamsCfg
+
+		return customTenantLimits
+	}
+
+	customTenant1 := "my-org1"
+	customTenant2 := "my-org1"
 
 	limitsDefinition := &fakeLimits{
 		limits: make(map[string]*validation.Limits),
 	}
-	limitsDefinition.limits[customTenant] = &validation.Limits{
-		ShardStreams: shardStreamsCfg,
-	}
+	// testing with 2 because although 2 is enough to accept at least the
+	// first two line entries, because per-stream sharding is enabled,
+	// all entries are rejected if one of them isn't to be accepted.
+	limitsDefinition.limits[customTenant1] = setupCustomTenantLimit("2")
+	limitsDefinition.limits[customTenant2] = setupCustomTenantLimit("4") // TODO: set this to 6 and see this test pass.
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
 	require.NoError(t, err)
@@ -683,7 +698,7 @@ func TestStreamShardingConfiguration(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	defaultShardStreamsCfg := limiter.limits.ShardStreams("fake")
-	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant)
+	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
 
 	t.Run("test default configuration", func(t *testing.T) {
 		require.Equal(t, false, defaultShardStreamsCfg.Enabled)
@@ -695,6 +710,44 @@ func TestStreamShardingConfiguration(t *testing.T) {
 		require.Equal(t, true, tenantShardStreamsCfg.Enabled)
 		require.Equal(t, "6MB", tenantShardStreamsCfg.DesiredRate.String())
 		require.Equal(t, true, tenantShardStreamsCfg.LoggingEnabled)
+	})
+
+	t.Run("invalid push returns error", func(t *testing.T) {
+		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+		ctx := context.Background()
+
+		err = i.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("valid push returns no error", func(t *testing.T) {
+		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+		ctx := context.Background()
+
+		err = i.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{myotherlabel="myothervalue"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
 	})
 }
 
