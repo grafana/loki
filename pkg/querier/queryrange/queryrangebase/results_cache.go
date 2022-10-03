@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -225,9 +226,13 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
+
+	user, _ := user.ExtractOrgID(ctx)
+	logger := log.With(s.logger, "org_id", user)
+
 	for _, v := range headerValues {
 		if v == noStoreValue {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+			level.Debug(logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
 	}
@@ -244,13 +249,13 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
 
 	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
 		return false
 	}
 
 	for _, gen := range genNumbersFromResp {
 		if gen != genNumberFromCtx {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
 			return false
 		}
 	}

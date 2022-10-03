@@ -149,5 +149,5 @@ func (g *noopNumberGetter) GetCacheGenerationNumber(_ context.Context, _ string)
 }
 
 func (g *noopNumberGetter) Name() string {
-	return ""
+	return "noop-getter"
 }

@@ -40,7 +40,6 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -81,6 +80,7 @@ const (
 	Distributor              string = "distributor"
 	Ingester                 string = "ingester"
 	Querier                  string = "querier"
+	CacheGenerationLoader    string = "cache-generation-loader"
 	IngesterQuerier          string = "ingester-querier"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
@@ -362,9 +362,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
-	httpMiddleware := middleware.Merge(
+	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
-	)
+	}
+	if t.supportIndexDeleteRequest() {
+		toMerge = append(
+			toMerge,
+			serverutil.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+		)
+	}
+	httpMiddleware := middleware.Merge(toMerge...)
 
 	logger := log.With(util_log.Logger, "component", "querier")
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
@@ -664,20 +671,11 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	var genLoader queryrangebase.CacheGenNumberLoader
-	if t.supportIndexDeleteRequest() {
-		cacheGenClient, err := t.cacheGenClient()
-		if err != nil {
-			return nil, err
-		}
-		genLoader = generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer)
-	}
-
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig, genLoader,
+		t.Cfg.SchemaConfig, t.cacheGenerationLoader,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -689,16 +687,25 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) supportIndexDeleteRequest() bool {
-	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
+func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
+	var client generationnumber.CacheGenClient
+	if t.supportIndexDeleteRequest() {
+		compactorAddress, err := t.compactorAddress()
+		if err != nil {
+			return nil, err
+		}
+		client, err = generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
+	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	compactorAddress, err := t.compactorAddress()
-	if err != nil {
-		return nil, err
-	}
-	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+func (t *Loki) supportIndexDeleteRequest() bool {
+	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
 func (t *Loki) compactorAddress() (string, error) {
