@@ -23,11 +23,11 @@ local template = import 'grafonnet/template.libsonnet';
                                          .addLog()
                                          .addTag()
                                          + {
-                                          templating+: {
-                                            list+: [
-                                              tenantTemplate,
-                                            ],
-                                          },
+                                           templating+: {
+                                             list+: [
+                                               tenantTemplate,
+                                             ],
+                                           },
                                          },
-    }
+    },
 }

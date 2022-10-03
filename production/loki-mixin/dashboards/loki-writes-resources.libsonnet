@@ -44,8 +44,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.panel('In-memory streams') +
             $.queryPanel(
-              ['sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(ingester_job_matcher)],
-              'sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(ingester_zone_job_matcher)],],
+              [
+                'sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(ingester_job_matcher)],
+                'sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(ingester_zone_job_matcher)],
+              ],
               ['{{%s}}' % $._config.per_instance_label, '{{%s}}' % $._config.per_instance_label],
             ) +
             {

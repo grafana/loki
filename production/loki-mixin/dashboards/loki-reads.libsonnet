@@ -112,7 +112,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       // todo: add row iff multi zone ingesters are inabled 
+                       // todo: add row iff multi zone ingesters are enabled
                        .addRowIf(
                          !$._config.ssd.enabled,
                          $.row('Ingester - Zone Aware')

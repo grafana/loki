@@ -90,7 +90,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Ingester')
                           .addPanel(
                             $.panel('QPS') +
-                            $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector) + 
+                            $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector) +
                             $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
