@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/weaveworks/common/user"
 )
+
+const requestTimeout = 30 * time.Second
 
 type roundTripper struct {
 	instanceID    string
@@ -187,7 +192,7 @@ func (c *Client) Metrics() (string, error) {
 
 // Flush all in-memory chunks held by the ingesters to the backing store
 func (c *Client) Flush() error {
-	req, err := c.request("POST", fmt.Sprintf("%s/flush", c.baseURL))
+	req, err := c.request(context.Background(), "POST", fmt.Sprintf("%s/flush", c.baseURL))
 	if err != nil {
 		return err
 	}
@@ -377,8 +382,11 @@ type Rules struct {
 }
 
 // RunRangeQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunRangeQuery(query string) (*Response, error) {
-	buf, statusCode, err := c.run(c.rangeQueryURL(query))
+func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
+	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query))
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +395,10 @@ func (c *Client) RunRangeQuery(query string) (*Response, error) {
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunQuery(query string) (*Response, error) {
+func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
 	v := url.Values{}
 	v.Set("query", query)
 	v.Set("time", formatTS(c.Now.Add(time.Second)))
@@ -399,23 +410,27 @@ func (c *Client) RunQuery(query string) (*Response, error) {
 	u.Path = "/loki/api/v1/query"
 	u.RawQuery = v.Encode()
 
-	buf, statusCode, err := c.run(u.String())
+	buf, statusCode, err := c.run(ctx, u.String())
 	if err != nil {
 		return nil, err
 	}
 
 	return c.parseResponse(buf, statusCode)
+
 }
 
 // GetRules returns the loki ruler rules
-func (c *Client) GetRules() (*RulesResponse, error) {
+func (c *Client) GetRules(ctx context.Context) (*RulesResponse, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
 		return nil, err
 	}
 	u.Path = "/prometheus/api/v1/rules"
 
-	buf, _, err := c.run(u.String())
+	buf, _, err := c.run(ctx, u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -458,10 +473,13 @@ func (c *Client) rangeQueryURL(query string) string {
 	return u.String()
 }
 
-func (c *Client) LabelNames() ([]string, error) {
+func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
 	url := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
 
-	req, err := c.request("GET", url)
+	req, err := c.request(ctx, "GET", url)
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +491,7 @@ func (c *Client) LabelNames() ([]string, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("Unexpected status code of %d", res.StatusCode)
+		return nil, fmt.Errorf("unexpected status code of %d", res.StatusCode)
 	}
 
 	var values struct {
@@ -487,10 +505,13 @@ func (c *Client) LabelNames() ([]string, error) {
 }
 
 // LabelValues return a LabelValues query
-func (c *Client) LabelValues(labelName string) ([]string, error) {
+func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
 	url := fmt.Sprintf("%s/loki/api/v1/label/%s/values", c.baseURL, url.PathEscape(labelName))
 
-	req, err := c.request("GET", url)
+	req, err := c.request(ctx, "GET", url)
 	if err != nil {
 		return nil, err
 	}
@@ -502,7 +523,7 @@ func (c *Client) LabelValues(labelName string) ([]string, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("Unexpected status code of %d", res.StatusCode)
+		return nil, fmt.Errorf("unexpected status code of %d", res.StatusCode)
 	}
 
 	var values struct {
@@ -515,8 +536,9 @@ func (c *Client) LabelValues(labelName string) ([]string, error) {
 	return values.Data, nil
 }
 
-func (c *Client) request(method string, url string) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, nil)
+func (c *Client) request(ctx context.Context, method string, url string) (*http.Request, error) {
+	ctx = user.InjectOrgID(ctx, c.instanceID)
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -524,8 +546,8 @@ func (c *Client) request(method string, url string) (*http.Request, error) {
 	return req, nil
 }
 
-func (c *Client) run(u string) ([]byte, int, error) {
-	req, err := c.request("GET", u)
+func (c *Client) run(ctx context.Context, u string) ([]byte, int, error) {
+	req, err := c.request(ctx, "GET", u)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		assert.NoError(t, clu.Cleanup())
 	}()
 
+	// run initially the compactor, indexgateway, and distributor.
 	var (
 		tCompactor = clu.AddComponent(
 			"compactor",
@@ -35,6 +37,11 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"distributor",
 			"-target=distributor",
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	// then, run only the ingester and query scheduler.
+	var (
 		tIngester = clu.AddComponent(
 			"ingester",
 			"-target=ingester",
@@ -45,6 +52,11 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-target=query-scheduler",
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
 			"-target=query-frontend",
@@ -60,7 +72,6 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-common.compactor-address="+tCompactor.HTTPURL().String(),
 		)
 	)
-
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
@@ -90,7 +101,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -104,13 +115,13 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	})
 
 	t.Run("label-names", func(t *testing.T) {
-		resp, err := cliQueryFrontend.LabelNames()
+		resp, err := cliQueryFrontend.LabelNames(context.Background())
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {
-		resp, err := cliQueryFrontend.LabelValues("job")
+		resp, err := cliQueryFrontend.LabelValues(context.Background(), "job")
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})

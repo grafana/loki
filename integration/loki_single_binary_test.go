@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cli.RunRangeQuery(`{job="fake"}`)
+		resp, err := cli.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -60,13 +61,13 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	})
 
 	t.Run("label-names", func(t *testing.T) {
-		resp, err := cli.LabelNames()
+		resp, err := cli.LabelNames(context.Background())
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {
-		resp, err := cli.LabelValues("job")
+		resp, err := cli.LabelValues(context.Background(), "job")
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})

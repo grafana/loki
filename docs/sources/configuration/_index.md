@@ -210,6 +210,12 @@ http_tls_config:
   # HTTP TLS Client CA path.
   # CLI flag: -server.http-tls-ca-path
   [client_ca_file: <string> | default = ""]
+  # HTTP TLS Cipher Suites.
+  # CLI flag: -server.http-tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+  # HTTP TLS Min Version.
+  # CLI flag: -server.http-tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
@@ -233,6 +239,12 @@ grpc_tls_config:
   # gRPC TLS Client CA path.
   # CLI flag: -server.grpc-tls-ca-path
   [client_ca_file: <string> | default = ""]
+  # GRPC TLS Cipher Suites.
+  # CLI flag: -server.grpc-tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+  # GRPC TLS Min Version.
+  # CLI flag: -server.grpc-tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 # Register instrumentation handlers (/metrics, etc.)
 # CLI flag: -server.register-instrumentation
@@ -472,6 +484,14 @@ tail_tls_config:
   # CLI flag: -frontend.tail-tls-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # Override the default cipher suite list (separated by commas).
+  # CLI flag: -frontend.tail-tls-config.tls_cipher_suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version.
+  # CLI flag: -frontend.tail-tls-config.tls_min_version
+  [tls_min_version: <string> | default = ""]
+
 
 # DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address
@@ -553,6 +573,14 @@ ruler_client:
   # Skip validating server certificate.
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Override the default cipher suite list (separated by commas).
+  # CLI flag: -ruler.client.tls_cipher_suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version.
+  # CLI flag: -ruler.client.tls_min_version
+  [tls_min_version: <string> | default = ""]
 
 # How frequently to evaluate rules.
 # CLI flag: -ruler.evaluation-interval
@@ -1126,7 +1154,7 @@ lifecycler:
     [heartbeat_timeout: <duration> | default = 1m]
 
     # The number of ingesters to write to and read from.
-    # CLI flag: -distributor.replication-factor
+    # CLI flag: -ingester.replication-factor
     [replication_factor: <int> | default = 3]
 
   # The number of tokens the lifecycler will generate and put into the ring if
@@ -1930,6 +1958,10 @@ redis:
   # Maximum number of connections in the pool.
   # CLI flag: -<prefix>.redis.pool-size
   [pool_size: <int> | default = 0]
+
+  # Username to use when connecting to redis.
+  # CLI flag: -<prefix>.redis.username
+  [username: <string>]
 
   # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
