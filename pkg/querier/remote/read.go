@@ -68,7 +68,7 @@ func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (
 
 	streams, ok := response.Data.Result.(loghttp.Streams)
 	if !ok {
-		return nil, errors.Errorf("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail.")
+		return nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail.")
 	}
 	return iter.NewStreamsIterator(streams.ToProto(), params.Direction), nil
 }

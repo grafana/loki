@@ -24,7 +24,7 @@ const (
 )
 
 func TestQuerier_SelectLog(t *testing.T) {
-	server := NewMockLokiHttpServer()
+	server := NewMockLokiHTTPServer()
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
 	defer server.Stop(t)
@@ -66,17 +66,17 @@ func TestQuerier_SelectLog(t *testing.T) {
 
 }
 
-type mockLokiHttpServer struct {
+type mockLokiHTTPServer struct {
 	server *http.Server
 }
 
-func NewMockLokiHttpServer() *mockLokiHttpServer {
+func NewMockLokiHTTPServer() *mockLokiHTTPServer {
 	server := &http.Server{Addr: ":3100", Handler: nil}
-	return &mockLokiHttpServer{server: server}
+	return &mockLokiHTTPServer{server: server}
 
 }
 
-func (s *mockLokiHttpServer) Run(t *testing.T, from time.Time) {
+func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 	server := &http.Server{Addr: ":3100", Handler: nil}
 
 	http.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
@@ -126,7 +126,7 @@ func (s *mockLokiHttpServer) Run(t *testing.T, from time.Time) {
 
 }
 
-func (s *mockLokiHttpServer) Stop(t *testing.T) {
+func (s *mockLokiHTTPServer) Stop(t *testing.T) {
 	err := s.server.Shutdown(context.Background())
 	require.NoError(t, err)
 }
