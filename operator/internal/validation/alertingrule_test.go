@@ -1,11 +1,13 @@
-package v1beta1_test
+package validation_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/grafana/loki/operator/apis/loki/v1beta1"
-	"github.com/stretchr/testify/require"
+	"github.com/grafana/loki/operator/internal/validation"
 
+	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -186,6 +188,33 @@ var att = []struct {
 			},
 		),
 	},
+	{
+		desc: "LogQL not sample-expression",
+		spec: v1beta1.AlertingRuleSpec{
+			Groups: []*v1beta1.AlertingRuleGroup{
+				{
+					Name:     "first",
+					Interval: v1beta1.PrometheusDuration("1m"),
+					Rules: []*v1beta1.AlertingRuleGroupSpec{
+						{
+							Expr: `{message=~".+"}`,
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "AlertingRule"},
+			"testing-rule",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
+					`{message=~".+"}`,
+					v1beta1.ErrParseLogQLNotSample.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {
@@ -193,14 +222,17 @@ func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			l := v1beta1.AlertingRule{
+
+			l := &v1beta1.AlertingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
 				Spec: tc.spec,
 			}
+			ctx := context.Background()
 
-			err := l.ValidateCreate()
+			v := &validation.AlertingRuleValidator{}
+			err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -215,14 +247,17 @@ func TestAlertingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			l := v1beta1.AlertingRule{
+
+			l := &v1beta1.AlertingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
 				Spec: tc.spec,
 			}
+			ctx := context.Background()
 
-			err := l.ValidateUpdate(&v1beta1.AlertingRule{})
+			v := &validation.AlertingRuleValidator{}
+			err := v.ValidateUpdate(ctx, &v1beta1.AlertingRule{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
