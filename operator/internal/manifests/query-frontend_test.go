@@ -128,8 +128,6 @@ func TestConfigureQueryFrontendHTTPServicePKI(t *testing.T) {
 								"-frontend.tail-tls-config.tls-cipher-suites=TLS_RSA_WITH_AES_128_CBC_SHA",
 								"-frontend.tail-tls-config.tls-min-version=TLSVersion1.2",
 								fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caBundleDir, caFile),
-								"-server.tls-cipher-suites=TLS_RSA_WITH_AES_128_CBC_SHA",
-								"-server.tls-min-version=TLSVersion1.2",
 								fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
 								fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
 							},

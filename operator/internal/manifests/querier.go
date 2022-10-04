@@ -3,7 +3,6 @@ package manifests
 import (
 	"fmt"
 	"path"
-	"strings"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -110,6 +109,13 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+		)
+	}
+
 	if opts.Stack.Template != nil && opts.Stack.Template.Querier != nil {
 		podSpec.Tolerations = opts.Stack.Template.Querier.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
@@ -208,7 +214,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 
 func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
 	serviceName := serviceNameQuerierHTTP(opts.Name)
-	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfileSpec)
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
@@ -239,19 +245,19 @@ func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, opts Options)
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", strings.Join(opts.TLSProfileSpec.Ciphers, ",")),
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
 			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for query frontend client
 			"-querier.frontend-client.tls-enabled=true",
-			fmt.Sprintf("-querier.frontend-client.tls-cipher-suites=%s", strings.Join(opts.TLSProfileSpec.Ciphers, ",")),
+			fmt.Sprintf("-querier.frontend-client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
 			fmt.Sprintf("-querier.frontend-client.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
 			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", strings.Join(opts.TLSProfileSpec.Ciphers, ",")),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
@@ -267,5 +273,5 @@ func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, opts Options)
 	}
 
 	serviceName := serviceNameQuerierGRPC(opts.Name)
-	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfileSpec)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

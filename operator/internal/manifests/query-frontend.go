@@ -3,7 +3,6 @@ package manifests
 import (
 	"fmt"
 	"path"
-	"strings"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
@@ -117,6 +116,13 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+		)
+	}
+
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
 		podSpec.Tolerations = opts.Stack.Template.QueryFrontend.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
@@ -224,24 +230,23 @@ func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, opts Op
 		caBundleDir,
 		caFile,
 		opts.TLSProfileSpec.MinTLSVersion,
-		opts.TLSProfileSpec.Ciphers,
+		opts.TLSCipherSuites(),
 	)
 	if err != nil {
 		return err
 	}
 
-	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfileSpec)
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
 	serviceName := serviceNameQueryFrontendGRPC(opts.Name)
-	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfileSpec)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 // ConfigureQueryFrontendDeployment configures CA certificate when TLS is enabled.
 func configureTailCA(d *appsv1.Deployment,
-	qfContainerName, caBundleVolumeName, caDir, caFile, minTLSVersion string,
-	cipherSuites []string,
+	qfContainerName, caBundleVolumeName, caDir, caFile, minTLSVersion, cipherSuites string,
 ) error {
 	var qfIdx int
 	for i, c := range d.Spec.Template.Spec.Containers {
@@ -253,7 +258,7 @@ func configureTailCA(d *appsv1.Deployment,
 
 	containerSpec := corev1.Container{
 		Args: []string{
-			fmt.Sprintf("-frontend.tail-tls-config.tls-cipher-suites=%s", strings.Join(cipherSuites, ",")),
+			fmt.Sprintf("-frontend.tail-tls-config.tls-cipher-suites=%s", cipherSuites),
 			fmt.Sprintf("-frontend.tail-tls-config.tls-min-version=%s", minTLSVersion),
 			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
 		},

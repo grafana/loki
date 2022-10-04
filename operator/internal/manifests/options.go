@@ -1,6 +1,8 @@
 package manifests
 
 import (
+	"strings"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -35,6 +37,12 @@ type Options struct {
 	OpenShiftOptions openshift.Options
 
 	Tenants Tenants
+}
+
+// TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
+// to a string of elements joined with a comma.
+func (o Options) TLSCipherSuites() string {
+	return strings.Join(o.TLSProfileSpec.Ciphers, ",")
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
