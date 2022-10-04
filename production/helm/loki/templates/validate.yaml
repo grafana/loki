@@ -8,12 +8,17 @@
 {{- fail "Loki Canary requires self monitoring to also be enabled"}}
 {{- end }}
 
-{{- if and .lokiCanary.test.enabled (not .lokiCanary.enabled) }}
-{{- fail "Loki Canary test requires the Loki Canary to be enabled"}}
+{{- if and (not .enabled) $.Values.test.enabled }}
+{{- fail "Helm test requires self monitoring to be enabled"}}
 {{- end }}
 
-{{- if and .lokiCanary.test.enabled (not .lokiCanary.test.prometheusAddress) }}
-{{- fail "Loki Canary test requires a prometheusAddress to be set"}}
+{{- if and (not .lokiCanary.enabled) $.Values.test.enabled }}
+{{- fail "Helm test requires the Loki Canary to be enabled"}}
 {{- end }}
 
 {{- end}}
+
+{{- if and .Values.test.enabled (not .Values.test.prometheusAddress) }}
+{{- fail "Helm test requires a prometheusAddress for an instance scraping the Loki canary's metrics"}}
+{{- end }}
+
