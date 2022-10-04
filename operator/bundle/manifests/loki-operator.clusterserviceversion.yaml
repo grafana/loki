@@ -1346,7 +1346,7 @@ spec:
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: valertingrule.kb.io
+    generateName: valertingrule.loki.grafana.com
     rules:
     - apiGroups:
       - loki.grafana.com
@@ -1386,7 +1386,7 @@ spec:
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: vrecordingrule.kb.io
+    generateName: vrecordingrule.loki.grafana.com
     rules:
     - apiGroups:
       - loki.grafana.com
