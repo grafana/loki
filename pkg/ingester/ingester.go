@@ -244,7 +244,8 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.WAL.Enabled {
 		walStats.Set("enabled")
 	}
-	metrics := newIngesterMetrics(registerer)
+	// True or false for the regDeprecated value would be propagated from a CLI argument
+	metrics := newIngesterMetrics(registerer, false)
 
 	i := &Ingester{
 		cfg:                   cfg,

@@ -9,6 +9,9 @@ import (
 )
 
 type ingesterMetrics struct {
+	// deprecated metrics
+	someDeprecatedMetric deprecatedCounter
+
 	checkpointDeleteFail       prometheus.Counter
 	checkpointDeleteTotal      prometheus.Counter
 	checkpointCreationFail     prometheus.Counter
@@ -77,8 +80,68 @@ const (
 	duplicateReason = "duplicate"
 )
 
-func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
+type DeprecatableMetric interface {
+	prometheus.Collector
+	Deprecated() bool
+}
+
+type deprecatedCounter struct {
+	prometheus.Counter
+	deprecated bool
+}
+
+func (d deprecatedCounter) Deprecated() bool {
+	return d.deprecated
+}
+
+type DeprecationRegisterer struct {
+	reg                prometheus.Registerer
+	registerDeprecated bool
+}
+
+func (dr DeprecationRegisterer) Register(c prometheus.Collector) error {
+	// The DeprecationRegisterer should still handle non-deprecatable metrics
+	a, ok := c.(DeprecatableMetric)
+	if !ok {
+		return dr.reg.Register(c)
+	}
+	// Register all metrics
+	if dr.registerDeprecated {
+		return dr.reg.Register(c)
+	}
+	// We don't want to register deprecated metrics, so check the value
+	if a.Deprecated() {
+		return nil
+	}
+	return dr.reg.Register(c)
+
+}
+
+func (dr DeprecationRegisterer) MustRegister(c ...prometheus.Collector) {
+	for _, ca := range c {
+		if err := dr.Register(ca); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (dr DeprecationRegisterer) Unregister(c prometheus.Collector) bool {
+	return dr.reg.Unregister(c)
+}
+
+func newIngesterMetrics(r prometheus.Registerer, regDeprecated bool) *ingesterMetrics {
+	reg := DeprecationRegisterer{r, regDeprecated}
+	someDeprecatedMetric := deprecatedCounter{
+		prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "some_deprecatable_metric",
+			Help: "A metric that can be deprecated and registered (or not) via an argument.",
+		}),
+		// This should be toggled manually between releases when new metrics are depreacted
+		true,
+	}
+	reg.Register(someDeprecatedMetric)
 	return &ingesterMetrics{
+		someDeprecatedMetric: someDeprecatedMetric,
 		walDiskFullFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_disk_full_failures_total",
 			Help: "Total number of wal write failures due to full disk.",
