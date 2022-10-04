@@ -70,6 +70,8 @@ type Config struct {
 	GRPCListenPort    int    `yaml:"grpc_listen_port"`
 	GRPCConnLimit     int    `yaml:"grpc_listen_conn_limit"`
 
+	CipherSuites  string    `yaml:"tls_cipher_suites"`
+	MinVersion    string    `yaml:"tls_min_version"`
 	HTTPTLSConfig TLSConfig `yaml:"http_tls_config"`
 	GRPCTLSConfig TLSConfig `yaml:"grpc_tls_config"`
 
@@ -124,6 +126,8 @@ var infinty = time.Duration(math.MaxInt64)
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPListenAddress, "server.http-listen-address", "", "HTTP server listen address.")
 	f.StringVar(&cfg.HTTPListenNetwork, "server.http-listen-network", DefaultNetwork, "HTTP server listen network, default tcp")
+	f.StringVar(&cfg.CipherSuites, "server.tls-cipher-suites", "", "Comma-separated list of cipher suites to use. If blank, the default Go cipher suites will be used.")
+	f.StringVar(&cfg.MinVersion, "server.tls-min-version", "", "Minimum TLS version to use. If blank, the Go TLS minimum version will be used.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSCertPath, "server.http-tls-cert-path", "", "HTTP server cert path.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSKeyPath, "server.http-tls-key-path", "", "HTTP server key path.")
 	f.StringVar(&cfg.HTTPTLSConfig.ClientAuth, "server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
@@ -181,19 +185,36 @@ type Server struct {
 
 // New makes a new Server
 func New(cfg Config) (*Server, error) {
+	// If user doesn't supply a logging implementation, by default instantiate
+	// logrus.
+	log := cfg.Log
+	if log == nil {
+		log = logging.NewLogrus(cfg.LogLevel)
+	}
+
+	// If user doesn't supply a registerer/gatherer, use Prometheus' by default.
+	reg := cfg.Registerer
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+	gatherer := cfg.Gatherer
+	if gatherer == nil {
+		gatherer = prometheus.DefaultGatherer
+	}
+
 	tcpConnections := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: cfg.MetricsNamespace,
 		Name:      "tcp_connections",
 		Help:      "Current number of accepted TCP connections.",
 	}, []string{"protocol"})
-	prometheus.MustRegister(tcpConnections)
+	reg.MustRegister(tcpConnections)
 
 	tcpConnectionsLimit := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: cfg.MetricsNamespace,
 		Name:      "tcp_connections_limit",
 		Help:      "The max number of TCP connections that can be accepted (0 means no limit).",
 	}, []string{"protocol"})
-	prometheus.MustRegister(tcpConnectionsLimit)
+	reg.MustRegister(tcpConnectionsLimit)
 
 	network := cfg.HTTPListenNetwork
 	if network == "" {
@@ -226,21 +247,13 @@ func New(cfg Config) (*Server, error) {
 		grpcListener = netutil.LimitListener(grpcListener, cfg.GRPCConnLimit)
 	}
 
-	// If user doesn't supply a logging implementation, by default instantiate
-	// logrus.
-	log := cfg.Log
-	if log == nil {
-		log = logging.NewLogrus(cfg.LogLevel)
+	cipherSuites, err := stringToCipherSuites(cfg.CipherSuites)
+	if err != nil {
+		return nil, err
 	}
-
-	// If user doesn't supply a registerer/gatherer, use Prometheus' by default.
-	reg := cfg.Registerer
-	if reg == nil {
-		reg = prometheus.DefaultRegisterer
-	}
-	gatherer := cfg.Gatherer
-	if gatherer == nil {
-		gatherer = prometheus.DefaultGatherer
+	minVersion, err := stringToTLSVersion(cfg.MinVersion)
+	if err != nil {
+		return nil, err
 	}
 
 	// Setup TLS
@@ -248,10 +261,12 @@ func New(cfg Config) (*Server, error) {
 	if len(cfg.HTTPTLSConfig.TLSCertPath) > 0 && len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSStruct{
-			TLSCertPath: cfg.HTTPTLSConfig.TLSCertPath,
-			TLSKeyPath:  cfg.HTTPTLSConfig.TLSKeyPath,
-			ClientAuth:  cfg.HTTPTLSConfig.ClientAuth,
-			ClientCAs:   cfg.HTTPTLSConfig.ClientCAs,
+			TLSCertPath:  cfg.HTTPTLSConfig.TLSCertPath,
+			TLSKeyPath:   cfg.HTTPTLSConfig.TLSKeyPath,
+			ClientAuth:   cfg.HTTPTLSConfig.ClientAuth,
+			ClientCAs:    cfg.HTTPTLSConfig.ClientCAs,
+			CipherSuites: cipherSuites,
+			MinVersion:   minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating http tls config: %v", err)
@@ -261,10 +276,12 @@ func New(cfg Config) (*Server, error) {
 	if len(cfg.GRPCTLSConfig.TLSCertPath) > 0 && len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSStruct{
-			TLSCertPath: cfg.GRPCTLSConfig.TLSCertPath,
-			TLSKeyPath:  cfg.GRPCTLSConfig.TLSKeyPath,
-			ClientAuth:  cfg.GRPCTLSConfig.ClientAuth,
-			ClientCAs:   cfg.GRPCTLSConfig.ClientCAs,
+			TLSCertPath:  cfg.GRPCTLSConfig.TLSCertPath,
+			TLSKeyPath:   cfg.GRPCTLSConfig.TLSKeyPath,
+			ClientAuth:   cfg.GRPCTLSConfig.ClientAuth,
+			ClientCAs:    cfg.GRPCTLSConfig.ClientCAs,
+			CipherSuites: cipherSuites,
+			MinVersion:   minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating grpc tls config: %v", err)

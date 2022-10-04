@@ -10,7 +10,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         if condition
         then self.addRow(row)
         else self,
-      addLog(name='logs'):: self {
+      addLog(name='loki_datasource'):: self {
         templating+: {
           list+: [
             {
@@ -90,7 +90,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   containerLabelMatcher(containerName)::
     'label_name=~"%s.*"' % containerName,
 
-  logPanel(title, selector, datasource='$logs'):: {
+  logPanel(title, selector, datasource='$loki_datasources'):: {
     title: title,
     type: 'logs',
     datasource: datasource,

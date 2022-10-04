@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
@@ -243,6 +244,7 @@ type Loki struct {
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
 	Querier                  querier.Querier
+	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
 	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
@@ -510,6 +512,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
+	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -526,9 +529,9 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, Embededcache, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Embededcache, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
