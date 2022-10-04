@@ -73,10 +73,28 @@ func TestGetSecurityProfileInfo(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
+
 			info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, tc.profile)
+
 			assert.Nil(t, err)
 			assert.NotNil(t, info)
-			assert.EqualValues(t, tc.expected, info)
+			assert.EqualValues(t, &tc.expected, info)
 		})
 	}
+}
+
+func TestGetSecurityProfileInfo_APIServerNotFound(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, "")
+
+	assert.NotNil(t, err)
+	assert.Nil(t, info)
 }

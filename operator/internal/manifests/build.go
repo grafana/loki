@@ -143,15 +143,23 @@ func ApplyDefaultSettings(opts *Options) error {
 
 // ApplyTLSSettings manipulates the options to conform to the
 // TLS profile specifications
-func ApplyTLSSettings(opts *Options, tlsProfile openshiftv1.TLSSecurityProfile) error {
-	profileSpec, ok := openshiftv1.TLSProfiles[tlsProfile.Type]
+func ApplyTLSSettings(opts *Options, profile *openshiftv1.TLSSecurityProfile) error {
+	tlsSecurityProfile := &openshiftv1.TLSSecurityProfile{
+		Type: openshiftv1.TLSProfileIntermediateType,
+	}
+
+	if profile != nil {
+		tlsSecurityProfile = profile
+	}
+
+	profileSpec, ok := openshiftv1.TLSProfiles[tlsSecurityProfile.Type]
 
 	if !ok {
 		return kverrors.New("unable to determine tls profile settings")
 	}
 
-	if tlsProfile.Type == openshiftv1.TLSProfileCustomType && tlsProfile.Custom != nil {
-		profileSpec = &tlsProfile.Custom.TLSProfileSpec
+	if tlsSecurityProfile.Type == openshiftv1.TLSProfileCustomType && tlsSecurityProfile.Custom != nil {
+		profileSpec = &tlsSecurityProfile.Custom.TLSProfileSpec
 	}
 
 	// need to remap all ciphers to their respective IANA names used by Go

@@ -175,12 +175,12 @@ func CreateOrUpdateLokiStack(
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
 		if err != nil {
-			log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
+			ll.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
 		}
 
 		rulerConfig, err = rules.GetRulerConfig(ctx, k, req)
 		if err != nil {
-			log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
+			ll.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
 		}
 
 		if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
@@ -251,7 +251,7 @@ func CreateOrUpdateLokiStack(
 
 	if fg.LokiStackGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
-			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
+			ll.Error(optErr, "failed to apply defaults options to gateway settings")
 			return optErr
 		}
 	}
@@ -259,6 +259,7 @@ func CreateOrUpdateLokiStack(
 	tlsProfileType := projectconfigv1.TLSProfileType(fg.TLSProfile)
 	tlsProfile, err := tlsprofile.GetSecurityProfileInfo(ctx, k, tlsProfileType)
 	if err != nil {
+		// The API server is not guaranteed to be there nor have a result.
 		ll.Error(err, "failed to get security profile. will use default tls profile.")
 	}
 

@@ -152,7 +152,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tlsProfile := openshiftv1.TLSSecurityProfile{
+	tlsProfile := &openshiftv1.TLSSecurityProfile{
 		Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
 	}
 
