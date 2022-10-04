@@ -65,6 +65,11 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
+	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
+	// 				 These are only here to allow us to test the new functionality.
+	UseBufferedLogger bool `yaml:"use_buffered_logger"`
+	UseSyncLogger     bool `yaml:"use_sync_logger"`
+
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
 	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
@@ -103,6 +108,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
 		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
+	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
+	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
