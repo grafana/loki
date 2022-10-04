@@ -570,7 +570,7 @@ test:
     # -- The Docker registry
     registry: docker.io
     # -- Docker image repository
-    repository: grafana/loki-canary-test
+    repository: grafana/loki-helm-test
     # -- Overrides the image tag whose default is the chart's appVersion
     tag: null
     # -- Docker image pull policy

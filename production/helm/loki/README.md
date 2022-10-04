@@ -418,12 +418,12 @@ monitoring:
 | singleBinary.selectorLabels | object | `{}` | Additional selecto labels for each `single binary` pod |
 | singleBinary.terminationGracePeriodSeconds | int | `30` | Grace period to allow the single binary to shutdown before it is killed |
 | singleBinary.tolerations | list | `[]` | Tolerations for single binary pods |
-| test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null},"labels":{},"prometheusAddress":"http://prometheus:9090","retries":3,"retryDelay":"30s"}` | Section for configuring optional helm test |
+| test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-helm-test","tag":null},"labels":{},"prometheusAddress":"http://prometheus:9090","retries":3,"retryDelay":"30s"}` | Section for configuring optional helm test |
 | test.annotations | object | `{}` | Additional annotations for test pods |
-| test.image | object | `{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null}` | Image to use for loki canary |
+| test.image | object | `{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-helm-test","tag":null}` | Image to use for loki canary |
 | test.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
 | test.image.registry | string | `"docker.io"` | The Docker registry |
-| test.image.repository | string | `"grafana/loki-canary-test"` | Docker image repository |
+| test.image.repository | string | `"grafana/loki-helm-test"` | Docker image repository |
 | test.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
 | test.labels | object | `{}` | Additional labels for the test pods |
 | test.prometheusAddress | string | `"http://prometheus:9090"` | Address of the prometheus server to query for the test |

@@ -88,8 +88,8 @@
         packages = with pkgs; {
           inherit
             loki
-            loki-canary-test
-            loki-canary-test-docker;
+            loki-helm-test
+            loki-helm-test-docker;
         };
 
         apps = {
@@ -119,9 +119,9 @@
             type = "app";
             program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
           };
-          loki-canary-test = {
+          loki-helm-test = {
             type = "app";
-            program = with pkgs; "${loki-canary-test}/bin/loki-canary-test";
+            program = with pkgs; "${loki-helm-test}/bin/helm-test";
           };
         };
 

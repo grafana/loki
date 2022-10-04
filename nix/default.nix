@@ -27,13 +27,13 @@ in
         else
           "${buildVars.gitBranch}-${imageTagVersion}-WIP";
 
-      loki-canary-test = prev.callPackage ../cmd/loki-canary-test {
+      loki-helm-test = prev.callPackage ../production/helm/loki/src/helm-test {
         inherit (prev) pkgs lib buildGoModule dockerTools;
         rev = gitRevision;
       };
     in
     {
-      inherit (loki-canary-test) loki-canary-test loki-canary-test-docker;
+      inherit (loki-helm-test) loki-helm-test loki-helm-test-docker;
 
       loki = prev.callPackage ./loki.nix {
         inherit imageTag;
