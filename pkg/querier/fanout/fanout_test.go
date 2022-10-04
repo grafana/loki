@@ -30,7 +30,7 @@ func TestQuerier_Read(t *testing.T) {
 	server.Run(t, from)
 	//wg.Wait()
 	defer server.Stop(t)
-	remoteConf := remote.RemoteReadConfig{
+	remoteConf := remote.ReadConfig{
 		Name:          "remote-read-1",
 		RemoteTimeout: queryTimeout,
 		URL: &config_util.URL{
@@ -45,7 +45,7 @@ func TestQuerier_Read(t *testing.T) {
 	querier, err := remote.NewQuerier("test", remoteConf)
 	require.NoError(t, err)
 
-	remoteConf2 := remote.RemoteReadConfig{
+	remoteConf2 := remote.ReadConfig{
 		Name:          "remote-read-2",
 		RemoteTimeout: queryTimeout,
 		URL: &config_util.URL{
@@ -60,7 +60,7 @@ func TestQuerier_Read(t *testing.T) {
 	querier2, err := remote.NewQuerier("test", remoteConf2)
 	require.NoError(t, err)
 
-	fanoutQuerier := NewFanoutQuerier(querier, querier2)
+	fanoutQuerier := NewQuerier(querier, querier2)
 
 	request := logproto.QueryRequest{
 		Selector:  `{app="distributor"}`,

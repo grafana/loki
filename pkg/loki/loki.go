@@ -66,30 +66,30 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
-	Common            common.Config             `yaml:"common,omitempty"`
-	Server            server.Config             `yaml:"server,omitempty"`
-	InternalServer    internalserver.Config     `yaml:"internal_server,omitempty"`
-	Distributor       distributor.Config        `yaml:"distributor,omitempty"`
-	Querier           querier.Config            `yaml:"querier,omitempty"`
-	IngesterClient    client.Config             `yaml:"ingester_client,omitempty"`
-	Ingester          ingester.Config           `yaml:"ingester,omitempty"`
-	StorageConfig     storage.Config            `yaml:"storage_config,omitempty"`
-	IndexGateway      indexgateway.Config       `yaml:"index_gateway"`
-	ChunkStoreConfig  config.ChunkStoreConfig   `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig      config.SchemaConfig       `yaml:"schema_config,omitempty"`
-	LimitsConfig      validation.Limits         `yaml:"limits_config,omitempty"`
-	TableManager      index.TableManagerConfig  `yaml:"table_manager,omitempty"`
-	Worker            worker.Config             `yaml:"frontend_worker,omitempty"`
-	Frontend          lokifrontend.Config       `yaml:"frontend,omitempty"`
-	Ruler             ruler.Config              `yaml:"ruler,omitempty"`
-	QueryRange        queryrange.Config         `yaml:"query_range,omitempty"`
-	RuntimeConfig     runtimeconfig.Config      `yaml:"runtime_config,omitempty"`
-	MemberlistKV      memberlist.KVConfig       `yaml:"memberlist"`
-	Tracing           tracing.Config            `yaml:"tracing"`
-	CompactorConfig   compactor.Config          `yaml:"compactor,omitempty"`
-	QueryScheduler    scheduler.Config          `yaml:"query_scheduler"`
-	UsageReport       usagestats.Config         `yaml:"analytics"`
-	RemoteReadConfigs []remote.RemoteReadConfig `yaml:"remote_read,omitempty"`
+	Common            common.Config            `yaml:"common,omitempty"`
+	Server            server.Config            `yaml:"server,omitempty"`
+	InternalServer    internalserver.Config    `yaml:"internal_server,omitempty"`
+	Distributor       distributor.Config       `yaml:"distributor,omitempty"`
+	Querier           querier.Config           `yaml:"querier,omitempty"`
+	IngesterClient    client.Config            `yaml:"ingester_client,omitempty"`
+	Ingester          ingester.Config          `yaml:"ingester,omitempty"`
+	StorageConfig     storage.Config           `yaml:"storage_config,omitempty"`
+	IndexGateway      indexgateway.Config      `yaml:"index_gateway"`
+	ChunkStoreConfig  config.ChunkStoreConfig  `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig      config.SchemaConfig      `yaml:"schema_config,omitempty"`
+	LimitsConfig      validation.Limits        `yaml:"limits_config,omitempty"`
+	TableManager      index.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Worker            worker.Config            `yaml:"frontend_worker,omitempty"`
+	Frontend          lokifrontend.Config      `yaml:"frontend,omitempty"`
+	Ruler             ruler.Config             `yaml:"ruler,omitempty"`
+	QueryRange        queryrange.Config        `yaml:"query_range,omitempty"`
+	RuntimeConfig     runtimeconfig.Config     `yaml:"runtime_config,omitempty"`
+	MemberlistKV      memberlist.KVConfig      `yaml:"memberlist"`
+	Tracing           tracing.Config           `yaml:"tracing"`
+	CompactorConfig   compactor.Config         `yaml:"compactor,omitempty"`
+	QueryScheduler    scheduler.Config         `yaml:"query_scheduler"`
+	UsageReport       usagestats.Config        `yaml:"analytics"`
+	RemoteReadConfigs []remote.ReadConfig      `yaml:"remote_read,omitempty"`
 }
 
 // RegisterFlags registers flag.

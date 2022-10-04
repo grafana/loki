@@ -352,7 +352,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		if err != nil {
 			return nil, err
 		}
-		fanoutQuerier := fanout.NewFanoutQuerier(q, remoteStorage.Queriers()...)
+		fanoutQuerier := fanout.NewQuerier(q, remoteStorage.Queriers()...)
 		q = fanoutQuerier
 	}
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {

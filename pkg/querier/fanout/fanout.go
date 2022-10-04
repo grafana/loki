@@ -11,16 +11,16 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
-func NewFanoutQuerier(primary querier.Querier, secondaries ...querier.Querier) querier.Querier {
-	return &FanoutQuerier{Querier: primary, secondaries: secondaries}
+func NewQuerier(primary querier.Querier, secondaries ...querier.Querier) querier.Querier {
+	return &Querier{Querier: primary, secondaries: secondaries}
 }
 
-type FanoutQuerier struct {
+type Querier struct {
 	querier.Querier
 	secondaries []querier.Querier
 }
 
-func (q *FanoutQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	if len(q.secondaries) == 0 {
 		return q.Querier.SelectLogs(ctx, params)
 	}
@@ -40,7 +40,7 @@ func (q *FanoutQuerier) SelectLogs(ctx context.Context, params logql.SelectLogPa
 	return iter.NewSortEntryIterator(iters, params.Direction), nil
 }
 
-func (q *FanoutQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
 	if len(q.secondaries) == 0 {
 		return q.Querier.SelectSamples(ctx, params)
 	}
@@ -60,7 +60,7 @@ func (q *FanoutQuerier) SelectSamples(ctx context.Context, params logql.SelectSa
 	return iter.NewSortSampleIterator(iters), nil
 }
 
-func (q *FanoutQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	if len(q.secondaries) == 0 {
 		return q.Querier.Label(ctx, req)
 	}
@@ -81,7 +81,7 @@ func (q *FanoutQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (
 	return logproto.MergeLabelResponses(responses)
 }
 
-func (q *FanoutQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	if len(q.secondaries) == 0 {
 		return q.Querier.Series(ctx, req)
 	}
@@ -103,7 +103,7 @@ func (q *FanoutQuerier) Series(ctx context.Context, req *logproto.SeriesRequest)
 	return logproto.MergeSeriesResponses(responses)
 }
 
-func (q *FanoutQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+func (q *Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	if len(q.secondaries) == 0 {
 		return q.IndexStats(ctx, req)
 	}

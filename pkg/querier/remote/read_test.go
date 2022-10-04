@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	serverutil "github.com/grafana/loki/pkg/util/server"
 	config_util "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/require"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/marshal"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -28,7 +28,7 @@ func TestQuerier_SelectLog(t *testing.T) {
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
 	defer server.Stop(t)
-	remoteConf := RemoteReadConfig{
+	remoteConf := ReadConfig{
 		Name:          "remote-read-1",
 		RemoteTimeout: queryTimeout,
 		URL: &config_util.URL{

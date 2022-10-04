@@ -17,9 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
-// RemoteReadConfig is the configuration for reading from remote storage.
+// ReadConfig is the configuration for reading from remote storage.
 // code from /github.com/prometheus/prometheus/config/config.go:868
-type RemoteReadConfig struct {
+type ReadConfig struct {
 	URL   *config.URL `yaml:"url"`
 	Name  string      `yaml:"name,omitempty"`
 	OrgID string      `yaml:"orgID,omitempty"`
@@ -32,7 +32,7 @@ type RemoteReadConfig struct {
 	RemoteTimeout time.Duration `yaml:"remote_timeout,omitempty"`
 }
 
-func NewQuerier(name string, remoteReadConfig RemoteReadConfig) (querier.Querier, error) {
+func NewQuerier(name string, remoteReadConfig ReadConfig) (querier.Querier, error) {
 	client := &client.DefaultClient{
 		OrgID:   remoteReadConfig.OrgID,
 		Address: remoteReadConfig.URL.String(),
@@ -68,7 +68,7 @@ func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (
 
 	streams, ok := response.Data.Result.(loghttp.Streams)
 	if !ok {
-		return nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail.")
+		return nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail")
 	}
 	return iter.NewStreamsIterator(streams.ToProto(), params.Direction), nil
 }

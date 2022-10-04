@@ -17,8 +17,10 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/grafana/loki/pkg/querier"
+
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/querier"
 )
 
 type Storage struct {
@@ -28,7 +30,7 @@ type Storage struct {
 func (s *Storage) Queriers() []querier.Querier {
 	return s.queriers
 }
-func (s *Storage) ApplyConf(remoteReadConfigs []RemoteReadConfig) error {
+func (s *Storage) ApplyConf(remoteReadConfigs []ReadConfig) error {
 	readHashes := make(map[string]struct{})
 	queriers := make([]querier.Querier, 0, len(remoteReadConfigs))
 	for _, rrConf := range remoteReadConfigs {
