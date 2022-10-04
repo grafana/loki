@@ -7,8 +7,10 @@ import (
 
 	"github.com/google/uuid"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -28,7 +30,6 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	// the user-defined values. This creates an all-inclusive manifests.Options and then checks
 	// that every value is present in the result
 	opts := randomConfigOptions()
-
 	res := manifests.ConfigOptions(opts)
 
 	expected, err := json.Marshal(opts.Stack)
@@ -284,6 +285,207 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 			}
 			options := manifests.ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, options.Retention)
+		})
+	}
+}
+
+func TestConfigOptions_RulerAlertManager(t *testing.T) {
+	tt := []struct {
+		desc        string
+		opts        manifests.Options
+		wantOptions *config.AlertManagerConfig
+	}{
+		{
+			desc: "static mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "dynamic mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "openshift-logging mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        true,
+				EnableDiscovery: true,
+				RefreshInterval: "1m",
+				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			},
+		},
+		{
+			desc: "openshift-network mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        true,
+				EnableDiscovery: true,
+				RefreshInterval: "1m",
+				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := manifests.ConfigOptions(tc.opts)
+			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+
+			require.Nil(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
+		})
+	}
+}
+
+func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
+	tt := []struct {
+		desc        string
+		opts        manifests.Options
+		wantOptions *config.AlertManagerConfig
+	}{
+		{
+			desc: "static mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "dynamic mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "openshift-logging mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Ruler: manifests.Ruler{
+					Spec: &v1beta1.RulerConfigSpec{
+						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+		},
+		{
+			desc: "openshift-network mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Ruler: manifests.Ruler{
+					Spec: &v1beta1.RulerConfigSpec{
+						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := manifests.ConfigOptions(tc.opts)
+			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			require.Nil(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
 }

@@ -125,6 +125,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
 					Authentication: []openshift.AuthenticationSpec{
@@ -199,6 +200,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
 					Authentication: []openshift.AuthenticationSpec{

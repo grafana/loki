@@ -16,6 +16,13 @@ import (
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := ConfigOptions(opt)
+
+	if opt.Stack.Tenants != nil {
+		if err := ConfigureOptionsForMode(&cfg, opt); err != nil {
+			return nil, "", err
+		}
+	}
+
 	c, rc, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
@@ -55,8 +62,6 @@ func ConfigOptions(opt Options) config.Options {
 	)
 
 	if rulerEnabled {
-		rulerEnabled = true
-
 		// Map alertmanager config from CRD to config options
 		if opt.Ruler.Spec != nil {
 			evalInterval = string(opt.Ruler.Spec.EvalutionInterval)
