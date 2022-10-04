@@ -74,7 +74,46 @@ func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (
 }
 
 func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	panic("implement me")
+	response, err := q.client.QueryRange(params.Selector, 1, params.Start, params.End, logproto.FORWARD, 0, 0, false)
+	if err != nil {
+		return nil, err
+	}
+	if response.Status != loghttp.QueryStatusSuccess {
+		return nil, errors.Errorf("remote read Querier selectLogs fail,response.Status %v", response.Status)
+	}
+
+	matrix, ok := response.Data.Result.(loghttp.Matrix)
+	if !ok {
+		return nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail")
+	}
+
+	iterator := iter.NewSampleQueryResponseIterator(toSampleQueryResponse(matrix))
+	return iterator, nil
+}
+
+func toSampleQueryResponse(m loghttp.Matrix) *logproto.SampleQueryResponse {
+	res := &logproto.SampleQueryResponse{
+		Series: make([]logproto.Series, 0, len(m)),
+	}
+
+	if len(m) == 0 {
+		return res
+	}
+	for _, stream := range m {
+		samples := make([]logproto.Sample, 0, len(stream.Values))
+		for _, s := range stream.Values {
+			samples = append(samples, logproto.Sample{
+				Value:     float64(s.Value),
+				Timestamp: int64(s.Timestamp),
+			})
+		}
+		series := logproto.Series{
+			Samples: samples,
+			Labels:  stream.Metric.String(),
+		}
+		res.Series = append(res.Series, series)
+	}
+	return res
 }
 
 func (q Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {

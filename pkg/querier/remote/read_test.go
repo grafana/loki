@@ -27,6 +27,7 @@ func TestQuerier_SelectLog(t *testing.T) {
 	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
+	time.Sleep(time.Second)
 	defer server.Stop(t)
 	remoteConf := ReadConfig{
 		Name:          "remote-read-1",

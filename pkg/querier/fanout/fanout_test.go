@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	serverutil "github.com/grafana/loki/pkg/util/server"
 	config_util "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/remote"
 	"github.com/grafana/loki/pkg/util/marshal"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -28,7 +28,7 @@ func TestQuerier_Read(t *testing.T) {
 	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
-	//wg.Wait()
+	time.Sleep(time.Second)
 	defer server.Stop(t)
 	remoteConf := remote.ReadConfig{
 		Name:          "remote-read-1",
