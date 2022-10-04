@@ -668,13 +668,13 @@ func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
 func TestStreamShardingUsage(t *testing.T) {
 	setupCustomTenantLimit := func(perStreamLimit string) *validation.Limits {
 		shardStreamsCfg := &shardstreams.Config{Enabled: true, LoggingEnabled: true}
-		shardStreamsCfg.DesiredRate.Set("6MB")
+		shardStreamsCfg.DesiredRate.Set("6MB") //nolint:errcheck
 
 		customTenantLimits := &validation.Limits{}
 		flagext.DefaultValues(customTenantLimits)
 
-		customTenantLimits.PerStreamRateLimit.Set(perStreamLimit)
-		customTenantLimits.PerStreamRateLimitBurst.Set(perStreamLimit)
+		customTenantLimits.PerStreamRateLimit.Set(perStreamLimit)      //nolint:errcheck
+		customTenantLimits.PerStreamRateLimitBurst.Set(perStreamLimit) //nolint:errcheck
 		customTenantLimits.ShardStreams = shardStreamsCfg
 
 		return customTenantLimits
