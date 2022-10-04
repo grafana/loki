@@ -295,6 +295,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 		return receivedStopWatch.Load() == 1
 	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
 
+	require.NoError(t, os.RemoveAll(logDir2))
+	require.NoError(t, os.RemoveAll(logDir3))
+	require.NoError(t, target.sync())
+
 	target.Stop()
 	ps.Stop()
 }

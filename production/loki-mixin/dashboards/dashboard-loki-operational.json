@@ -11,7 +11,7 @@
         "type": "dashboard"
       },
       {
-        "datasource": "$logs",
+        "datasource": "$loki_datasources",
         "enable": true,
         "expr": "{cluster=\"$cluster\", container=\"kube-diff-logger\"} | json | namespace_extracted=\"$namespace\"",
         "hide": true,
@@ -2076,7 +2076,7 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logs",
+          "datasource": "$loki_datasources",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2163,7 +2163,7 @@
           }
         },
         {
-          "datasource": "$logs",
+          "datasource": "$loki_datasources",
           "gridPos": {
             "h": 18,
             "w": 12,
@@ -2740,7 +2740,7 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logs",
+          "datasource": "$loki_datasources",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2827,7 +2827,7 @@
           }
         },
         {
-          "datasource": "$logs",
+          "datasource": "$loki_datasources",
           "gridPos": {
             "h": 18,
             "w": 18,
@@ -3666,7 +3666,7 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logs",
+          "datasource": "$loki_datasources",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -3753,7 +3753,7 @@
           }
         },
         {
-          "datasource": "$logs",
+          "datasource": "$loki_datasources",
           "gridPos": {
             "h": 18,
             "w": 18,

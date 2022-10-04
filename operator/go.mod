@@ -26,6 +26,7 @@ require (
 	github.com/google/go-cmp v0.5.7
 	github.com/grafana/loki v1.6.2-0.20220708124813-b92f113cb096
 	github.com/openshift/library-go v0.0.0-20220622115547-84d884f4c9f6
+	github.com/prometheus/prometheus v1.8.2-0.20220303173753-edfe657b5405
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -122,7 +123,6 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
-	github.com/prometheus/prometheus v1.8.2-0.20220303173753-edfe657b5405 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect

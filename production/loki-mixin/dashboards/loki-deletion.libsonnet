@@ -63,6 +63,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
             g.panel('Lines Deleted / Sec') +
             g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",job=~"$namespace/%s"}[$__rate_interval])) by (user)' % compactor_matcher, '{{user}}'),
           )
+        ).addRow(
+          g.row('List of deletion requests')
+          .addPanel(
+            $.logPanel('In progress/finished', '{%s, container="compactor"} |~ "Started processing delete request|delete request for user marked as processed" | logfmt | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % $.namespaceMatcher()),
+          )
+          .addPanel(
+            $.logPanel('Requests', '{%s, container="compactor"} |~ "delete request for user added" | logfmt | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % $.namespaceMatcher()),
+          )
         ),
     },
 }
