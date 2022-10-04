@@ -1,0 +1,32 @@
+{{- with .Values.test }}
+{{- if and .enabled $.Values.monitoring.selfMonitoring.enabled $.Values.monitoring.selfMonitoring.lokiCanary.enabled }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "loki.name" $ }}-helm-test"
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: loki-helm-test
+      image: {{ include "loki.helm-test-image" $ }}
+      environment:
+        CANARY_ADDRESS: '{{ .prometheusAddress }}'
+        {{- with .retryDelay }}
+        CANARY_RETRY_DELAY: {{ . }}
+        {{- end }}
+        {{- with .retries }}
+        CANARY_RETRIES: {{ . }}
+        {{- end }}
+  restartPolicy: Never
+{{- end }}
+{{- end }}
