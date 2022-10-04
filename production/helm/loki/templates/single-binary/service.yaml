@@ -20,4 +20,7 @@ spec:
       protocol: TCP
   selector:
     {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
+    {{- with .Values.singleBinary.selectorLabels }}
+      {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
 {{- end }}
