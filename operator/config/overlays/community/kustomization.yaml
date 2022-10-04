@@ -35,6 +35,7 @@ configMapGenerator:
   name: manager-config
 
 patchesStrategicMerge:
+- manager_auth_proxy_patch.yaml
 - manager_related_image_patch.yaml
 - manager_run_flags_patch.yaml
 - manager_webhook_patch.yaml
@@ -44,7 +45,7 @@ patchesStrategicMerge:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: v0.0.1
+  newTag: main-dcd2d06
 
 # the following config is for teaching kustomize how to do var substitution
 vars:
