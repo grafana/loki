@@ -28,7 +28,7 @@ func init() {
 	// Enable debug logging
 	cfg := &server.Config{}
 	_ = cfg.LogLevel.Set("debug")
-	util_log.InitLogger(cfg, nil)
+	util_log.InitLogger(cfg, nil, true, false)
 }
 
 // Test that you can use to generate event logs locally.
