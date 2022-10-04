@@ -24,7 +24,7 @@ const (
 	queryTimeout = 12 * time.Second
 )
 
-func TestQuerier_SelectLog(t *testing.T) {
+func TestQuerier_Read(t *testing.T) {
 	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
@@ -161,9 +161,7 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 	})
 	s.server.Handler = &mux
 	go func() {
-		err := s.server.ListenAndServe()
-		require.NoError(t, err)
-
+		_ = s.server.ListenAndServe()
 	}()
 }
 

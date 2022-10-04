@@ -114,9 +114,7 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 	})
 	s.server.Handler = &mux
 	go func() {
-		err := s.server.ListenAndServe()
-		require.NoError(t, err)
-
+		_ = s.server.ListenAndServe()
 	}()
 }
 func (s *mockLokiHTTPServer) Stop(t *testing.T) {
