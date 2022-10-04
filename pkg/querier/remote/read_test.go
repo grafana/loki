@@ -23,7 +23,7 @@ const (
 	queryTimeout = 12 * time.Second
 )
 
-func TestQuerier_SelectLog(t *testing.T) {
+func TestQuerier_Read(t *testing.T) {
 	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
 	from := time.Now().Add(time.Minute * -5)
 	server.Run(t, from)
@@ -64,6 +64,32 @@ func TestQuerier_SelectLog(t *testing.T) {
 		count++
 	}
 	require.Equal(t, 6, count)
+
+	end := time.Now()
+	mockLabelRequest := func(name string) *logproto.LabelRequest {
+		return &logproto.LabelRequest{
+			Name:  name,
+			Start: &from,
+			End:   &end,
+		}
+	}
+
+	_, err = querier.Label(
+		context.Background(),
+		mockLabelRequest("app"),
+	)
+	require.NoError(t, err)
+
+	req := &logproto.SeriesRequest{
+		Start: time.Unix(0, 0),
+		End:   time.Unix(10, 0),
+	}
+	_, err = querier.Series(
+		context.Background(),
+		req,
+	)
+
+	require.NoError(t, err)
 
 }
 
@@ -113,6 +139,23 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 			return
 		}
 	})
+
+	mux.HandleFunc("/loki/api/v1/labels", func(w http.ResponseWriter, request *http.Request) {
+		lvs := logproto.LabelResponse{Values: []string{"test2"}}
+		if err := marshal.WriteLabelResponseJSON(lvs, w); err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+	})
+
+	mux.HandleFunc("/loki/api/v1/series", func(w http.ResponseWriter, request *http.Request) {
+		series := logproto.SeriesResponse{Series: []logproto.SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}}
+		if err := marshal.WriteSeriesResponseJSON(series, w); err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+	})
+
 	s.server.Handler = &mux
 	go func() {
 		_ = s.server.ListenAndServe()
