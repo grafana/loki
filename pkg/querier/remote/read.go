@@ -80,7 +80,7 @@ func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePar
 		return nil, err
 	}
 	if response.Status != loghttp.QueryStatusSuccess {
-		return nil, errors.Errorf("remote read Querier selectLogs fail,response.Status %v", response.Status)
+		return nil, errors.Errorf("remote read Querier selectSamples fail,response.Status %v", response.Status)
 	}
 
 	matrix, ok := response.Data.Result.(loghttp.Matrix)
