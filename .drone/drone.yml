@@ -46,27 +46,27 @@ workspace:
   path: loki
 ---
 kind: pipeline
-name: loki-canary-test-image
+name: helm-test-image
 steps:
 - image: plugins/docker
   name: test-image
   settings:
-    dockerfile: cmd/loki-canary-test/Dockerfile
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
     dry_run: true
-    repo: grafana/loki-canary-test
+    repo: grafana/loki-helm-test
   when:
     event:
     - pull_request
     paths:
-    - cmd/loki-canary-test/**
+    - production/helm/loki/src/helm-test/**
 - image: plugins/docker
   name: push-image
   settings:
-    dockerfile: cmd/loki-canary-test/Dockerfile
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
     dry_run: false
     password:
       from_secret: docker_password
-    repo: grafana/loki-canary-test
+    repo: grafana/loki-helm-test
     username:
       from_secret: docker_username
   when:
@@ -74,7 +74,7 @@ steps:
     - push
     - tag
     paths:
-    - cmd/loki-canary-test/**
+    - production/helm/loki/src/helm-test/**
 trigger:
   ref:
   - refs/heads/main
