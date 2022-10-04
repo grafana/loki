@@ -327,15 +327,6 @@ monitoring:
 | monitoring.selfMonitoring.lokiCanary.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
 | monitoring.selfMonitoring.lokiCanary.nodeSelector | object | `{}` | Node selector for canary pods |
 | monitoring.selfMonitoring.lokiCanary.resources | object | `{}` | Resource requests and limits for the canary |
-| monitoring.selfMonitoring.lokiCanary.test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null},"labels":{},"prometheusAddress":"http://prometheus:9090"}` | Sub section for configuring the loki canary helm test |
-| monitoring.selfMonitoring.lokiCanary.test.annotations | object | `{}` | Additional annotations for test pods |
-| monitoring.selfMonitoring.lokiCanary.test.image | object | `{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null}` | Image to use for loki canary |
-| monitoring.selfMonitoring.lokiCanary.test.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
-| monitoring.selfMonitoring.lokiCanary.test.image.registry | string | `"docker.io"` | The Docker registry |
-| monitoring.selfMonitoring.lokiCanary.test.image.repository | string | `"grafana/loki-canary-test"` | Docker image repository |
-| monitoring.selfMonitoring.lokiCanary.test.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
-| monitoring.selfMonitoring.lokiCanary.test.labels | object | `{}` | Additional labels for the test pods |
-| monitoring.selfMonitoring.lokiCanary.test.prometheusAddress | string | `"http://prometheus:9090"` | Address of the prometheus server to query for the test |
 | monitoring.selfMonitoring.lokiCanary.tolerations | list | `[]` | Tolerations for canary pods |
 | monitoring.selfMonitoring.podLogs.annotations | object | `{}` | PodLogs annotations |
 | monitoring.selfMonitoring.podLogs.labels | object | `{}` | Additional PodLogs labels |
@@ -427,6 +418,17 @@ monitoring:
 | singleBinary.selectorLabels | object | `{}` | Additional selecto labels for each `single binary` pod |
 | singleBinary.terminationGracePeriodSeconds | int | `30` | Grace period to allow the single binary to shutdown before it is killed |
 | singleBinary.tolerations | list | `[]` | Tolerations for single binary pods |
+| test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null},"labels":{},"prometheusAddress":"http://prometheus:9090","retries":3,"retryDelay":"30s"}` | Section for configuring optional helm test |
+| test.annotations | object | `{}` | Additional annotations for test pods |
+| test.image | object | `{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null}` | Image to use for loki canary |
+| test.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
+| test.image.registry | string | `"docker.io"` | The Docker registry |
+| test.image.repository | string | `"grafana/loki-canary-test"` | Docker image repository |
+| test.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
+| test.labels | object | `{}` | Additional labels for the test pods |
+| test.prometheusAddress | string | `"http://prometheus:9090"` | Address of the prometheus server to query for the test |
+| test.retries | int | `3` | Number of times to retry the test before failing |
+| test.retryDelay | string | `"30s"` | Amount of time to wait in between each retry for each test |
 | tracing.jaegerAgentHost | string | `""` |  |
 | write.affinity | string | Hard node and soft zone anti-affinity | Affinity for write pods. Passed through `tpl` and, thus, to be configured as string |
 | write.extraArgs | list | `[]` | Additional CLI args for the write |
