@@ -359,7 +359,7 @@ github.com/fsouza/fake-gcs-server/internal/backend
 ## explicit; go 1.17
 github.com/go-kit/kit/log
 github.com/go-kit/kit/log/level
-# github.com/go-kit/log v0.2.1
+# github.com/go-kit/log v0.2.1 => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b
 ## explicit; go 1.17
 github.com/go-kit/log
 github.com/go-kit/log/level
@@ -1753,3 +1753,4 @@ sigs.k8s.io/yaml
 # google.golang.org/grpc => google.golang.org/grpc v1.45.0
 # github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.36.2-0.20220613200027-59727ab0eb48
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
+# github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b
