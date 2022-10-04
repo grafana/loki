@@ -15,7 +15,7 @@ spec:
     path: /metrics
     scheme: http
     scrapeTimeout: 10s
-    targetPort: 8080
+    targetPort: 8443
   selector:
     matchLabels:
       app.kubernetes.io/name: loki-operator

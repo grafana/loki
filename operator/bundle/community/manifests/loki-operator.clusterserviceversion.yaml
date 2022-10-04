@@ -1077,6 +1077,12 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - alertmanagers
+          verbs:
+          - patch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
           - prometheusrules
           - servicemonitors
           verbs:
@@ -1170,7 +1176,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.6.1
+                  value: docker.io/grafana/loki:main-ec0bf70
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 image: docker.io/grafana/loki-operator:main-dcd2d06
@@ -1284,7 +1290,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.6.1
+  - image: docker.io/grafana/loki:main-ec0bf70
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
