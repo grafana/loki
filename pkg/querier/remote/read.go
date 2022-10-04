@@ -2,10 +2,11 @@ package remote
 
 import (
 	"context"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/config"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/config"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logcli/client"
@@ -117,18 +118,37 @@ func toSampleQueryResponse(m loghttp.Matrix) *logproto.SampleQueryResponse {
 }
 
 func (q Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	//TODO implement me
-	return &logproto.LabelResponse{}, nil
+	var values []string
+	if req.Values {
+		lvs, err := q.client.ListLabelValues(req.Name, false, *req.GetStart(), *req.GetEnd())
+		if err != nil {
+			return nil, err
+		}
+		values = lvs.Data
+	} else {
+		lvs, err := q.client.ListLabelNames(false, *req.GetStart(), *req.GetEnd())
+		if err != nil {
+			return nil, err
+		}
+		values = lvs.Data
+	}
+	return &logproto.LabelResponse{Values: values}, nil
 }
 
 func (q Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	//TODO implement me
-	return &logproto.SeriesResponse{}, nil
+	series, err := q.client.Series(req.GetGroups(), req.GetStart(), req.GetEnd(), false)
+	if err != nil {
+		return nil, err
+	}
+	identifiers := make([]logproto.SeriesIdentifier, 0)
+	for _, s := range series.Data {
+		identifiers = append(identifiers, logproto.SeriesIdentifier{Labels: s.Map()})
+	}
+	return &logproto.SeriesResponse{Series: identifiers}, nil
 }
 
 func (q Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*querier.Tailer, error) {
-	//TODO implement me
-	panic("implement me")
+	panic("unsupported func")
 }
 
 func (q Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
