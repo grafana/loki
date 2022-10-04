@@ -30,9 +30,7 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	// the user-defined values. This creates an all-inclusive manifests.Options and then checks
 	// that every value is present in the result
 	opts := randomConfigOptions()
-
-	res, err := manifests.ConfigOptions(opts)
-	require.NoError(t, err)
+	res := manifests.ConfigOptions(opts)
 
 	expected, err := json.Marshal(opts.Stack)
 	require.NoError(t, err)
@@ -285,8 +283,7 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 			inOpt := manifests.Options{
 				Stack: tc.spec,
 			}
-			options, err := manifests.ConfigOptions(inOpt)
-			require.Nil(t, err)
+			options := manifests.ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, options.Retention)
 		})
 	}
@@ -369,10 +366,8 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg, err := manifests.ConfigOptions(tc.opts)
-			require.Nil(t, err)
-
-			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := manifests.ConfigOptions(tc.opts)
+			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
 
 			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
@@ -487,10 +482,8 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg, err := manifests.ConfigOptions(tc.opts)
-			require.Nil(t, err)
-
-			err = manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := manifests.ConfigOptions(tc.opts)
+			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
 			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})

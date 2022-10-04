@@ -15,13 +15,10 @@ import (
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
-	cfg, err := ConfigOptions(opt)
-	if err != nil {
-		return nil, "", err
-	}
+	cfg := ConfigOptions(opt)
 
 	if opt.Stack.Tenants != nil {
-		if err = ConfigureOptionsForMode(&cfg, opt); err != nil {
+		if err := ConfigureOptionsForMode(&cfg, opt); err != nil {
 			return nil, "", err
 		}
 	}
@@ -55,7 +52,7 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 }
 
 // ConfigOptions converts Options to config.Options
-func ConfigOptions(opt Options) (config.Options, error) {
+func ConfigOptions(opt Options) config.Options {
 	rulerEnabled := opt.Stack.Rules != nil && opt.Stack.Rules.Enabled
 
 	var (
@@ -123,7 +120,7 @@ func ConfigOptions(opt Options) (config.Options, error) {
 			RemoteWrite:           rwConfig,
 		},
 		Retention: retentionConfig(&opt.Stack),
-	}, nil
+	}
 }
 
 func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {

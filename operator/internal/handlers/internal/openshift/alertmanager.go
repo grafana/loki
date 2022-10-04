@@ -6,7 +6,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,8 +13,8 @@ import (
 )
 
 // AlertManagerSVCExists returns true if the Openshift AlertManager is present in the cluster.
-func AlertManagerSVCExists(ctx context.Context, opts manifests.Options, k k8s.Client) (bool, error) {
-	if opts.Stack.Tenants == nil || opts.Stack.Tenants.Mode != lokiv1.OpenshiftLogging {
+func AlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiStackSpec, k k8s.Client) (bool, error) {
+	if stack.Tenants == nil || (stack.Tenants.Mode != lokiv1.OpenshiftLogging && stack.Tenants.Mode != lokiv1.OpenshiftNetwork) {
 		return false, nil
 	}
 
@@ -28,5 +27,4 @@ func AlertManagerSVCExists(ctx context.Context, opts manifests.Options, k k8s.Cl
 	}
 
 	return err == nil, nil
-
 }
