@@ -95,10 +95,12 @@ func NewTSDBIndexFromFile(location string, gzip bool) (*TSDBIndex, []byte, error
 
 	// decompress if needed
 	if gzip {
-		r := chunkenc.Gzip.GetReader(bytes.NewReader(raw))
+		r, err := chunkenc.Gzip.GetReader(bytes.NewReader(raw))
+		if err != nil {
+			return nil, nil, err
+		}
 		defer chunkenc.Gzip.PutReader(r)
 
-		var err error
 		cleaned, err = io.ReadAll(r)
 		if err != nil {
 			return nil, nil, err
