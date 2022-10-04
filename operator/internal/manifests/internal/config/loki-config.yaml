@@ -185,7 +185,9 @@ ruler:
   poll_interval: {{ . }}
   {{ end }}
   {{ with .Ruler.AlertManager }}
-  external_url: {{ .ExternalURL }}
+  {{ with .ExternalURL }}
+  external_url: {{ . }}
+  {{ end}}
   {{ with .ExternalLabels }}
   external_labels:
     {{ range $name, $value := . }}
