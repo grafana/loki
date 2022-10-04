@@ -8,7 +8,7 @@
           "subdir": "consul"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "Po3c1Ic96ngrJCtOazic/7OsLkoILOKZWXWyZWl+od8="
     },
     {
@@ -18,7 +18,7 @@
           "subdir": "enterprise-metrics"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "hi2ZpHKl7qWXmSZ46sAycjWEQK6oGsoECuDKQT1dA+k="
     },
     {
@@ -28,7 +28,7 @@
           "subdir": "etcd-operator"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "duHm6wmUju5KHQurOe6dnXoKgl5gTUsfGplgbmAOsHw="
     },
     {
@@ -38,7 +38,7 @@
           "subdir": "grafana"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "Y5nheroSOIwmE+djEVPq4OvvTxKenzdHhpEwaR3Ebjs="
     },
     {
@@ -48,7 +48,7 @@
           "subdir": "jaeger-agent-mixin"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "nsukyr2SS8h97I2mxvBazXZp2fxu1i6eg+rKq3/NRwY="
     },
     {
@@ -58,7 +58,7 @@
           "subdir": "ksonnet-util"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "2++XoPslyz02LRgsxREWxjLgYgiCIqhAtXCyVSvYcoE="
     },
     {
@@ -78,7 +78,7 @@
           "subdir": "memcached"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "SWywAq4U0MRPMbASU0Ez8O9ArRNeoZzb75sEuReueow="
     },
     {
@@ -88,7 +88,7 @@
           "subdir": "tanka-util"
         }
       },
-      "version": "351bfae3eee23db305597f272ef29ec16f99ee49",
+      "version": "9d68b0200c682fde2eca8b6b7cc738fc08d663cc",
       "sum": "ShSIissXdvCy1izTCDZX6tY7qxCoepE5L+WJ52Hw7ZQ="
     },
     {

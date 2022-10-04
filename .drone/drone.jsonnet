@@ -480,7 +480,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
-  pipeline('loki-canary-test-image') {
+  pipeline('helm-test-image') {
     workspace: {
       base: '/src',
       path: 'loki',
@@ -489,20 +489,20 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'test-image',
         image: 'plugins/docker',
-        when: onPRs + onPath('cmd/loki-canary-test/**'),
+        when: onPRs + onPath('production/helm/loki/src/helm-test/**'),
         settings: {
-          repo: 'grafana/loki-canary-test',
-          dockerfile: 'cmd/loki-canary-test/Dockerfile',
+          repo: 'grafana/loki-helm-test',
+          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
           dry_run: true,
         },
       },
       {
         name: 'push-image',
         image: 'plugins/docker',
-        when: onTagOrMain + onPath('cmd/loki-canary-test/**'),
+        when: onTagOrMain + onPath('production/helm/loki/src/helm-test/**'),
         settings: {
-          repo: 'grafana/loki-canary-test',
-          dockerfile: 'cmd/loki-canary-test/Dockerfile',
+          repo: 'grafana/loki-helm-test',
+          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
           dry_run: false,

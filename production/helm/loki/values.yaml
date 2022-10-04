@@ -552,6 +552,30 @@ rbac:
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
 
+# -- Section for configuring optional helm test
+test:
+  enabled: true
+  # -- Address of the prometheus server to query for the test
+  prometheusAddress: "http://prometheus:9090"
+  # -- Number of times to retry the test before failing
+  retries: 3
+  # -- Amount of time to wait in between each retry for each test
+  retryDelay: 30s
+  # -- Additional labels for the test pods
+  labels: {}
+  # -- Additional annotations for test pods
+  annotations: {}
+  # -- Image to use for loki canary
+  image:
+    # -- The Docker registry
+    registry: docker.io
+    # -- Docker image repository
+    repository: grafana/loki-canary-test
+    # -- Overrides the image tag whose default is the chart's appVersion
+    tag: null
+    # -- Docker image pull policy
+    pullPolicy: IfNotPresent
+
 # Monitoring section determines which monitoring features to enable
 monitoring:
   # Dashboards for monitoring Loki
@@ -708,26 +732,6 @@ monitoring:
         tag: null
         # -- Docker image pull policy
         pullPolicy: IfNotPresent
-      # -- Sub section for configuring the loki canary helm test
-      test:
-        enabled: true
-        # -- Address of the prometheus server to query for the test
-        prometheusAddress: "http://prometheus:9090"
-        # -- Additional labels for the test pods
-        labels: {}
-        # -- Additional annotations for test pods
-        annotations: {}
-        # -- Image to use for loki canary
-        image:
-          # -- The Docker registry
-          registry: docker.io
-          # -- Docker image repository
-          repository: grafana/loki-canary-test
-          # -- Overrides the image tag whose default is the chart's appVersion
-          tag: null
-          # -- Docker image pull policy
-          pullPolicy: IfNotPresent
-
 
 # Configuration for the write
 write:
