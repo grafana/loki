@@ -116,7 +116,8 @@ func mkExtentWithStep(start, end, step int64) Extent {
 
 func TestShouldCache(t *testing.T) {
 	maxCacheTime := int64(150 * 1000)
-	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader()}
+	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader(),
+		metrics: NewResultsCacheMetrics(nil)}
 	for _, tc := range []struct {
 		name                   string
 		request                Request

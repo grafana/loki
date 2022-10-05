@@ -18,12 +18,14 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -41,6 +43,31 @@ var (
 	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
 	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
+
+const (
+	reasonMissing  = "missing"
+	reasonMismatch = "mismatch"
+)
+
+type ResultsCacheMetrics struct {
+	versionComparisons        prometheus.Counter
+	versionComparisonFailures *prometheus.CounterVec
+}
+
+func NewResultsCacheMetrics(registerer prometheus.Registerer) *ResultsCacheMetrics {
+	return &ResultsCacheMetrics{
+		versionComparisons: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "results_cache_version_comparisons_total",
+			Help:      "Comparisons of cache key versions in the results cache between query-frontends & queriers",
+		}),
+		versionComparisonFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "results_cache_version_comparisons_failed",
+			Help:      "Comparison failures of cache key versions in the results cache between query-frontends & queriers",
+		}, []string{"reason"}),
+	}
+}
 
 type CacheGenNumberLoader interface {
 	GetResultsCacheGenNumber(tenantIDs []string) string
@@ -139,6 +166,7 @@ type resultsCache struct {
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
+	metrics              *ResultsCacheMetrics
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -156,7 +184,7 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
-	reg prometheus.Registerer,
+	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
 		c = cache.NewCacheGenNumMiddleware(c)
@@ -174,6 +202,7 @@ func NewResultsCacheMiddleware(
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
+			metrics:              metrics,
 		}
 	}), nil
 }
@@ -225,9 +254,13 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
+
+	user, _ := user.ExtractOrgID(ctx)
+	logger := log.With(s.logger, "org_id", user)
+
 	for _, v := range headerValues {
 		if v == noStoreValue {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+			level.Debug(logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
 	}
@@ -243,14 +276,22 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
 	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
 
+	s.metrics.versionComparisons.Inc()
+
 	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+
+		// NB(owen-d):
+		// If the queriers aren't returning cache numbers, something is likely broken
+		// (i.e. the queriers aren't reporting the cache numbers they see or aren't seeing cache numbers at all).
+		s.metrics.versionComparisonFailures.WithLabelValues(reasonMissing).Inc()
 		return false
 	}
 
 	for _, gen := range genNumbersFromResp {
 		if gen != genNumberFromCtx {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			s.metrics.versionComparisonFailures.WithLabelValues(reasonMismatch).Inc()
 			return false
 		}
 	}

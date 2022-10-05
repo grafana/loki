@@ -442,9 +442,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 				return nil, err
 			}
 			labels = make([]string, len(values))
-			for i := 0; i < len(values); i++ {
-				labels[i] = values[i]
-			}
+			copy(labels, values)
 			return &logproto.LabelResponse{
 				Values: labels,
 			}, nil
@@ -454,9 +452,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 			return nil, err
 		}
 		labels = make([]string, len(names))
-		for i := 0; i < len(names); i++ {
-			labels[i] = names[i]
-		}
+		copy(labels, names)
 		return &logproto.LabelResponse{
 			Values: labels,
 		}, nil

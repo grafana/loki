@@ -20,7 +20,8 @@ import (
 
 // NoSuchKeyErr The resource you requested does not exist.
 // refer to: https://cloud.baidu.com/doc/BOS/s/Ajwvysfpl
-//			 https://intl.cloud.baidu.com/doc/BOS/s/Ajwvysfpl-en
+//
+//	https://intl.cloud.baidu.com/doc/BOS/s/Ajwvysfpl-en
 const NoSuchKeyErr = "NoSuchKey"
 
 const DefaultEndpoint = bos.DEFAULT_SERVICE_DOMAIN

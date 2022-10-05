@@ -10,6 +10,7 @@ import (
 	"github.com/imdario/mergo"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -275,6 +276,64 @@ func ConfigureQueryFrontendDeployment(
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to add tls volumes")
+	}
+
+	return nil
+}
+
+// ConfigureRulerStatefulSet configures the ruler to use the cluster monitoring alertmanager.
+func ConfigureRulerStatefulSet(
+	ss *appsv1.StatefulSet,
+	token, caBundleVolumeName, caDir, caFile string,
+	monitorServerName, rulerContainerName string,
+) error {
+	var rulerIndex int
+	for i, c := range ss.Spec.Template.Spec.Containers {
+		if c.Name == rulerContainerName {
+			rulerIndex = i
+			break
+		}
+	}
+
+	rulerContainer := ss.Spec.Template.Spec.Containers[rulerIndex].DeepCopy()
+
+	rulerContainer.Args = append(rulerContainer.Args,
+		fmt.Sprintf("-ruler.alertmanager-client.tls-ca-path=%s/%s", caDir, caFile),
+		fmt.Sprintf("-ruler.alertmanager-client.tls-server-name=%s", monitorServerName),
+		fmt.Sprintf("-ruler.alertmanager-client.credentials-file=%s", token),
+	)
+
+	p := corev1.PodSpec{
+		ServiceAccountName: ss.GetName(),
+		Containers: []corev1.Container{
+			*rulerContainer,
+		},
+	}
+
+	if err := mergo.Merge(&ss.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge ruler container spec ")
+	}
+
+	return nil
+}
+
+// ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
+func ConfigureOptions(configOpt *config.Options) error {
+	if configOpt.Ruler.AlertManager == nil {
+		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
+	}
+
+	if len(configOpt.Ruler.AlertManager.Hosts) == 0 {
+		amc := &config.AlertManagerConfig{
+			Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			EnableV2:        true,
+			EnableDiscovery: true,
+			RefreshInterval: "1m",
+		}
+
+		if err := mergo.Merge(configOpt.Ruler.AlertManager, amc); err != nil {
+			return kverrors.Wrap(err, "failed merging AlertManager config")
+		}
 	}
 
 	return nil

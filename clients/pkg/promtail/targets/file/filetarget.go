@@ -26,8 +26,8 @@ const (
 
 // Config describes behavior for Target
 type Config struct {
-	SyncPeriod time.Duration `yaml:"sync_period"`
-	Stdin      bool          `yaml:"stdin"`
+	SyncPeriod time.Duration `mapstructure:"sync_period" yaml:"sync_period"`
+	Stdin      bool          `mapstructure:"stdin" yaml:"stdin"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
