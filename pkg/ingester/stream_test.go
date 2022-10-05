@@ -15,7 +15,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -313,9 +312,6 @@ func TestPushRateLimit(t *testing.T) {
 	l := validation.Limits{
 		PerStreamRateLimit:      10,
 		PerStreamRateLimitBurst: 10,
-		ShardStreams: &shardstreams.Config{
-			Enabled: false,
-		},
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
