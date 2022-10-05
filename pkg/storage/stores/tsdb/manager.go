@@ -35,11 +35,11 @@ type TSDBManager interface {
 
 /*
 tsdbManager is used for managing active index and is responsible for:
- * Turning WALs into optimized multi-tenant TSDBs when requested
- * Serving reads from these TSDBs
- * Shipping them to remote storage
- * Keeping them available for querying
- * Removing old TSDBs which are no longer needed
+  - Turning WALs into optimized multi-tenant TSDBs when requested
+  - Serving reads from these TSDBs
+  - Shipping them to remote storage
+  - Keeping them available for querying
+  - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
 	nodeName    string // node name

@@ -238,6 +238,7 @@ func (t *tableCompactor) fetchOrCreateUserCompactedIndexSet(userID string) error
 		return nil
 	}
 
+	//nolint:staticcheck
 	userIndexSet, ok := t.existingUserIndexSet[userID]
 	var result *compactedIndexSet
 	if !ok {
