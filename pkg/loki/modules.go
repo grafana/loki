@@ -988,13 +988,10 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	// TODO: We commented the following if statement in order to enable compactor to work with block storage
-	//       Are we going to have side effect because of this??
-
-	// if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-	// 	level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
-	// 	return nil, nil
-	// }
+	if !(config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) || config.UsingBoltDBtorageIndex(t.Cfg.SchemaConfig.Configs)) {
+		level.Info(util_log.Logger).Log("msg", "Not using object storage index (boltdb-shipper or tsdb) or boltdb storage index, not starting compactor")
+		return nil, nil
+	}
 
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
