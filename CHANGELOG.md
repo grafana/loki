@@ -55,6 +55,9 @@
 
 ##### Changes
 
+#### Logcli
+* [7325](https://github.com/grafana/loki/pull/7325) **dbirks**: Document setting up command completion
+
 #### Fluent Bit
 
 #### Loki Canary
