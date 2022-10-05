@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/ingester"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
@@ -41,11 +43,6 @@ import (
 )
 
 const (
-	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
-	// Possible values are only increasing integers starting from 0.
-	ShardLbName        = "__stream_shard__"
-	ShardLbPlaceholder = "__placeholder__"
-
 	ringKey = "distributor"
 )
 
@@ -440,7 +437,7 @@ func labelTemplate(lbls string) labels.Labels {
 
 	streamLabels := make([]labels.Label, len(baseLbls)+1)
 	copy(streamLabels, baseLbls)
-	streamLabels[len(baseLbls)] = labels.Label{Name: ShardLbName, Value: ShardLbPlaceholder}
+	streamLabels[len(baseLbls)] = labels.Label{Name: ingester.ShardLbName, Value: ingester.ShardLbPlaceholder}
 
 	return streamLabels
 }
@@ -452,9 +449,9 @@ func (d *Distributor) createShard(shardStreamsCfg *shardstreams.Config, stream l
 	}
 
 	shardLabel := strconv.Itoa(shardNumber)
-	lbls[len(lbls)-1] = labels.Label{Name: ShardLbName, Value: shardLabel}
+	lbls[len(lbls)-1] = labels.Label{Name: ingester.ShardLbName, Value: shardLabel}
 	return logproto.Stream{
-		Labels:  strings.Replace(streamPattern, ShardLbPlaceholder, shardLabel, 1),
+		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
 		Hash:    lbls.Hash(),
 		Entries: stream.Entries[lowerBound:upperBound],
 	}, true

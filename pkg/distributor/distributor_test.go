@@ -477,7 +477,7 @@ func TestStreamShard(t *testing.T) {
 		// append a shard label to the given labels. The shard value will be 'idx'.
 		lbs, err := syntax.ParseLabels(baseLabels)
 		require.NoError(t, err)
-		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", idx)})
+		lbs = append(lbs, labels.Label{Name: ingester.ShardLbName, Value: fmt.Sprintf("%d", idx)})
 		return lbs
 	}
 

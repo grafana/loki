@@ -326,7 +326,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
-		totalBytes                           int
+		validBytes, totalBytes               int
 		failedEntriesWithError               []entryWithError
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
@@ -347,11 +347,14 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 			continue
 		}
 
+		lineBytes := len(entries[i].Line)
+		totalBytes += lineBytes
+
 		now := time.Now()
 		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
 			rateLimitedSamples++
-			rateLimitedBytes += len(entries[i].Line)
+			rateLimitedBytes += lineBytes
 			continue
 		}
 
@@ -360,11 +363,11 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			outOfOrderSamples++
-			outOfOrderBytes += len(entries[i].Line)
+			outOfOrderBytes += lineBytes
 			continue
 		}
 
-		totalBytes += len(entries[i].Line)
+		validBytes += lineBytes
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
