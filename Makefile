@@ -256,11 +256,11 @@ publish: packages
 ########
 
 # To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.23.0 lint
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint:
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run --disable-all -E gocritic -v
+	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
