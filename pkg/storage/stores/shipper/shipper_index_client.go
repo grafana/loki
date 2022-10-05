@@ -33,7 +33,7 @@ type Config struct {
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("boltdb", f)
+	cfg.RegisterFlagsWithPrefix("boltdb.", f)
 
 }
 
