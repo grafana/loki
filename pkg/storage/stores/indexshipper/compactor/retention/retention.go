@@ -72,6 +72,42 @@ type IndexProcessor interface {
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
 
+type SizeBasedRetentionCleaner struct {
+	workingDirectory string
+	expiration       ExpirationChecker
+	cleanupMetrics   *cleanupMetrics
+	chunkClient      client.Client
+	cleanupThreshold int
+
+	RetentionLoop         services.Service
+	RetentionLoopInterval time.Duration
+}
+
+func NewSizeBasedRetentionCleaner(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client,
+	cleanupThreshold int, r prometheus.Registerer) (*SizeBasedRetentionCleaner, error) {
+	metrics := newCleanupMetrics(r)
+	return &SizeBasedRetentionCleaner{
+		workingDirectory:      workingDirectory,
+		expiration:            expiration,
+		cleanupMetrics:        metrics,
+		chunkClient:           chunkClient,
+		cleanupThreshold:      cleanupThreshold,
+		RetentionLoopInterval: sizeBasedRetentionEnforcementInterval,
+	}, nil
+}
+
+func (c *SizeBasedRetentionCleaner) RunIteration(ctx context.Context) error {
+	// FIXME: We need to get Directory SizeBasedRetentionPercentage from FSConfig
+	error := DeleteChunksBasedOnBlockSize(ctx, "/tmp/loki/chunks", 28)
+
+	if error != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", error)
+	}
+
+	// don't return error, otherwise timer service would stop.
+	return nil
+}
+
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
 	MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error)
