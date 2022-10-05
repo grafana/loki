@@ -1,39 +1,27 @@
 package tsdb
 
 import (
-	"bytes"
 	"context"
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-const (
-	gzipSuffix = ".gz"
-)
-
 func OpenShippableTSDB(p string) (index_shipper.Index, error) {
-	var gz bool
-	trimmed := strings.TrimSuffix(p, gzipSuffix)
-	if trimmed != p {
-		gz = true
-	}
-
-	id, err := identifierFromPath(trimmed)
+	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, gz)
+	return NewShippableTSDBFile(id)
 }
 
 // nolint
@@ -49,12 +37,8 @@ type TSDBFile struct {
 	r io.ReadSeeker
 }
 
-func NewShippableTSDBFile(id Identifier, gzip bool) (*TSDBFile, error) {
-	if gzip {
-		id = newSuffixedIdentifier(id, gzipSuffix)
-	}
-
-	idx, b, err := NewTSDBIndexFromFile(id.Path(), gzip)
+func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
+	idx, rawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +46,7 @@ func NewShippableTSDBFile(id Identifier, gzip bool) (*TSDBFile, error) {
 	return &TSDBFile{
 		Identifier: id,
 		Index:      idx,
-		r:          bytes.NewReader(b),
+		r:          rawFileReader,
 	}, err
 }
 
@@ -83,35 +67,22 @@ type TSDBIndex struct {
 	chunkFilter chunk.RequestChunkFilterer
 }
 
-// Return the index as well as the underlying []byte which isn't exposed as an index
+// Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string, gzip bool) (*TSDBIndex, []byte, error) {
-	raw, err := os.ReadFile(location)
+func NewTSDBIndexFromFile(location string) (*TSDBIndex, io.ReadSeeker, error) {
+	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	cleaned := raw
-
-	// decompress if needed
-	if gzip {
-		r, err := chunkenc.Gzip.GetReader(bytes.NewReader(raw))
-		if err != nil {
-			return nil, nil, err
-		}
-		defer chunkenc.Gzip.PutReader(r)
-
-		cleaned, err = io.ReadAll(r)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	reader, err := index.NewReader(index.RealByteSlice(cleaned))
+	rawFileReader, err := reader.RawFileReader()
 	if err != nil {
+		if err := reader.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close index file reader", "err", err)
+		}
 		return nil, nil, err
 	}
-	return NewTSDBIndex(reader), cleaned, nil
+	return NewTSDBIndex(reader), rawFileReader, nil
 }
 
 func NewTSDBIndex(reader IndexReader) *TSDBIndex {
