@@ -10,9 +10,6 @@ import (
 	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
-	util_log "github.com/grafana/loki/pkg/util/log"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
@@ -21,9 +18,12 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -148,6 +148,8 @@ type Limits struct {
 
 	// Deprecated
 	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
+
+	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 }
 
 type StreamRetention struct {
@@ -230,6 +232,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
+
+	l.ShardStreams = &shardstreams.Config{}
+	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -606,6 +611,10 @@ func (o *Overrides) UnorderedWrites(userID string) bool {
 
 func (o *Overrides) DeletionMode(userID string) string {
 	return o.getOverridesForUser(userID).DeletionMode
+}
+
+func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
+	return o.getOverridesForUser(userID).ShardStreams
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
