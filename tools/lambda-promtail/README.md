@@ -47,6 +47,8 @@ The `lambda-promtail` code picks this value up via an environment variable.
 
 Also, if your deployment requires a [VPC configuration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config), make sure to edit the `vpc_config` field in `main.tf` manually. Additonal documentation for the Lambda specific Terraform configuration is [here](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config).
 
+`lambda-promtail` supports authentication either using HTTP Basic Auth or using Bearer Token.  
+
 Then use Terraform to deploy:
 
 ```bash
