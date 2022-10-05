@@ -809,7 +809,9 @@ func TestLogfmtExpressionParser(t *testing.T) {
 				NewLogfmtExpr("nope", "nope"),
 			},
 			labels.Labels{},
-			labels.Labels{},
+			labels.Labels{
+				{Name: "nope", Value: ""},
+			},
 		},
 		{
 			"double property logfmt",

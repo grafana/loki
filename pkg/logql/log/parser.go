@@ -411,13 +411,8 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	}
 
 	for identifier, paths := range l.expressions {
-		result, ok := originalLabels.Get(paths[0].(string))
-		if ok {
-			lbs.Set(identifier, result)
-		} else {
-			fmt.Printf("invalid extracted label name '%s'", identifier)
-			return nil, false
-		}
+		result, _ := originalLabels.Get(paths[0].(string))
+		lbs.Set(identifier, result)
 	}
 
 	return line, true
