@@ -48,7 +48,7 @@ import (
 const (
 	// RingKey is the key under which we store the ingesters ring in the KVStore.
 	RingKey            = "ring"
-	internalInstanceId = "internal"
+	internalInstanceID = "internal"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -663,7 +663,7 @@ func (i *Ingester) getOrCreateInternalInstance() (*instance, error) { //nolint:r
 	defer i.instancesMtx.Unlock()
 
 	if i.internalInstance == nil {
-		inst, err := newInstance(&i.cfg, i.periodicConfigs, internalInstanceId, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		inst, err := newInstance(&i.cfg, i.periodicConfigs, internalInstanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
 		if err != nil {
 			return nil, err
 		}

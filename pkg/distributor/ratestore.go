@@ -194,7 +194,7 @@ func (s *rateStore) getClients() ([]logproto.StreamDataClient, error) {
 
 func (s *rateStore) RateFor(streamHash uint64) int64 {
 	s.rateLock.RLock()
-	s.rateLock.RUnlock()
+	defer s.rateLock.RUnlock()
 
 	return s.rates[streamHash]
 }
