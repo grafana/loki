@@ -438,7 +438,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ingester.RateLimitWholeStream = t.Cfg.Distributor.ShardStreams.Enabled
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {

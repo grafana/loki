@@ -10,19 +10,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -644,6 +645,109 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 	}
 
 	require.Equal(t, samples, []float64{1.})
+}
+
+type fakeLimits struct {
+	limits map[string]*validation.Limits
+}
+
+func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
+	limits, ok := f.limits[userID]
+	if !ok {
+		return nil
+	}
+
+	return limits
+}
+
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	return f.limits
+}
+
+func TestStreamShardingUsage(t *testing.T) {
+	setupCustomTenantLimit := func(perStreamLimit string) *validation.Limits {
+		shardStreamsCfg := &shardstreams.Config{Enabled: true, LoggingEnabled: true}
+		shardStreamsCfg.DesiredRate.Set("6MB") //nolint:errcheck
+
+		customTenantLimits := &validation.Limits{}
+		flagext.DefaultValues(customTenantLimits)
+
+		customTenantLimits.PerStreamRateLimit.Set(perStreamLimit)      //nolint:errcheck
+		customTenantLimits.PerStreamRateLimitBurst.Set(perStreamLimit) //nolint:errcheck
+		customTenantLimits.ShardStreams = shardStreamsCfg
+
+		return customTenantLimits
+	}
+
+	customTenant1 := "my-org1"
+	customTenant2 := "my-org2"
+
+	limitsDefinition := &fakeLimits{
+		limits: make(map[string]*validation.Limits),
+	}
+	// testing with 1 because although 1 is enough to accept at least the
+	// first line entry, because per-stream sharding is enabled,
+	// all entries are rejected if one of them isn't to be accepted.
+	limitsDefinition.limits[customTenant1] = setupCustomTenantLimit("1")
+	limitsDefinition.limits[customTenant2] = setupCustomTenantLimit("4")
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
+	require.NoError(t, err)
+
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	defaultShardStreamsCfg := limiter.limits.ShardStreams("fake")
+	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
+
+	t.Run("test default configuration", func(t *testing.T) {
+		require.Equal(t, false, defaultShardStreamsCfg.Enabled)
+		require.Equal(t, "3MB", defaultShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, false, defaultShardStreamsCfg.LoggingEnabled)
+	})
+
+	t.Run("test configuration being applied", func(t *testing.T) {
+		require.Equal(t, true, tenantShardStreamsCfg.Enabled)
+		require.Equal(t, "6MB", tenantShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, true, tenantShardStreamsCfg.LoggingEnabled)
+	})
+
+	t.Run("invalid push returns error", func(t *testing.T) {
+		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+		ctx := context.Background()
+
+		err = i.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("valid push returns no error", func(t *testing.T) {
+		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+		ctx := context.Background()
+
+		err = i.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{myotherlabel="myothervalue"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
 }
 
 func defaultInstance(t *testing.T) *instance {

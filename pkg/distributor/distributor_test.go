@@ -672,11 +672,21 @@ func TestStreamShard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			baseStream.Entries = tc.entries
 
+			distributorLimits := &validation.Limits{}
+			flagext.DefaultValues(distributorLimits)
+			distributorLimits.ShardStreams.DesiredRate = desiredRate
+
+			overrides, err := validation.NewOverrides(*distributorLimits, nil)
+			require.NoError(t, err)
+
+			validator, err := NewValidator(overrides)
+			require.NoError(t, err)
+
 			d := Distributor{
 				rateStore:              &noopRateStore{},
 				streamShardingFailures: shardingFailureMetric,
+				validator:              validator,
 			}
-			d.cfg.ShardStreams.DesiredRate = desiredRate
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
 			require.Equal(t, tc.wantDerivedStream, derivedStreams)
@@ -865,21 +875,12 @@ func TestShardCountFor(t *testing.T) {
 		name        string
 		stream      *logproto.Stream
 		rate        int
-		desiredRate int
+		desiredRate loki_flagext.ByteSize
 
 		wantStreamSize int // used for sanity check.
 		wantShards     int
 		wantErr        bool
 	}{
-		{
-			name:           "2 entries with zero rate and desired rate < 0, return 1 shard",
-			stream:         &logproto.Stream{Hash: 1},
-			rate:           0,
-			desiredRate:    -5, // in bytes
-			wantStreamSize: 2,  // in bytes
-			wantShards:     1,
-			wantErr:        false,
-		},
 		{
 			name:           "2 entries with zero rate and desired rate == 0, return 1 shard",
 			stream:         &logproto.Stream{Hash: 1},
@@ -953,11 +954,12 @@ func TestShardCountFor(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.EnforceMetricName = false
+			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
 				streamShardingFailures: shardingFailureMetric,
 			}
-			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, tc.desiredRate, &noopRateStore{tc.rate})
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, &noopRateStore{tc.rate}, limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
