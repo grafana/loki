@@ -38,6 +38,11 @@ import (
 )
 
 const (
+	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
+	// Possible values are only increasing integers starting from 0.
+	ShardLbName        = "__stream_shard__"
+	ShardLbPlaceholder = "__placeholder__"
+
 	queryBatchSize       = 128
 	queryBatchSampleSize = 512
 )
@@ -329,6 +334,14 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 		return nil
 	}
 	return s.labels
+}
+
+func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	resp := &logproto.StreamRatesResponse{
+		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),
+	}
+
+	return resp, nil
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
