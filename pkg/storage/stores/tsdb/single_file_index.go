@@ -5,15 +5,15 @@ import (
 	"io"
 	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+type getRawFileReaderFunc func() (io.ReadSeeker, error)
 
 func OpenShippableTSDB(p string) (index_shipper.Index, error) {
 	id, err := identifierFromPath(p)
@@ -34,19 +34,19 @@ type TSDBFile struct {
 	Index
 
 	// to sastisfy Reader() and Close() methods
-	r io.ReadSeeker
+	getRawFileReader getRawFileReaderFunc
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	idx, rawFileReader, err := NewTSDBIndexFromFile(id.Path())
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
 	}
 
 	return &TSDBFile{
-		Identifier: id,
-		Index:      idx,
-		r:          rawFileReader,
+		Identifier:       id,
+		Index:            idx,
+		getRawFileReader: getRawFileReader,
 	}, err
 }
 
@@ -55,7 +55,7 @@ func (f *TSDBFile) Close() error {
 }
 
 func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
-	return f.r, nil
+	return f.getRawFileReader()
 }
 
 // nolint
@@ -69,20 +69,15 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string) (*TSDBIndex, io.ReadSeeker, error) {
+func NewTSDBIndexFromFile(location string) (*TSDBIndex, getRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rawFileReader, err := reader.RawFileReader()
-	if err != nil {
-		if err := reader.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close index file reader", "err", err)
-		}
-		return nil, nil, err
-	}
-	return NewTSDBIndex(reader), rawFileReader, nil
+	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
+		return reader.RawFileReader()
+	}, nil
 }
 
 func NewTSDBIndex(reader IndexReader) *TSDBIndex {
