@@ -12,10 +12,12 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
+	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
+	manifests_openshift "github.com/grafana/loki/operator/internal/manifests/openshift"
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
@@ -168,6 +170,7 @@ func CreateOrUpdateLokiStack(
 		recordingRules []lokiv1beta1.RecordingRule
 		rulerConfig    *lokiv1beta1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
+		ocpAmEnabled   bool
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
@@ -203,6 +206,13 @@ func CreateOrUpdateLokiStack(
 				}
 			}
 		}
+
+		ocpAmEnabled, err = openshift.AlertManagerSVCExists(ctx, stack.Spec, k)
+		if err != nil {
+			ll.Error(err, "failed to check OCP AlertManager")
+			return err
+		}
+
 	}
 
 	// Here we will translate the lokiv1.LokiStack options into manifest options
@@ -226,6 +236,11 @@ func CreateOrUpdateLokiStack(
 			Configs: tenantConfigs,
 		},
 		TLSProfileType: projectconfigv1.TLSProfileType(fg.TLSProfile),
+		OpenShiftOptions: manifests_openshift.Options{
+			BuildOpts: manifests_openshift.BuildOptions{
+				AlertManagerEnabled: ocpAmEnabled,
+			},
+		},
 	}
 
 	ll.Info("begin building manifests")

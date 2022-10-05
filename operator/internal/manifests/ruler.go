@@ -5,7 +5,9 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,11 +34,21 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	return []client.Object{
+	objs := []client.Object{}
+
+	if opts.Stack.Tenants != nil {
+		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode, opts.Name); err != nil {
+			return nil, err
+		}
+
+		objs = configureRulerObjsForMode(opts)
+	}
+
+	return append(objs,
 		statefulSet,
 		NewRulerGRPCService(opts),
 		NewRulerHTTPService(opts),
-	}, nil
+	), nil
 }
 
 // NewRulerStatefulSet creates a statefulset object for a ruler
@@ -71,7 +83,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name:  "loki-ruler",
+				Name:  rulerContainerName,
 				Resources: corev1.ResourceRequirements{
 					Limits:   opts.ResourceRequirements.Ruler.Limits,
 					Requests: opts.ResourceRequirements.Ruler.Requests,
@@ -208,6 +220,43 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 	}
+}
+
+func configureRulerStatefulSetForMode(
+	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
+	stackName string,
+) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		caBundleName := signingCABundleName(stackName)
+		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
+		return openshift.ConfigureRulerStatefulSet(
+			ss,
+			BearerTokenFile,
+			caBundleName,
+			caBundleDir,
+			caFile,
+			monitorServerName,
+			rulerContainerName,
+		)
+	}
+
+	return nil
+}
+
+func configureRulerObjsForMode(opts Options) []client.Object {
+	openShiftObjs := []client.Object{}
+
+	switch opts.Stack.Tenants.Mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
+	}
+
+	return openShiftObjs
 }
 
 // NewRulerGRPCService creates a k8s service for the ruler GRPC endpoint

@@ -17,6 +17,10 @@ type OpenShiftFeatureGates struct {
 	// gateway to expose the service to public internet access.
 	// More details: https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html
 	GatewayRoute bool `json:"gatewayRoute,omitempty"`
+
+	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
+	// to enforce tenancy in an OpenShift context.
+	ExtendedRuleValidation bool `json:"ruleExtendedValidation,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.
