@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -411,14 +412,16 @@ func min(x1, x2 int) int {
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
 func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID string) ([]uint32, []streamTracker) {
-	shardCount := d.shardCountFor(&stream, streamSize, d.cfg.ShardStreams.DesiredRate.Val(), d.rateStore)
+	logger := log.With(util_log.WithUserID(userID, util_log.Logger), "stream", stream.Labels)
+
+	shardCount := d.shardCountFor(logger, &stream, streamSize, d.cfg.ShardStreams.DesiredRate.Val(), d.rateStore)
 
 	if shardCount <= 1 {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
 	if d.cfg.ShardStreams.LoggingEnabled {
-		level.Info(util_log.Logger).Log("msg", "sharding request", "stream", stream.Labels, "shard_count", shardCount)
+		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
 	streamLabels := labelTemplate(stream.Labels)
@@ -429,7 +432,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID
 	for i := 0; i < shardCount; i++ {
 		shard, ok := d.createShard(stream, streamLabels, streamPattern, shardCount, i)
 		if !ok {
-			level.Error(util_log.Logger).Log("msg", "couldn't create shard", "stream", stream.Labels, "idx", i)
+			level.Error(logger).Log("msg", "couldn't create shard", "idx", i)
 			continue
 		}
 
@@ -598,12 +601,19 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(stream *logproto.Stream, streamSize, desiredRate int, rateStore RateStore) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize, desiredRate int, rateStore RateStore) int {
+	if desiredRate <= 0 {
+		if d.cfg.ShardStreams.LoggingEnabled {
+			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", desiredRate)
+		}
+		return 1
+	}
+
 	rate, err := rateStore.RateFor(stream)
 	if err != nil {
 		d.streamShardingFailures.WithLabelValues("rate_not_found").Inc()
 		if d.cfg.ShardStreams.LoggingEnabled {
-			level.Error(util_log.Logger).Log("msg", "couldn't shard stream because rate wasn't found", "stream", stream.Labels)
+			level.Error(logger).Log("msg", "couldn't shard stream because rate store returned error", "err", err)
 		}
 		return 1
 	}
@@ -612,7 +622,7 @@ func (d *Distributor) shardCountFor(stream *logproto.Stream, streamSize, desired
 	if shards > len(stream.Entries) {
 		d.streamShardingFailures.WithLabelValues("too_many_shards").Inc()
 		if d.cfg.ShardStreams.LoggingEnabled {
-			level.Error(util_log.Logger).Log("msg", "number of shards bigger than number of entries", "stream", stream.Labels, "shards", shards, "entries", len(stream.Entries))
+			level.Error(logger).Log("msg", "number of shards bigger than number of entries", "shards", shards, "entries", len(stream.Entries))
 		}
 		return len(stream.Entries)
 	}
