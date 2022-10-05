@@ -74,6 +74,7 @@ func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
 	cfg.Ring.InstanceAddr = "localhost"
 	cfg.Ring.InstanceID = "localhost"
 	cfg.EnableQueryStats = false
+	cfg.NotificationTimeout = 20 * time.Second
 
 	return cfg
 }
@@ -235,8 +236,13 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	// We create an empty rule store so that the ruler will not load any rule from it.
 	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
 
-	cfg.AlertmanagerURL = ts.URL
-	cfg.AlertmanagerDiscovery = false
+	cfg.AlertManagersPerTenant = map[string]AlertManagerConfig{
+		DefaultNotifierConf: {
+			AlertmanagerURL:       ts.URL,
+			AlertmanagerDiscovery: false,
+			NotificationTimeout:   20 * time.Second,
+		},
+	}
 
 	manager := newManager(t, cfg, nil)
 	defer manager.Stop()

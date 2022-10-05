@@ -70,8 +70,8 @@ func (rn *rulerNotifier) run() {
 	}()
 }
 
-func (rn *rulerNotifier) applyConfig(cfg *config.Config) error {
-	if err := rn.notifier.ApplyConfig(cfg); err != nil {
+func (rn *rulerNotifier) applyConfig(cfg config.Config) error {
+	if err := rn.notifier.ApplyConfig(&cfg); err != nil {
 		return err
 	}
 
@@ -89,66 +89,73 @@ func (rn *rulerNotifier) stop() {
 }
 
 // Builds a Prometheus config.Config from a ruler.Config with just the required
-// options to configure notifications to Alertmanager.
-func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
-	amURLs := strings.Split(rulerConfig.AlertmanagerURL, ",")
-	validURLs := make([]*url.URL, 0, len(amURLs))
+// options to configure notifications to Alertmanagers per tenant.
+func buildNotifiersConfig(rulerConfig *Config) (map[string]config.Config, error) {
 
-	srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
-	for _, h := range amURLs {
-		url, err := url.Parse(h)
-		if err != nil {
-			return nil, err
+	configs := map[string]config.Config{}
+
+	for tenant, cfg := range rulerConfig.AlertManagersPerTenant {
+		amURLs := strings.Split(cfg.AlertmanagerURL, ",")
+		validURLs := make([]*url.URL, 0, len(amURLs))
+
+		srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
+		for _, h := range amURLs {
+			url, err := url.Parse(h)
+			if err != nil {
+				return nil, err
+			}
+
+			if url.String() == "" {
+				continue
+			}
+
+			// Given we only support SRV lookups as part of service discovery, we need to ensure
+			// hosts provided follow this specification: _service._proto.name
+			// e.g. _http._tcp.alertmanager.com
+			if cfg.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
+				return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
+			}
+
+			validURLs = append(validURLs, url)
 		}
 
-		if url.String() == "" {
+		if len(validURLs) == 0 {
 			continue
 		}
 
-		// Given we only support SRV lookups as part of service discovery, we need to ensure
-		// hosts provided follow this specification: _service._proto.name
-		// e.g. _http._tcp.alertmanager.com
-		if rulerConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
-			return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
+		apiVersion := config.AlertmanagerAPIVersionV1
+		if cfg.AlertmanangerEnableV2API {
+			apiVersion = config.AlertmanagerAPIVersionV2
 		}
 
-		validURLs = append(validURLs, url)
+		amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
+		for _, url := range validURLs {
+			amConfigs = append(amConfigs, amConfigFromURL(cfg, url, apiVersion))
+		}
+
+		promConfig := config.Config{
+			GlobalConfig: config.GlobalConfig{
+				ExternalLabels: rulerConfig.ExternalLabels,
+			},
+			AlertingConfig: config.AlertingConfig{
+				AlertRelabelConfigs: cfg.AlertRelabelConfigs,
+				AlertmanagerConfigs: amConfigs,
+			},
+		}
+
+		configs[tenant] = promConfig
 	}
 
-	if len(validURLs) == 0 {
-		return &config.Config{}, nil
-	}
-
-	apiVersion := config.AlertmanagerAPIVersionV1
-	if rulerConfig.AlertmanangerEnableV2API {
-		apiVersion = config.AlertmanagerAPIVersionV2
-	}
-
-	amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
-	for _, url := range validURLs {
-		amConfigs = append(amConfigs, amConfigFromURL(rulerConfig, url, apiVersion))
-	}
-
-	promConfig := &config.Config{
-		GlobalConfig: config.GlobalConfig{
-			ExternalLabels: rulerConfig.ExternalLabels,
-		},
-		AlertingConfig: config.AlertingConfig{
-			AlertRelabelConfigs: rulerConfig.AlertRelabelConfigs,
-			AlertmanagerConfigs: amConfigs,
-		},
-	}
-
-	return promConfig, nil
+	return configs, nil
 }
 
-func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
+func amConfigFromURL(cfg AlertManagerConfig, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
 	var sdConfig discovery.Configs
-	if rulerConfig.AlertmanagerDiscovery {
+	if cfg.AlertmanagerDiscovery {
 		sdConfig = discovery.Configs{
 			&dns.SDConfig{
 				Names:           []string{url.Host},
-				RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
+				RefreshInterval: model.Duration(cfg.AlertmanagerRefreshInterval),
 				Type:            "SRV",
 				Port:            0, // Ignored, because of SRV.
 			},
@@ -168,15 +175,15 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 		APIVersion:              apiVersion,
 		Scheme:                  url.Scheme,
 		PathPrefix:              url.Path,
-		Timeout:                 model.Duration(rulerConfig.NotificationTimeout),
+		Timeout:                 model.Duration(cfg.NotificationTimeout),
 		ServiceDiscoveryConfigs: sdConfig,
 		HTTPClientConfig: config_util.HTTPClientConfig{
 			TLSConfig: config_util.TLSConfig{
-				CAFile:             rulerConfig.Notifier.TLS.CAPath,
-				CertFile:           rulerConfig.Notifier.TLS.CertPath,
-				KeyFile:            rulerConfig.Notifier.TLS.KeyPath,
-				InsecureSkipVerify: rulerConfig.Notifier.TLS.InsecureSkipVerify,
-				ServerName:         rulerConfig.Notifier.TLS.ServerName,
+				CAFile:             cfg.Notifier.TLS.CAPath,
+				CertFile:           cfg.Notifier.TLS.CertPath,
+				KeyFile:            cfg.Notifier.TLS.KeyPath,
+				InsecureSkipVerify: cfg.Notifier.TLS.InsecureSkipVerify,
+				ServerName:         cfg.Notifier.TLS.ServerName,
 			},
 		},
 	}
@@ -193,23 +200,23 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 	}
 
 	// Override URL basic authentication configs with hard coded config values if present
-	if rulerConfig.Notifier.BasicAuth.IsEnabled() {
+	if cfg.Notifier.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
-			Username: rulerConfig.Notifier.BasicAuth.Username,
-			Password: config_util.Secret(rulerConfig.Notifier.BasicAuth.Password),
+			Username: cfg.Notifier.BasicAuth.Username,
+			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password),
 		}
 	}
 
-	if rulerConfig.Notifier.HeaderAuth.IsEnabled() {
-		if rulerConfig.Notifier.HeaderAuth.Credentials != "" {
+	if cfg.Notifier.HeaderAuth.IsEnabled() {
+		if cfg.Notifier.HeaderAuth.Credentials != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
-				Type:        rulerConfig.Notifier.HeaderAuth.Type,
-				Credentials: config_util.Secret(rulerConfig.Notifier.HeaderAuth.Credentials),
+				Type:        cfg.Notifier.HeaderAuth.Type,
+				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials),
 			}
-		} else if rulerConfig.Notifier.HeaderAuth.CredentialsFile != "" {
+		} else if cfg.Notifier.HeaderAuth.CredentialsFile != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
-				Type:            rulerConfig.Notifier.HeaderAuth.Type,
-				CredentialsFile: rulerConfig.Notifier.HeaderAuth.CredentialsFile,
+				Type:            cfg.Notifier.HeaderAuth.Type,
+				CredentialsFile: cfg.Notifier.HeaderAuth.CredentialsFile,
 			}
 
 		}

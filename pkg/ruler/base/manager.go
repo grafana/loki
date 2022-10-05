@@ -22,9 +22,11 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
 
+const DefaultNotifierConf = "default-notifier-config"
+
 type DefaultMultiTenantManager struct {
 	cfg            Config
-	notifierCfg    *config.Config
+	notifiersCfg   map[string]config.Config
 	managerFactory ManagerFactory
 
 	mapper *mapper
@@ -48,7 +50,7 @@ type DefaultMultiTenantManager struct {
 }
 
 func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
-	ncfg, err := buildNotifierConfig(&cfg)
+	ncfg, err := buildNotifiersConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +62,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 
 	return &DefaultMultiTenantManager{
 		cfg:                cfg,
-		notifierCfg:        ncfg,
+		notifiersCfg:       ncfg,
 		managerFactory:     managerFactory,
 		notifiers:          map[string]*rulerNotifier{},
 		mapper:             newMapper(cfg.RulePath, logger),
@@ -185,6 +187,11 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		return n.notifier, nil
 	}
 
+	nCfg, ok := r.notifiersCfg[userID]
+	if !ok {
+		nCfg = r.notifiersCfg[DefaultNotifierConf]
+	}
+
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
@@ -210,7 +217,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	n.run()
 
 	// This should never fail, unless there's a programming mistake.
-	if err := n.applyConfig(r.notifierCfg); err != nil {
+	if err := n.applyConfig(nCfg); err != nil {
 		return nil, err
 	}
 
