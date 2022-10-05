@@ -1120,37 +1120,24 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- manifest
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
-name: deploy
+name: logql-analyzer-test-deploy
 steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
+  - env
   depends_on:
   - clone
   image: alpine
-  name: image-tag
-- depends_on:
-  - clone
-  - image-tag
-  image: us.gcr.io/kubernetes-dev/drone/plugins/deploy-image
-  name: trigger
-  settings:
-    docker_tag_file: .tag
-    github_token:
-      from_secret: github_token
-    images_json:
-      from_secret: deploy_config
+  name: prepare-updater-config
+  secrets:
+  - updater_config
 trigger:
-  event:
-  - push
-  - tag
   ref:
   - refs/heads/main
   - refs/heads/k???
@@ -1510,10 +1497,10 @@ kind: secret
 name: ecr_secret_key
 ---
 get:
-  name: config.json
+  name: updater-config.json
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
-name: deploy_config
+name: updater_config
 ---
 get:
   name: passphrase
@@ -1528,6 +1515,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: a9b8921396d009dc5ff6a4bb9057525fca82a4ec04e545de7056a3318bd04ce6
+hmac: 88a521112e9d05c7bbc24a9afca6f08ce39fc9d062101559bf3ec825dee46820
 
 ...

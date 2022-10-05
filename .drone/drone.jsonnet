@@ -43,7 +43,7 @@ local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/
 local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
+local updater_configuration = secret('updater_config', 'secret/data/common/loki_ci_autodeploy', 'updater-config.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -573,32 +573,33 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger+: onTagOrMain,
   },
-  pipeline('deploy') {
-    trigger+: onTagOrMain,
-    depends_on: ['manifest'],
+  pipeline('logql-analyzer-test-deploy') {
+//    trigger+: onTagOrMain,
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
-        name: 'image-tag',
+        name: 'prepare-updater-config',
         image: 'alpine',
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
           'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
+          'env'
         ],
+        secrets : [updater_configuration.name],
         depends_on: ['clone'],
       },
-      {
-        name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image',
-        settings: {
-          github_token: { from_secret: github_secret.name },
-          images_json: { from_secret: deploy_configuration.name },
-          docker_tag_file: '.tag',
-        },
-        depends_on: ['clone', 'image-tag'],
-      },
+//      {
+//        name: 'trigger',
+//        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+//        settings: {
+//          github_token: { from_secret: github_secret.name },
+//          images_json: { from_secret: updater_configuration.name },
+//          docker_tag_file: '.tag',
+//        },
+//        depends_on: ['clone', 'image-tag'],
+//      },
     ],
   },
   promtail_win(),
@@ -711,7 +712,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   docker_password_secret,
   ecr_key,
   ecr_secret_key,
-  deploy_configuration,
+  updater_configuration,
   gpg_passphrase,
   gpg_private_key,
 ]
