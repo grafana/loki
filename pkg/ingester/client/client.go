@@ -46,6 +46,11 @@ type Config struct {
 	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config"`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
+
+	// Internal is used to indicate that this client communicates on behalf of
+	// a machine and not a user. When Internal = true, the client won't attempt
+	// to inject an userid into the context.
+	Internal bool `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -86,18 +91,19 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
-	unaryInterceptors = append(unaryInterceptors,
-		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-		middleware.ClientUserHeaderInterceptor,
-		middleware.UnaryClientInstrumentInterceptor(ingesterClientRequestDuration),
-	)
+	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
+	if !cfg.Internal {
+		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
+	}
+	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(ingesterClientRequestDuration))
+
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
-	streamInterceptors = append(streamInterceptors,
-		otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-		middleware.StreamClientUserHeaderInterceptor,
-		middleware.StreamClientInstrumentInterceptor(ingesterClientRequestDuration),
-	)
+	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
+	if !cfg.Internal {
+		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
+	}
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(ingesterClientRequestDuration))
 
 	return unaryInterceptors, streamInterceptors
 }

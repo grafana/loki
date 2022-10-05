@@ -121,6 +121,12 @@ func New(
 		}
 	}
 
+	internalFactory := func(addr string) (ring_client.PoolClient, error) {
+		internalCfg := clientCfg
+		internalCfg.Internal = true
+		return client.New(internalCfg, addr)
+	}
+
 	validator, err := NewValidator(overrides)
 	if err != nil {
 		return nil, err
@@ -192,7 +198,17 @@ func New(
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
-	rs := NewRateStore(d.cfg.RateStore, ingestersRing, d.pool, registerer)
+	rs := NewRateStore(
+		d.cfg.RateStore,
+		ingestersRing,
+		clientpool.NewPool(
+			clientCfg.PoolConfig,
+			ingestersRing,
+			internalFactory,
+			util_log.Logger,
+		),
+		registerer,
+	)
 	d.rateStore = rs
 
 	servs = append(servs, d.pool, rs)
