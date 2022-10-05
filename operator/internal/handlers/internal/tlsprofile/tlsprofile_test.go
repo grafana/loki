@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 
-	openshiftv1 "github.com/openshift/api/config/v1"
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	apiServer = openshiftv1.APIServer{
+	apiServer = openshiftconfigv1.APIServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "cluster",
 		},
@@ -28,30 +28,30 @@ var (
 func TestGetSecurityProfileInfo(t *testing.T) {
 	type tt struct {
 		desc     string
-		profile  projectconfigv1.TLSProfileType
-		expected openshiftv1.TLSSecurityProfile
+		profile  configv1.TLSProfileType
+		expected openshiftconfigv1.TLSSecurityProfile
 	}
 
 	tc := []tt{
 		{
 			desc:    "Old profile",
-			profile: projectconfigv1.TLSProfileOldType,
-			expected: openshiftv1.TLSSecurityProfile{
-				Type: openshiftv1.TLSProfileOldType,
+			profile: configv1.TLSProfileOldType,
+			expected: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileOldType,
 			},
 		},
 		{
 			desc:    "Intermediate profile",
-			profile: projectconfigv1.TLSProfileIntermediateType,
-			expected: openshiftv1.TLSSecurityProfile{
-				Type: openshiftv1.TLSProfileIntermediateType,
+			profile: configv1.TLSProfileIntermediateType,
+			expected: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileIntermediateType,
 			},
 		},
 		{
 			desc:    "Modern profile",
-			profile: projectconfigv1.TLSProfileModernType,
-			expected: openshiftv1.TLSSecurityProfile{
-				Type: openshiftv1.TLSProfileModernType,
+			profile: configv1.TLSProfileModernType,
+			expected: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileModernType,
 			},
 		},
 	}

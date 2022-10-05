@@ -5,13 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	openshiftv1 "github.com/openshift/api/config/v1"
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
@@ -90,17 +89,17 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	type tt struct {
 		desc     string
-		profile  openshiftv1.TLSSecurityProfile
-		expected projectconfigv1.TLSProfileSpec
+		profile  openshiftconfigv1.TLSSecurityProfile
+		expected configv1.TLSProfileSpec
 	}
 
 	tc := []tt{
 		{
 			desc: "Old profile",
-			profile: openshiftv1.TLSSecurityProfile{
-				Type: openshiftv1.TLSProfileOldType,
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileOldType,
 			},
-			expected: projectconfigv1.TLSProfileSpec{
+			expected: configv1.TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
 				Ciphers: []string{
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
@@ -126,10 +125,10 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 		},
 		{
 			desc: "Intermediate profile",
-			profile: openshiftv1.TLSSecurityProfile{
-				Type: openshiftv1.TLSProfileIntermediateType,
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileIntermediateType,
 			},
-			expected: projectconfigv1.TLSProfileSpec{
+			expected: configv1.TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
 				Ciphers: []string{
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
@@ -143,10 +142,10 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 		},
 		{
 			desc: "Modern profile",
-			profile: openshiftv1.TLSSecurityProfile{
-				Type: openshiftv1.TLSProfileModernType,
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileModernType,
 			},
-			expected: projectconfigv1.TLSProfileSpec{
+			expected: configv1.TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
 				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
 				// (Read this and weep: https://github.com/golang/go/issues/29349)

@@ -1,13 +1,13 @@
 package manifests
 
 import (
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-	openshiftv1 "github.com/openshift/api/config/v1"
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -143,27 +143,27 @@ func ApplyDefaultSettings(opts *Options) error {
 
 // ApplyTLSSettings manipulates the options to conform to the
 // TLS profile specifications
-func ApplyTLSSettings(opts *Options, profile *openshiftv1.TLSSecurityProfile) error {
-	tlsSecurityProfile := &openshiftv1.TLSSecurityProfile{
-		Type: openshiftv1.TLSProfileIntermediateType,
+func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfile) error {
+	tlsSecurityProfile := &openshiftconfigv1.TLSSecurityProfile{
+		Type: openshiftconfigv1.TLSProfileIntermediateType,
 	}
 
 	if profile != nil {
 		tlsSecurityProfile = profile
 	}
 
-	profileSpec, ok := openshiftv1.TLSProfiles[tlsSecurityProfile.Type]
+	profileSpec, ok := openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
 
 	if !ok {
 		return kverrors.New("unable to determine tls profile settings")
 	}
 
-	if tlsSecurityProfile.Type == openshiftv1.TLSProfileCustomType && tlsSecurityProfile.Custom != nil {
+	if tlsSecurityProfile.Type == openshiftconfigv1.TLSProfileCustomType && tlsSecurityProfile.Custom != nil {
 		profileSpec = &tlsSecurityProfile.Custom.TLSProfileSpec
 	}
 
 	// need to remap all ciphers to their respective IANA names used by Go
-	opts.TLSProfileSpec = projectconfigv1.TLSProfileSpec{
+	opts.TLSProfileSpec = configv1.TLSProfileSpec{
 		MinTLSVersion: string(profileSpec.MinTLSVersion),
 		Ciphers:       crypto.OpenSSLToIANACipherSuites(profileSpec.Ciphers),
 	}

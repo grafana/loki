@@ -152,11 +152,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	tlsProfile := &openshiftv1.TLSSecurityProfile{
-		Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+	var tlsSecurityProfile *openshiftv1.TLSSecurityProfile = nil
+	if cfg.featureFlags.TLSProfile != "" {
+		tlsSecurityProfile = &openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+		}
 	}
 
-	if optErr := manifests.ApplyTLSSettings(&opts, tlsProfile); optErr != nil {
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsSecurityProfile); optErr != nil {
 		logger.Error(optErr, "failed to conform options to tls profile settings")
 		os.Exit(1)
 	}

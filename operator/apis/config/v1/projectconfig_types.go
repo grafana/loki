@@ -21,6 +21,10 @@ type OpenShiftFeatureGates struct {
 	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
 	// to enforce tenancy in an OpenShift context.
 	ExtendedRuleValidation bool `json:"ruleExtendedValidation,omitempty"`
+
+	// ClusterTLSPolicy enables usage of TLS policies set in the API Server.
+	// More details: https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html
+	ClusterTLSPolicy bool `json:"clusterTLSPolicy,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.
