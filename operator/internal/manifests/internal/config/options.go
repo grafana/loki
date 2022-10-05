@@ -15,6 +15,7 @@ type Options struct {
 
 	Namespace             string
 	Name                  string
+	Compactor             Address
 	FrontendWorker        Address
 	GossipRing            Address
 	Querier               Address

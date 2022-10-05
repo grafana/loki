@@ -8,6 +8,9 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
+	"github.com/grafana/loki/operator/internal/validation"
+
+	"github.com/grafana/loki/operator/internal/validation/openshift"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -121,7 +124,12 @@ func main() {
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.AlertingRuleWebhook {
-		if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
+		v := &validation.AlertingRuleValidator{}
+		if ctrlCfg.Gates.OpenShift.ExtendedRuleValidation {
+			v.ExtendedValidator = openshift.AlertingRuleValidator
+		}
+
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
 			os.Exit(1)
 		}
@@ -135,7 +143,12 @@ func main() {
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.RecordingRuleWebhook {
-		if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
+		v := &validation.RecordingRuleValidator{}
+		if ctrlCfg.Gates.OpenShift.ExtendedRuleValidation {
+			v.ExtendedValidator = openshift.RecordingRuleValidator
+		}
+
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
 			os.Exit(1)
 		}

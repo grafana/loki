@@ -35,7 +35,7 @@ func (bs ByteSize) Val() int {
 	return int(bs)
 }
 
-/// UnmarshalYAML the Unmarshaler interface of the yaml pkg.
+// UnmarshalYAML the Unmarshaler interface of the yaml pkg.
 func (bs *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var str string
 	err := unmarshal(&str)

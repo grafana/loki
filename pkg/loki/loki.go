@@ -65,6 +65,11 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
+	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
+	//				 These are only here to allow us to test the new functionality.
+	UseBufferedLogger bool `yaml:"use_buffered_logger"`
+	UseSyncLogger     bool `yaml:"use_sync_logger"`
+
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
 	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
@@ -103,6 +108,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
 		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
+	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
+	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -563,7 +570,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.InternalServer.Enable {
-		depsToUpdate := []string{Distributor, Ingester, Querier, QueryFrontend, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
+		depsToUpdate := []string{Distributor, Ingester, Querier, QueryFrontendTripperware, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
 
 		for _, dep := range depsToUpdate {
 			var idx int
@@ -574,8 +581,8 @@ func (t *Loki) setupModuleManager() error {
 				}
 			}
 
-			lhs := deps[dep][0:idx]
-			rhs := deps[dep][idx+1:]
+			lhs := deps[dep][0 : idx+1]
+			rhs := deps[dep][idx+2:]
 
 			deps[dep] = append(lhs, InternalServer)
 			deps[dep] = append(deps[dep], rhs...)

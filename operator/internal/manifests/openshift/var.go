@@ -31,10 +31,17 @@ var (
 	// cert-signing service to inject the service CA into the annotated
 	// configmap.
 	InjectCABundleKey = "service.beta.openshift.io/inject-cabundle"
+
+	// MonitoringNS is the namespace containing cluster monitoring objects such as alertmanager.
+	MonitoringNS = "openshift-monitoring"
+	// MonitoringSVCMain is the name of the alertmanager main service used for alerts.
+	MonitoringSVCMain = "alertmanager-main"
+	// MonitoringSVCOperated is the name of the alertmanager operator service used for alerts.
+	MonitoringSVCOperated = "alertmanager-operated"
 )
 
-func authorizerRbacName(opts Options) string {
-	return fmt.Sprintf("%s-authorizer", opts.BuildOpts.GatewayName)
+func authorizerRbacName(componentName string) string {
+	return fmt.Sprintf("%s-authorizer", componentName)
 }
 
 func monitoringRbacName(stackName string) string {
@@ -49,8 +56,12 @@ func routeName(opts Options) string {
 	return opts.BuildOpts.LokiStackName
 }
 
-func serviceAccountName(opts Options) string {
+func gatewayServiceAccountName(opts Options) string {
 	return opts.BuildOpts.GatewayName
+}
+
+func rulerServiceAccountName(opts Options) string {
+	return opts.BuildOpts.RulerName
 }
 
 func serviceCABundleName(opts Options) string {

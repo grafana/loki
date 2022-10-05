@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
@@ -871,6 +872,24 @@ func TestShardCountFor(t *testing.T) {
 		wantErr        bool
 	}{
 		{
+			name:           "2 entries with zero rate and desired rate < 0, return 1 shard",
+			stream:         &logproto.Stream{Hash: 1},
+			rate:           0,
+			desiredRate:    -5, // in bytes
+			wantStreamSize: 2,  // in bytes
+			wantShards:     1,
+			wantErr:        false,
+		},
+		{
+			name:           "2 entries with zero rate and desired rate == 0, return 1 shard",
+			stream:         &logproto.Stream{Hash: 1},
+			rate:           0,
+			desiredRate:    0, // in bytes
+			wantStreamSize: 2, // in bytes
+			wantShards:     1,
+			wantErr:        false,
+		},
+		{
 			name:           "0 entries, return 0 shards always",
 			stream:         &logproto.Stream{Hash: 1},
 			rate:           0,
@@ -938,7 +957,7 @@ func TestShardCountFor(t *testing.T) {
 			d := &Distributor{
 				streamShardingFailures: shardingFailureMetric,
 			}
-			got := d.shardCountFor(tc.stream, tc.wantStreamSize, tc.desiredRate, &noopRateStore{tc.rate})
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, tc.desiredRate, &noopRateStore{tc.rate})
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
