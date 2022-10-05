@@ -13,7 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-type getRawFileReaderFunc func() (io.ReadSeeker, error)
+// GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
+type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
 func OpenShippableTSDB(p string) (index_shipper.Index, error) {
 	id, err := identifierFromPath(p)
@@ -34,7 +35,7 @@ type TSDBFile struct {
 	Index
 
 	// to sastisfy Reader() and Close() methods
-	getRawFileReader getRawFileReaderFunc
+	getRawFileReader GetRawFileReaderFunc
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
@@ -69,7 +70,7 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string) (*TSDBIndex, getRawFileReaderFunc, error) {
+func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
