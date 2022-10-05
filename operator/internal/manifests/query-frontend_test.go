@@ -5,7 +5,6 @@ import (
 	"path"
 	"testing"
 
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
@@ -64,7 +63,7 @@ func TestConfigureQueryFrontendHTTPServicePKI(t *testing.T) {
 				},
 			},
 		},
-		TLSProfileSpec: projectconfigv1.TLSProfileSpec{
+		TLSProfile: TLSProfileSpec{
 			MinTLSVersion: "TLSVersion1.2",
 			Ciphers:       []string{"TLS_RSA_WITH_AES_128_CBC_SHA"},
 		},

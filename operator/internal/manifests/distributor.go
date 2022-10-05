@@ -107,7 +107,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
 		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
 			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 		)
 	}
 
@@ -241,7 +241,7 @@ func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Opti
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
 			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 		},

@@ -123,7 +123,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
 		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
 			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 		)
 	}
 
@@ -295,13 +295,13 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
 			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfileSpec.MinTLSVersion),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
 		},

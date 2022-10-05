@@ -257,7 +257,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	tlsProfileType := projectconfigv1.TLSProfileType(fg.TLSProfile)
-	tlsProfile, err := tlsprofile.GetSecurityProfileInfo(ctx, k, tlsProfileType)
+	tlsProfile, err := tlsprofile.GetTLSSecurityProfile(ctx, k, tlsProfileType)
 	if err != nil {
 		// The API server is not guaranteed to be there nor have a result.
 		ll.Error(err, "failed to get security profile. will use default tls profile.")

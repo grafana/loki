@@ -17,15 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var (
-	apiServer = openshiftconfigv1.APIServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "cluster",
-		},
-	}
-)
-
-func TestGetSecurityProfileInfo(t *testing.T) {
+func TestGetTLSSecurityProfile(t *testing.T) {
 	type tt struct {
 		desc     string
 		profile  configv1.TLSProfileType
@@ -56,6 +48,12 @@ func TestGetSecurityProfileInfo(t *testing.T) {
 		},
 	}
 
+	apiServer := openshiftconfigv1.APIServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+	}
+
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 
@@ -74,16 +72,56 @@ func TestGetSecurityProfileInfo(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, tc.profile)
+			profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, tc.profile)
 
 			assert.Nil(t, err)
-			assert.NotNil(t, info)
-			assert.EqualValues(t, &tc.expected, info)
+			assert.NotNil(t, profile)
+			assert.EqualValues(t, &tc.expected, profile)
 		})
 	}
 }
 
-func TestGetSecurityProfileInfo_APIServerNotFound(t *testing.T) {
+func TestGetTLSSecurityProfile_CustomProfile(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+
+	tlsCustomProfile := &openshiftconfigv1.TLSSecurityProfile{
+		Type: openshiftconfigv1.TLSProfileCustomType,
+		Custom: &openshiftconfigv1.CustomTLSProfile{
+			TLSProfileSpec: openshiftconfigv1.TLSProfileSpec{
+				Ciphers:       []string{"custom-cipher"},
+				MinTLSVersion: "VersionTLS12",
+			},
+		},
+	}
+
+	apiServer := openshiftconfigv1.APIServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Spec: openshiftconfigv1.APIServerSpec{
+			TLSSecurityProfile: tlsCustomProfile,
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if apiServer.Name == name.Name {
+			k.SetClientObject(object, &apiServer)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, configv1.TLSProfileType("custom"))
+
+	assert.Nil(t, err)
+	assert.NotNil(t, profile)
+	assert.EqualValues(t, tlsCustomProfile, profile)
+}
+
+func TestGetTLSSecurityProfile_APIServerNotFound(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 
@@ -93,8 +131,8 @@ func TestGetSecurityProfileInfo_APIServerNotFound(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	info, err := tlsprofile.GetSecurityProfileInfo(context.TODO(), k, "")
+	profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, "")
 
 	assert.NotNil(t, err)
-	assert.Nil(t, info)
+	assert.Nil(t, profile)
 }

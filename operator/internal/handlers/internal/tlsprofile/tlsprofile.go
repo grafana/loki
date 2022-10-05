@@ -14,8 +14,8 @@ import (
 // APIServerName is the apiserver resource name used to fetch it.
 const APIServerName = "cluster"
 
-// GetSecurityProfileInfo gets the tls profile info to apply.
-func GetSecurityProfileInfo(ctx context.Context, k k8s.Client, tlsProfileType configv1.TLSProfileType) (*openshiftconfigv1.TLSSecurityProfile, error) {
+// GetTLSSecurityProfile gets the tls profile info to apply.
+func GetTLSSecurityProfile(ctx context.Context, k k8s.Client, tlsProfileType configv1.TLSProfileType) (*openshiftconfigv1.TLSSecurityProfile, error) {
 	switch tlsProfileType {
 	case configv1.TLSProfileOldType:
 		return &openshiftconfigv1.TLSSecurityProfile{

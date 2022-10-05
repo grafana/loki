@@ -90,7 +90,7 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	type tt struct {
 		desc     string
 		profile  openshiftconfigv1.TLSSecurityProfile
-		expected configv1.TLSProfileSpec
+		expected TLSProfileSpec
 	}
 
 	tc := []tt{
@@ -99,7 +99,7 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			profile: openshiftconfigv1.TLSSecurityProfile{
 				Type: openshiftconfigv1.TLSProfileOldType,
 			},
-			expected: configv1.TLSProfileSpec{
+			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
 				Ciphers: []string{
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
@@ -128,7 +128,7 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			profile: openshiftconfigv1.TLSSecurityProfile{
 				Type: openshiftconfigv1.TLSProfileIntermediateType,
 			},
-			expected: configv1.TLSProfileSpec{
+			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
 				Ciphers: []string{
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
@@ -145,7 +145,7 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			profile: openshiftconfigv1.TLSSecurityProfile{
 				Type: openshiftconfigv1.TLSProfileModernType,
 			},
-			expected: configv1.TLSProfileSpec{
+			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
 				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
 				// (Read this and weep: https://github.com/golang/go/issues/29349)
@@ -163,7 +163,7 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			err := ApplyTLSSettings(&opts, &tc.profile)
 
 			require.Nil(t, err)
-			require.EqualValues(t, tc.expected, opts.TLSProfileSpec)
+			require.EqualValues(t, tc.expected, opts.TLSProfile)
 		})
 	}
 }

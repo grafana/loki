@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
@@ -163,7 +162,7 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 	}
 
 	// need to remap all ciphers to their respective IANA names used by Go
-	opts.TLSProfileSpec = configv1.TLSProfileSpec{
+	opts.TLSProfile = TLSProfileSpec{
 		MinTLSVersion: string(profileSpec.MinTLSVersion),
 		Ciphers:       crypto.OpenSSLToIANACipherSuites(profileSpec.Ciphers),
 	}
