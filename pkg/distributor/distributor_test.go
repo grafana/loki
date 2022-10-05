@@ -871,6 +871,15 @@ func TestShardCountFor(t *testing.T) {
 		wantErr        bool
 	}{
 		{
+			name:           "2 entries with zero rate and desired rate < 0, return 1 shard",
+			stream:         &logproto.Stream{Hash: 1},
+			rate:           0,
+			desiredRate:    -5, // in bytes
+			wantStreamSize: 2,  // in bytes
+			wantShards:     1,
+			wantErr:        false,
+		},
+		{
 			name:           "0 entries, return 0 shards always",
 			stream:         &logproto.Stream{Hash: 1},
 			rate:           0,

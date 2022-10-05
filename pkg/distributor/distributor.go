@@ -599,6 +599,13 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 //
 // desiredRate is expected to be given in bytes.
 func (d *Distributor) shardCountFor(stream *logproto.Stream, streamSize, desiredRate int, rateStore RateStore) int {
+	if desiredRate <= 0 {
+		if d.cfg.ShardStreams.LoggingEnabled {
+			level.Error(util_log.Logger).Log("msg", "invalid desired rate", "desired_rate", desiredRate)
+		}
+		return 1
+	}
+
 	rate, err := rateStore.RateFor(stream)
 	if err != nil {
 		d.streamShardingFailures.WithLabelValues("rate_not_found").Inc()
