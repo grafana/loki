@@ -39,9 +39,10 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sy
 
 // prometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type prometheusLogger struct {
-	logger      log.Logger
-	logMessages *prometheus.CounterVec
-	logFlushes  prometheus.Histogram
+	logger              log.Logger
+	logMessages         *prometheus.CounterVec
+	internalLogMessages *prometheus.CounterVec
+	logFlushes          prometheus.Histogram
 
 	useBufferedLogger bool
 	useSyncLogger     bool
@@ -61,7 +62,12 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "log_messages_total",
-		Help:      "Total number of log messages.",
+		Help:      "DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself.",
+	}, []string{"level"})
+	internalLogMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "internal_log_messages_total",
+		Help:      "Total number of log messages created by Loki itself.",
 	}, []string{"level"})
 	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
@@ -96,9 +102,10 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
 	plogger := &prometheusLogger{
-		logger:      logger,
-		logMessages: logMessages,
-		logFlushes:  logFlushes,
+		logger:              logger,
+		logMessages:         logMessages,
+		internalLogMessages: internalLogMessages,
+		logFlushes:          logFlushes,
 	}
 	// Initialise counters for all supported levels:
 	supportedLevels := []level.Value{
@@ -109,6 +116,7 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	}
 	for _, level := range supportedLevels {
 		plogger.logMessages.WithLabelValues(level.String())
+		plogger.internalLogMessages.WithLabelValues(level.String())
 	}
 
 	// return a Logger without caller information, shouldn't use directly
@@ -126,6 +134,7 @@ func (pl *prometheusLogger) Log(kv ...interface{}) error {
 		}
 	}
 	pl.logMessages.WithLabelValues(l).Inc()
+	pl.internalLogMessages.WithLabelValues(l).Inc()
 	return nil
 }
 

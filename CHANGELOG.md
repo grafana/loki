@@ -40,6 +40,7 @@
 * [6349](https://github.com/grafana/loki/pull/6349) **simonswine**: Update the default HTTP listen port from 80 to 3100. Make sure to configure the port explicitly if you are using port 80.
 * [6835](https://github.com/grafana/loki/pull/6835) **DylanGuedes**: Add new per-tenant query timeout configuration and remove engine query timeout.
 * [7212](https://github.com/grafana/loki/pull/7212) **Juneezee**: Replaces deprecated `io/ioutil` with `io` and `os`.
+* [7361](https://github.com/grafana/loki/pull/7361) **szczepad**: Renames metric `loki_log_messages_total` to `loki_internal_log_messages_total`
 
 #### Promtail
 

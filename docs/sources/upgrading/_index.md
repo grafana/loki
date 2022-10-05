@@ -98,6 +98,10 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
 - Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
+#### Metric name for `loki_log_messages_total` changed 
+
+The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
+
 ### Promtail
 
 #### `gcp_push_target_parsing_errors_total` has a new `reason` label
