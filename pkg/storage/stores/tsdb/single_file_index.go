@@ -2,17 +2,17 @@ package tsdb
 
 import (
 	"context"
-	"github.com/go-kit/log/level"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func OpenShippableTSDB(p string) (index_shipper.Index, error) {
