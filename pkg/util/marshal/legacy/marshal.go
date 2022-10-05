@@ -1,5 +1,6 @@
 // Package marshal converts internal objects to loghttp model objects.  This package is designed to work with
-//  models in pkg/loghttp/legacy.
+//
+//	models in pkg/loghttp/legacy.
 package marshal
 
 import (

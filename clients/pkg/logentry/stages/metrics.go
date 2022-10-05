@@ -324,8 +324,8 @@ func getFloat(unk interface{}) (float64, error) {
 
 // getFloatFromString converts string into float64
 // Two types of string formats are supported:
-//   * strings that represent floating point numbers, e.g., "0.804"
-//   * duration format strings, e.g., "0.5ms", "10h".
+//   - strings that represent floating point numbers, e.g., "0.804"
+//   - duration format strings, e.g., "0.5ms", "10h".
 //     Valid time units are "ns", "us", "ms", "s", "m", "h".
 //     Values in this format are converted as a floating point number of seconds.
 //     E.g., "0.5ms" is converted to 0.0005

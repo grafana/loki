@@ -74,7 +74,8 @@ func (l LogAdapter) Println(v ...interface{}) {
 }
 
 // TODO(dannyk): remove once weaveworks/common updates to go-kit/log
-// 					-> we can then revert to using Level.Gokit
+//
+//	-> we can then revert to using Level.Gokit
 func LogFilter(l string) level.Option {
 	switch l {
 	case "debug":
