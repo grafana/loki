@@ -7,7 +7,6 @@ import (
 	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -256,7 +255,12 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	tlsProfileType := projectconfigv1.TLSProfileType(fg.TLSProfile)
+	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
+	// Overwrite the profile from the flags and use the profile from the apiserver instead
+	if fg.OpenShift.ClusterTLSPolicy {
+		tlsProfileType = configv1.TLSProfileType("")
+	}
+
 	tlsProfile, err := tlsprofile.GetTLSSecurityProfile(ctx, k, tlsProfileType)
 	if err != nil {
 		// The API server is not guaranteed to be there nor have a result.
