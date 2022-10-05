@@ -24,7 +24,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.16.2 as golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.45.2
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.50.0
 
 FROM alpine:3.16.2 as buf
 
