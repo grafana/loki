@@ -327,14 +327,6 @@
                         "legendFormat": "{{pod}}",
                         "legendLink": null,
                         "step": 10
-                     },
-                     {
-                        "expr": "sum by(pod) (loki_ingester_memory_streams{cluster=~\"$cluster\", job=~\"($namespace)/ingester-zone.*\"})",
-                        "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "{{pod}}",
-                        "legendLink": null,
-                        "step": 10
                      }
                   ],
                   "thresholds": [ ],
@@ -593,7 +585,7 @@
                   "thresholds": [ ],
                   "timeFrom": null,
                   "timeShift": null,
-                  "title": "Memory (go heap inuse), ingester",
+                  "title": "Memory (go heap inuse)",
                   "tooltip": {
                      "sort": 2
                   },
