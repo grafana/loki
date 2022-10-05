@@ -988,7 +988,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	// TODO: We commented the following if statement in order to enable compactor to block block storage
+	// TODO: We commented the following if statement in order to enable compactor to work with block storage
 	//       Are we going to have side effect because of this??
 
 	// if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
