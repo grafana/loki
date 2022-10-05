@@ -33,7 +33,7 @@ type RateStoreConfig struct {
 
 func (cfg *RateStoreConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MaxParallelism, prefix+".rate-store.max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
-	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".rate-store.stream-rate-update-interval", 3*time.Second, "The interval on which distributors will update current stream rates from ingesters")
+	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".rate-store.stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
 	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".rate-store.ingester-request-timeout", time.Second, "Timeout for communication between distributors and ingesters when updating rates")
 }
 
