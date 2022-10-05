@@ -33,6 +33,20 @@ Optionally, move the binary into a directory that is part of your `$PATH`.
 cp cmd/logcli/logcli /usr/local/bin/logcli
 ```
 
+## Set up command completion
+
+You can set up tab-completion for `logcli` with one of the two options, depending on your shell:
+
+- For bash, add this to your `~/.bashrc` file:
+  ```
+  eval "$(logcli --completion-script-bash)"
+  ```
+
+- For zsh, add this to your `~/.zshrc` file:
+  ```
+  eval "$(logcli --completion-script-zsh)"
+  ```
+
 ## LogCLI usage
 
 ### Grafana Cloud example
