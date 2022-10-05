@@ -52,7 +52,6 @@ package runutil
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,7 +127,7 @@ func CloseWithLogOnErr(logger log.Logger, closer io.Closer, format string, a ...
 
 // ExhaustCloseWithLogOnErr closes the io.ReadCloser with a log message on error but exhausts the reader before.
 func ExhaustCloseWithLogOnErr(logger log.Logger, r io.ReadCloser, format string, a ...interface{}) {
-	_, err := io.Copy(ioutil.Discard, r)
+	_, err := io.Copy(io.Discard, r)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to exhaust reader, performance may be impeded", "err", err)
 	}
@@ -149,7 +148,7 @@ func CloseWithErrCapture(err *error, closer io.Closer, format string, a ...inter
 
 // ExhaustCloseWithErrCapture closes the io.ReadCloser with error capture but exhausts the reader before.
 func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ...interface{}) {
-	_, copyErr := io.Copy(ioutil.Discard, r)
+	_, copyErr := io.Copy(io.Discard, r)
 
 	CloseWithErrCapture(err, r, format, a...)
 
@@ -165,7 +164,7 @@ func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ..
 // dir except for the ignoreDirs directories.
 // NOTE: DeleteAll is not idempotent.
 func DeleteAll(dir string, ignoreDirs ...string) error {
-	entries, err := ioutil.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
 	}
