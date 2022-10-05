@@ -73,9 +73,9 @@ func (l LogAdapter) Println(v ...interface{}) {
 	level.Info(l).Log("msg", fmt.Sprint(v...))
 }
 
-// TODO(dannyk): remove once weaveworks/common updates to go-kit/log
+// LogFilter translates a log level into a go-kit/log level filter.
 //
-//	-> we can then revert to using Level.Gokit
+// TODO(dannyk): remove once weaveworks/common updates to go-kit/log, we can then revert to using Level.Gokit
 func LogFilter(l string) level.Option {
 	switch l {
 	case "debug":
