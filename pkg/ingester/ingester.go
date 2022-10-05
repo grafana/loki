@@ -547,8 +547,9 @@ func (i *Ingester) loop() {
 }
 
 // LegacyShutdownHandler triggers the following set of operations in order:
-//     * Change the state of ring to stop accepting writes.
-//     * Flush all the chunks.
+//   - Change the state of ring to stop accepting writes.
+//   - Flush all the chunks.
+//
 // Note: This handler does not trigger a termination of the Loki process,
 // despite its name. Instead, the ingester service is stopped, so an external
 // source can trigger a safe termination through a signal to the process.
@@ -590,11 +591,11 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleShutdown triggers the following operations:
-//     * Change the state of ring to stop accepting writes.
-//     * optional: Flush all the chunks.
-//     * optional: Delete ring tokens file
-//     * Unregister from KV store
-//     * optional: Terminate process (handled by service manager in loki.go)
+//   - Change the state of ring to stop accepting writes.
+//   - optional: Flush all the chunks.
+//   - optional: Delete ring tokens file
+//   - Unregister from KV store
+//   - optional: Terminate process (handled by service manager in loki.go)
 func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	i.lifecycler.SetFlushOnShutdown(flush)
 	i.lifecycler.SetClearTokensOnShutdown(del)

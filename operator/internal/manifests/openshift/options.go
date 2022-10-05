@@ -41,7 +41,9 @@ type BuildOptions struct {
 	GatewayName          string
 	GatewaySvcName       string
 	GatewaySvcTargetPort string
+	RulerName            string
 	Labels               map[string]string
+	AlertManagerEnabled  bool
 }
 
 // TenantData defines the existing cookieSecret for lokistack reconcile.
@@ -56,6 +58,7 @@ func NewOptions(
 	gwName, gwBaseDomain, gwSvcName, gwPortName string,
 	gwLabels map[string]string,
 	tenantConfigMap map[string]TenantData,
+	rulerName string,
 ) Options {
 	host := ingressHost(stackName, stackNamespace, gwBaseDomain)
 
@@ -85,6 +88,7 @@ func NewOptions(
 			GatewaySvcName:       gwSvcName,
 			GatewaySvcTargetPort: gwPortName,
 			Labels:               gwLabels,
+			RulerName:            rulerName,
 		},
 		Authentication: authn,
 		Authorization: AuthorizationSpec{
