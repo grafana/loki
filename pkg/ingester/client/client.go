@@ -34,6 +34,7 @@ type ClosableHealthAndIngesterClient struct {
 	logproto.PusherClient
 	logproto.QuerierClient
 	logproto.IngesterClient
+	logproto.StreamDataClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
@@ -73,11 +74,12 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 		return nil, err
 	}
 	return ClosableHealthAndIngesterClient{
-		PusherClient:   logproto.NewPusherClient(conn),
-		QuerierClient:  logproto.NewQuerierClient(conn),
-		IngesterClient: logproto.NewIngesterClient(conn),
-		HealthClient:   grpc_health_v1.NewHealthClient(conn),
-		Closer:         conn,
+		PusherClient:     logproto.NewPusherClient(conn),
+		QuerierClient:    logproto.NewQuerierClient(conn),
+		IngesterClient:   logproto.NewIngesterClient(conn),
+		StreamDataClient: logproto.NewStreamDataClient(conn),
+		HealthClient:     grpc_health_v1.NewHealthClient(conn),
+		Closer:           conn,
 	}, nil
 }
 
