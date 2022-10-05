@@ -454,9 +454,7 @@ func labelTemplate(lbls string) labels.Labels {
 	}
 
 	streamLabels := make([]labels.Label, len(baseLbls)+1)
-	for i := 0; i < len(baseLbls); i++ {
-		streamLabels[i] = baseLbls[i]
-	}
+	copy(streamLabels, baseLbls)
 	streamLabels[len(baseLbls)] = labels.Label{Name: ShardLbName, Value: ShardLbPlaceholder}
 
 	return streamLabels
