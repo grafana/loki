@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weaveworks/common/instrument"
+
 	"github.com/grafana/dskit/services"
 
 	"github.com/go-kit/log/level"
@@ -44,8 +46,9 @@ type rateStore struct {
 	rateLock               sync.RWMutex
 	rateCollectionInterval time.Duration
 	ingesterTimeout        time.Duration
-	rateRefreshFailures    *prometheus.CounterVec
 	maxParallelism         int
+	rateRefreshFailures    *prometheus.CounterVec
+	refreshDuration        *instrument.HistogramCollector
 }
 
 func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore {
@@ -60,13 +63,27 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, re
 			Name:      "rate_store_refresh_failures_total",
 			Help:      "The total number of failed attempts to refresh the distributor's view of stream rates",
 		}, []string{"reason"}),
+		refreshDuration: instrument.NewHistogramCollector(
+			promauto.With(registerer).NewHistogramVec(
+				prometheus.HistogramOpts{
+					Namespace: "loki",
+					Name:      "rate_store_refresh_duration_seconds",
+					Help:      "Time spent refreshing the rate store",
+					Buckets:   prometheus.DefBuckets,
+				}, instrument.HistogramCollectorBuckets,
+			),
+		),
 	}
 
 	s.Service = services.
-		NewTimerService(s.rateCollectionInterval, s.updateAllRates, s.updateAllRates, nil).
+		NewTimerService(s.rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
 		WithName("rate store")
 
 	return s
+}
+
+func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "GetAllStreamRates", s.refreshDuration, instrument.ErrorCode, s.updateAllRates)
 }
 
 func (s *rateStore) updateAllRates(ctx context.Context) error {
