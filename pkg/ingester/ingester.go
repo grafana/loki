@@ -624,6 +624,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
+// TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
 func (i *Ingester) GetStreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
