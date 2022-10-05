@@ -587,7 +587,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'echo $(./tools/image-tag) > .tag',
           'env'
         ],
-        secrets : [updater_configuration.name],
+        settings: {
+          updater_config: { from_secret: updater_configuration.name },
+        },
         depends_on: ['clone'],
       },
 //      {

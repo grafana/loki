@@ -1135,8 +1135,9 @@ steps:
   - clone
   image: alpine
   name: prepare-updater-config
-  secrets:
-  - updater_config
+  settings:
+    updater_config:
+      from_secret: updater_config
 trigger:
   ref:
   - refs/heads/main
@@ -1515,6 +1516,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: f7a2953142503a37b5cd450e433bfc03ac100e49ec7b09b840f489613aaca780
+hmac: 0f9ba61b805a366888035f4e2b7ffd0287f15c8278ec3cc0090ca4d869ad5cb7
 
 ...
