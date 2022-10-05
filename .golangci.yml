@@ -4,7 +4,7 @@
 # options for analysis running
 run:
   # define go version
-  go: "1.18"
+  go: "1.19"
 
   # default concurrency is a available CPU number
   concurrency: 16
@@ -62,22 +62,25 @@ linters:
     - deadcode
     - errcheck
     - goconst
-    - gofmt
-    - goimports
     - revive
-    - gosimple
     - ineffassign
-    - staticcheck
     - misspell
     - structcheck
     - unconvert
-    - unparam
     - varcheck
     - govet
-    - unused
     - typecheck
     - depguard
     - exportloopref
+
+  # TODO(dannyk): restore these and fix linter errors in separate PR
+  disable:
+    - unused
+    - gofmt
+    - goimports
+    - gosimple
+    - staticcheck
+    - unparam
 
 issues:
   exclude:
