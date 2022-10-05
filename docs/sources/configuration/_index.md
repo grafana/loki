@@ -318,28 +318,6 @@ ring:
   # reading and writing.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
-
-# Configures the distributor to shard streams that are too big
-shard_streams:
-  # Whether to enable stream sharding
-  #
-  # CLI flag: -distributor.shard-streams.enabled
-  [enabled: <boolean> | default = false]
-
-  # Enable logging when sharding streams because logging on the read path may
-  # impact performance. When disabled, stream sharding will emit no logs 
-  # regardless of log level
-  #
-  # CLI flag: -distributor.shard-streams.logging-enabled
-  [logging_enabled: <boolean> | default = false]
-
-  # Threshold that determines how much the stream should be sharded.
-  # The formula used is n = ceil(stream size + ingested rate / desired rate), where n is the number of shards.
-  # For instance, if a stream ingestion is at 10MB, desired rate is 3MB (default), and a stream of size 1MB is
-  # received, the given stream will be split into n = ceil((1 + 10)/3) = 4 shards.
-  #
-  # CLI flag: -distributor.shard-streams.desired-rate
-  [desired_rate: <string> | default = 3MB]
 ```
 
 ## querier
@@ -2363,6 +2341,28 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This is how far above the rate limit a stream can "burst" before the stream is limited.
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <string|int> | default = "15MB"]
+
+# Configures the distributor to shard streams that are too big
+shard_streams:
+  # Whether to enable stream sharding
+  #
+  # CLI flag: -shard-streams.enabled
+  [enabled: <boolean> | default = false]
+
+  # Enable logging when sharding streams because logging on the read path may
+  # impact performance. When disabled, stream sharding will emit no logs 
+  # regardless of log level
+  #
+  # CLI flag: -shard-streams.logging-enabled
+  [logging_enabled: <boolean> | default = false]
+
+  # Threshold that determines how much the stream should be sharded.
+  # The formula used is n = ceil(stream size + ingested rate / desired rate), where n is the number of shards.
+  # For instance, if a stream ingestion is at 10MB, desired rate is 3MB (default), and a stream of size 1MB is
+  # received, the given stream will be split into n = ceil((1 + 10)/3) = 4 shards.
+  #
+  # CLI flag: -shard-streams.desired-rate
+  [desired_rate: <string> | default = 3MB]
 
 # Limit how far back in time series data and metadata can be queried,
 # up until lookback duration ago.

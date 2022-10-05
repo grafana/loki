@@ -234,7 +234,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	l.ShardStreams = &shardstreams.Config{}
-	l.ShardStreams.RegisterFlagsWithPrefix("distributor.shard-streams", f)
+	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
