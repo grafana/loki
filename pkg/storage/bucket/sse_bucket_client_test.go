@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/pkg/storage/bucket/s3"
 )
