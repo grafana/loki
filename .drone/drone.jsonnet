@@ -43,7 +43,7 @@ local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/
 local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local updater_configuration = secret('updater_config', 'secret/data/common/loki_ci_autodeploy', 'updater-config.json');
+local updater_configuration = secret('updater_config', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -574,34 +574,52 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain,
   },
   pipeline('logql-analyzer-test-deploy') {
-//    trigger+: onTagOrMain,
+    trigger+: onTagOrMain,
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
         name: 'prepare-updater-config',
         image: 'alpine',
+        environment: {
+          RELEASE_BRANCH_REGEXP: "^logql-analyzer-test-release-([0-9\\.x]+)$'",
+        },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
           'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
-          'env'
+          'env',
+          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D.D.x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" || echo "next") && echo $RELEASE_NAME',
+          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
+          'echo $PLUGIN_UPDATER_CONFIG > updater-config.json',
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" updater-config.json',
+          'sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json',
+          'cat updater.json',
         ],
         settings: {
           updater_config: { from_secret: updater_configuration.name },
         },
         depends_on: ['clone'],
       },
-//      {
-//        name: 'trigger',
-//        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
-//        settings: {
-//          github_token: { from_secret: github_secret.name },
-//          images_json: { from_secret: updater_configuration.name },
-//          docker_tag_file: '.tag',
-//        },
-//        depends_on: ['clone', 'image-tag'],
-//      },
+      {
+        name: 'print-prapered-updater-config',
+        image: 'alpine',
+        commands: [
+          'cat updater.json',
+        ],
+        depends_on: ['prepare-updater-config'],
+      },
+    //      {
+    //        name: 'trigger',
+    //        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+    //        settings: {
+    //          github_token: { from_secret: github_secret.name },
+    //          images_json: { from_secret: updater_configuration.name },
+    //          docker_tag_file: '.tag',
+    //        },
+    //        depends_on: ['clone', 'image-tag'],
+    //      },
     ],
   },
   promtail_win(),

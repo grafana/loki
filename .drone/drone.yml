@@ -1131,14 +1131,32 @@ steps:
   - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
   - env
+  - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
+    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" || echo "next") && echo $RELEASE_NAME
+  - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
+  - echo $PLUGIN_UPDATER_CONFIG > updater-config.json
+  - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
+  - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
+  - cat updater.json
   depends_on:
   - clone
+  environment:
+    RELEASE_BRANCH_REGEXP: ^logql-analyzer-test-release-([0-9\.x]+)$'
   image: alpine
   name: prepare-updater-config
   settings:
     updater_config:
       from_secret: updater_config
+- commands:
+  - cat updater.json
+  depends_on:
+  - prepare-updater-config
+  image: alpine
+  name: print-prapered-updater-config
 trigger:
+  event:
+  - push
+  - tag
   ref:
   - refs/heads/main
   - refs/heads/k???
@@ -1498,7 +1516,7 @@ kind: secret
 name: ecr_secret_key
 ---
 get:
-  name: updater-config.json
+  name: updater-config-template.json
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
 name: updater_config
@@ -1516,6 +1534,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 0f9ba61b805a366888035f4e2b7ffd0287f15c8278ec3cc0090ca4d869ad5cb7
+hmac: 6c04d585c0a980e993ac1404844cd527bef9b256917048f20fd5955630d554bb
 
 ...
