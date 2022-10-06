@@ -8,6 +8,45 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.9.0/0.0.3] - 2022-08-01
+
+### Added
+
+- Add support for Schema Files format 1.1.x (metric "split" transform) with the new `go.opentelemetry.io/otel/schema/v1.1` package. (#2999)
+- Add the `go.opentelemetry.io/otel/semconv/v1.11.0` package.
+  The package contains semantic conventions from the `v1.11.0` version of the OpenTelemetry specification. (#3009)
+- Add the `go.opentelemetry.io/otel/semconv/v1.12.0` package.
+  The package contains semantic conventions from the `v1.12.0` version of the OpenTelemetry specification. (#3010)
+- Add the `http.method` attribute to HTTP server metric from all `go.opentelemetry.io/otel/semconv/*` packages. (#3018)
+
+### Fixed
+
+- Invalid warning for context setup being deferred in `go.opentelemetry.io/otel/bridge/opentracing` package. (#3029)
+
+## [1.8.0/0.31.0] - 2022-07-08
+
+### Added
+
+- Add support for `opentracing.TextMap` format in the `Inject` and `Extract` methods
+of the `"go.opentelemetry.io/otel/bridge/opentracing".BridgeTracer` type. (#2911)
+
+### Changed
+
+- The `crosslink` make target has been updated to use the `go.opentelemetry.io/build-tools/crosslink` package. (#2886)
+- In the `go.opentelemetry.io/otel/sdk/instrumentation` package rename `Library` to `Scope` and alias `Library` as `Scope` (#2976)
+- Move metric no-op implementation form `nonrecording` to `metric` package. (#2866)
+
+### Removed
+
+- Support for go1.16. Support is now only for go1.17 and go1.18 (#2917)
+
+### Deprecated
+
+- The `Library` struct in the `go.opentelemetry.io/otel/sdk/instrumentation` package is deprecated.
+  Use the equivalent `Scope` struct instead. (#2977)
+- The `ReadOnlySpan.InstrumentationLibrary` method from the `go.opentelemetry.io/otel/sdk/trace` package is deprecated.
+  Use the equivalent `ReadOnlySpan.InstrumentationScope` method instead. (#2977)
+
 ## [1.7.0/0.30.0] - 2022-04-28
 
 ### Added
@@ -1852,7 +1891,9 @@ It contains api and sdk for trace and meter.
 - CircleCI build CI manifest files.
 - CODEOWNERS file to track owners of this project.
 
-[Unreleased]: https://github.com/open-telemetry/opentelemetry-go/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/open-telemetry/opentelemetry-go/compare/v1.9.0...HEAD
+[1.9.0/0.0.3]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.9.0
+[1.8.0/0.31.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.8.0
 [1.7.0/0.30.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.7.0
 [0.29.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/metric/v0.29.0
 [1.6.3]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.6.3
