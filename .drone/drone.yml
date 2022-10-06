@@ -1154,9 +1154,6 @@ steps:
   image: alpine
   name: print-prapered-updater-config
 trigger:
-  event:
-  - push
-  - tag
   ref:
   - refs/heads/main
   - refs/heads/k???
@@ -1534,6 +1531,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 6c04d585c0a980e993ac1404844cd527bef9b256917048f20fd5955630d554bb
+hmac: f1598591c768f2f3c4e7531e80ddf466a83df278b01024edf825c25a45f86159
 
 ...
