@@ -1137,7 +1137,7 @@ steps:
   - echo $PLUGIN_UPDATER_CONFIG > updater-config.json
   - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
   - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
-  - cat updater.json
+  - cat updater-config.json
   depends_on:
   - clone
   environment:
@@ -1148,7 +1148,7 @@ steps:
     updater_config:
       from_secret: updater_config
 - commands:
-  - cat updater.json
+  - cat updater-config.json
   depends_on:
   - prepare-updater-config
   image: alpine
@@ -1531,6 +1531,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: f1598591c768f2f3c4e7531e80ddf466a83df278b01024edf825c25a45f86159
+hmac: 8e517ecf2728bc95ff7fdbaa9fc58a6546a2e49c142412003157abf4c7b0aa4b
 
 ...

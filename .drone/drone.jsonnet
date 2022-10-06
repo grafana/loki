@@ -595,7 +595,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'echo $PLUGIN_UPDATER_CONFIG > updater-config.json',
           'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" updater-config.json',
           'sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json',
-          'cat updater.json',
+          'cat updater-config.json',
         ],
         settings: {
           updater_config: { from_secret: updater_configuration.name },
@@ -606,7 +606,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'print-prapered-updater-config',
         image: 'alpine',
         commands: [
-          'cat updater.json',
+          'cat updater-config.json',
         ],
         depends_on: ['prepare-updater-config'],
       },
