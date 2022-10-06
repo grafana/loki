@@ -98,7 +98,7 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, o 
 }
 
 func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
-	if !s.anySharingEnabled() {
+	if !s.anyShardingEnabled() {
 		return nil
 	}
 
@@ -123,7 +123,7 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	return nil
 }
 
-func (s *rateStore) anySharingEnabled() bool {
+func (s *rateStore) anyShardingEnabled() bool {
 	limits := s.overrides.AllByUserID()
 	if limits == nil {
 		return false
