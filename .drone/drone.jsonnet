@@ -574,7 +574,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain,
   },
   pipeline('logql-analyzer-test-deploy') {
-    trigger+: onTagOrMain,
+//    trigger+: onTagOrMain,
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
