@@ -97,7 +97,7 @@ func NewSizeBasedRetentionCleaner(workingDirectory string, expiration Expiration
 }
 
 func (c *SizeBasedRetentionCleaner) RunIteration(ctx context.Context) error {
-	// FIXME: We need to get Directory SizeBasedRetentionPercentage from FSConfig
+	// FIXME: We need to get Directory and SizeBasedRetentionPercentage from FSConfig or should we get these values from other places.
 	error := DeleteChunksBasedOnBlockSize(ctx, "/tmp/loki/chunks", 28)
 
 	if error != nil {
