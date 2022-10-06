@@ -314,10 +314,23 @@ ring:
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
 
-  # The heartbeat timeout after which ingesters are skipped for
-  # reading and writing.
-  # CLI flag: -distributor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
+    # The heartbeat timeout after which ingesters are skipped for
+    # reading and writing.
+    # CLI flag: -distributor.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+    
+  rate_store:
+    # The max number of concurrent requests to make to ingester stream apis
+    # CLI flag: -distributor.rate-store.max-request-parallelism
+    [max_request_parallelism: <int> | default = 200]
+    # The interval on which distributors will update current stream rates
+    # from ingesters
+    # CLI flag: -distributor.rate-store.stream-rate-update-interval
+    [stream_rate_update_interval: <duration> | default = 1s]
+    # Timeout for communication between distributors and ingesters when updating
+    # rates
+    # CLI flag: -distributor.rate-store.ingester-request-timeout
+    [ingester_request_timeout: <duration> | default = 1s]
 ```
 
 ## querier
