@@ -51,7 +51,7 @@ type rateStore struct {
 	refreshDuration        *instrument.HistogramCollector
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore {
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore { //nolint:unexported-return
 	s := &rateStore{
 		ring:                   r,
 		clientPool:             cf,
