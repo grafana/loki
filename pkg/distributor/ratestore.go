@@ -32,9 +32,14 @@ type RateStoreConfig struct {
 }
 
 func (cfg *RateStoreConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
-	fs.IntVar(&cfg.MaxParallelism, prefix+".rate-store.max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
-	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".rate-store.stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
-	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".rate-store.ingester-request-timeout", time.Second, "Timeout for communication between distributors and ingesters when updating rates")
+	fs.IntVar(&cfg.MaxParallelism, prefix+".max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
+	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
+	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", time.Second, "Timeout for communication between distributors and ingesters when updating rates")
+}
+
+type ingesterClient struct {
+	addr   string
+	client logproto.StreamDataClient
 }
 
 type rateStore struct {
@@ -52,7 +57,7 @@ type rateStore struct {
 }
 
 //nolint:unexported-return
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore { //nolint:unexported-return
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore {
 	s := &rateStore{
 		ring:                   r,
 		clientPool:             cf,
@@ -63,7 +68,7 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, re
 			Namespace: "loki",
 			Name:      "rate_store_refresh_failures_total",
 			Help:      "The total number of failed attempts to refresh the distributor's view of stream rates",
-		}, []string{"reason"}),
+		}, []string{"source"}),
 		refreshDuration: instrument.NewHistogramCollector(
 			promauto.With(registerer).NewHistogramVec(
 				prometheus.HistogramOpts{
@@ -91,7 +96,7 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	clients, err := s.getClients()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting ingester clients", "err", err)
-		s.rateRefreshFailures.WithLabelValues("ring_error").Inc()
+		s.rateRefreshFailures.WithLabelValues("ring").Inc()
 		return nil // Don't fail the service because we have an error getting the clients once
 	}
 
@@ -118,8 +123,8 @@ func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate
 	return rates
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []logproto.StreamDataClient) map[uint64]*logproto.StreamRate {
-	parallelClients := make(chan logproto.StreamDataClient, len(clients))
+func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[uint64]*logproto.StreamRate {
+	parallelClients := make(chan ingesterClient, len(clients))
 	responses := make(chan *logproto.StreamRatesResponse, len(clients))
 
 	for i := 0; i < s.maxParallelism; i++ {
@@ -134,6 +139,21 @@ func (s *rateStore) getRates(ctx context.Context, clients []logproto.StreamDataC
 	return ratesPerStream(responses, len(clients))
 }
 
+func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan ingesterClient, responses chan *logproto.StreamRatesResponse) {
+	for c := range clients {
+		ctx, cancel := context.WithTimeout(ctx, s.ingesterTimeout)
+
+		resp, err := c.client.GetStreamRates(ctx, &logproto.StreamRatesRequest{})
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "unable to get stream rates", "err", err)
+			s.rateRefreshFailures.WithLabelValues(c.addr).Inc()
+		}
+
+		responses <- resp
+		cancel()
+	}
+}
+
 func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[uint64]*logproto.StreamRate {
 	streamRates := make(map[uint64]*logproto.StreamRate)
 	for i := 0; i < totalResponses; i++ {
@@ -142,8 +162,8 @@ func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses
 			continue
 		}
 
-		for i := 0; i < len(resp.StreamRates); i++ {
-			rate := resp.StreamRates[i]
+		for j := 0; j < len(resp.StreamRates); j++ {
+			rate := resp.StreamRates[j]
 
 			if r, ok := streamRates[rate.StreamHash]; ok {
 				if r.Rate < rate.Rate {
@@ -159,35 +179,20 @@ func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses
 	return streamRates
 }
 
-func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan logproto.StreamDataClient, responses chan *logproto.StreamRatesResponse) {
-	for c := range clients {
-		ctx, cancel := context.WithTimeout(ctx, s.ingesterTimeout)
-
-		resp, err := c.GetStreamRates(ctx, &logproto.StreamRatesRequest{})
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to get stream rates", "err", err)
-			s.rateRefreshFailures.WithLabelValues("ingester_error").Inc()
-		}
-
-		responses <- resp
-		cancel()
-	}
-}
-
-func (s *rateStore) getClients() ([]logproto.StreamDataClient, error) {
+func (s *rateStore) getClients() ([]ingesterClient, error) {
 	ingesters, err := s.ring.GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}
 
-	clients := make([]logproto.StreamDataClient, 0, len(ingesters.Instances))
+	clients := make([]ingesterClient, 0, len(ingesters.Instances))
 	for _, i := range ingesters.Instances {
 		client, err := s.clientPool.GetClientFor(i.Addr)
 		if err != nil {
 			return nil, err
 		}
 
-		clients = append(clients, client.(logproto.StreamDataClient))
+		clients = append(clients, ingesterClient{i.Addr, client.(logproto.StreamDataClient)})
 	}
 
 	return clients, nil

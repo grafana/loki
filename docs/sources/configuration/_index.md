@@ -318,6 +318,7 @@ ring:
     # reading and writing.
     # CLI flag: -distributor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+    
   rate_store:
     # The max number of concurrent requests to make to ingester stream apis
     # CLI flag: -distributor.rate-store.max-request-parallelism
