@@ -45,12 +45,13 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		tIngester = clu.AddComponent(
 			"ingester",
 			"-target=ingester",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
 			"-target=query-scheduler",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-query-scheduler.use-scheduler-ring=false",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -60,16 +61,16 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
 			"-target=query-frontend",
-			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL().Host,
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
-			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 		_ = clu.AddComponent(
 			"querier",
 			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL().Host,
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
-			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -77,11 +78,11 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	tenantID := randStringRunes()
 
 	now := time.Now()
-	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL().String())
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliDistributor.Now = now
-	cliIngester := client.New(tenantID, "", tIngester.HTTPURL().String())
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
 	cliIngester.Now = now
-	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL().String())
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 	cliQueryFrontend.Now = now
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
