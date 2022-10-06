@@ -28,7 +28,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
-	cli := client.New(tenantID, "", tAll.HTTPURL().String())
+	cli := client.New(tenantID, "", tAll.HTTPURL())
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
 		// ingest some log lines
