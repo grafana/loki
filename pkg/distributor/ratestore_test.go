@@ -9,8 +9,9 @@ import (
 
 	client2 "github.com/grafana/loki/pkg/ingester/client"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"

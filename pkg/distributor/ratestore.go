@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/services"
 
 	"github.com/go-kit/log/level"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -56,8 +58,8 @@ type rateStore struct {
 	refreshDuration        *instrument.HistogramCollector
 }
 
-//nolint:unexported-return
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore {
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore { //nolint
+
 	s := &rateStore{
 		ring:                   r,
 		clientPool:             cf,
