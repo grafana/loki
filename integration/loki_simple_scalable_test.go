@@ -34,9 +34,9 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 	tenantID := randStringRunes()
 
 	now := time.Now()
-	cliWrite := client.New(tenantID, "", tWrite.HTTPURL().String())
+	cliWrite := client.New(tenantID, "", tWrite.HTTPURL())
 	cliWrite.Now = now
-	cliRead := client.New(tenantID, "", tRead.HTTPURL().String())
+	cliRead := client.New(tenantID, "", tRead.HTTPURL())
 	cliRead.Now = now
 
 	t.Run("ingest logs", func(t *testing.T) {

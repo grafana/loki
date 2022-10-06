@@ -8,6 +8,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
@@ -145,7 +147,25 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
+	if t.Cfg.Server.HTTPListenPort == 0 {
+		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
+	}
+
+	if t.Cfg.Server.GRPCListenPort == 0 {
+		t.Cfg.Server.GRPCListenPort = portFromAddr(t.Server.GRPCListenAddr().String())
+	}
+
 	return s, nil
+}
+
+func portFromAddr(addr string) int {
+	parts := strings.Split(addr, ":")
+	port := parts[len(parts)-1]
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
+		return 0
+	}
+	return portNumber
 }
 
 func (t *Loki) initInternalServer() (services.Service, error) {
