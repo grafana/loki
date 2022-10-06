@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/validation"
+
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/dskit/services"
@@ -44,6 +46,10 @@ type ingesterClient struct {
 	client logproto.StreamDataClient
 }
 
+type overrides interface {
+	AllByUserID() map[string]*validation.Limits
+}
+
 type rateStore struct {
 	services.Service
 
@@ -56,16 +62,17 @@ type rateStore struct {
 	maxParallelism         int
 	rateRefreshFailures    *prometheus.CounterVec
 	refreshDuration        *instrument.HistogramCollector
+	overrides              overrides
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore { //nolint
-
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, o overrides, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
 		ring:                   r,
 		clientPool:             cf,
 		rateCollectionInterval: cfg.StreamRateUpdateInterval,
 		maxParallelism:         cfg.MaxParallelism,
 		ingesterTimeout:        cfg.IngesterReqTimeout,
+		overrides:              o,
 		rateRefreshFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "rate_store_refresh_failures_total",
@@ -91,6 +98,10 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, re
 }
 
 func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
+	if !s.anySharingEnabled() {
+		return nil
+	}
+
 	return instrument.CollectedRequest(ctx, "GetAllStreamRates", s.refreshDuration, instrument.ErrorCode, s.updateAllRates)
 }
 
@@ -110,6 +121,21 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	s.rates = rates
 
 	return nil
+}
+
+func (s *rateStore) anySharingEnabled() bool {
+	limits := s.overrides.AllByUserID()
+	if limits == nil {
+		return false
+	}
+
+	for _, l := range limits {
+		if l.ShardStreams.Enabled {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate) map[uint64]int64 {

@@ -207,6 +207,7 @@ func New(
 			internalFactory,
 			util_log.Logger,
 		),
+		overrides,
 		registerer,
 	)
 	d.rateStore = rs
