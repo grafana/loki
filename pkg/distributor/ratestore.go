@@ -51,6 +51,7 @@ type rateStore struct {
 	refreshDuration        *instrument.HistogramCollector
 }
 
+//nolint:unexported-return
 func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, registerer prometheus.Registerer) *rateStore { //nolint:unexported-return
 	s := &rateStore{
 		ring:                   r,
