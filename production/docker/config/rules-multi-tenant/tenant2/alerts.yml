@@ -1,0 +1,11 @@
+groups:
+  - name: always-firing-tenant2
+    rules:
+      - alert: fire-tenant2
+        expr: |
+          1 > 0
+        for: 0m
+        labels:
+          severity: warning-tenant2
+        annotations:
+          summary: testing tenant2

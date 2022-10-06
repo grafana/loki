@@ -110,10 +110,19 @@ ruler:
   alertmanager_url: http://alertmanager:9093
   enable_alertmanager_v2: true
   alertmanager_refresh_interval: 1m
+#  alertmanagers_per_tenant:
+#    tenant1:
+#      alertmanager_url: http://alertmanager1:9093
+#      enable_alertmanager_v2: true
+#      alertmanager_refresh_interval: 1m
+#    tenant2:
+#      alertmanager_url: http://alertmanager2:9093
+#      enable_alertmanager_v2: true
+#      alertmanager_refresh_interval: 1m
   storage:
     type: local
     local:
-      directory: /etc/loki/rules
+      directory: /etc/loki/rules-multi-tenant
   ring:
     kvstore:
       store: inmemory
