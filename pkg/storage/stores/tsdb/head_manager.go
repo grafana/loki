@@ -606,6 +606,7 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	}
 
 	if newStream {
+		rec.Fingerprint = ls.Hash()
 		rec.Series = record.RefSeries{
 			Ref:    chunks.HeadSeriesRef(refID),
 			Labels: ls,
