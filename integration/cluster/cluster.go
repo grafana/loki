@@ -403,7 +403,7 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 }
 
 func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:0"))
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(fmt.Errorf("failed to listen on: %v", err))
 	}
