@@ -84,6 +84,9 @@ func (i *indexShipperQuerier) Close() error {
 }
 
 func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
@@ -92,6 +95,9 @@ func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, f
 }
 
 func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
@@ -100,6 +106,9 @@ func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, t
 }
 
 func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
@@ -108,6 +117,9 @@ func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, fro
 }
 
 func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
@@ -116,6 +128,9 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 }
 
 func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
