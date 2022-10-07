@@ -66,7 +66,8 @@ func TestBuildNotifierConfig(t *testing.T) {
 					DefaultNotifierConf: {
 						AlertmanagerURL:             "http://_http._tcp.alertmanager.default.svc.cluster.local/alertmanager",
 						AlertmanagerDiscovery:       true,
-						AlertmanagerRefreshInterval: time.Duration(60)},
+						AlertmanagerRefreshInterval: time.Duration(60),
+					},
 				},
 			},
 			ncfg: map[string]config.Config{

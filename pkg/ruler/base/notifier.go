@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -170,10 +169,6 @@ func amConfigFromURL(cfg AlertManagerConfig, url *url.URL, apiVersion config.Ale
 				},
 			},
 		}
-	}
-
-	if cfg.NotificationTimeout == 0 {
-		cfg.NotificationTimeout = 10 * time.Second
 	}
 
 	amConfig := &config.AlertmanagerConfig{

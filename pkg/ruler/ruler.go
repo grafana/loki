@@ -1,6 +1,8 @@
 package ruler
 
 import (
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,6 +39,13 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 		}
 
 		cfg.AlertManagersPerTenant[base.DefaultNotifierConf] = cfg.AlertManagerConfig
+	}
+
+	for t, c := range cfg.AlertManagersPerTenant {
+		if c.NotificationTimeout == 0 {
+			c.NotificationTimeout = 10 * time.Second
+			cfg.AlertManagersPerTenant[t] = c
+		}
 	}
 
 	mgr, err := ruler.NewDefaultMultiTenantManager(

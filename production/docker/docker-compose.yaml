@@ -170,26 +170,26 @@ services:
       mode: replicated
       replicas: 3
 
-# alertmanagers can able enable to receive alerts
-#  alertmanager1:
-#    image: prom/alertmanager:v0.23.0
-#    restart: unless-stopped
-#    ports:
-#      - "9093:9093"
-#    volumes:
-#      - "./config:/config"
-#      - alertmanager1-data:/data
-#    command: --config.file=/config/alertmanager.yml --log.level=debug
-#    networks:
-#      - loki
-#  alertmanager2:
-#    image: prom/alertmanager:v0.23.0
-#    restart: unless-stopped
-#    ports:
-#      - "9094:9093"
-#    volumes:
-#      - "./config:/config"
-#      - alertmanager2-data:/data
-#    command: --config.file=/config/alertmanager.yml --log.level=debug
-#    networks:
-#      - loki
+  # alertmanagers can able enable to receive alerts
+  alertmanager1:
+    image: prom/alertmanager:v0.23.0
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - "./config:/config"
+      - alertmanager1-data:/data
+    command: --config.file=/config/alertmanager.yml --log.level=debug
+    networks:
+      - loki
+  alertmanager2:
+    image: prom/alertmanager:v0.23.0
+    restart: unless-stopped
+    ports:
+      - "9094:9093"
+    volumes:
+      - "./config:/config"
+      - alertmanager2-data:/data
+    command: --config.file=/config/alertmanager.yml --log.level=debug
+    networks:
+      - loki
