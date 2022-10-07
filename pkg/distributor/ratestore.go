@@ -56,17 +56,17 @@ type rateStore struct {
 	maxParallelism         int
 	rateRefreshFailures    *prometheus.CounterVec
 	refreshDuration        *instrument.HistogramCollector
-	overrides              Limits
+	limits                 Limits
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, o Limits, registerer prometheus.Registerer) *rateStore { //nolint
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
 		ring:                   r,
 		clientPool:             cf,
 		rateCollectionInterval: cfg.StreamRateUpdateInterval,
 		maxParallelism:         cfg.MaxParallelism,
 		ingesterTimeout:        cfg.IngesterReqTimeout,
-		overrides:              o,
+		limits:                 l,
 		rateRefreshFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "rate_store_refresh_failures_total",
@@ -118,14 +118,14 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
-	limits := s.overrides.AllByUserID()
+	limits := s.limits.AllByUserID()
 	if limits == nil {
 		// There aren't any tenant limits, check the default
-		return s.overrides.ShardStreams("fake").Enabled
+		return s.limits.ShardStreams("fake").Enabled
 	}
 
-	for user, _ := range limits {
-		if s.overrides.ShardStreams(user).Enabled {
+	for user := range limits {
+		if s.limits.ShardStreams(user).Enabled {
 			return true
 		}
 	}
