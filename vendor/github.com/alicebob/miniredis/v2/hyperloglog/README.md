@@ -1,1 +1,0 @@
-This is a copy of github.com/axiomhq/hyperloglog.

@@ -1,4 +1,4 @@
-//+build !noasm,!appengine,gc
+//+build !noasm,!appengine
 
 package sha256
 

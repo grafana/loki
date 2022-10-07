@@ -22,8 +22,7 @@ func commandsScripting(m *Miniredis) {
 }
 
 // Execute lua. Needs to run m.Lock()ed, from within withTx().
-// Returns true if the lua was OK (and hence should be cached).
-func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) bool {
+func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) {
 	l := lua.NewState(lua.Options{SkipOpenLibs: true})
 	defer l.Close()
 
@@ -58,15 +57,15 @@ func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) b
 	keysLen, err := strconv.Atoi(keysS)
 	if err != nil {
 		c.WriteError(msgInvalidInt)
-		return false
+		return
 	}
 	if keysLen < 0 {
 		c.WriteError(msgNegativeKeysNumber)
-		return false
+		return
 	}
 	if keysLen > len(args) {
 		c.WriteError(msgInvalidKeysNumber)
-		return false
+		return
 	}
 	keys, args := args[:keysLen], args[keysLen:]
 	for i, k := range keys {
@@ -80,13 +79,10 @@ func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) b
 	}
 	l.SetGlobal("ARGV", argvTable)
 
-	redisFuncs, redisConstants := mkLua(m.srv, c)
+	redisFuncs := mkLuaFuncs(m.srv, c)
 	// Register command handlers
 	l.Push(l.NewFunction(func(l *lua.LState) int {
 		mod := l.RegisterModule("redis", redisFuncs).(*lua.LTable)
-		for k, v := range redisConstants {
-			mod.RawSetString(k, v)
-		}
 		l.Push(mod)
 		return 1
 	}))
@@ -98,11 +94,10 @@ func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) b
 
 	if err := l.DoString(script); err != nil {
 		c.WriteError(errLuaParseError(err))
-		return false
+		return
 	}
 
 	luaToRedis(l, c, l.Get(1))
-	return true
 }
 
 func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
@@ -126,11 +121,7 @@ func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
 	script, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		ok := m.runLuaScript(c, script, args)
-		if ok {
-			sha := sha1Hex(script)
-			m.scripts[sha] = script
-		}
+		m.runLuaScript(c, script, args)
 	})
 }
 
@@ -212,15 +203,8 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 			}
 
 		case "flush":
-			if len(args) == 1 {
-				switch strings.ToUpper(args[0]) {
-				case "SYNC", "ASYNC":
-					args = args[1:]
-				default:
-				}
-			}
 			if len(args) != 0 {
-				c.WriteError(msgScriptFlush)
+				c.WriteError(fmt.Sprintf(msgFScriptUsage, "FLUSH"))
 				return
 			}
 

@@ -1,4 +1,3 @@
-//go:build modhack
 // +build modhack
 
 package cli

@@ -21,8 +21,6 @@ import (
 	"encoding/binary"
 	"hash"
 	"runtime"
-
-	"github.com/klauspost/cpuid/v2"
 )
 
 // Size - The size of a SHA256 checksum in bytes.
@@ -69,6 +67,10 @@ type blockfuncType int
 
 const (
 	blockfuncGeneric blockfuncType = iota
+	blockfuncAvx512  blockfuncType = iota
+	blockfuncAvx2    blockfuncType = iota
+	blockfuncAvx     blockfuncType = iota
+	blockfuncSsse    blockfuncType = iota
 	blockfuncSha     blockfuncType = iota
 	blockfuncArm     blockfuncType = iota
 )
@@ -76,22 +78,24 @@ const (
 var blockfunc blockfuncType
 
 func init() {
-	blockfunc = blockfuncGeneric
+	is386bit := runtime.GOARCH == "386"
+	isARM := runtime.GOARCH == "arm"
 	switch {
-	case hasSHAExtensions():
+	case is386bit || isARM:
+		blockfunc = blockfuncGeneric
+	case sha && ssse3 && sse41:
 		blockfunc = blockfuncSha
-	case hasArmSha2():
+	case avx2:
+		blockfunc = blockfuncAvx2
+	case avx:
+		blockfunc = blockfuncAvx
+	case ssse3:
+		blockfunc = blockfuncSsse
+	case armSha:
 		blockfunc = blockfuncArm
 	default:
 		blockfunc = blockfuncGeneric
 	}
-}
-
-var avx512 = cpuid.CPU.Supports(cpuid.AVX512F, cpuid.AVX512DQ, cpuid.AVX512BW, cpuid.AVX512VL)
-
-// hasSHAExtensions return  whether the cpu supports SHA extensions.
-func hasSHAExtensions() bool {
-	return cpuid.CPU.Supports(cpuid.SHA, cpuid.SSSE3, cpuid.SSE4) && runtime.GOARCH == "amd64"
 }
 
 // New returns a new hash.Hash computing the SHA256 checksum.
@@ -274,6 +278,12 @@ func (d *digest) checkSum() (digest [Size]byte) {
 func block(dig *digest, p []byte) {
 	if blockfunc == blockfuncSha {
 		blockShaGo(dig, p)
+	} else if blockfunc == blockfuncAvx2 {
+		blockAvx2Go(dig, p)
+	} else if blockfunc == blockfuncAvx {
+		blockAvxGo(dig, p)
+	} else if blockfunc == blockfuncSsse {
+		blockSsseGo(dig, p)
 	} else if blockfunc == blockfuncArm {
 		blockArmGo(dig, p)
 	} else if blockfunc == blockfuncGeneric {

@@ -39,7 +39,8 @@ type baggageState struct {
 // Passing nil SetHookFunc creates a context with no set hook to call.
 func ContextWithSetHook(parent context.Context, hook SetHookFunc) context.Context {
 	var s baggageState
-	if v, ok := parent.Value(baggageKey).(baggageState); ok {
+	switch v := parent.Value(baggageKey).(type) {
+	case baggageState:
 		s = v
 	}
 
@@ -53,7 +54,8 @@ func ContextWithSetHook(parent context.Context, hook SetHookFunc) context.Contex
 // Passing nil GetHookFunc creates a context with no get hook to call.
 func ContextWithGetHook(parent context.Context, hook GetHookFunc) context.Context {
 	var s baggageState
-	if v, ok := parent.Value(baggageKey).(baggageState); ok {
+	switch v := parent.Value(baggageKey).(type) {
+	case baggageState:
 		s = v
 	}
 
@@ -65,7 +67,8 @@ func ContextWithGetHook(parent context.Context, hook GetHookFunc) context.Contex
 // returns a context without any baggage.
 func ContextWithList(parent context.Context, list List) context.Context {
 	var s baggageState
-	if v, ok := parent.Value(baggageKey).(baggageState); ok {
+	switch v := parent.Value(baggageKey).(type) {
+	case baggageState:
 		s = v
 	}
 

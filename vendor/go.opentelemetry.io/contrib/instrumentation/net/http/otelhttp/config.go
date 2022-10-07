@@ -37,8 +37,6 @@ type config struct {
 	Meter             metric.Meter
 	Propagators       propagation.TextMapPropagator
 	SpanStartOptions  []trace.SpanStartOption
-	PublicEndpoint    bool
-	PublicEndpointFn  func(*http.Request) bool
 	ReadEvent         bool
 	WriteEvent        bool
 	Filters           []Filter
@@ -108,18 +106,7 @@ func WithMeterProvider(provider metric.MeterProvider) Option {
 // association instead of a link.
 func WithPublicEndpoint() Option {
 	return optionFunc(func(c *config) {
-		c.PublicEndpoint = true
-	})
-}
-
-// WithPublicEndpointFn runs with every request, and allows conditionnally
-// configuring the Handler to link the span with an incoming span context. If
-// this option is not provided or returns false, then the association is a
-// child association instead of a link.
-// Note: WithPublicEndpoint takes precedence over WithPublicEndpointFn.
-func WithPublicEndpointFn(fn func(*http.Request) bool) Option {
-	return optionFunc(func(c *config) {
-		c.PublicEndpointFn = fn
+		c.SpanStartOptions = append(c.SpanStartOptions, trace.WithNewRoot())
 	})
 }
 
@@ -155,7 +142,7 @@ func WithFilter(f Filter) Option {
 
 type event int
 
-// Different types of events that can be recorded, see WithMessageEvents.
+// Different types of events that can be recorded, see WithMessageEvents
 const (
 	ReadEvents event = iota
 	WriteEvents
@@ -184,7 +171,7 @@ func WithMessageEvents(events ...event) Option {
 }
 
 // WithSpanNameFormatter takes a function that will be called on every
-// request and the returned string will become the Span Name.
+// request and the returned string will become the Span Name
 func WithSpanNameFormatter(f func(operation string, r *http.Request) string) Option {
 	return optionFunc(func(c *config) {
 		c.SpanNameFormatter = f
