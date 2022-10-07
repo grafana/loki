@@ -98,8 +98,8 @@ steps:
   image: grafana/loki-build-image:0.24.1
   name: compare-coverage
 - commands:
-  - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
-  - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
+  - 'pull=$(echo $CI_COMMIT_REF | awk -F '
+  - 'body=$(jq -Rs '
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
     -d "$body" > /dev/null'
   depends_on:
@@ -1134,25 +1134,27 @@ steps:
   - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
     echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" || echo "next") && echo $RELEASE_NAME
   - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
-  - echo $PLUGIN_UPDATER_CONFIG > updater-config.json
+  - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
   - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
   - cat updater-config.json
   depends_on:
   - clone
   environment:
-    RELEASE_BRANCH_REGEXP: ^logql-analyzer-test-release-([0-9\.x]+)$'
+    RELEASE_BRANCH_REGEXP: ^logql-analyzer-test-release-([0-9\.x]+)$
   image: alpine
   name: prepare-updater-config
   settings:
-    updater_config:
-      from_secret: updater_config
-- commands:
-  - cat updater-config.json
-  depends_on:
+    config_template:
+      from_secret: updater_config_template
+- depends_on:
   - prepare-updater-config
-  image: alpine
-  name: print-prapered-updater-config
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
+  name: run-updater
+  settings:
+    config_file: updater-config.json
+    github_token:
+      from_secret: github_token
 trigger:
   ref:
   - refs/heads/main
@@ -1516,7 +1518,7 @@ get:
   name: updater-config-template.json
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
-name: updater_config
+name: updater_config_template
 ---
 get:
   name: passphrase
@@ -1531,6 +1533,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 8e517ecf2728bc95ff7fdbaa9fc58a6546a2e49c142412003157abf4c7b0aa4b
+hmac: c91bc1a7cdca8badef7be2b9183afe5ef226bc221ef2a5914607b244d4ae13c0
 
 ...
