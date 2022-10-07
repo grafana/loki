@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 
+	homedir "github.com/mitchellh/go-homedir"
 	ini "gopkg.in/ini.v1"
 )
 
@@ -61,7 +62,7 @@ func (p *FileAWSCredentials) Retrieve() (Value, error) {
 	if p.Filename == "" {
 		p.Filename = os.Getenv("AWS_SHARED_CREDENTIALS_FILE")
 		if p.Filename == "" {
-			homeDir, err := os.UserHomeDir()
+			homeDir, err := homedir.Dir()
 			if err != nil {
 				return Value{}, err
 			}

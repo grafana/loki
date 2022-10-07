@@ -11,14 +11,7 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 )
 
-var luaRedisConstants = map[string]lua.LValue{
-	"LOG_DEBUG":   lua.LNumber(0),
-	"LOG_VERBOSE": lua.LNumber(1),
-	"LOG_NOTICE":  lua.LNumber(2),
-	"LOG_WARNING": lua.LNumber(3),
-}
-
-func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[string]lua.LValue) {
+func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 	mkCall := func(failFast bool) func(l *lua.LState) int {
 		// one server.Ctx for a single Lua run
 		pCtx := &connCtx{}
@@ -86,8 +79,6 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 					l.Push(lua.LString(string(r)))
 				case []interface{}:
 					l.Push(redisToLua(l, r))
-				case server.Simple:
-					l.Push(luaStatusReply(string(r)))
 				case string:
 					l.Push(lua.LString(r))
 				case error:
@@ -116,14 +107,6 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 			l.Push(res)
 			return 1
 		},
-		"log": func(l *lua.LState) int {
-			level := l.CheckInt(1)
-			msg := l.CheckString(2)
-			_, _ = level, msg
-			// do nothing by default. To see logs uncomment:
-			//   fmt.Printf("%v: %v", level, msg)
-			return 0
-		},
 		"status_reply": func(l *lua.LState) int {
 			v := l.Get(1)
 			msg, ok := v.(lua.LString)
@@ -131,7 +114,8 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 				l.Error(lua.LString("wrong number or type of arguments"), 1)
 				return 0
 			}
-			res := luaStatusReply(string(msg))
+			res := &lua.LTable{}
+			res.RawSetString("ok", lua.LString(msg))
 			l.Push(res)
 			return 1
 		},
@@ -149,7 +133,7 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 			// ignored
 			return 1
 		},
-	}, luaRedisConstants
+	}
 }
 
 func luaToRedis(l *lua.LState, c *server.Peer, value lua.LValue) {
@@ -171,7 +155,11 @@ func luaToRedis(l *lua.LState, c *server.Peer, value lua.LValue) {
 		c.WriteInt(int(lua.LVAsNumber(value)))
 	case lua.LString:
 		s := lua.LVAsString(value)
-		c.WriteBulk(s)
+		if s == "OK" {
+			c.WriteInline(s)
+		} else {
+			c.WriteBulk(s)
+		}
 	case *lua.LTable:
 		// special case for tables with an 'err' or 'ok' field
 		// note: according to the docs this only counts when 'err' or 'ok' is
@@ -233,10 +221,4 @@ func redisToLua(l *lua.LState, res []interface{}) *lua.LTable {
 		l.RawSet(rettb, lua.LNumber(rettb.Len()+1), v)
 	}
 	return rettb
-}
-
-func luaStatusReply(msg string) *lua.LTable {
-	tab := &lua.LTable{}
-	tab.RawSetString("ok", lua.LString(msg))
-	return tab
 }

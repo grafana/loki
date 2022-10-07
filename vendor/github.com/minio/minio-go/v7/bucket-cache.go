@@ -127,11 +127,8 @@ func processBucketLocationResponse(resp *http.Response, bucketName string) (buck
 			// succeed if possible based on their policy.
 			switch errResp.Code {
 			case "NotImplemented":
-				switch errResp.Server {
-				case "AmazonSnowball":
+				if errResp.Server == "AmazonSnowball" {
 					return "snowball", nil
-				case "cloudflare":
-					return "us-east-1", nil
 				}
 			case "AuthorizationHeaderMalformed":
 				fallthrough

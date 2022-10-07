@@ -125,7 +125,11 @@ func (c consoleEncoder) EncodeEntry(ent Entry, fields []Field) (*buffer.Buffer, 
 		line.AppendString(ent.Stack)
 	}
 
-	line.AppendString(c.LineEnding)
+	if c.LineEnding != "" {
+		line.AppendString(c.LineEnding)
+	} else {
+		line.AppendString(DefaultLineEnding)
+	}
 	return line, nil
 }
 
