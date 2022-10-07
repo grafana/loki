@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -23,13 +24,13 @@ import (
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureRulerHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureRulerHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureRulerGRPCServicePKI(statefulSet, opts.Name, opts.Namespace); err != nil {
+		if err := configureRulerGRPCServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -141,6 +142,13 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
@@ -318,13 +326,13 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameRulerHTTP(stackName)
+func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameRulerHTTP(opts.Name)
 	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNs string) error {
-	caBundleName := signingCABundleName(stackName)
+func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	caBundleName := signingCABundleName(opts.Name)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -351,16 +359,22 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNs st
 		Args: []string{
 			// Enable GRPC over TLS for ruler client
 			"-ruler.client.tls-enabled=true",
+			fmt.Sprintf("-ruler.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ruler.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(stackName), stackNs)),
+			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
 		},
 	}
 
@@ -372,7 +386,7 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNs st
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	serviceName := serviceNameRulerGRPC(stackName)
+	serviceName := serviceNameRulerGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 

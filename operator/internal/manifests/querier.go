@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/imdario/mergo"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,7 +22,7 @@ import (
 func BuildQuerier(opts Options) ([]client.Object, error) {
 	deployment := NewQuerierDeployment(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureQuerierHTTPServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQuerierHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -32,7 +32,7 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureQuerierGRPCServicePKI(deployment, opts.Name, opts.Namespace); err != nil {
+		if err := configureQuerierGRPCServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -107,6 +107,13 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Querier != nil {
@@ -205,13 +212,13 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQuerierHTTP(stackName)
+func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQuerierHTTP(opts.Name)
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
-	caBundleName := signingCABundleName(stackName)
+func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	caBundleName := signingCABundleName(opts.Name)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -238,16 +245,22 @@ func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, st
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for query frontend client
 			"-querier.frontend-client.tls-enabled=true",
+			fmt.Sprintf("-querier.frontend-client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-querier.frontend-client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNS)),
+			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
 		},
 	}
 
@@ -259,6 +272,6 @@ func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, st
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	serviceName := serviceNameQuerierGRPC(stackName)
+	serviceName := serviceNameQuerierGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
