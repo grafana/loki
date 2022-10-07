@@ -159,7 +159,7 @@ func (m *tsdbManager) Start() (err error) {
 func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 	periods := make(map[string]*Builder)
 
-	if err := heads.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) error {
+	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]index.ChunkMetas)
@@ -188,7 +188,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 				withTenant,
 				// use the fingerprint without the added tenant label
 				// so queries route to the chunks which actually exist.
-				model.Fingerprint(ls.Hash()),
+				model.Fingerprint(fp),
 				matchingChks,
 			)
 		}
