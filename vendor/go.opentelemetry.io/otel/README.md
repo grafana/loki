@@ -43,25 +43,17 @@ This project is tested on the following systems.
 | ------- | ---------- | ------------ |
 | Ubuntu  | 1.18       | amd64        |
 | Ubuntu  | 1.17       | amd64        |
-| Ubuntu  | 1.16       | amd64        |
 | Ubuntu  | 1.18       | 386          |
 | Ubuntu  | 1.17       | 386          |
-| Ubuntu  | 1.16       | 386          |
 | MacOS   | 1.18       | amd64        |
 | MacOS   | 1.17       | amd64        |
-| MacOS   | 1.16       | amd64        |
 | Windows | 1.18       | amd64        |
 | Windows | 1.17       | amd64        |
-| Windows | 1.16       | amd64        |
 | Windows | 1.18       | 386          |
 | Windows | 1.17       | 386          |
-| Windows | 1.16       | 386          |
 
 While this project should work for other systems, no compatibility guarantees
 are made for those systems currently.
-
-Go 1.18 was added in March of 2022.
-Go 1.16 will be removed around June 2022.
 
 ## Getting Started
 

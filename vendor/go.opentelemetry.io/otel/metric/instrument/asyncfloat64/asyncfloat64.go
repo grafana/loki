@@ -45,7 +45,7 @@ type Counter interface {
 	instrument.Asynchronous
 }
 
-// UpDownCounter is an instrument that records increasing or decresing values.
+// UpDownCounter is an instrument that records increasing or decreasing values.
 type UpDownCounter interface {
 	// Observe records the state of the instrument.
 	//

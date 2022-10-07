@@ -61,10 +61,17 @@ func (c *DynamoDB) BatchExecuteStatementRequest(input *BatchExecuteStatementInpu
 // BatchExecuteStatement API operation for Amazon DynamoDB.
 //
 // This operation allows you to perform batch reads or writes on data stored
-// in DynamoDB, using PartiQL.
+// in DynamoDB, using PartiQL. Each read statement in a BatchExecuteStatement
+// must specify an equality condition on all key attributes. This enforces that
+// each SELECT statement in a batch returns at most a single item.
 //
 // The entire batch must consist of either read statements or write statements,
 // you cannot mix both in one batch.
+//
+// A HTTP 200 response does not mean that all statements in the BatchExecuteStatement
+// succeeded. Error details for individual statements can be found under the
+// Error (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchStatementResponse.html#DDB-Type-BatchStatementResponse-Error)
+// field of the BatchStatementResponse for each statement.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -637,7 +644,8 @@ func (c *DynamoDB) CreateBackupRequest(input *CreateBackupInput) (req *request.R
 // Returned Error Types:
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 //   * TableInUseException
 //   A target table with the specified name is either being created or deleted.
@@ -652,16 +660,16 @@ func (c *DynamoDB) CreateBackupRequest(input *CreateBackupInput) (req *request.R
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -813,16 +821,16 @@ func (c *DynamoDB) CreateGlobalTableRequest(input *CreateGlobalTableInput) (req 
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -832,7 +840,8 @@ func (c *DynamoDB) CreateGlobalTableRequest(input *CreateGlobalTableInput) (req 
 //
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/CreateGlobalTable
 func (c *DynamoDB) CreateGlobalTable(input *CreateGlobalTableInput) (*CreateGlobalTableOutput, error) {
@@ -958,16 +967,16 @@ func (c *DynamoDB) CreateTableRequest(input *CreateTableInput) (req *request.Req
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1085,16 +1094,16 @@ func (c *DynamoDB) DeleteBackupRequest(input *DeleteBackupInput) (req *request.R
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1373,16 +1382,16 @@ func (c *DynamoDB) DeleteTableRequest(input *DeleteTableInput) (req *request.Req
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1611,7 +1620,8 @@ func (c *DynamoDB) DescribeContinuousBackupsRequest(input *DescribeContinuousBac
 // Returned Error Types:
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1928,16 +1938,16 @@ func (c *DynamoDB) DescribeExportRequest(input *DescribeExportInput) (req *reque
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -2853,16 +2863,16 @@ func (c *DynamoDB) DisableKinesisStreamingDestinationRequest(input *DisableKines
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * ResourceInUseException
 //   The operation conflicts with the resource's availability. For example, you
@@ -2983,16 +2993,16 @@ func (c *DynamoDB) EnableKinesisStreamingDestinationRequest(input *EnableKinesis
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * ResourceInUseException
 //   The operation conflicts with the resource's availability. For example, you
@@ -3251,11 +3261,11 @@ func (c *DynamoDB) ExecuteTransactionRequest(input *ExecuteTransactionInput) (re
 //   If using Java, DynamoDB lists the cancellation reasons on the CancellationReasons
 //   property. This property is not set for other languages. Transaction cancellation
 //   reasons are ordered in the order of requested items, if an item has no error
-//   it will have NONE code and Null message.
+//   it will have None code and Null message.
 //
 //   Cancellation reason codes and possible error messages:
 //
-//      * No Errors: Code: NONE Message: null
+//      * No Errors: Code: None Message: null
 //
 //      * Conditional Check Failed: Code: ConditionalCheckFailed Message: The
 //      conditional request failed.
@@ -3402,7 +3412,8 @@ func (c *DynamoDB) ExportTableToPointInTimeRequest(input *ExportTableToPointInTi
 // Returned Error Types:
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 //   * PointInTimeRecoveryUnavailableException
 //   Point in time recovery has not yet been enabled for this source table.
@@ -3410,16 +3421,16 @@ func (c *DynamoDB) ExportTableToPointInTimeRequest(input *ExportTableToPointInTi
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InvalidExportTimeException
 //   The specified ExportTime is outside of the point in time recovery window.
@@ -3897,16 +3908,16 @@ func (c *DynamoDB) ListExportsRequest(input *ListExportsInput) (req *request.Req
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4445,29 +4456,6 @@ func (c *DynamoDB) PutItemRequest(input *PutItemInput) (req *request.Request, ou
 // values. You can return the item's attribute values in the same operation,
 // using the ReturnValues parameter.
 //
-// This topic provides general information about the PutItem API.
-//
-// For information on how to call the PutItem API using the Amazon Web Services
-// SDK in specific languages, see the following:
-//
-//    * PutItem in the Command Line Interface (http://docs.aws.amazon.com/goto/aws-cli/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for .NET (http://docs.aws.amazon.com/goto/DotNetSDKV3/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for C++ (http://docs.aws.amazon.com/goto/SdkForCpp/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for Go (http://docs.aws.amazon.com/goto/SdkForGoV1/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for Java (http://docs.aws.amazon.com/goto/SdkForJava/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for JavaScript (http://docs.aws.amazon.com/goto/AWSJavaScriptSDK/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for PHP V3 (http://docs.aws.amazon.com/goto/SdkForPHPV3/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for Python (Boto) (http://docs.aws.amazon.com/goto/boto3/dynamodb-2012-08-10/PutItem)
-//
-//    * PutItem in the SDK for Ruby V2 (http://docs.aws.amazon.com/goto/SdkForRubyV2/dynamodb-2012-08-10/PutItem)
-//
 // When you add an item, the primary key attributes are the only required attributes.
 // Attribute values cannot be null.
 //
@@ -4887,16 +4875,16 @@ func (c *DynamoDB) RestoreTableFromBackupRequest(input *RestoreTableFromBackupIn
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5042,7 +5030,8 @@ func (c *DynamoDB) RestoreTableToPointInTimeRequest(input *RestoreTableToPointIn
 //
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 //   * TableInUseException
 //   A target table with the specified name is either being created or deleted.
@@ -5050,16 +5039,16 @@ func (c *DynamoDB) RestoreTableToPointInTimeRequest(input *RestoreTableToPointIn
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InvalidRestoreTimeException
 //   An invalid restore time was specified. RestoreDateTime must be between EarliestRestorableDateTime
@@ -5388,16 +5377,16 @@ func (c *DynamoDB) TagResourceRequest(input *TagResourceInput) (req *request.Req
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * ResourceNotFoundException
 //   The operation tried to access a nonexistent table or index. The resource
@@ -5575,11 +5564,11 @@ func (c *DynamoDB) TransactGetItemsRequest(input *TransactGetItemsInput) (req *r
 //   If using Java, DynamoDB lists the cancellation reasons on the CancellationReasons
 //   property. This property is not set for other languages. Transaction cancellation
 //   reasons are ordered in the order of requested items, if an item has no error
-//   it will have NONE code and Null message.
+//   it will have None code and Null message.
 //
 //   Cancellation reason codes and possible error messages:
 //
-//      * No Errors: Code: NONE Message: null
+//      * No Errors: Code: None Message: null
 //
 //      * Conditional Check Failed: Code: ConditionalCheckFailed Message: The
 //      conditional request failed.
@@ -5836,11 +5825,11 @@ func (c *DynamoDB) TransactWriteItemsRequest(input *TransactWriteItemsInput) (re
 //   If using Java, DynamoDB lists the cancellation reasons on the CancellationReasons
 //   property. This property is not set for other languages. Transaction cancellation
 //   reasons are ordered in the order of requested items, if an item has no error
-//   it will have NONE code and Null message.
+//   it will have None code and Null message.
 //
 //   Cancellation reason codes and possible error messages:
 //
-//      * No Errors: Code: NONE Message: null
+//      * No Errors: Code: None Message: null
 //
 //      * Conditional Check Failed: Code: ConditionalCheckFailed Message: The
 //      conditional request failed.
@@ -6016,16 +6005,16 @@ func (c *DynamoDB) UntagResourceRequest(input *UntagResourceInput) (req *request
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * ResourceNotFoundException
 //   The operation tried to access a nonexistent table or index. The resource
@@ -6152,7 +6141,8 @@ func (c *DynamoDB) UpdateContinuousBackupsRequest(input *UpdateContinuousBackups
 // Returned Error Types:
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 //   * ContinuousBackupsUnavailableException
 //   Backups have not yet been enabled for this table.
@@ -6384,7 +6374,8 @@ func (c *DynamoDB) UpdateGlobalTableRequest(input *UpdateGlobalTableInput) (req 
 //
 //   * TableNotFoundException
 //   A source table with the name TableName does not currently exist within the
-//   subscriber's account.
+//   subscriber's account or the subscriber is operating in the wrong Amazon Web
+//   Services Region.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/UpdateGlobalTable
 func (c *DynamoDB) UpdateGlobalTable(input *UpdateGlobalTableInput) (*UpdateGlobalTableOutput, error) {
@@ -6499,16 +6490,16 @@ func (c *DynamoDB) UpdateGlobalTableSettingsRequest(input *UpdateGlobalTableSett
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * ResourceInUseException
 //   The operation conflicts with the resource's availability. For example, you
@@ -6754,8 +6745,6 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //
 //    * Modify the provisioned throughput settings of the table.
 //
-//    * Enable or disable DynamoDB Streams on the table.
-//
 //    * Remove a global secondary index from the table.
 //
 //    * Create a new global secondary index on the table. After the index begins
@@ -6786,16 +6775,16 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -6891,16 +6880,16 @@ func (c *DynamoDB) UpdateTableReplicaAutoScalingRequest(input *UpdateTableReplic
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -7045,16 +7034,16 @@ func (c *DynamoDB) UpdateTimeToLiveRequest(input *UpdateTimeToLiveInput) (req *r
 //   * LimitExceededException
 //   There is no limit to the number of daily on-demand backups that can be taken.
 //
-//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   Up to 500 simultaneous table operations are allowed per account. These operations
 //   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 //   and RestoreTableToPointInTime.
 //
 //   The only exception is when you are creating a table with one or more secondary
-//   indexes. You can have up to 25 such requests running at a time; however,
+//   indexes. You can have up to 250 such requests running at a time; however,
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account quota of 256 tables.
+//   There is a soft account quota of 2,500 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -7237,7 +7226,7 @@ type AttributeValue struct {
 
 	// An attribute of type List. For example:
 	//
-	// "L": [ {"S": "Cookies"} , {"S": "Coffee"}, {"N", "3.14159"}]
+	// "L": [ {"S": "Cookies"} , {"S": "Coffee"}, {"N": "3.14159"}]
 	L []*AttributeValue `type:"list"`
 
 	// An attribute of type Map. For example:
@@ -7421,9 +7410,9 @@ type AttributeValueUpdate struct {
 	//
 	//    * DELETE - Nothing happens; there is no attribute to delete.
 	//
-	//    * ADD - DynamoDB creates an item with the supplied primary key and number
-	//    (or set of numbers) for the attribute value. The only data types allowed
-	//    are number and number set; no other data types can be specified.
+	//    * ADD - DynamoDB creates a new item with the supplied primary key and
+	//    number (or set) for the attribute value. The only data types allowed are
+	//    number, number set, string set or binary set.
 	Action *string `type:"string" enum:"AttributeAction"`
 
 	// Represents the data for an attribute.
@@ -7976,7 +7965,8 @@ type BackupDetails struct {
 	// BackupName is a required field
 	BackupName *string `min:"3" type:"string" required:"true"`
 
-	// Size of the backup in bytes.
+	// Size of the backup in bytes. DynamoDB updates this value approximately every
+	// six hours. Recent changes might not be reflected in this value.
 	BackupSizeBytes *int64 `type:"long"`
 
 	// Backup can be in one of the following states: CREATING, ACTIVE, DELETED.
@@ -10938,6 +10928,10 @@ type DeleteItemInput struct {
 	//
 	//    * ALL_OLD - The content of the old item is returned.
 	//
+	// There is no additional cost associated with requesting a return value aside
+	// from the small network and processing overhead of receiving a larger response.
+	// No read capacity units are consumed.
+	//
 	// The ReturnValues parameter is used by several DynamoDB operations; however,
 	// DeleteItem does not recognize any values other than NONE or ALL_OLD.
 	ReturnValues *string `type:"string" enum:"ReturnValue"`
@@ -13655,8 +13649,9 @@ type ExportTableToPointInTimeInput struct {
 	// or ION.
 	ExportFormat *string `type:"string" enum:"ExportFormat"`
 
-	// Time in the past from which to export table data. The table export will be
-	// a snapshot of the table's state at this point in time.
+	// Time in the past from which to export table data, counted in seconds from
+	// the start of the Unix epoch. The table export will be a snapshot of the table's
+	// state at this point in time.
 	ExportTime *time.Time `type:"timestamp"`
 
 	// The name of the Amazon S3 bucket to export the snapshot to.
@@ -15759,16 +15754,16 @@ func (s *KinesisDataStreamDestination) SetStreamArn(v string) *KinesisDataStream
 
 // There is no limit to the number of daily on-demand backups that can be taken.
 //
-// Up to 50 simultaneous table operations are allowed per account. These operations
+// Up to 500 simultaneous table operations are allowed per account. These operations
 // include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
 // and RestoreTableToPointInTime.
 //
 // The only exception is when you are creating a table with one or more secondary
-// indexes. You can have up to 25 such requests running at a time; however,
+// indexes. You can have up to 250 such requests running at a time; however,
 // if the table or index specifications are complex, DynamoDB might temporarily
 // reduce the number of concurrent operations.
 //
-// There is a soft account quota of 256 tables.
+// There is a soft account quota of 2,500 tables.
 type LimitExceededException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -15840,7 +15835,8 @@ type ListBackupsInput struct {
 	//
 	// Where BackupType can be:
 	//
-	//    * USER - On-demand backup created by you.
+	//    * USER - On-demand backup created by you. (The default setting if no other
+	//    backup types are specified.)
 	//
 	//    * SYSTEM - On-demand backup automatically created by DynamoDB.
 	//
@@ -17036,7 +17032,7 @@ type Projection struct {
 	// Represents the non-key attribute names which will be projected into the index.
 	//
 	// For local secondary indexes, the total count of NonKeyAttributes summed across
-	// all of the local secondary indexes, must not exceed 20. If you project the
+	// all of the local secondary indexes, must not exceed 100. If you project the
 	// same attribute into two different indexes, this counts as two distinct attributes
 	// when determining the total.
 	NonKeyAttributes []*string `min:"1" type:"list"`
@@ -17624,6 +17620,10 @@ type PutItemInput struct {
 	//
 	// The values returned are strongly consistent.
 	//
+	// There is no additional cost associated with requesting a return value aside
+	// from the small network and processing overhead of receiving a larger response.
+	// No read capacity units are consumed.
+	//
 	// The ReturnValues parameter is used by several DynamoDB operations; however,
 	// PutItem does not recognize any values other than NONE or ALL_OLD.
 	ReturnValues *string `type:"string" enum:"ReturnValue"`
@@ -17942,7 +17942,7 @@ type QueryInput struct {
 	// A FilterExpression is applied after the items have already been read; the
 	// process of filtering does not consume any additional read capacity units.
 	//
-	// For more information, see Filter Expressions (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScan.html#FilteringResults)
+	// For more information, see Filter Expressions (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScan.html#Query.FilterExpression)
 	// in the Amazon DynamoDB Developer Guide.
 	FilterExpression *string `type:"string"`
 
@@ -18104,8 +18104,8 @@ type QueryInput struct {
 	//    * COUNT - Returns the number of matching items, rather than the matching
 	//    items themselves.
 	//
-	//    * SPECIFIC_ATTRIBUTES - Returns only the attributes listed in AttributesToGet.
-	//    This return value is equivalent to specifying AttributesToGet without
+	//    * SPECIFIC_ATTRIBUTES - Returns only the attributes listed in ProjectionExpression.
+	//    This return value is equivalent to specifying ProjectionExpression without
 	//    specifying any value for Select. If you query or scan a local secondary
 	//    index and request only attributes that are projected into that index,
 	//    the operation will read only the index and not the table. If any of the
@@ -18116,12 +18116,12 @@ type QueryInput struct {
 	//    are projected into the index. Global secondary index queries cannot fetch
 	//    attributes from the parent table.
 	//
-	// If neither Select nor AttributesToGet are specified, DynamoDB defaults to
-	// ALL_ATTRIBUTES when accessing a table, and ALL_PROJECTED_ATTRIBUTES when
-	// accessing an index. You cannot use both Select and AttributesToGet together
+	// If neither Select nor ProjectionExpression are specified, DynamoDB defaults
+	// to ALL_ATTRIBUTES when accessing a table, and ALL_PROJECTED_ATTRIBUTES when
+	// accessing an index. You cannot use both Select and ProjectionExpression together
 	// in a single request, unless the value for Select is SPECIFIC_ATTRIBUTES.
-	// (This usage is equivalent to specifying AttributesToGet without any value
-	// for Select.)
+	// (This usage is equivalent to specifying ProjectionExpression without any
+	// value for Select.)
 	//
 	// If you use the ProjectionExpression parameter, then the value for Select
 	// can only be SPECIFIC_ATTRIBUTES. Any other value for Select will return an
@@ -19560,6 +19560,9 @@ func (s *ReplicaUpdate) SetDelete(v *DeleteReplicaAction) *ReplicaUpdate {
 //    * An existing replica to be deleted. The request invokes the DeleteTableReplica
 //    action in the destination Region, deleting the replica and all if its
 //    items in the destination Region.
+//
+// When you manually remove a table or global table replica, you do not automatically
+// remove any associated scalable targets, scaling policies, or CloudWatch alarms.
 type ReplicationGroupUpdate struct {
 	_ struct{} `type:"structure"`
 
@@ -20500,7 +20503,7 @@ type ScanInput struct {
 	// A FilterExpression is applied after the items have already been read; the
 	// process of filtering does not consume any additional read capacity units.
 	//
-	// For more information, see Filter Expressions (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScan.html#FilteringResults)
+	// For more information, see Filter Expressions (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScan.html#Query.FilterExpression)
 	// in the Amazon DynamoDB Developer Guide.
 	FilterExpression *string `type:"string"`
 
@@ -20590,8 +20593,8 @@ type ScanInput struct {
 	//    * COUNT - Returns the number of matching items, rather than the matching
 	//    items themselves.
 	//
-	//    * SPECIFIC_ATTRIBUTES - Returns only the attributes listed in AttributesToGet.
-	//    This return value is equivalent to specifying AttributesToGet without
+	//    * SPECIFIC_ATTRIBUTES - Returns only the attributes listed in ProjectionExpression.
+	//    This return value is equivalent to specifying ProjectionExpression without
 	//    specifying any value for Select. If you query or scan a local secondary
 	//    index and request only attributes that are projected into that index,
 	//    the operation reads only the index and not the table. If any of the requested
@@ -20602,12 +20605,12 @@ type ScanInput struct {
 	//    into the index. Global secondary index queries cannot fetch attributes
 	//    from the parent table.
 	//
-	// If neither Select nor AttributesToGet are specified, DynamoDB defaults to
-	// ALL_ATTRIBUTES when accessing a table, and ALL_PROJECTED_ATTRIBUTES when
-	// accessing an index. You cannot use both Select and AttributesToGet together
+	// If neither Select nor ProjectionExpression are specified, DynamoDB defaults
+	// to ALL_ATTRIBUTES when accessing a table, and ALL_PROJECTED_ATTRIBUTES when
+	// accessing an index. You cannot use both Select and ProjectionExpression together
 	// in a single request, unless the value for Select is SPECIFIC_ATTRIBUTES.
-	// (This usage is equivalent to specifying AttributesToGet without any value
-	// for Select.)
+	// (This usage is equivalent to specifying ProjectionExpression without any
+	// value for Select.)
 	//
 	// If you use the ProjectionExpression parameter, then the value for Select
 	// can only be SPECIFIC_ATTRIBUTES. Any other value for Select will return an
@@ -21376,7 +21379,7 @@ type TableDescription struct {
 	//    of the table attributes are projected into the index. NonKeyAttributes
 	//    - A list of one or more non-key attribute names that are projected into
 	//    the secondary index. The total count of attributes provided in NonKeyAttributes,
-	//    summed across all of the secondary indexes, must not exceed 20. If you
+	//    summed across all of the secondary indexes, must not exceed 100. If you
 	//    project the same attribute into two different indexes, this counts as
 	//    two distinct attributes when determining the total.
 	//
@@ -21453,7 +21456,7 @@ type TableDescription struct {
 	//    table attributes are projected into the index. NonKeyAttributes - A list
 	//    of one or more non-key attribute names that are projected into the secondary
 	//    index. The total count of attributes provided in NonKeyAttributes, summed
-	//    across all of the secondary indexes, must not exceed 20. If you project
+	//    across all of the secondary indexes, must not exceed 100. If you project
 	//    the same attribute into two different indexes, this counts as two distinct
 	//    attributes when determining the total.
 	//
@@ -21740,7 +21743,8 @@ func (s *TableInUseException) RequestID() string {
 }
 
 // A source table with the name TableName does not currently exist within the
-// subscriber's account.
+// subscriber's account or the subscriber is operating in the wrong Amazon Web
+// Services Region.
 type TableNotFoundException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -22558,11 +22562,11 @@ func (s *TransactWriteItemsOutput) SetItemCollectionMetrics(v map[string][]*Item
 // If using Java, DynamoDB lists the cancellation reasons on the CancellationReasons
 // property. This property is not set for other languages. Transaction cancellation
 // reasons are ordered in the order of requested items, if an item has no error
-// it will have NONE code and Null message.
+// it will have None code and Null message.
 //
 // Cancellation reason codes and possible error messages:
 //
-//    * No Errors: Code: NONE Message: null
+//    * No Errors: Code: None Message: null
 //
 //    * Conditional Check Failed: Code: ConditionalCheckFailed Message: The
 //    conditional request failed.
