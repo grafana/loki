@@ -1132,7 +1132,8 @@ steps:
   - echo $(./tools/image-tag) > .tag
   - env
   - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
-    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" || echo "next") && echo $RELEASE_NAME
+    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" | sed "s/\./-/g" || echo "next")
+  - echo $RELEASE_NAME
   - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
@@ -1533,6 +1534,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 660fa3345b49466d5e26d9165811907961f5d706f9808df67d04e0aaa25ac227
+hmac: e7ae426b69cded03d88411de912e3ed39aca2db603ea5e34ca569cef2587f0b8
 
 ...

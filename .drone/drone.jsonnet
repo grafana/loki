@@ -591,8 +591,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
           'env',
-          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D.D.x", otherwise RELEASE_NAME="next"
-          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" || echo "next") && echo $RELEASE_NAME',
+          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'echo $RELEASE_NAME',
           'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE_NAME and RELEASE TAG
