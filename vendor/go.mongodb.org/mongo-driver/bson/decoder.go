@@ -33,11 +33,6 @@ var decPool = sync.Pool{
 type Decoder struct {
 	dc bsoncodec.DecodeContext
 	vr bsonrw.ValueReader
-
-	// We persist defaultDocumentM and defaultDocumentD on the Decoder to prevent overwriting from
-	// (*Decoder).SetContext.
-	defaultDocumentM bool
-	defaultDocumentD bool
 }
 
 // NewDecoder returns a new decoder that uses the DefaultRegistry to read from vr.
@@ -100,12 +95,6 @@ func (d *Decoder) Decode(val interface{}) error {
 	if err != nil {
 		return err
 	}
-	if d.defaultDocumentM {
-		d.dc.DefaultDocumentM()
-	}
-	if d.defaultDocumentD {
-		d.dc.DefaultDocumentD()
-	}
 	return decoder.DecodeValue(d.dc, d.vr, rval)
 }
 
@@ -126,16 +115,4 @@ func (d *Decoder) SetRegistry(r *bsoncodec.Registry) error {
 func (d *Decoder) SetContext(dc bsoncodec.DecodeContext) error {
 	d.dc = dc
 	return nil
-}
-
-// DefaultDocumentM will decode empty documents using the primitive.M type. This behavior is restricted to data typed as
-// "interface{}" or "map[string]interface{}".
-func (d *Decoder) DefaultDocumentM() {
-	d.defaultDocumentM = true
-}
-
-// DefaultDocumentD will decode empty documents using the primitive.D type. This behavior is restricted to data typed as
-// "interface{}" or "map[string]interface{}".
-func (d *Decoder) DefaultDocumentD() {
-	d.defaultDocumentD = true
 }

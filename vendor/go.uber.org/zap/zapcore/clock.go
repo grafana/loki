@@ -20,7 +20,9 @@
 
 package zapcore
 
-import "time"
+import (
+	"time"
+)
 
 // DefaultClock is the default clock used by Zap in operations that require
 // time. This clock uses the system clock for all operations.

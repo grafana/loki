@@ -68,6 +68,7 @@ func parseMember(m string) (member, error) {
 		Key:   matches[1],
 		Value: matches[4],
 	}, nil
+
 }
 
 // String encodes member into a string compliant with the W3C Trace Context

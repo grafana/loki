@@ -16,10 +16,11 @@
 // Additionally, this package contains common utilities for working with the
 // new generic constructs, to supplement the standard library APIs. Notably,
 // the StructuralTerms API computes a minimal representation of the structural
-// restrictions on a type parameter.
+// restrictions on a type parameter. In the future, this API may be available
+// from go/types.
 //
-// An external version of these APIs is available in the
-// golang.org/x/exp/typeparams module.
+// See the example/README.md for a more detailed guide on how to update tools
+// to support generics.
 package typeparams
 
 import (
@@ -120,15 +121,15 @@ func OriginMethod(fn *types.Func) *types.Func {
 //
 // For example, consider the following type declarations:
 //
-//	type Interface[T any] interface {
-//		Accept(T)
-//	}
+//  type Interface[T any] interface {
+//  	Accept(T)
+//  }
 //
-//	type Container[T any] struct {
-//		Element T
-//	}
+//  type Container[T any] struct {
+//  	Element T
+//  }
 //
-//	func (c Container[T]) Accept(t T) { c.Element = t }
+//  func (c Container[T]) Accept(t T) { c.Element = t }
 //
 // In this case, GenericAssignableTo reports that instantiations of Container
 // are assignable to the corresponding instantiation of Interface.

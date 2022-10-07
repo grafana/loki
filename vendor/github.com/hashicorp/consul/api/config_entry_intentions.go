@@ -18,7 +18,6 @@ type ServiceIntentionsConfigEntry struct {
 
 type SourceIntention struct {
 	Name        string
-	Peer        string                 `json:",omitempty"`
 	Partition   string                 `json:",omitempty"`
 	Namespace   string                 `json:",omitempty"`
 	Action      IntentionAction        `json:",omitempty"`

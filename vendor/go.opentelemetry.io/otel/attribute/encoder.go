@@ -133,9 +133,9 @@ func copyAndEscape(buf *bytes.Buffer, val string) {
 	for _, ch := range val {
 		switch ch {
 		case '=', ',', escapeChar:
-			_, _ = buf.WriteRune(escapeChar)
+			buf.WriteRune(escapeChar)
 		}
-		_, _ = buf.WriteRune(ch)
+		buf.WriteRune(ch)
 	}
 }
 

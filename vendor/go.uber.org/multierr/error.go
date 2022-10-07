@@ -103,7 +103,7 @@
 // 		if err != nil {
 // 			return err
 // 		}
-// 		defer multierr.AppendInvoke(&err, multierr.Close(conn))
+// 		defer multierr.AppendInvoke(err, multierr.Close(conn))
 // 		// ...
 // 	}
 //
@@ -372,14 +372,6 @@ func inspect(errors []error) (res inspectResult) {
 
 // fromSlice converts the given list of errors into a single error.
 func fromSlice(errors []error) error {
-	// Don't pay to inspect small slices.
-	switch len(errors) {
-	case 0:
-		return nil
-	case 1:
-		return errors[0]
-	}
-
 	res := inspect(errors)
 	switch res.Count {
 	case 0:
@@ -389,13 +381,8 @@ func fromSlice(errors []error) error {
 		return errors[res.FirstErrorIdx]
 	case len(errors):
 		if !res.ContainsMultiError {
-			// Error list is flat. Make a copy of it
-			// Otherwise "errors" escapes to the heap
-			// unconditionally for all other cases.
-			// This lets us optimize for the "no errors" case.
-			out := make([]error, len(errors))
-			copy(out, errors)
-			return &multiError{errors: out}
+			// already flat
+			return &multiError{errors: errors}
 		}
 	}
 
