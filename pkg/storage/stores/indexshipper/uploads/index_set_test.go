@@ -36,7 +36,10 @@ func TestIndexSet_Add(t *testing.T) {
 
 			// see if we can find all the added indexes in the table.
 			indexesFound := map[string]*mockIndex{}
-			err = indexSet.ForEach(func(_ bool, index index.Index) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			err = indexSet.ForEach(ctx, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
@@ -107,10 +110,12 @@ func TestIndexSet_Cleanup(t *testing.T) {
 
 			// all the indexes should be retained since they were just uploaded
 			indexesFound := map[string]*mockIndex{}
-			err = idxSet.ForEach(func(_ bool, index index.Index) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			err = idxSet.ForEach(ctx, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
+			cancel()
 			require.NoError(t, err)
 
 			require.Equal(t, testIndexes, indexesFound)
@@ -131,10 +136,12 @@ func TestIndexSet_Cleanup(t *testing.T) {
 
 			// get all the indexes that are retained
 			indexesFound = map[string]*mockIndex{}
-			err = idxSet.ForEach(func(_ bool, index index.Index) error {
+			ctx, cancel = context.WithCancel(context.Background())
+			err = idxSet.ForEach(ctx, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
+			cancel()
 			require.NoError(t, err)
 
 			// we should have only the indexes whose upload time was not changed above
