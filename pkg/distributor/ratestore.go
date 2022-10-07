@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
-
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/dskit/services"
@@ -46,10 +44,6 @@ type ingesterClient struct {
 	client logproto.StreamDataClient
 }
 
-type overrides interface {
-	AllByUserID() map[string]*validation.Limits
-}
-
 type rateStore struct {
 	services.Service
 
@@ -62,10 +56,10 @@ type rateStore struct {
 	maxParallelism         int
 	rateRefreshFailures    *prometheus.CounterVec
 	refreshDuration        *instrument.HistogramCollector
-	overrides              overrides
+	overrides              Limits
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, o overrides, registerer prometheus.Registerer) *rateStore { //nolint
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, o Limits, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
 		ring:                   r,
 		clientPool:             cf,
@@ -126,11 +120,12 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 func (s *rateStore) anyShardingEnabled() bool {
 	limits := s.overrides.AllByUserID()
 	if limits == nil {
-		return false
+		// There aren't any tenant limits, check the default
+		return s.overrides.ShardStreams("fake").Enabled
 	}
 
-	for _, l := range limits {
-		if l.ShardStreams.Enabled {
+	for user, _ := range limits {
+		if s.overrides.ShardStreams(user).Enabled {
 			return true
 		}
 	}
