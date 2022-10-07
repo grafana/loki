@@ -43,7 +43,7 @@ local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/
 local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local updater_configuration = secret('updater_config', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
+local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -498,8 +498,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
-        "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
-        "body=$(jq -Rs '{body: . }' diff.txt)",
+        'pull=$(echo $CI_COMMIT_REF | awk -F ',
+        'body=$(jq -Rs ',
         'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',
       ], env={
         USER: 'grafanabot',
@@ -574,6 +574,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain,
   },
   pipeline('logql-analyzer-test-deploy') {
+    local configFileName = 'updater-config.json',
+    // todo uncomment
 //    trigger+: onTagOrMain,
     image_pull_secrets: [pull_secret.name],
     steps: [
@@ -581,7 +583,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'prepare-updater-config',
         image: 'alpine',
         environment: {
-          RELEASE_BRANCH_REGEXP: "^logql-analyzer-test-release-([0-9\\.x]+)$'",
+          RELEASE_BRANCH_REGEXP: '^logql-analyzer-test-release-([0-9\\.x]+)$',
         },
         commands: [
           'apk add --no-cache bash git',
@@ -592,34 +594,27 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D.D.x", otherwise RELEASE_NAME="next"
           'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" || echo "next") && echo $RELEASE_NAME',
           'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
-          'echo $PLUGIN_UPDATER_CONFIG > updater-config.json',
-          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" updater-config.json',
-          'sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE_NAME and RELEASE TAG
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
+          'sed -i "s/{{version}}/$RELEASE_TAG/g" %s' % configFileName,
+          // TODO remove it
           'cat updater-config.json',
         ],
         settings: {
-          updater_config: { from_secret: updater_configuration.name },
+          config_template: { from_secret: updater_config_template.name },
         },
         depends_on: ['clone'],
       },
       {
-        name: 'print-prapered-updater-config',
-        image: 'alpine',
-        commands: [
-          'cat updater-config.json',
-        ],
+        name: 'run-updater',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+        settings: {
+          github_token: { from_secret: github_secret.name },
+          config_file: configFileName,
+        },
         depends_on: ['prepare-updater-config'],
       },
-    //      {
-    //        name: 'trigger',
-    //        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
-    //        settings: {
-    //          github_token: { from_secret: github_secret.name },
-    //          images_json: { from_secret: updater_configuration.name },
-    //          docker_tag_file: '.tag',
-    //        },
-    //        depends_on: ['clone', 'image-tag'],
-    //      },
     ],
   },
   promtail_win(),
@@ -732,7 +727,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   docker_password_secret,
   ecr_key,
   ecr_secret_key,
-  updater_configuration,
+  updater_config_template,
   gpg_passphrase,
   gpg_private_key,
 ]
