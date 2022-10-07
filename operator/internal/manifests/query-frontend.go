@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,13 +21,13 @@ import (
 func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 	deployment := NewQueryFrontendDeployment(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureQueryFrontendHTTPServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendGRPCServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -113,6 +114,13 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
@@ -211,24 +219,34 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQueryFrontendHTTP(stackName)
-	caBundleName := signingCABundleName(stackName)
+func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
+	caBundleName := signingCABundleName(opts.Name)
 
-	if err := configureTailCA(deployment, lokiFrontendContainerName, caBundleName, caBundleDir, caFile); err != nil {
+	err := configureTailCA(
+		deployment,
+		lokiFrontendContainerName,
+		caBundleName,
+		caBundleDir,
+		caFile,
+		opts.TLSProfile.MinTLSVersion,
+		opts.TLSCipherSuites(),
+	)
+	if err != nil {
 		return err
 	}
+
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQueryFrontendGRPC(stackName)
+func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQueryFrontendGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 // ConfigureQueryFrontendDeployment configures CA certificate when TLS is enabled.
 func configureTailCA(d *appsv1.Deployment,
-	qfContainerName, caBundleVolumeName, caDir, caFile string,
+	qfContainerName, caBundleVolumeName, caDir, caFile, minTLSVersion, cipherSuites string,
 ) error {
 	var qfIdx int
 	for i, c := range d.Spec.Template.Spec.Containers {
@@ -240,6 +258,8 @@ func configureTailCA(d *appsv1.Deployment,
 
 	containerSpec := corev1.Container{
 		Args: []string{
+			fmt.Sprintf("-frontend.tail-tls-config.tls-cipher-suites=%s", cipherSuites),
+			fmt.Sprintf("-frontend.tail-tls-config.tls-min-version=%s", minTLSVersion),
 			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
 		},
 		VolumeMounts: []corev1.VolumeMount{

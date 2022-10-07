@@ -21,6 +21,10 @@ type OpenShiftFeatureGates struct {
 	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
 	// to enforce tenancy in an OpenShift context.
 	ExtendedRuleValidation bool `json:"ruleExtendedValidation,omitempty"`
+
+	// ClusterTLSPolicy enables usage of TLS policies set in the API Server.
+	// More details: https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html
+	ClusterTLSPolicy bool `json:"clusterTLSPolicy,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.
@@ -78,7 +82,8 @@ type FeatureGates struct {
 	// OpenShift contains a set of feature gates supported only on OpenShift.
 	OpenShift OpenShiftFeatureGates `json:"openshift,omitempty"`
 
-	// TLSProfile allows to chose a TLS security profile.
+	// TLSProfile allows to chose a TLS security profile. Enforced
+	// when using HTTPEncryption or GRPCEncryption.
 	TLSProfile string `json:"tlsProfile,omitempty"`
 }
 
@@ -97,16 +102,6 @@ const (
 	// https://wiki.mozilla.org/Security/Server_Side_TLS#Modern_compatibility
 	TLSProfileModernType TLSProfileType = "Modern"
 )
-
-// TLSProfileSpec is the desired behavior of a TLSProfileType.
-type TLSProfileSpec struct {
-	// ciphers is used to specify the cipher algorithms that are negotiated
-	// during the TLS handshake.
-	Ciphers []string
-	// minTLSVersion is used to specify the minimal version of the TLS protocol
-	// that is negotiated during the TLS handshake.
-	MinTLSVersion string
-}
 
 //+kubebuilder:object:root=true
 

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -175,12 +174,12 @@ func CreateOrUpdateLokiStack(
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
 		if err != nil {
-			log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
+			ll.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
 		}
 
 		rulerConfig, err = rules.GetRulerConfig(ctx, k, req)
 		if err != nil {
-			log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
+			ll.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
 		}
 
 		if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
@@ -235,7 +234,6 @@ func CreateOrUpdateLokiStack(
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
-		TLSProfileType: projectconfigv1.TLSProfileType(fg.TLSProfile),
 		OpenShiftOptions: manifests_openshift.Options{
 			BuildOpts: manifests_openshift.BuildOptions{
 				AlertManagerEnabled: ocpAmEnabled,
@@ -252,18 +250,27 @@ func CreateOrUpdateLokiStack(
 
 	if fg.LokiStackGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
-			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
+			ll.Error(optErr, "failed to apply defaults options to gateway settings")
 			return optErr
 		}
 	}
 
-	spec, err := tlsprofile.GetSecurityProfileInfo(ctx, k, ll, opts.TLSProfileType)
-	if err != nil {
-		ll.Error(err, "failed to get security profile info")
-		return err
+	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
+	// Overwrite the profile from the flags and use the profile from the apiserver instead
+	if fg.OpenShift.ClusterTLSPolicy {
+		tlsProfileType = configv1.TLSProfileType("")
 	}
 
-	opts.TLSProfileSpec = spec
+	tlsProfile, err := tlsprofile.GetTLSSecurityProfile(ctx, k, tlsProfileType)
+	if err != nil {
+		// The API server is not guaranteed to be there nor have a result.
+		ll.Error(err, "failed to get security profile. will use default tls profile.")
+	}
+
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsProfile); optErr != nil {
+		ll.Error(optErr, "failed to conform options to tls profile settings")
+		return optErr
+	}
 
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
