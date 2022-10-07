@@ -43,3 +43,4 @@ featureGates:
     servingCertsService: true
     gatewayRoute: true
     ruleExtendedValidation: true
+    clusterTLSPolicy: true

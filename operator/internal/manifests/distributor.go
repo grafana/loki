@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,13 +21,13 @@ import (
 func BuildDistributor(opts Options) ([]client.Object, error) {
 	deployment := NewDistributorDeployment(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureDistributorHTTPServicePKI(deployment, opts.Name); err != nil {
+		if err := configureDistributorHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureDistributorGRPCServicePKI(deployment, opts.Name, opts.Namespace); err != nil {
+		if err := configureDistributorGRPCServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -101,6 +102,13 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Distributor != nil {
@@ -199,13 +207,13 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameDistributorHTTP(stackName)
+func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameDistributorHTTP(opts.Name)
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
-	caBundleName := signingCABundleName(stackName)
+func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	caBundleName := signingCABundleName(opts.Name)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -232,8 +240,10 @@ func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 		},
 	}
 
@@ -245,6 +255,6 @@ func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	serviceName := serviceNameDistributorGRPC(stackName)
+	serviceName := serviceNameDistributorGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
