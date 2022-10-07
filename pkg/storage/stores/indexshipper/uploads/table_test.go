@@ -1,6 +1,7 @@
 package uploads
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,10 +36,13 @@ func TestTable(t *testing.T) {
 
 			// see if we can find all the added indexes in the table.
 			indexesFound := map[string]*mockIndex{}
-			err := testTable.ForEach(userID, func(_ bool, index index.Index) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			err := testTable.ForEach(ctx, userID, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
+			cancel()
+
 			require.NoError(t, err)
 
 			require.Equal(t, testIndexes, indexesFound)
