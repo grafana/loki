@@ -98,8 +98,8 @@ steps:
   image: grafana/loki-build-image:0.24.1
   name: compare-coverage
 - commands:
-  - 'pull=$(echo $CI_COMMIT_REF | awk -F '
-  - 'body=$(jq -Rs '
+  - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
+  - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
     -d "$body" > /dev/null'
   depends_on:
@@ -1533,6 +1533,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: c91bc1a7cdca8badef7be2b9183afe5ef226bc221ef2a5914607b244d4ae13c0
+hmac: 660fa3345b49466d5e26d9165811907961f5d706f9808df67d04e0aaa25ac227
 
 ...

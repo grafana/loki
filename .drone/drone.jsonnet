@@ -498,8 +498,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
-        'pull=$(echo $CI_COMMIT_REF | awk -F ',
-        'body=$(jq -Rs ',
+        "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
+        "body=$(jq -Rs '{body: . }' diff.txt)",
         'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',
       ], env={
         USER: 'grafanabot',
