@@ -1132,21 +1132,30 @@ steps:
   - git fetch origin --tags
   - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
+  - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
+    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" | sed "s/\./-/g" || echo "next")
+  - echo $RELEASE_NAME
+  - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
+  - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
+  - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
+  - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
   depends_on:
   - clone
+  environment:
+    RELEASE_BRANCH_REGEXP: ^release-([0-9\.x]+)$
   image: alpine
-  name: image-tag
+  name: prepare-updater-config
+  settings:
+    config_template:
+      from_secret: updater_config_template
 - depends_on:
-  - clone
-  - image-tag
-  image: us.gcr.io/kubernetes-dev/drone/plugins/deploy-image
+  - prepare-updater-config
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
   name: trigger
   settings:
-    docker_tag_file: .tag
+    config_file: updater-config.json
     github_token:
       from_secret: github_token
-    images_json:
-      from_secret: deploy_config
 trigger:
   event:
   - push
@@ -1510,10 +1519,10 @@ kind: secret
 name: ecr_secret_key
 ---
 get:
-  name: config.json
+  name: updater-config-template.json
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
-name: deploy_config
+name: updater_config_template
 ---
 get:
   name: passphrase
@@ -1528,6 +1537,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 455cb80ad1fd753c9d5432aee9ed9242b12a1d31ae33694a014a5387d610f3a2
+hmac: ea642602380887b8bf4dde09c3e6fd6d8ef522eacaef5a63dc2abfb9026fbfdc
 
 ...
