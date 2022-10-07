@@ -1,3 +1,0 @@
-(github.com/go-kit/log.Logger).Log
-fmt.Fprintln
-fmt.Fprint

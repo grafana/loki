@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
-	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/objstore/providers/gcs"
+	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/thanos/pkg/objstore/gcs"
 	yaml "gopkg.in/yaml.v2"
 )
 

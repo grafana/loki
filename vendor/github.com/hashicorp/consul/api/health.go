@@ -62,7 +62,6 @@ type HealthCheckDefinition struct {
 	TLSServerName                          string
 	TLSSkipVerify                          bool
 	TCP                                    string
-	UDP                                    string
 	GRPC                                   string
 	GRPCUseTLS                             bool
 	IntervalDuration                       time.Duration `json:"-"`

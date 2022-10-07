@@ -350,42 +350,37 @@ func (m *Miniredis) cmdSpop(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	opts := struct {
-		key       string
-		withCount bool
-		count     int
-	}{
-		count: 1,
-	}
-	opts.key, args = args[0], args[1:]
-
-	if len(args) > 0 {
-		v, err := strconv.Atoi(args[0])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
-			return
-		}
-		if v < 0 {
-			setDirty(c)
-			c.WriteError(msgOutOfRange)
-			return
-		}
-		opts.count = v
-		opts.withCount = true
-		args = args[1:]
-	}
-	if len(args) > 0 {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
-		return
-	}
+	key, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(opts.key) {
-			if !opts.withCount {
+		withCount := false
+		count := 1
+		if len(args) > 0 {
+			v, err := strconv.Atoi(args[0])
+			if err != nil {
+				setDirty(c)
+				c.WriteError(msgInvalidInt)
+				return
+			}
+			if v < 0 {
+				setDirty(c)
+				c.WriteError(msgOutOfRange)
+				return
+			}
+			count = v
+			withCount = true
+			args = args[1:]
+		}
+		if len(args) > 0 {
+			setDirty(c)
+			c.WriteError(msgInvalidInt)
+			return
+		}
+
+		if !db.exists(key) {
+			if !withCount {
 				c.WriteNull()
 				return
 			}
@@ -393,23 +388,23 @@ func (m *Miniredis) cmdSpop(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.key) != "set" {
+		if db.t(key) != "set" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
 		var deleted []string
-		for i := 0; i < opts.count; i++ {
-			members := db.setMembers(opts.key)
+		for i := 0; i < count; i++ {
+			members := db.setMembers(key)
 			if len(members) == 0 {
 				break
 			}
 			member := members[m.randIntn(len(members))]
-			db.setRem(opts.key, member)
+			db.setRem(key, member)
 			deleted = append(deleted, member)
 		}
-		// without `count` return a single value
-		if !opts.withCount {
+		// without `count` return a single value...
+		if !withCount {
 			if len(deleted) == 0 {
 				c.WriteNull()
 				return
@@ -417,7 +412,7 @@ func (m *Miniredis) cmdSpop(c *server.Peer, cmd string, args []string) {
 			c.WriteBulk(deleted[0])
 			return
 		}
-		// with `count` return a list
+		// ... with `count` return a list
 		c.WriteLen(len(deleted))
 		for _, v := range deleted {
 			c.WriteBulk(v)
@@ -492,7 +487,7 @@ func (m *Miniredis) cmdSrandmember(c *server.Peer, cmd string, args []string) {
 			c.WriteBulk(members[0])
 			return
 		}
-		c.WriteLen(count)
+		c.WriteSetLen(count)
 		for i := range make([]struct{}, count) {
 			c.WriteBulk(members[i])
 		}

@@ -19,7 +19,7 @@ import (
 	"unsafe"
 )
 
-func BoolToRaw(b bool) uint64 { // nolint:revive  // b is not a control flag.
+func BoolToRaw(b bool) uint64 {
 	if b {
 		return 1
 	}
