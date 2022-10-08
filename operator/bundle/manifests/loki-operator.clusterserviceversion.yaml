@@ -1100,6 +1100,12 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - alertmanagers
+          verbs:
+          - patch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
           - prometheusrules
           - servicemonitors
           verbs:
@@ -1193,7 +1199,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.6.1
+                  value: quay.io/openshift-logging/loki:v2.7.0-pre
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1321,7 +1327,7 @@ spec:
   provider:
     name: Grafana.com
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.6.1
+  - image: quay.io/openshift-logging/loki:v2.7.0-pre
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

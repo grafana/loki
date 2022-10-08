@@ -47,7 +47,8 @@ import (
 
 const (
 	// RingKey is the key under which we store the ingesters ring in the KVStore.
-	RingKey = "ring"
+	RingKey            = "ring"
+	internalInstanceID = "internal"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -105,9 +106,6 @@ type Config struct {
 	IndexShards int `yaml:"index_shards"`
 
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
-
-	// Whether nor not to ingest all at once or not. Comes from distributor StreamShards Enabled
-	RateLimitWholeStream bool `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -177,6 +175,8 @@ type Interface interface {
 	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
+	logproto.StreamDataServer
+
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
@@ -193,10 +193,11 @@ type Ingester struct {
 	clientConfig  client.Config
 	tenantConfigs *runtime.TenantConfigs
 
-	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
-	instancesMtx sync.RWMutex
-	instances    map[string]*instance
-	readonly     bool
+	shutdownMtx      sync.Mutex // Allows processes to grab a lock and prevent a shutdown
+	instancesMtx     sync.RWMutex
+	instances        map[string]*instance
+	internalInstance *instance // used for non-user communication from the distributors
+	readonly         bool
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
@@ -547,8 +548,9 @@ func (i *Ingester) loop() {
 }
 
 // LegacyShutdownHandler triggers the following set of operations in order:
-//     * Change the state of ring to stop accepting writes.
-//     * Flush all the chunks.
+//   - Change the state of ring to stop accepting writes.
+//   - Flush all the chunks.
+//
 // Note: This handler does not trigger a termination of the Loki process,
 // despite its name. Instead, the ingester service is stopped, so an external
 // source can trigger a safe termination through a signal to the process.
@@ -590,11 +592,11 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleShutdown triggers the following operations:
-//     * Change the state of ring to stop accepting writes.
-//     * optional: Flush all the chunks.
-//     * optional: Delete ring tokens file
-//     * Unregister from KV store
-//     * optional: Terminate process (handled by service manager in loki.go)
+//   - Change the state of ring to stop accepting writes.
+//   - optional: Flush all the chunks.
+//   - optional: Delete ring tokens file
+//   - Unregister from KV store
+//   - optional: Terminate process (handled by service manager in loki.go)
 func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	i.lifecycler.SetFlushOnShutdown(flush)
 	i.lifecycler.SetClearTokensOnShutdown(del)
@@ -620,6 +622,17 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
+// GetStreamRates returns a response containing all streams and their current rate
+// TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
+func (i *Ingester) GetStreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	instance, err := i.getOrCreateInternalInstance()
+	if err != nil {
+		return &logproto.StreamRatesResponse{}, err
+	}
+
+	return instance.GetStreamRates(ctx, req)
+}
+
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
@@ -639,6 +652,25 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		activeTenantsStats.Set(int64(len(i.instances)))
 	}
 	return inst, nil
+}
+
+func (i *Ingester) getOrCreateInternalInstance() (*instance, error) { //nolint:revive
+	if inst, ok := i.getInternalInstance(); ok {
+		return inst, nil
+	}
+
+	i.instancesMtx.Lock()
+	defer i.instancesMtx.Unlock()
+
+	if i.internalInstance == nil {
+		inst, err := newInstance(&i.cfg, i.periodicConfigs, internalInstanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		if err != nil {
+			return nil, err
+		}
+		i.internalInstance = inst
+	}
+
+	return i.internalInstance, nil
 }
 
 // Query the ingests for log streams matching a set of matchers.
@@ -935,6 +967,17 @@ func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 
 	inst, ok := i.instances[id]
 	return inst, ok
+}
+
+func (i *Ingester) getInternalInstance() (*instance, bool) {
+	i.instancesMtx.RLock()
+	defer i.instancesMtx.RUnlock()
+
+	if i.internalInstance != nil {
+		return i.internalInstance, true
+	}
+
+	return nil, false
 }
 
 func (i *Ingester) getInstances() []*instance {

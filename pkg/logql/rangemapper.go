@@ -36,20 +36,20 @@ var splittableRangeVectorOp = map[string]struct{}{
 // using the downstream engine.
 //
 // A rewrite is performed using the following rules:
-// 1) Check if query is splittable based on the range.
-// 2) Check if the query is splittable based on the query AST
-// 3) Range aggregations are split into multiple downstream range aggregation expressions
-//    that are concatenated with an appropriate vector aggregator with a grouping operator.
-//    If the range aggregation has a grouping, the grouping is also applied to
-//    the resultant vector aggregator expression.
-//    If the range aggregation has no grouping, a grouping operator using "without" is applied
-//    to the resultant vector aggregator expression to preserve the stream labels.
-// 4) Vector aggregations are split into multiple downstream vector aggregations
-//    that are merged with vector aggregation using "without" and then aggregated
-//    using the vector aggregation with the same operator,
-//    either with or without grouping.
-// 5) Left and right-hand side of binary operations are split individually
-//    using the same rules as above.
+//  1. Check if query is splittable based on the range.
+//  2. Check if the query is splittable based on the query AST
+//  3. Range aggregations are split into multiple downstream range aggregation expressions
+//     that are concatenated with an appropriate vector aggregator with a grouping operator.
+//     If the range aggregation has a grouping, the grouping is also applied to
+//     the resultant vector aggregator expression.
+//     If the range aggregation has no grouping, a grouping operator using "without" is applied
+//     to the resultant vector aggregator expression to preserve the stream labels.
+//  4. Vector aggregations are split into multiple downstream vector aggregations
+//     that are merged with vector aggregation using "without" and then aggregated
+//     using the vector aggregation with the same operator,
+//     either with or without grouping.
+//  5. Left and right-hand side of binary operations are split individually
+//     using the same rules as above.
 type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics

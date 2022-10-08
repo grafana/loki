@@ -6,7 +6,6 @@
       "gnetId": null,
       "graphTooltip": 0,
       "hideControls": false,
-      "id": 68,
       "iteration": 1588704280892,
       "links": [
          {
@@ -2286,9 +2285,9 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (ingester)",
+                        "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (pod)",
                         "intervalFactor": 1,
-                        "legendFormat": "{{ingester}}",
+                        "legendFormat": "{{pod}}",
                         "refId": "A"
                      }
                   ],

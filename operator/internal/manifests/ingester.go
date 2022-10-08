@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -24,7 +23,7 @@ import (
 func BuildIngester(opts Options) ([]client.Object, error) {
 	statefulSet := NewIngesterStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureIngesterHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureIngesterHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -34,7 +33,7 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureIngesterGRPCServicePKI(statefulSet, opts.Name, opts.Namespace); err != nil {
+		if err := configureIngesterGRPCServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -119,6 +118,13 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
@@ -255,13 +261,13 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureIngesterHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIngesterHTTP(stackName)
+func configureIngesterHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIngesterHTTP(opts.Name)
 	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS string) error {
-	caBundleName := signingCABundleName(stackName)
+func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	caBundleName := signingCABundleName(opts.Name)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -288,12 +294,16 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
 		},
 	}
 
@@ -305,6 +315,6 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	serviceName := serviceNameIngesterGRPC(stackName)
+	serviceName := serviceNameIngesterGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

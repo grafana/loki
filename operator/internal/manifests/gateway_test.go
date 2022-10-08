@@ -296,7 +296,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 					HTTPEncryption:   true,
 					TLSProfile:       string(configv1.TLSProfileOldType),
 				},
-				TLSProfileSpec: configv1.TLSProfileSpec{
+				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
 					Ciphers:       []string{"cipher1", "cipher2"},
 				},
@@ -348,7 +348,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 					HTTPEncryption:   true,
 					TLSProfile:       string(configv1.TLSProfileOldType),
 				},
-				TLSProfileSpec: configv1.TLSProfileSpec{
+				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
 					Ciphers:       []string{"cipher1", "cipher2"},
 				},
@@ -378,7 +378,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 					HTTPEncryption:   true,
 					TLSProfile:       string(configv1.TLSProfileOldType),
 				},
-				TLSProfileSpec: configv1.TLSProfileSpec{
+				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
 					Ciphers:       []string{"cipher1", "cipher2"},
 				},
