@@ -40,6 +40,9 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 		return err
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	userIDBytes := util.GetUnsafeBytes(userID)
 	queriesByTable := util.QueriesByTable(queries)
 	for table, queries := range queriesByTable {

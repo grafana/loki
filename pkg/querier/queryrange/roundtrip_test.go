@@ -3,7 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -428,7 +428,7 @@ func TestPostQueries(t *testing.T) {
 		"query": {`{app="foo"} |~ "foo"`},
 	}
 	body := bytes.NewBufferString(data.Encode())
-	req.Body = ioutil.NopCloser(body)
+	req.Body = io.NopCloser(body)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))

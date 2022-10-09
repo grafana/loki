@@ -54,7 +54,7 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		wrapped := newBadResponseLoggingWriter(w, &buf)
 		next.ServeHTTP(wrapped, r)
 
-		statusCode, writeErr := wrapped.statusCode, wrapped.writeError
+		statusCode, writeErr := wrapped.getStatusCode(), wrapped.getWriteError()
 
 		if writeErr != nil {
 			if errors.Is(writeErr, context.Canceled) {

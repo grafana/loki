@@ -2,7 +2,8 @@ package uploads
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -35,7 +36,10 @@ func TestIndexSet_Add(t *testing.T) {
 
 			// see if we can find all the added indexes in the table.
 			indexesFound := map[string]*mockIndex{}
-			err = indexSet.ForEach(func(_ bool, index index.Index) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			err = indexSet.ForEach(ctx, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
@@ -72,7 +76,7 @@ func TestIndexSet_Upload(t *testing.T) {
 				// compare the contents of created test index and uploaded index in storage
 				_, err = testIndex.Seek(0, 0)
 				require.NoError(t, err)
-				expectedIndexContent, err := ioutil.ReadAll(testIndex.File)
+				expectedIndexContent, err := io.ReadAll(testIndex.File)
 				require.NoError(t, err)
 				require.Equal(t, expectedIndexContent, readCompressedFile(t, indexPathInStorage))
 			}
@@ -106,10 +110,12 @@ func TestIndexSet_Cleanup(t *testing.T) {
 
 			// all the indexes should be retained since they were just uploaded
 			indexesFound := map[string]*mockIndex{}
-			err = idxSet.ForEach(func(_ bool, index index.Index) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			err = idxSet.ForEach(ctx, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
+			cancel()
 			require.NoError(t, err)
 
 			require.Equal(t, testIndexes, indexesFound)
@@ -130,10 +136,12 @@ func TestIndexSet_Cleanup(t *testing.T) {
 
 			// get all the indexes that are retained
 			indexesFound = map[string]*mockIndex{}
-			err = idxSet.ForEach(func(_ bool, index index.Index) error {
+			ctx, cancel = context.WithCancel(context.Background())
+			err = idxSet.ForEach(ctx, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
+			cancel()
 			require.NoError(t, err)
 
 			// we should have only the indexes whose upload time was not changed above
@@ -156,7 +164,7 @@ func readCompressedFile(t *testing.T, path string) []byte {
 	decompressedFilePath := filepath.Join(tempDir, "decompressed")
 	testutil.DecompressFile(t, path, decompressedFilePath)
 
-	fileContent, err := ioutil.ReadFile(decompressedFilePath)
+	fileContent, err := os.ReadFile(decompressedFilePath)
 	require.NoError(t, err)
 
 	return fileContent

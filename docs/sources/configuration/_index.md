@@ -210,6 +210,12 @@ http_tls_config:
   # HTTP TLS Client CA path.
   # CLI flag: -server.http-tls-ca-path
   [client_ca_file: <string> | default = ""]
+  # HTTP TLS Cipher Suites.
+  # CLI flag: -server.http-tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+  # HTTP TLS Min Version.
+  # CLI flag: -server.http-tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
@@ -233,6 +239,12 @@ grpc_tls_config:
   # gRPC TLS Client CA path.
   # CLI flag: -server.grpc-tls-ca-path
   [client_ca_file: <string> | default = ""]
+  # GRPC TLS Cipher Suites.
+  # CLI flag: -server.grpc-tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+  # GRPC TLS Min Version.
+  # CLI flag: -server.grpc-tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 # Register instrumentation handlers (/metrics, etc.)
 # CLI flag: -server.register-instrumentation
@@ -302,24 +314,23 @@ ring:
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
 
-  # The heartbeat timeout after which ingesters are skipped for
-  # reading and writing.
-  # CLI flag: -distributor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-# Configures the distributor to shard streams that are too big
-shard_streams:
-  # Whether to enable stream sharding
-  #
-  # CLI flag: -distributor.stream-sharding.enabled
-  [enabled: <boolean> | default = false]
-
-  # Enable logging when sharding streams because logging on the read path may
-  # impact performance. When disabled, stream sharding will emit no logs 
-  # regardless of log level
-  #
-  # CLI flag: -distributor.stream-sharding.logging-enabled
-  [logging_enabled: <boolean> | default = false]
+    # The heartbeat timeout after which ingesters are skipped for
+    # reading and writing.
+    # CLI flag: -distributor.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+    
+  rate_store:
+    # The max number of concurrent requests to make to ingester stream apis
+    # CLI flag: -distributor.rate-store.max-request-parallelism
+    [max_request_parallelism: <int> | default = 200]
+    # The interval on which distributors will update current stream rates
+    # from ingesters
+    # CLI flag: -distributor.rate-store.stream-rate-update-interval
+    [stream_rate_update_interval: <duration> | default = 1s]
+    # Timeout for communication between distributors and ingesters when updating
+    # rates
+    # CLI flag: -distributor.rate-store.ingester-request-timeout
+    [ingester_request_timeout: <duration> | default = 1s]
 ```
 
 ## querier
@@ -464,6 +475,14 @@ tail_tls_config:
   # CLI flag: -frontend.tail-tls-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # Override the default cipher suite list (separated by commas).
+  # CLI flag: -frontend.tail-tls-config.tls_cipher_suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version.
+  # CLI flag: -frontend.tail-tls-config.tls_min_version
+  [tls_min_version: <string> | default = ""]
+
 
 # DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address
@@ -545,6 +564,14 @@ ruler_client:
   # Skip validating server certificate.
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Override the default cipher suite list (separated by commas).
+  # CLI flag: -ruler.client.tls_cipher_suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version.
+  # CLI flag: -ruler.client.tls_min_version
+  [tls_min_version: <string> | default = ""]
 
 # How frequently to evaluate rules.
 # CLI flag: -ruler.evaluation-interval
@@ -1118,7 +1145,7 @@ lifecycler:
     [heartbeat_timeout: <duration> | default = 1m]
 
     # The number of ingesters to write to and read from.
-    # CLI flag: -distributor.replication-factor
+    # CLI flag: -ingester.replication-factor
     [replication_factor: <int> | default = 3]
 
   # The number of tokens the lifecycler will generate and put into the ring if
@@ -1923,6 +1950,10 @@ redis:
   # CLI flag: -<prefix>.redis.pool-size
   [pool_size: <int> | default = 0]
 
+  # Username to use when connecting to redis.
+  # CLI flag: -<prefix>.redis.username
+  [username: <string>]
+
   # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
   [password: <string>]
@@ -2323,6 +2354,28 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This is how far above the rate limit a stream can "burst" before the stream is limited.
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <string|int> | default = "15MB"]
+
+# Configures the distributor to shard streams that are too big
+shard_streams:
+  # Whether to enable stream sharding
+  #
+  # CLI flag: -shard-streams.enabled
+  [enabled: <boolean> | default = false]
+
+  # Enable logging when sharding streams because logging on the read path may
+  # impact performance. When disabled, stream sharding will emit no logs 
+  # regardless of log level
+  #
+  # CLI flag: -shard-streams.logging-enabled
+  [logging_enabled: <boolean> | default = false]
+
+  # Threshold that determines how much the stream should be sharded.
+  # The formula used is n = ceil(stream size + ingested rate / desired rate), where n is the number of shards.
+  # For instance, if a stream ingestion is at 10MB, desired rate is 3MB (default), and a stream of size 1MB is
+  # received, the given stream will be split into n = ceil((1 + 10)/3) = 4 shards.
+  #
+  # CLI flag: -shard-streams.desired-rate
+  [desired_rate: <string> | default = 3MB]
 
 # Limit how far back in time series data and metadata can be queried,
 # up until lookback duration ago.

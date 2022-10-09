@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -94,7 +94,7 @@ func TestMain(m *testing.M) {
 	if testing.Verbose() {
 		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
+		logger = log.NewLogger("testing", log.WithOutput(io.Discard))
 	}
 
 	// Register the clientgo and CRD schemes
@@ -961,7 +961,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+		Message: "Invalid object storage CA configmap contents: missing key or no contents",
 		Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 		Requeue: false,
 	}

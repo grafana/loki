@@ -2,8 +2,8 @@ package ingester
 
 import (
 	"context"
-	fmt "fmt"
-	"io/ioutil"
+	"fmt"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -333,7 +333,7 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Du
 			<-time.After(max / 10) // check 10x over the duration
 		}
 
-		fs, err := ioutil.ReadDir(walDir)
+		fs, err := os.ReadDir(walDir)
 		require.Nil(t, err)
 		var found bool
 		for _, f := range fs {

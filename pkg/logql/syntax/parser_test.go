@@ -3274,3 +3274,27 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 		})
 	}
 }
+
+func TestParseLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc   string
+		input  string
+		output labels.Labels
+	}{
+		{
+			desc:   "basic",
+			input:  `{job="foo"}`,
+			output: []labels.Label{{Name: "job", Value: "foo"}},
+		},
+		{
+			desc:   "strip empty label value",
+			input:  `{job="foo", bar=""}`,
+			output: []labels.Label{{Name: "job", Value: "foo"}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, _ := ParseLabels(tc.input)
+			require.Equal(t, tc.output, got)
+		})
+	}
+}

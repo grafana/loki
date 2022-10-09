@@ -44,6 +44,16 @@ var (
 	QueryBatchSampleSize = uint32(512)
 )
 
+const (
+	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
+	// Possible values are only increasing integers starting from 0.
+	ShardLbName        = "__stream_shard__"
+	ShardLbPlaceholder = "__placeholder__"
+
+	queryBatchSize       = 128
+	queryBatchSampleSize = 512
+)
+
 var (
 	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "loki",
@@ -169,6 +179,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
+	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
 	var appendErr error
 	for _, reqStream := range req.Streams {
@@ -192,7 +203,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream)
 		s.chunkMtx.Unlock()
 	}
 
@@ -333,6 +344,14 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
+func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	resp := &logproto.StreamRatesResponse{
+		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),
+	}
+
+	return resp, nil
+}
+
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
@@ -449,9 +468,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 				return nil, err
 			}
 			labels = make([]string, len(values))
-			for i := 0; i < len(values); i++ {
-				labels[i] = values[i]
-			}
+			copy(labels, values)
 			return &logproto.LabelResponse{
 				Values: labels,
 			}, nil
@@ -461,9 +478,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 			return nil, err
 		}
 		labels = make([]string, len(names))
-		for i := 0; i < len(names); i++ {
-			labels[i] = names[i]
-		}
+		copy(labels, names)
 		return &logproto.LabelResponse{
 			Values: labels,
 		}, nil

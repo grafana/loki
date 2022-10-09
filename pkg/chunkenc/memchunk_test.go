@@ -178,6 +178,38 @@ func TestBlock(t *testing.T) {
 	}
 }
 
+func TestCorruptChunk(t *testing.T) {
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
+			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+			cases := []struct {
+				data []byte
+			}{
+				// Data that should not decode as lines from a chunk in any encoding.
+				{data: []byte{0}},
+				{data: []byte{1}},
+				{data: []byte("asdfasdfasdfqwyteqwtyeq")},
+			}
+
+			ctx, start, end := context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64)
+			for i, c := range cases {
+				chk.blocks = []block{{b: c.data}}
+				it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
+				require.NoError(t, err, "case %d", i)
+
+				idx := 0
+				for it.Next() {
+					idx++
+				}
+				require.Error(t, it.Error(), "case %d", i)
+				require.NoError(t, it.Close())
+			}
+		})
+	}
+}
+
 func TestReadFormatV1(t *testing.T) {
 	t.Parallel()
 
