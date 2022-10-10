@@ -56,6 +56,37 @@ func newPoint(t time.Time, v float64) promql.Point {
 	return promql.Point{T: t.UnixNano() / 1e+6, V: v}
 }
 
+func Benchmark_RangeVectorIterator(b *testing.B) {
+	b.ReportAllocs()
+	tt := struct {
+		selRange   int64
+		step       int64
+		offset     int64
+		start, end time.Time
+	}{
+		(5 * time.Second).Nanoseconds(), // no overlap
+		(30 * time.Second).Nanoseconds(),
+		0,
+		time.Unix(10, 0),
+		time.Unix(100, 0),
+	}
+
+	for i := 0; i < b.N; i++ {
+		i := 0
+		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(),
+			&syntax.RangeAggregationExpr{Operation: "count_over_time"}, tt.selRange,
+			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+		if err != nil {
+			panic(err)
+		}
+		for it.Next() {
+			_, _ = it.At()
+			i++
+		}
+	}
+
+}
+
 func Test_RangeVectorIterator(t *testing.T) {
 	tests := []struct {
 		selRange        int64
@@ -179,12 +210,14 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 			func(t *testing.T) {
-				it := newRangeVectorIterator(newfakePeekingSampleIterator(), tt.selRange,
+				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(),
+					&syntax.RangeAggregationExpr{Operation: "count_over_time"}, tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+				require.NoError(t, err)
 
 				i := 0
 				for it.Next() {
-					ts, v := it.At(countOverTime)
+					ts, v := it.At()
 					require.ElementsMatch(t, tt.expectedVectors[i], v)
 					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
 					i++
@@ -201,8 +234,11 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Labels:  "{badlabels=}",
 			Samples: samples,
 		}))
-	it := newRangeVectorIterator(badIterator, (30 * time.Second).Nanoseconds(),
+	it, err := newRangeVectorIterator(badIterator,
+		&syntax.RangeAggregationExpr{Operation: "count_over_time"}, (30 * time.Second).Nanoseconds(),
 		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+	require.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
