@@ -554,7 +554,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 		rangeAgg, ok = r.windowRangeAgg[lbs]
 		if !ok {
 			var metric labels.Labels
-			if metric, ok = r.metrics[lbs]; !ok {
+			if _, ok = r.metrics[lbs]; !ok {
 				var err error
 				metric, err = promql_parser.ParseMetric(lbs)
 				if err != nil {
