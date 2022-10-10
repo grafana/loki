@@ -19,12 +19,12 @@ To start Promtail in dry run mode use the flag `--dry-run` as shown in the examp
 cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
-## Inspecting config file
+## Inspecting a config file
 
 Promtail can validate and syntatically check your `config` file for a valid configuration.
-This can be used to check for errors and inconsistency in your config file and help prevent deploy invalid configurations.
+This can be used to check for errors and inconsistency in your config file and help prevent deploying invalid configurations.
 
-In check syntax mode, promtail will just validate the config file and then exit
+In check syntax mode, promtail will just validate the config file and then exit:
 
 ```bash
 promtail -config.file=myConfigFile.yaml -check-syntax

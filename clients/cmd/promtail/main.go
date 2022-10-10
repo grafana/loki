@@ -78,7 +78,7 @@ func main() {
 			fmt.Println("Invalid config file")
 			os.Exit(1)
 		}
-		fmt.Println("Valid config file! no syntax issues found")
+		fmt.Println("Valid config file! No syntax issues found")
 		os.Exit(0)
 	}
 
