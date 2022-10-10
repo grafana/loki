@@ -123,7 +123,7 @@ func main() {
 		var config Config
 		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
 			fmt.Println("Unable to parse config:", err)
-			return nil, errors.Wrap(err, "Unable to parse config")
+			return nil, fmt.Errorf("Unable to parse config: %w")
 		}
 		return &config.Config, nil
 	}
