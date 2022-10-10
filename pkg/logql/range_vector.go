@@ -49,7 +49,7 @@ func newRangeVectorIterator(
 		end = end - offset
 	}
 	var overlap bool
-	if selRange >= step {
+	if selRange >= step && start != end {
 		overlap = true
 	}
 	if !overlap {
