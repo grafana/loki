@@ -44,6 +44,7 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{- end }}
+  compactor_address: {{ .Compactor.Protocol }}://{{ .Compactor.FQDN }}:{{ .Compactor.Port }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
@@ -184,7 +185,9 @@ ruler:
   poll_interval: {{ . }}
   {{ end }}
   {{ with .Ruler.AlertManager }}
-  external_url: {{ .ExternalURL }}
+  {{ with .ExternalURL }}
+  external_url: {{ . }}
+  {{ end}}
   {{ with .ExternalLabels }}
   external_labels:
     {{ range $name, $value := . }}

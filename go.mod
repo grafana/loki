@@ -1,6 +1,6 @@
 module github.com/grafana/loki
 
-go 1.18
+go 1.19
 
 require (
 	cloud.google.com/go/bigtable v1.3.0
@@ -49,9 +49,9 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafana/dskit v0.0.0-20220809080451-26c1b619d059
+	github.com/grafana/dskit v0.0.0-20220928083349-b1b307db4f30
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
+	github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.13.0
@@ -63,7 +63,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.14.1
+	github.com/klauspost/compress v1.15.11
 	github.com/klauspost/pgzip v1.2.5
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/minio/minio-go/v7 v7.0.24
@@ -88,17 +88,17 @@ require (
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.6.0
-	github.com/stretchr/testify v1.7.2
+	github.com/stretchr/testify v1.8.0
 	github.com/thanos-io/thanos v0.22.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
-	github.com/weaveworks/common v0.0.0-20220809154356-72ba250fe659
+	github.com/weaveworks/common v0.0.0-20220916164235-da3fde973eec
 	github.com/xdg-go/scram v1.0.2
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.9.0
-	go.uber.org/goleak v1.1.12
-	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
-	golang.org/x/net v0.0.0-20220706163947-c90051bbdb60
+	go.uber.org/goleak v1.2.0
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	golang.org/x/net v0.0.0-20220812174116-3211cb980234
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	golang.org/x/sys v0.0.0-20220829200755-d48e67d00261
 	golang.org/x/time v0.0.0-20220609170525-579cf78fd858
@@ -233,7 +233,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/exporter-toolkit v0.7.1 // indirect
+	github.com/prometheus/exporter-toolkit v0.7.2-0.20220901134540-2434b08435da // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rs/xid v1.2.1 // indirect
@@ -244,7 +244,7 @@ require (
 	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.2.0 // indirect
+	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
@@ -335,3 +335,7 @@ replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
+
+// Fork containing a line-buffered logger which should improve logging performance.
+// TODO: submit PR to upstream and remove this
+replace github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b

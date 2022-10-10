@@ -5,6 +5,7 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -46,6 +47,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			tenantData,
+			RulerName(opts.Name),
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
@@ -149,6 +151,21 @@ func configureGatewayServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureGatewayServiceMonitor(sm, fg.ServiceMonitorTLSEndpoints)
+	}
+
+	return nil
+}
+
+// ConfigureOptionsForMode applies configuration depending on the mode type.
+func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
+	switch opt.Stack.Tenants.Mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		if opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled {
+			return openshift.ConfigureOptions(cfg)
+		}
+		return nil
 	}
 
 	return nil

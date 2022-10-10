@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -20,7 +21,7 @@ import (
 func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	statefulSet := NewIndexGatewayStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureIndexGatewayHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureIndexGatewayHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -30,7 +31,7 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -105,6 +106,13 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
@@ -223,12 +231,12 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIndexGatewayHTTP(stackName)
+func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
 	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIndexGatewayGRPC(stackName)
+func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIndexGatewayGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

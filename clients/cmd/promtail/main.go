@@ -42,6 +42,7 @@ type Config struct {
 	printConfig            bool
 	logConfig              bool
 	dryRun                 bool
+	checkSyntax            bool
 	configFile             string
 	configExpandEnv        bool
 	inspect                bool
@@ -53,6 +54,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.BoolVar(&c.dryRun, "dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
+	f.BoolVar(&c.checkSyntax, "check-syntax", false, "Validate the config file of its syntax")
 	f.BoolVar(&c.inspect, "inspect", false, "Allows for detailed inspection of pipeline stages")
 	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
 	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
@@ -75,6 +77,15 @@ func main() {
 		fmt.Println("Unable to parse config:", err)
 		os.Exit(1)
 	}
+	if config.checkSyntax {
+		if config.configFile == "" {
+			fmt.Println("Invalid config file")
+			os.Exit(1)
+		}
+		fmt.Println("Valid config file! No syntax issues found")
+		os.Exit(0)
+	}
+
 	// Handle -version CLI flag
 	if config.printVersion {
 		fmt.Println(version.Print("promtail"))
@@ -86,7 +97,7 @@ func main() {
 		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer, true, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)

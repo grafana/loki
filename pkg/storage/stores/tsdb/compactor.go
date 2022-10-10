@@ -380,7 +380,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, false)
+	return NewShippableTSDBFile(id)
 }
 
 func getUnsafeBytes(s string) []byte {

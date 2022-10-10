@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		assert.NoError(t, clu.Cleanup())
 	}()
 
+	// initially, run only compactor, index-gateway and distributor.
 	var (
 		tCompactor = clu.AddComponent(
 			"compactor",
@@ -36,39 +38,54 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"distributor",
 			"-target=distributor",
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	// then, run only ingester and query-scheduler.
+	var (
 		tIngester = clu.AddComponent(
 			"ingester",
 			"-target=ingester",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
 			"-target=query-scheduler",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-query-scheduler.use-scheduler-ring=false",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
 			"-target=query-frontend",
-			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL().Host,
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-frontend.default-validity=0s",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
-			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 		_ = clu.AddComponent(
 			"querier",
 			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL().Host,
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
-			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	remoteCalled := []bool{false, false}
+
+	var (
 		tRuler = clu.AddComponent(
 			"ruler",
 			"-target=ruler",
-			"-common.compactor-address="+tCompactor.HTTPURL().String(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 	)
-
-	remoteCalled := []bool{false, false}
 
 	handler1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/write" {
@@ -79,6 +96,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 	server1 := cluster.NewRemoteWriteServer(&handler1)
+	defer server1.Close()
 
 	handler2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/write" {
@@ -89,29 +107,27 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 	server2 := cluster.NewRemoteWriteServer(&handler2)
-
-	defer server1.Close()
 	defer server2.Close()
 
 	tRuler.RemoteWriteUrls = []string{
 		server1.URL,
 		server2.URL,
 	}
-
+	// initialize only the ruler now.
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
 
 	now := time.Now()
-	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL().String())
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliDistributor.Now = now
-	cliIngester := client.New(tenantID, "", tIngester.HTTPURL().String())
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
 	cliIngester.Now = now
-	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL().String())
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 	cliQueryFrontend.Now = now
-	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL().String())
+	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL())
 	cliCompactor.Now = now
-	cliRuler := client.New(tRuler.RulesTenant, "", tRuler.HTTPURL().String())
+	cliRuler := client.New(tRuler.RulesTenant, "", tRuler.HTTPURL())
 	cliRuler.Now = now
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
@@ -131,7 +147,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -177,7 +193,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	// Query lines
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -193,7 +209,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	t.Run("ruler", func(t *testing.T) {
 		// Check rules are read correctly.
-		resp, err := cliRuler.GetRules()
+		resp, err := cliRuler.GetRules(context.Background())
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)

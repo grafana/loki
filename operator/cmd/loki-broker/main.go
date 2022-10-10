@@ -7,13 +7,14 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ViaQ/logerr/v2/log"
-	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
+	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -129,26 +130,37 @@ func main() {
 	}
 
 	if cfg.featureFlags.TLSProfile != "" &&
-		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileOldType) &&
-		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileIntermediateType) &&
-		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileModernType) {
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileModernType) {
 		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
 		os.Exit(1)
 	}
 
 	// Convert config to manifest.Options
 	opts := manifests.Options{
-		Name:           cfg.Name,
-		Namespace:      cfg.Namespace,
-		Image:          cfg.Image,
-		Stack:          ls.Spec,
-		Gates:          cfg.featureFlags,
-		ObjectStorage:  cfg.objectStorage,
-		TLSProfileType: projectconfigv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+		Name:          cfg.Name,
+		Namespace:     cfg.Namespace,
+		Image:         cfg.Image,
+		Stack:         ls.Spec,
+		Gates:         cfg.featureFlags,
+		ObjectStorage: cfg.objectStorage,
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
 		logger.Error(optErr, "failed to conform options to build settings")
+		os.Exit(1)
+	}
+
+	var tlsSecurityProfile *openshiftv1.TLSSecurityProfile = nil
+	if cfg.featureFlags.TLSProfile != "" {
+		tlsSecurityProfile = &openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+		}
+	}
+
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsSecurityProfile); optErr != nil {
+		logger.Error(optErr, "failed to conform options to tls profile settings")
 		os.Exit(1)
 	}
 

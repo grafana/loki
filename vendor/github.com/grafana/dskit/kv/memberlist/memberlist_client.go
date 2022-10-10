@@ -475,11 +475,9 @@ func (m *KV) starting(ctx context.Context) error {
 var errFailedToJoinCluster = errors.New("failed to join memberlist cluster on startup")
 
 func (m *KV) running(ctx context.Context) error {
-	if len(m.cfg.JoinMembers) > 0 {
-		ok := m.joinMembersOnStartup(ctx)
-		if !ok && m.cfg.AbortIfJoinFails {
-			return errFailedToJoinCluster
-		}
+	ok := m.joinMembersOnStartup(ctx)
+	if !ok && m.cfg.AbortIfJoinFails {
+		return errFailedToJoinCluster
 	}
 
 	var tickerChan <-chan time.Time
@@ -565,7 +563,14 @@ func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
 	l.Log("msg", "memberlist fast-join finished", "joined_nodes", totalJoined, "elapsed_time", time.Since(startTime))
 }
 
+// The joinMembersOnStartup method resolves the addresses of the given join_members hosts and asks memberlist to join to them.
+// This method cannot be called before KV.running state as it may wait for K8S DNS to resolve the service addresses of members
+// running this very method. Which means the service needs to be READY for K8S to add it to DNS.
 func (m *KV) joinMembersOnStartup(ctx context.Context) bool {
+	if len(m.cfg.JoinMembers) == 0 {
+		return true
+	}
+
 	startTime := time.Now()
 
 	level.Info(m.logger).Log("msg", "joining memberlist cluster", "join_members", strings.Join(m.cfg.JoinMembers, ","))
@@ -584,14 +589,17 @@ func (m *KV) joinMembersOnStartup(ctx context.Context) bool {
 		// This is harmless and simpler.
 		nodes := m.discoverMembers(ctx, m.cfg.JoinMembers)
 
-		reached, err := m.memberlist.Join(nodes) // err is only returned if reached==0.
-		if err == nil {
-			level.Info(m.logger).Log("msg", "joining memberlist cluster succeeded", "reached_nodes", reached, "elapsed_time", time.Since(startTime))
-			return true
+		if len(nodes) > 0 {
+			reached, err := m.memberlist.Join(nodes) // err is only returned if reached==0.
+			if err == nil {
+				level.Info(m.logger).Log("msg", "joining memberlist cluster succeeded", "reached_nodes", reached, "elapsed_time", time.Since(startTime))
+				return true
+			}
+			level.Warn(m.logger).Log("msg", "joining memberlist cluster: failed to reach any nodes", "retries", boff.NumRetries(), "err", err)
+			lastErr = err
+		} else {
+			level.Warn(m.logger).Log("msg", "joining memberlist cluster: found no nodes to join", "retries", boff.NumRetries())
 		}
-
-		level.Warn(m.logger).Log("msg", "joining memberlist cluster: failed to reach any nodes", "retries", boff.NumRetries(), "err", err)
-		lastErr = err
 
 		boff.Wait()
 	}

@@ -1119,12 +1119,6 @@ func (w *Writer) closeIndex(idx bool) ([]byte, error) {
 			if w.appendIndex {
 				w.written += int64(len(index))
 			}
-			if true {
-				_, err := w.index.Load(index)
-				if err != nil {
-					panic(err)
-				}
-			}
 		}
 
 		if w.pad > 1 {

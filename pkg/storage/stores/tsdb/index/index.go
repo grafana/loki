@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -1202,19 +1203,18 @@ func NewReader(b ByteSlice) (*Reader, error) {
 	return newReader(b, io.NopCloser(nil))
 }
 
-type nopCloser struct{}
-
-func (nopCloser) Close() error { return nil }
-
 // NewFileReader returns a new index reader against the given index file.
 func NewFileReader(path string) (*Reader, error) {
-	b, err := os.ReadFile(path)
+	f, err := fileutil.OpenMmapFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(RealByteSlice(b), nopCloser{})
+	r, err := newReader(RealByteSlice(f.Bytes()), f)
 	if err != nil {
-		return r, err
+		return nil, tsdb_errors.NewMulti(
+			err,
+			f.Close(),
+		).Err()
 	}
 
 	return r, nil
@@ -1336,6 +1336,10 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 // Version returns the file format version of the underlying index.
 func (r *Reader) Version() int {
 	return r.version
+}
+
+func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
+	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
 }
 
 // Range marks a byte range.
