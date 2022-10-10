@@ -1,4 +1,4 @@
-let host = "https://logql-analyzer.grafana.net/2-6-x";
+let host = "https://logql-analyzer.grafana.net/next";
 Handlebars.registerHelper("inc", (val) => parseInt(val) + 1);
 let streamSelector = `{job="analyze"}`;
 const logsSourceInputElement = document.getElementById("logs-source-input");
