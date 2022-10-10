@@ -111,9 +111,9 @@ In order to receive and process syslog messages in Promtail, the following chang
           listen_address: 0.0.0.0:1514
           labels:
             job: "syslog"
-      relabel_configs:
-        - source_labels: ['__syslog_message_hostname']
-          target_label: 'host'
+        relabel_configs:
+          - source_labels: ['__syslog_message_hostname']
+            target_label: 'host'
     syslogService:
       enabled: true
       type: LoadBalancer
