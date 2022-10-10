@@ -20,7 +20,7 @@ const (
 type Table interface {
 	Name() string
 	AddIndex(userID string, idx index.Index) error
-	ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 	Upload(ctx context.Context) error
 	Cleanup(indexRetainPeriod time.Duration) error
 	Stop()
@@ -78,11 +78,11 @@ func (lt *table) AddIndex(userID string, idx index.Index) error {
 }
 
 // ForEach iterates over all the indexes belonging to the user.
-func (lt *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+func (lt *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	lt.indexSetMtx.RLock()
 
 	go func() {
-		<-ctx.Done()
+		<-doneChan
 		lt.indexSetMtx.RUnlock()
 	}()
 
@@ -95,7 +95,7 @@ func (lt *table) ForEach(ctx context.Context, userID string, callback index.ForE
 			continue
 		}
 
-		if err := idxSet.ForEach(ctx, callback); err != nil {
+		if err := idxSet.ForEach(ctx, doneChan, callback); err != nil {
 			return err
 		}
 	}

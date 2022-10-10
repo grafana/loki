@@ -81,7 +81,7 @@ type mockIndexSet struct {
 	lastUsedAt  time.Time
 }
 
-func (m *mockIndexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallback) error {
+func (m *mockIndexSet) ForEach(ctx context.Context, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	for _, idx := range m.indexes {
 		if err := callback(false, idx); err != nil {
 			return err
@@ -147,11 +147,13 @@ func TestTable_ForEach(t *testing.T) {
 			}
 
 			var indexesFound []index.Index
-
-			err := table.ForEach(context.Background(), tc.withUserID, func(_ bool, idx index.Index) error {
+			doneChan := make(chan struct{})
+			err := table.ForEach(context.Background(), tc.withUserID, doneChan, func(_ bool, idx index.Index) error {
 				indexesFound = append(indexesFound, idx)
 				return nil
 			})
+			close(doneChan)
+
 			if tc.withError {
 				require.Error(t, err)
 				require.Len(t, table.indexSets, len(usersToSetup))
@@ -314,12 +316,12 @@ func TestTable_Sync(t *testing.T) {
 	// check that table has expected indexes setup
 	var indexesFound []string
 
-	ctx, cancel := context.WithCancel(context.Background())
-	err := table.ForEach(ctx, userID, func(_ bool, idx index.Index) error {
+	doneChan := make(chan struct{})
+	err := table.ForEach(context.Background(), userID, doneChan, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
-	cancel()
+	close(doneChan)
 	require.NoError(t, err)
 	sort.Strings(indexesFound)
 	require.Equal(t, []string{deleteDB, noUpdatesDB}, indexesFound)
@@ -337,12 +339,12 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table got the new index and dropped the deleted index
 	indexesFound = []string{}
-	ctx, cancel = context.WithCancel(context.Background())
-	err = table.ForEach(ctx, userID, func(_ bool, idx index.Index) error {
+	doneChan = make(chan struct{})
+	err = table.ForEach(context.Background(), userID, doneChan, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
-	cancel()
+	close(doneChan)
 	require.NoError(t, err)
 	sort.Strings(indexesFound)
 	require.Equal(t, []string{newDB, noUpdatesDB}, indexesFound)
@@ -381,12 +383,12 @@ func TestTable_Sync(t *testing.T) {
 
 	// verify that table has got only compacted db
 	indexesFound = []string{}
-	ctx, cancel = context.WithCancel(context.Background())
-	err = table.ForEach(ctx, userID, func(_ bool, idx index.Index) error {
+	doneChan = make(chan struct{})
+	err = table.ForEach(context.Background(), userID, doneChan, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
-	cancel()
+	close(doneChan)
 	require.NoError(t, err)
 	sort.Strings(indexesFound)
 	require.Equal(t, []string{compactedDBName}, indexesFound)
@@ -417,10 +419,10 @@ func TestLoadTable(t *testing.T) {
 	// check the loaded table to see it has right index files.
 	expectedIndexes := append(buildListOfExpectedIndexes(userID, 0, 5), buildListOfExpectedIndexes("", 0, 5)...)
 	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		doneChan := make(chan struct{})
+		defer close(doneChan)
 
-		return table.ForEach(ctx, userID, callbackFunc)
+		return table.ForEach(context.Background(), userID, doneChan, callbackFunc)
 	})
 
 	// close the table to test reloading of table with already having files in the cache dir.
@@ -441,10 +443,10 @@ func TestLoadTable(t *testing.T) {
 
 	expectedIndexes = append(buildListOfExpectedIndexes(userID, 0, 10), buildListOfExpectedIndexes("", 0, 10)...)
 	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		doneChan := make(chan struct{})
+		defer close(doneChan)
 
-		return table.ForEach(ctx, userID, callbackFunc)
+		return table.ForEach(context.Background(), userID, doneChan, callbackFunc)
 	})
 }
 

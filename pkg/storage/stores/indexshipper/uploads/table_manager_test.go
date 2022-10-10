@@ -65,12 +65,12 @@ func TestTableManager(t *testing.T) {
 
 					// see if we can find all the added indexes in the table.
 					indexesFound := map[string]*mockIndex{}
-					ctx, cancel := context.WithCancel(context.Background())
-					err := testTableManager.ForEach(ctx, tableName, userID, func(_ bool, index index.Index) error {
+					doneChan := make(chan struct{})
+					err := testTableManager.ForEach(context.Background(), tableName, userID, doneChan, func(_ bool, index index.Index) error {
 						indexesFound[index.Path()] = index.(*mockIndex)
 						return nil
 					})
-					cancel()
+					close(doneChan)
 					require.NoError(t, err)
 
 					require.Equal(t, testIndexes, indexesFound)
