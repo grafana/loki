@@ -42,8 +42,9 @@ func hash8(u uint64, h uint8) uint32 {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockBetterGo(dst, src []byte) (d int) {
 	// sLimit is when to stop looking for offset/length copies. The inputMargin
 	// lets us use a fast path for emitLiteral in the main loop, while we are
@@ -56,7 +57,7 @@ func encodeBlockBetterGo(dst, src []byte) (d int) {
 	// Initialize the hash tables.
 	const (
 		// Long hash matches.
-		lTableBits    = 16
+		lTableBits    = 17
 		maxLTableSize = 1 << lTableBits
 
 		// Short hash matches.
@@ -97,9 +98,26 @@ func encodeBlockBetterGo(dst, src []byte) (d int) {
 			lTable[hashL] = uint32(s)
 			sTable[hashS] = uint32(s)
 
+			valLong := load64(src, candidateL)
+			valShort := load64(src, candidateS)
+
+			// If long matches at least 8 bytes, use that.
+			if cv == valLong {
+				break
+			}
+			if cv == valShort {
+				candidateL = candidateS
+				break
+			}
+
 			// Check repeat at offset checkRep.
 			const checkRep = 1
-			if false && uint32(cv>>(checkRep*8)) == load32(src, s-repeat+checkRep) {
+			// Minimum length of a repeat. Tested with various values.
+			// While 4-5 offers improvements in some, 6 reduces
+			// regressions significantly.
+			const wantRepeatBytes = 6
+			const repeatMask = ((1 << (wantRepeatBytes * 8)) - 1) << (8 * checkRep)
+			if false && repeat > 0 && cv&repeatMask == load64(src, s-repeat)&repeatMask {
 				base := s + checkRep
 				// Extend back
 				for i := base - repeat; base > nextEmit && i > 0 && src[i-1] == src[base-1]; {
@@ -109,8 +127,8 @@ func encodeBlockBetterGo(dst, src []byte) (d int) {
 				d += emitLiteral(dst[d:], src[nextEmit:base])
 
 				// Extend forward
-				candidate := s - repeat + 4 + checkRep
-				s += 4 + checkRep
+				candidate := s - repeat + wantRepeatBytes + checkRep
+				s += wantRepeatBytes + checkRep
 				for s < len(src) {
 					if len(src)-s < 8 {
 						if src[s] == src[candidate] {
@@ -127,28 +145,40 @@ func encodeBlockBetterGo(dst, src []byte) (d int) {
 					s += 8
 					candidate += 8
 				}
-				if nextEmit > 0 {
-					// same as `add := emitCopy(dst[d:], repeat, s-base)` but skips storing offset.
-					d += emitRepeat(dst[d:], repeat, s-base)
-				} else {
-					// First match, cannot be repeat.
-					d += emitCopy(dst[d:], repeat, s-base)
-				}
+				// same as `add := emitCopy(dst[d:], repeat, s-base)` but skips storing offset.
+				d += emitRepeat(dst[d:], repeat, s-base)
 				nextEmit = s
 				if s >= sLimit {
 					goto emitRemainder
+				}
+				// Index in-between
+				index0 := base + 1
+				index1 := s - 2
+
+				cv = load64(src, s)
+				for index0 < index1 {
+					cv0 := load64(src, index0)
+					cv1 := load64(src, index1)
+					lTable[hash7(cv0, lTableBits)] = uint32(index0)
+					sTable[hash4(cv0>>8, sTableBits)] = uint32(index0 + 1)
+
+					lTable[hash7(cv1, lTableBits)] = uint32(index1)
+					sTable[hash4(cv1>>8, sTableBits)] = uint32(index1 + 1)
+					index0 += 2
+					index1 -= 2
 				}
 
 				cv = load64(src, s)
 				continue
 			}
 
-			if uint32(cv) == load32(src, candidateL) {
+			// Long likely matches 7, so take that.
+			if uint32(cv) == uint32(valLong) {
 				break
 			}
 
 			// Check our short candidate
-			if uint32(cv) == load32(src, candidateS) {
+			if uint32(cv) == uint32(valShort) {
 				// Try a long candidate at s+1
 				hashL = hash7(cv>>8, lTableBits)
 				candidateL = int(lTable[hashL])
@@ -227,21 +257,29 @@ func encodeBlockBetterGo(dst, src []byte) (d int) {
 			// Do we have space for more, if not bail.
 			return 0
 		}
-		// Index match start+1 (long) and start+2 (short)
+
+		// Index short & long
 		index0 := base + 1
-		// Index match end-2 (long) and end-1 (short)
 		index1 := s - 2
 
 		cv0 := load64(src, index0)
 		cv1 := load64(src, index1)
-		cv = load64(src, s)
 		lTable[hash7(cv0, lTableBits)] = uint32(index0)
-		lTable[hash7(cv0>>8, lTableBits)] = uint32(index0 + 1)
-		lTable[hash7(cv1, lTableBits)] = uint32(index1)
-		lTable[hash7(cv1>>8, lTableBits)] = uint32(index1 + 1)
 		sTable[hash4(cv0>>8, sTableBits)] = uint32(index0 + 1)
-		sTable[hash4(cv0>>16, sTableBits)] = uint32(index0 + 2)
+
+		lTable[hash7(cv1, lTableBits)] = uint32(index1)
 		sTable[hash4(cv1>>8, sTableBits)] = uint32(index1 + 1)
+		index0 += 1
+		index1 -= 1
+		cv = load64(src, s)
+
+		// index every second long in between.
+		for index0 < index1 {
+			lTable[hash7(load64(src, index0), lTableBits)] = uint32(index0)
+			lTable[hash7(load64(src, index1), lTableBits)] = uint32(index1)
+			index0 += 2
+			index1 -= 2
+		}
 	}
 
 emitRemainder:
@@ -260,8 +298,9 @@ emitRemainder:
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockBetterSnappyGo(dst, src []byte) (d int) {
 	// sLimit is when to stop looking for offset/length copies. The inputMargin
 	// lets us use a fast path for emitLiteral in the main loop, while we are
@@ -402,21 +441,29 @@ func encodeBlockBetterSnappyGo(dst, src []byte) (d int) {
 			// Do we have space for more, if not bail.
 			return 0
 		}
-		// Index match start+1 (long) and start+2 (short)
+
+		// Index short & long
 		index0 := base + 1
-		// Index match end-2 (long) and end-1 (short)
 		index1 := s - 2
 
 		cv0 := load64(src, index0)
 		cv1 := load64(src, index1)
-		cv = load64(src, s)
 		lTable[hash7(cv0, lTableBits)] = uint32(index0)
-		lTable[hash7(cv0>>8, lTableBits)] = uint32(index0 + 1)
-		lTable[hash7(cv1, lTableBits)] = uint32(index1)
-		lTable[hash7(cv1>>8, lTableBits)] = uint32(index1 + 1)
 		sTable[hash4(cv0>>8, sTableBits)] = uint32(index0 + 1)
-		sTable[hash4(cv0>>16, sTableBits)] = uint32(index0 + 2)
+
+		lTable[hash7(cv1, lTableBits)] = uint32(index1)
 		sTable[hash4(cv1>>8, sTableBits)] = uint32(index1 + 1)
+		index0 += 1
+		index1 -= 1
+		cv = load64(src, s)
+
+		// index every second long in between.
+		for index0 < index1 {
+			lTable[hash7(load64(src, index0), lTableBits)] = uint32(index0)
+			lTable[hash7(load64(src, index1), lTableBits)] = uint32(index1)
+			index0 += 2
+			index1 -= 2
+		}
 	}
 
 emitRemainder:

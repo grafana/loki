@@ -42,13 +42,19 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{cm, dpl, svc, ing}
 
-	minTLSVersion := opts.TLSProfileSpec.MinTLSVersion
-	ciphersList := opts.TLSProfileSpec.Ciphers
+	minTLSVersion := opts.TLSProfile.MinTLSVersion
+	ciphersList := opts.TLSProfile.Ciphers
 	ciphers := strings.Join(ciphersList, `,`)
 
 	if opts.Gates.HTTPEncryption {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
 		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName, minTLSVersion, ciphers); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
+		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 	}
@@ -414,6 +420,29 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName, minTLSVers
 	}
 
 	if err := mergo.Merge(&podSpec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	return nil
+}
+
+func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string) error {
+	var gwIndex int
+	for i, c := range podSpec.Containers {
+		if c.Name == gatewayContainerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--logs.rules.endpoint=http://%s:%d", fqdn(serviceNameRulerHTTP(stackName), stackNs), httpPort),
+			"--logs.rules.read-only=true",
+		},
+	}
+
+	if err := mergo.Merge(&podSpec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 

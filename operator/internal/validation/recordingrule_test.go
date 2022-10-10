@@ -1,11 +1,13 @@
-package v1beta1_test
+package validation_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/grafana/loki/operator/apis/loki/v1beta1"
-	"github.com/stretchr/testify/require"
+	"github.com/grafana/loki/operator/internal/validation"
 
+	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -155,6 +157,33 @@ var rtt = []struct {
 			},
 		),
 	},
+	{
+		desc: "LogQL not sample-expression",
+		spec: v1beta1.RecordingRuleSpec{
+			Groups: []*v1beta1.RecordingRuleGroup{
+				{
+					Name:     "first",
+					Interval: v1beta1.PrometheusDuration("1m"),
+					Rules: []*v1beta1.RecordingRuleGroupSpec{
+						{
+							Expr: `{message=~".+"}`,
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "RecordingRule"},
+			"testing-rule",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
+					`{message=~".+"}`,
+					v1beta1.ErrParseLogQLNotSample.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {
@@ -162,14 +191,17 @@ func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			l := v1beta1.RecordingRule{
+
+			ctx := context.Background()
+			l := &v1beta1.RecordingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
 				Spec: tc.spec,
 			}
 
-			err := l.ValidateCreate()
+			v := &validation.RecordingRuleValidator{}
+			err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -184,14 +216,17 @@ func TestRecordingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			l := v1beta1.RecordingRule{
+
+			ctx := context.Background()
+			l := &v1beta1.RecordingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
 				Spec: tc.spec,
 			}
 
-			err := l.ValidateUpdate(&v1beta1.RecordingRule{})
+			v := &validation.RecordingRuleValidator{}
+			err := v.ValidateUpdate(ctx, &v1beta1.RecordingRule{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

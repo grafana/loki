@@ -15,7 +15,7 @@ As a **first step** to build the new image, you need to create a pull
 request with the desired changes to the Dockerfile. To increase the version of
 the image, you also need to update the version tag of the `loki-build-image`
 pipeline defined in `.drone/drone.jsonnet` (search for
-`pipeline('loki-build-image')`) and run `BUILD_IN_CONTAINER=false make drone`
+`pipeline('loki-build-image')`) and run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone`
 and commit the changes to the same pull request.
 Once approved and merged to `main`, the image with the new version is built.
 

@@ -313,10 +313,13 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table has expected indexes setup
 	var indexesFound []string
-	err := table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
+
+	ctx, cancel := context.WithCancel(context.Background())
+	err := table.ForEach(ctx, userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
+	cancel()
 	require.NoError(t, err)
 	sort.Strings(indexesFound)
 	require.Equal(t, []string{deleteDB, noUpdatesDB}, indexesFound)
@@ -334,10 +337,12 @@ func TestTable_Sync(t *testing.T) {
 
 	// check that table got the new index and dropped the deleted index
 	indexesFound = []string{}
-	err = table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
+	ctx, cancel = context.WithCancel(context.Background())
+	err = table.ForEach(ctx, userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
+	cancel()
 	require.NoError(t, err)
 	sort.Strings(indexesFound)
 	require.Equal(t, []string{newDB, noUpdatesDB}, indexesFound)
@@ -376,10 +381,12 @@ func TestTable_Sync(t *testing.T) {
 
 	// verify that table has got only compacted db
 	indexesFound = []string{}
-	err = table.ForEach(context.Background(), userID, func(_ bool, idx index.Index) error {
+	ctx, cancel = context.WithCancel(context.Background())
+	err = table.ForEach(ctx, userID, func(_ bool, idx index.Index) error {
 		indexesFound = append(indexesFound, idx.Name())
 		return nil
 	})
+	cancel()
 	require.NoError(t, err)
 	sort.Strings(indexesFound)
 	require.Equal(t, []string{compactedDBName}, indexesFound)
@@ -410,7 +417,10 @@ func TestLoadTable(t *testing.T) {
 	// check the loaded table to see it has right index files.
 	expectedIndexes := append(buildListOfExpectedIndexes(userID, 0, 5), buildListOfExpectedIndexes("", 0, 5)...)
 	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-		return table.ForEach(context.Background(), userID, callbackFunc)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		return table.ForEach(ctx, userID, callbackFunc)
 	})
 
 	// close the table to test reloading of table with already having files in the cache dir.
@@ -431,7 +441,10 @@ func TestLoadTable(t *testing.T) {
 
 	expectedIndexes = append(buildListOfExpectedIndexes(userID, 0, 10), buildListOfExpectedIndexes("", 0, 10)...)
 	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-		return table.ForEach(context.Background(), userID, callbackFunc)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		return table.ForEach(ctx, userID, callbackFunc)
 	})
 }
 

@@ -26,8 +26,8 @@ const (
 
 // Config describes behavior for Target
 type Config struct {
-	SyncPeriod time.Duration `yaml:"sync_period"`
-	Stdin      bool          `yaml:"stdin"`
+	SyncPeriod time.Duration `mapstructure:"sync_period" yaml:"sync_period"`
+	Stdin      bool          `mapstructure:"stdin" yaml:"stdin"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -73,7 +73,7 @@ type FileTarget struct {
 	quit               chan struct{}
 	done               chan struct{}
 
-	tails map[string]*tailer
+	readers map[string]Reader
 
 	targetConfig *Config
 
@@ -106,7 +106,7 @@ func NewFileTarget(
 		positions:          positions,
 		quit:               make(chan struct{}),
 		done:               make(chan struct{}),
-		tails:              map[string]*tailer{},
+		readers:            map[string]Reader{},
 		targetConfig:       targetConfig,
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
@@ -119,7 +119,7 @@ func NewFileTarget(
 
 // Ready if at least one file is being tailed
 func (t *FileTarget) Ready() bool {
-	return len(t.tails) > 0
+	return len(t.readers) > 0
 }
 
 // Stop the target.
@@ -147,7 +147,7 @@ func (t *FileTarget) Labels() model.LabelSet {
 // Details implements a Target
 func (t *FileTarget) Details() interface{} {
 	files := map[string]int64{}
-	for fileName := range t.tails {
+	for fileName := range t.readers {
 		files[fileName], _ = t.positions.Get(fileName)
 	}
 	return files
@@ -155,8 +155,8 @@ func (t *FileTarget) Details() interface{} {
 
 func (t *FileTarget) run() {
 	defer func() {
-		for _, v := range t.tails {
-			v.stop()
+		for _, v := range t.readers {
+			v.Stop()
 		}
 		level.Info(t.logger).Log("msg", "filetarget: watcher closed, tailer stopped, positions saved", "path", t.path)
 		close(t.done)
@@ -268,7 +268,7 @@ func (t *FileTarget) sync() error {
 	t.startTailing(matches)
 
 	// Stop tailing any files which no longer exist
-	toStopTailing := toStopTailing(matches, t.tails)
+	toStopTailing := toStopTailing(matches, t.readers)
 	t.stopTailingAndRemovePosition(toStopTailing)
 
 	return nil
@@ -302,7 +302,7 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
 
 func (t *FileTarget) startTailing(ps []string) {
 	for _, p := range ps {
-		if _, ok := t.tails[p]; ok {
+		if _, ok := t.readers[p]; ok {
 			continue
 		}
 
@@ -319,24 +319,48 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 
-		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
-		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
-			continue
+		var reader Reader
+		if isCompressed(p) {
+			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
+			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "failed to start decompressor", "error", err, "filename", p)
+				continue
+			}
+			reader = decompressor
+		} else {
+			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
+			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
+				continue
+			}
+			reader = tailer
 		}
-		t.tails[p] = tailer
+		t.readers[p] = reader
 	}
+}
+
+func isCompressed(p string) bool {
+	ext := filepath.Ext(p)
+
+	for format := range supportedCompressedFormats() {
+		if ext == format {
+			return true
+		}
+	}
+
+	return false
 }
 
 // stopTailingAndRemovePosition will stop the tailer and remove the positions entry.
 // Call this when a file no longer exists and you want to remove all traces of it.
 func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 	for _, p := range ps {
-		if tailer, ok := t.tails[p]; ok {
-			tailer.stop()
-			t.positions.Remove(tailer.path)
-			delete(t.tails, p)
+		if reader, ok := t.readers[p]; ok {
+			reader.Stop()
+			t.positions.Remove(reader.Path())
+			delete(t.readers, p)
 		}
 		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
 			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
@@ -347,18 +371,18 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 // pruneStoppedTailers removes any tailers which have stopped running from
 // the list of active tailers. This allows them to be restarted if there were errors.
 func (t *FileTarget) pruneStoppedTailers() {
-	toRemove := make([]string, 0, len(t.tails))
-	for k, t := range t.tails {
-		if !t.isRunning() {
+	toRemove := make([]string, 0, len(t.readers))
+	for k, t := range t.readers {
+		if !t.IsRunning() {
 			toRemove = append(toRemove, k)
 		}
 	}
 	for _, tr := range toRemove {
-		delete(t.tails, tr)
+		delete(t.readers, tr)
 	}
 }
 
-func toStopTailing(nt []string, et map[string]*tailer) []string {
+func toStopTailing(nt []string, et map[string]Reader) []string {
 	// Make a set of all existing tails
 	existingTails := make(map[string]struct{}, len(et))
 	for file := range et {
@@ -383,8 +407,8 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 func (t *FileTarget) reportSize(ms []string) {
 	for _, m := range ms {
 		// Ask the tailer to update the size if a tailer exists, this keeps position and size metrics in sync
-		if tailer, ok := t.tails[m]; ok {
-			err := tailer.markPositionAndSize()
+		if reader, ok := t.readers[m]; ok {
+			err := reader.MarkPositionAndSize()
 			if err != nil {
 				level.Warn(t.logger).Log("msg", "failed to get file size from tailer, ", "file", m, "error", err)
 				return

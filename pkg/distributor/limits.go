@@ -1,6 +1,10 @@
 package distributor
 
-import "time"
+import (
+	"time"
+
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
+)
 
 // Limits is an interface for distributor limits/related configs
 type Limits interface {
@@ -16,4 +20,6 @@ type Limits interface {
 	RejectOldSamplesMaxAge(userID string) time.Duration
 
 	IncrementDuplicateTimestamps(userID string) bool
+
+	ShardStreams(userID string) *shardstreams.Config
 }
