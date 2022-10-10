@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
@@ -123,7 +122,7 @@ func main() {
 		var config Config
 		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
 			fmt.Println("Unable to parse config:", err)
-			return nil, fmt.Errorf("Unable to parse config: %w")
+			return nil, fmt.Errorf("unable to parse config: %w", err)
 		}
 		return &config.Config, nil
 	}

@@ -761,10 +761,9 @@ func Test_Reload(t *testing.T) {
 	require.Equal(t, expectedConfig.String(), svr.PromtailConfig())
 	require.Equal(t, len(expectedConfigReloaded), len(promtailServer.configLoaded))
 	require.Equal(t, expectedConfigReloaded, promtailServer.configLoaded)
-	val, err := reloadTotal.GetMetricWith(prometheus.Labels{"code": "200"})
-	require.NoError(t, err)
+
 	pb := &dto.Metric{}
-	err = val.Write(pb)
+	err = reloadSuccessTotal.Write(pb)
 	require.NoError(t, err)
 	require.Equal(t, 1.0, pb.Counter.GetValue())
 }
@@ -824,10 +823,9 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	require.Error(t, err)
 	expectedReloadResult := fmt.Sprintf("failed to reload config: Error new Config: %s\n", newConfigErr)
 	require.Equal(t, expectedReloadResult, result)
-	val, err := reloadTotal.GetMetricWith(prometheus.Labels{"code": "500"})
-	require.NoError(t, err)
+
 	pb := &dto.Metric{}
-	err = val.Write(pb)
+	err = reloadFailTotal.Write(pb)
 	require.NoError(t, err)
 	require.Equal(t, 1.0, pb.Counter.GetValue())
 

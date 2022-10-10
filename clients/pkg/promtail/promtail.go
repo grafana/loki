@@ -21,11 +21,17 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var reloadTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+var reloadSuccessTotal = prometheus.NewCounter(prometheus.CounterOpts{
 	Namespace: "promtail",
-	Name:      "config_reload_total",
-	Help:      "Number of reload times.",
-}, []string{"code"})
+	Name:      "config_reload_success_total",
+	Help:      "Number of reload success times.",
+})
+
+var reloadFailTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "promtail",
+	Name:      "config_reload_fail_total",
+	Help:      "Number of reload fail times.",
+})
 
 var errConfigNotChange = errors.New("config has not changed")
 
@@ -74,9 +80,13 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
-	err := promtail.reg.Register(reloadTotal)
+	err := promtail.reg.Register(reloadSuccessTotal)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error register prometheus collector reloadSuccessTotal")
+	}
+	err = promtail.reg.Register(reloadFailTotal)
+	if err != nil {
+		return nil, errors.Wrap(err, "error register prometheus collector reloadFailTotal")
 	}
 	for _, o := range opts {
 		// todo (callum) I don't understand why I needed to add this check
@@ -100,7 +110,7 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 }
 
 func (p *Promtail) reloadConfig(cfg *config.Config) error {
-	level.Info(p.logger).Log("msg", "Reloading configuration file")
+	level.Debug(p.logger).Log("msg", "Reloading configuration file")
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	newConfigFile := cfg.String()
@@ -108,6 +118,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf", newConf)
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
@@ -224,15 +235,15 @@ func (p *Promtail) watchConfig() {
 func (p *Promtail) reload() error {
 	cfg, err := p.newConfig()
 	if err != nil {
-		reloadTotal.With(prometheus.Labels{"code": "500"}).Inc()
+		reloadFailTotal.Inc()
 		return errors.Wrap(err, "Error new Config")
 	}
 	err = p.reloadConfig(cfg)
 	if err != nil {
-		reloadTotal.With(prometheus.Labels{"code": "500"}).Inc()
+		reloadFailTotal.Inc()
 		level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
 		return err
 	}
-	reloadTotal.With(prometheus.Labels{"code": "200"}).Inc()
+	reloadSuccessTotal.Inc()
 	return nil
 }
