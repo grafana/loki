@@ -674,7 +674,8 @@ func Test_DryRun(t *testing.T) {
 		},
 	}
 
-	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
 	_, err = New(config.Config{
 		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
