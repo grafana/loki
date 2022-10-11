@@ -23,18 +23,18 @@ func newRateStoreMetrics(reg prometheus.Registerer) *ratestoreMetrics {
 		}, []string{"source"}),
 		streamCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
-			Name:      "rate_store_stream_count",
-			Help:      "The last seen number of streams",
+			Name:      "rate_store_streams",
+			Help:      "The number of unique streams reported by all ingesters. Sharded streams are combined",
 		}),
 		maxStreamShardCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
-			Name:      "rate_store_max_stream_shard_count",
-			Help:      "The largest number of shards seen for any stream",
+			Name:      "rate_store_max_stream_shards",
+			Help:      "The number of shards for a single stream reported by ingesters during a sync operation.",
 		}),
 		maxStreamRate: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Name:      "rate_store_max_stream_rate_bytes",
-			Help:      "The maximum stream rate",
+			Help:      "The maximum stream rate for any stream reported by ingesters during a sync operation. Sharded Streams are combined.",
 		}),
 		refreshDuration: instrument.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(
