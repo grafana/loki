@@ -48,9 +48,9 @@ type IndexShipper interface {
 	// ForEach lets us iterates through each index file in a table for a specific user.
 	// On the write path, it would iterate on the files given to the shipper for uploading, until they eventually get dropped from local disk.
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
-	// Note: The index files would be locked until the passed ctx is cancelled to avoid making any changes to the index
+	// Note: The index files would be locked until the passed done chan is closed to avoid making any changes to the index
 	// while it is being queried.
-	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 	Stop()
 }
 
@@ -169,15 +169,15 @@ func (s *indexShipper) AddIndex(tableName, userID string, index index.Index) err
 	return s.uploadsManager.AddIndex(tableName, userID, index)
 }
 
-func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	if s.downloadsManager != nil {
-		if err := s.downloadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
+		if err := s.downloadsManager.ForEach(ctx, tableName, userID, doneChan, callback); err != nil {
 			return err
 		}
 	}
 
 	if s.uploadsManager != nil {
-		if err := s.uploadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
+		if err := s.uploadsManager.ForEach(ctx, tableName, userID, doneChan, callback); err != nil {
 			return err
 		}
 	}
