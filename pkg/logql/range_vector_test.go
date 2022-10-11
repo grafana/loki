@@ -74,7 +74,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		i := 0
 		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(),
-			&syntax.RangeAggregationExpr{Operation: "count_over_time"}, tt.selRange,
+			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 		if err != nil {
 			panic(err)
