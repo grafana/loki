@@ -177,6 +177,7 @@ func (c *fakeStreamDataClient) GetStreamRates(ctx context.Context, in *logproto.
 }
 
 type fakeOverrides struct {
+	Limits
 	enabled bool
 }
 
@@ -187,6 +188,12 @@ func (c *fakeOverrides) AllByUserID() map[string]*validation.Limits {
 				Enabled: c.enabled,
 			},
 		},
+	}
+}
+
+func (c *fakeOverrides) ShardStreams(_ string) *shardstreams.Config {
+	return &shardstreams.Config{
+		Enabled: c.enabled,
 	}
 }
 
@@ -204,6 +211,6 @@ func setup(enabled bool) *testContext {
 	return &testContext{
 		ring:       ring,
 		clientPool: cp,
-		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled}, nil),
+		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled: enabled}, nil),
 	}
 }
