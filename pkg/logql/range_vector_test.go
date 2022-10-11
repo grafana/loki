@@ -211,7 +211,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 			func(t *testing.T) {
 				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(),
-					&syntax.RangeAggregationExpr{Operation: "count_over_time"}, tt.selRange,
+					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 				require.NoError(t, err)
 
