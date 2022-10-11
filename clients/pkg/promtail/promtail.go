@@ -1,6 +1,8 @@
 package promtail
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -8,7 +10,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -82,11 +83,11 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 	}
 	err := promtail.reg.Register(reloadSuccessTotal)
 	if err != nil {
-		return nil, errors.Wrap(err, "error register prometheus collector reloadSuccessTotal")
+		return nil, fmt.Errorf("error register prometheus collector reloadSuccessTotal :%w", err)
 	}
 	err = promtail.reg.Register(reloadFailTotal)
 	if err != nil {
-		return nil, errors.Wrap(err, "error register prometheus collector reloadFailTotal")
+		return nil, fmt.Errorf("error register prometheus collector reloadFailTotal :%w", err)
 	}
 	for _, o := range opts {
 		// todo (callum) I don't understand why I needed to add this check
@@ -101,7 +102,7 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 	}
 	server, err := server.New(cfg.ServerConfig, promtail.logger, promtail.targetManagers, cfg.String())
 	if err != nil {
-		return nil, errors.Wrap(err, "error creating loki server")
+		return nil, fmt.Errorf("error creating loki server: %w", err)
 	}
 	promtail.server = server
 	promtail.newConfig = newConfig
@@ -236,7 +237,7 @@ func (p *Promtail) reload() error {
 	cfg, err := p.newConfig()
 	if err != nil {
 		reloadFailTotal.Inc()
-		return errors.Wrap(err, "Error new Config")
+		return fmt.Errorf("Error new Config: %w", err)
 	}
 	err = p.reloadConfig(cfg)
 	if err != nil {
