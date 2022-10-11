@@ -209,7 +209,7 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 		}
 	}
 
-	s.metrics.maxUniqueStreamRate.Add(float64(maxRate))
+	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
 	return streamRates
 }
 
