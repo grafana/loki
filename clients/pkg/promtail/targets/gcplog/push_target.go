@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -51,6 +52,8 @@ func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler
 		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring gcp push target: %w", err)
 	}
 	config.Server = mergedServerConfigs
+	// Avoid logging entire received request on failures
+	config.Server.ExcludeRequestInLog = true
 
 	err = ht.run()
 	if err != nil {
@@ -85,11 +88,7 @@ func (h *pushTarget) run() error {
 	}
 	h.server = srv
 
-	var handler http.Handler = http.HandlerFunc(h.push)
-	if h.config.PushTimeout != 0 {
-		handler = http.TimeoutHandler(handler, h.config.PushTimeout, "")
-	}
-	h.server.HTTP.Path("/gcp/api/v1/push").Methods("POST").Handler(handler)
+	h.server.HTTP.Path("/gcp/api/v1/push").Methods("POST").Handler(http.HandlerFunc(h.push))
 
 	go func() {
 		err := srv.Run()
@@ -136,9 +135,29 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 
 	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
-	h.entries <- entry
+	if err := h.doSendEntry(entry); err != nil {
+		level.Warn(h.logger).Log("msg", "error sending log entry", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
 	h.metrics.gcpPushEntries.WithLabelValues().Inc()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *pushTarget) doSendEntry(entry api.Entry) error {
+	if h.config.PushTimeout != 0 {
+		select {
+		// Timeout the api.Entry channel send operation, which is the only blocking operation in the handler
+		case <-time.After(h.config.PushTimeout):
+			return fmt.Errorf("timeout exceeded")
+		case h.entries <- entry:
+		}
+	} else {
+		// No timeout configured, no limit
+		h.entries <- entry
+	}
+	return nil
 }
 
 func (h *pushTarget) Type() target.TargetType {

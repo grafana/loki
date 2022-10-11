@@ -368,7 +368,7 @@ type GcplogTargetConfig struct {
 	SubscriptionType string `yaml:"subscription_type"`
 
 	// PushTimeout is used to set a maximum processing time for each incoming GCP Logs entry. Used just for `push` subscription type.
-	PushTimeout time.Duration `yaml:"timeout"`
+	PushTimeout time.Duration `yaml:"push_timeout"`
 
 	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
 	Server server.Config `yaml:"server"`
