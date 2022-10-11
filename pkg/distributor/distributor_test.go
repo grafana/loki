@@ -399,9 +399,12 @@ func TestDistributorPushErrors(t *testing.T) {
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1 && len(ingesters[2].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
 		require.Equal(t, 0, len(ingesters[0].pushed))
-		require.Equal(t, 1, len(ingesters[1].pushed))
-		require.Equal(t, 1, len(ingesters[2].pushed))
 	})
 	t.Run("with RF=3 two push failures result in error", func(t *testing.T) {
 		distributors, ingesters := prepare(t, 1, 3, limits, nil)
@@ -412,8 +415,12 @@ func TestDistributorPushErrors(t *testing.T) {
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
 		require.Error(t, err)
+
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
 		require.Equal(t, 0, len(ingesters[0].pushed))
-		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Equal(t, 0, len(ingesters[2].pushed))
 	})
 }
