@@ -83,9 +83,13 @@ func (h *pushTarget) run() error {
 	if err != nil {
 		return err
 	}
-
 	h.server = srv
-	h.server.HTTP.Path("/gcp/api/v1/push").Methods("POST").Handler(http.HandlerFunc(h.push))
+
+	var handler http.Handler = http.HandlerFunc(h.push)
+	if h.config.PushTimeout != 0 {
+		handler = http.TimeoutHandler(handler, h.config.PushTimeout, "")
+	}
+	h.server.HTTP.Path("/gcp/api/v1/push").Methods("POST").Handler(handler)
 
 	go func() {
 		err := srv.Run()
