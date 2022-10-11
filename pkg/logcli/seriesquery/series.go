@@ -1,6 +1,7 @@
 package seriesquery
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -78,7 +79,7 @@ func (q *SeriesQuery) DoSeries(c client.Client) {
 
 // GetSeries returns an array of label sets
 func (q *SeriesQuery) GetSeries(c client.Client) []loghttp.LabelSet {
-	seriesResponse, err := c.Series([]string{q.Matcher}, q.Start, q.End, q.Quiet)
+	seriesResponse, err := c.Series(context.Background(), []string{q.Matcher}, q.Start, q.End, q.Quiet)
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
 	}

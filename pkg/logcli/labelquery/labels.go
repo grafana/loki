@@ -1,6 +1,7 @@
 package labelquery
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -31,9 +32,9 @@ func (q *LabelQuery) ListLabels(c client.Client) []string {
 	var labelResponse *loghttp.LabelResponse
 	var err error
 	if len(q.LabelName) > 0 {
-		labelResponse, err = c.ListLabelValues(q.LabelName, q.Quiet, q.Start, q.End)
+		labelResponse, err = c.ListLabelValues(context.Background(), q.LabelName, q.Quiet, q.Start, q.End)
 	} else {
-		labelResponse, err = c.ListLabelNames(q.Quiet, q.Start, q.End)
+		labelResponse, err = c.ListLabelNames(context.Background(), q.Quiet, q.Start, q.End)
 	}
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
