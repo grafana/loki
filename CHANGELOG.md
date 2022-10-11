@@ -55,6 +55,8 @@
 * [7016](https://github.com/grafana/loki/pull/7016) **chodges15**: Fix issue with dropping logs when a file based SD target's labels are updated
 
 ##### Changes
+* **quodlibetor**: Change Docker target discovery log level from `Error` to `Info`
+
 
 #### Logcli
 * [7325](https://github.com/grafana/loki/pull/7325) **dbirks**: Document setting up command completion

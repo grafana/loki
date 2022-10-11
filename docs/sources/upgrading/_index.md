@@ -203,6 +203,11 @@ This creates a lot of series and we don't think this metric has enough value to 
 
 While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
 
+#### `added Docker target` log message has been demoted from level=error to level=info
+
+If you have dashboards that depended on the log level, change them to search for the `msg="added
+Docker target"` property.
+
 ### Jsonnet
 
 #### Compactor config defined as command line args moved to yaml config
