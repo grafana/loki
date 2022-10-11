@@ -5,10 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -18,14 +16,12 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	util_storage "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // FSConfig is the config for a FSObjectClient.
 type FSConfig struct {
-	Directory                    string `yaml:"directory"`
-	SizeBasedRetentionPercentage int    `yaml:"size_based_retention_percentage"`
+	Directory string `yaml:"directory"`
 }
 
 // RegisterFlags registers flags.
@@ -36,7 +32,6 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlags registers flags with prefix.
 func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
-	f.IntVar(&cfg.SizeBasedRetentionPercentage, prefix+"local.size-based-retention-percentage", 80, "Size based retention percentage")
 }
 
 func (cfg *FSConfig) ToCortexLocalConfig() local.Config {
@@ -98,7 +93,6 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 
 	defer runutil.CloseWithLogOnErr(util_log.Logger, fl, "fullPath: %s", fullPath)
 
-	// Should we perform a size based check here before copying the object to filesystem???
 	_, err = io.Copy(fl, object)
 	if err != nil {
 		return err
@@ -211,59 +205,6 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
-}
-
-// DeleteChunksBasedOnBlockSize
-func (f *FSObjectClient) DeleteChunksBasedOnBlockSize(ctx context.Context, diskUsage util_storage.DiskStatus) error {
-	if diskUsage.UsedPercent >= float64(f.cfg.SizeBasedRetentionPercentage) {
-		if error := f.purgeOldFiles(diskUsage); error != nil {
-			// TODO: handle the error in a better way!
-			return error
-		}
-	}
-	return nil
-}
-
-// (f *FSObjectClient) purgeOldFiles
-func (f *FSObjectClient) purgeOldFiles(diskUsage util_storage.DiskStatus) error {
-	files, error := ioutil.ReadDir(f.cfg.Directory)
-	bytesToDelete := f.bytesToDelete(diskUsage)
-	bytesDeleted := 0.0
-
-	if error != nil {
-		// TODO: handle the error in a better way!
-		return error
-	}
-
-	// Sorting by the last modified time
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].ModTime().Before(files[j].ModTime())
-	})
-
-	for _, file := range files {
-		if bytesToDelete >= (bytesDeleted + float64(file.Size())) {
-			bytesDeleted = bytesDeleted + float64(file.Size())
-			level.Info(util_log.Logger).Log("msg", "block size retention exceded, removing file", "filepath", file.Name())
-			if error := os.Remove(file.Name()); error != nil {
-				// TODO: handle the error in a better way!
-				return error
-			}
-		} else {
-			break
-		}
-	}
-	return nil
-}
-
-// (f *FSObjectClient) bytesToDelete
-func (f *FSObjectClient) bytesToDelete(diskUsage util_storage.DiskStatus) (bytes float64) {
-	percentajeToBeDeleted := diskUsage.UsedPercent - float64(f.cfg.SizeBasedRetentionPercentage)
-
-	if percentajeToBeDeleted < 0.0 {
-		percentajeToBeDeleted = 0.0
-	}
-
-	return ((percentajeToBeDeleted / 100) * float64(diskUsage.All))
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.

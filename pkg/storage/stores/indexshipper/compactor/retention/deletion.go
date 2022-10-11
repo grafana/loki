@@ -12,14 +12,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func DeleteChunksBasedOnBlockSize(ctx context.Context, directory string, cleanupThreshold int) error {
-	diskUsage, err := util_storage.DiskUsage(directory)
-	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
-
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
-	}
-
+func DeleteChunksBasedOnBlockSize(ctx context.Context, directory string, diskUsage util_storage.DiskStatus, cleanupThreshold int) error {
 	if diskUsage.UsedPercent >= float64(cleanupThreshold) {
 		if error := purgeOldFiles(diskUsage, directory, cleanupThreshold); error != nil {
 			// TODO: handle the error in a better way!

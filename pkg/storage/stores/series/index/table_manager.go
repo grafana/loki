@@ -20,7 +20,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	util_storage "github.com/grafana/loki/pkg/util"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -154,7 +154,6 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 // BucketClient is used to enforce retention on chunk buckets.
 type BucketClient interface {
 	DeleteChunksBefore(ctx context.Context, ts time.Time) error
-	DeleteChunksBasedOnBlockSize(ctx context.Context, diskUsage util_storage.DiskStatus) error
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables

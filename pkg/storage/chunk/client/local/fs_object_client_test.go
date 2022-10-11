@@ -14,8 +14,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/stretchr/testify/require"
-
-	util_storage "github.com/grafana/loki/pkg/util"
 )
 
 func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
@@ -201,77 +199,4 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, commonPrefixes, 0)
 	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
-}
-
-func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
-	totalFiles := 10000
-	fileContent := []byte("Diego - 10") // 10 bytes content
-	fsChunksDir := generateFiles(t, totalFiles, fileContent)
-	bytesFullDisk := uint64(totalFiles * 10)
-	sizeBasedRetentionPercentage := 80
-	remainingFilesAfterDelete := totalFiles * (sizeBasedRetentionPercentage) / 100
-
-	bucketClient, err := NewFSObjectClient(FSConfig{
-		Directory:                    fsChunksDir,
-		SizeBasedRetentionPercentage: sizeBasedRetentionPercentage,
-	})
-	require.NoError(t, err)
-
-	// Verify whether all files are created
-	files, _ := ioutil.ReadDir(".")
-	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
-
-	// Check remainingFilesAfterDelete
-	diskUsage, _ := util_storage.DiskUsage(fsChunksDir)
-	diskUsage.UsedPercent = 100.0
-	diskUsage.All = bytesFullDisk
-	require.NoError(t, bucketClient.DeleteChunksBasedOnBlockSize(context.Background(), diskUsage))
-	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
-}
-
-func TestFSObjectClient_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
-	totalFiles := 10000
-	fileContent := []byte("Diego - 10") // 10 bytes content
-	fsChunksDir := generateFiles(t, totalFiles, fileContent)
-	bytesFullDisk := uint64(totalFiles * 10)
-	sizeBasedRetentionPercentage := 80
-	remainingFilesAfterDelete := totalFiles
-
-	bucketClient, err := NewFSObjectClient(FSConfig{
-		Directory:                    fsChunksDir,
-		SizeBasedRetentionPercentage: sizeBasedRetentionPercentage,
-	})
-	require.NoError(t, err)
-
-	// Verify whether all files are created
-	files, _ := ioutil.ReadDir(".")
-	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
-
-	// Check remainingFilesAfterDelete
-	diskUsage, _ := util_storage.DiskUsage(fsChunksDir)
-	diskUsage.UsedPercent = float64(sizeBasedRetentionPercentage - 10) // 70 < 80 No need to delete
-	diskUsage.All = bytesFullDisk
-	require.NoError(t, bucketClient.DeleteChunksBasedOnBlockSize(context.Background(), diskUsage))
-	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
-}
-
-func generateFiles(t *testing.T, files int, content []byte) (fsChunkDir string) {
-	fsChunksDir := t.TempDir()
-	totalFiles := files
-	fileContent := content
-
-	file := "file_"
-	require.NoError(t, os.Chdir(fsChunksDir))
-
-	for i := 0; i < totalFiles; i++ {
-		filename := file + strconv.Itoa(i)
-		f, err := os.Create(filename)
-		os.WriteFile(filename, fileContent, 0666)
-		require.NoError(t, err)
-		require.NoError(t, f.Close())
-	}
-
-	return fsChunkDir
 }
