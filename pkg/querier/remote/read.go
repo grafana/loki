@@ -53,13 +53,13 @@ func NewQuerier(name string, remoteReadConfig ReadConfig) (querier.Querier, erro
 }
 
 type Querier struct {
-	client *client.DefaultClient
+	client client.Client
 	codec  queryrangebase.Codec
 	name   string
 }
 
 func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-	response, err := q.client.QueryRange(params.Selector, int(params.Limit), params.Start, params.End, params.Direction, 0, 0, false)
+	response, err := q.client.QueryRange(ctx, params.Selector, int(params.Limit), params.Start, params.End, params.Direction, 0, 0, false)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (
 }
 
 func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	response, err := q.client.QueryRange(params.Selector, 1, params.Start, params.End, logproto.FORWARD, 0, 0, false)
+	response, err := q.client.QueryRange(ctx, params.Selector, 1, params.Start, params.End, logproto.FORWARD, 0, 0, false)
 	if err != nil {
 		return nil, err
 	}
@@ -120,13 +120,13 @@ func toSampleQueryResponse(m loghttp.Matrix) *logproto.SampleQueryResponse {
 func (q Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	var values []string
 	if req.Values {
-		lvs, err := q.client.ListLabelValues(req.Name, false, *req.GetStart(), *req.GetEnd())
+		lvs, err := q.client.ListLabelValues(ctx, req.Name, false, *req.GetStart(), *req.GetEnd())
 		if err != nil {
 			return nil, err
 		}
 		values = lvs.Data
 	} else {
-		lvs, err := q.client.ListLabelNames(false, *req.GetStart(), *req.GetEnd())
+		lvs, err := q.client.ListLabelNames(ctx, false, *req.GetStart(), *req.GetEnd())
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +136,7 @@ func (q Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpro
 }
 
 func (q Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	series, err := q.client.Series(req.GetGroups(), req.GetStart(), req.GetEnd(), false)
+	series, err := q.client.Series(ctx, req.GetGroups(), req.GetStart(), req.GetEnd(), false)
 	if err != nil {
 		return nil, err
 	}

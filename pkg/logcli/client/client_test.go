@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
 	"net/http"
 	"testing"
@@ -62,7 +63,7 @@ func Test_getHTTPRequestHeader(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.client.getHTTPRequestHeader()
+			got, err := tt.client.getHTTPRequestHeader(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getHTTPRequestHeader() error = %v, wantErr %v", err, tt.wantErr)
 				return

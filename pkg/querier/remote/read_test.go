@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"github.com/weaveworks/common/user"
 	"net/http"
 	"net/url"
 	"testing"
@@ -52,10 +53,14 @@ func TestQuerier_Read(t *testing.T) {
 		Direction: logproto.FORWARD,
 	}
 
+	runtimeTenantID := "runtime1"
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, runtimeTenantID)
 	iter, err := querier.SelectLogs(
-		context.Background(),
+		ctx,
 		logql.SelectLogParams{QueryRequest: &request},
 	)
+	require.Equal(t, runtimeTenantID, server.getTenantIDUnsafe())
 	require.NoError(t, err)
 	count := 0
 	for iter.Next() {
@@ -94,12 +99,22 @@ func TestQuerier_Read(t *testing.T) {
 }
 
 type mockLokiHTTPServer struct {
-	server *http.Server
+	server   *http.Server
+	tenantID string
+}
+
+func (s *mockLokiHTTPServer) getTenantIDUnsafe() string {
+	return s.tenantID
 }
 
 func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 	var mux http.ServeMux
 	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
+		tenantID, _, err := user.ExtractOrgIDFromHTTPRequest(request)
+		if err != nil {
+			return
+		}
+		s.tenantID = tenantID
 		mockData := logqlmodel.Result{
 			Statistics: stats.Result{
 				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
