@@ -64,7 +64,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 
 	f.BoolVar(&cfg.Disable, prefix+"server.disable", false, "Disable the http and grpc server.")
-	f.BoolVar(&cfg.Reload, prefix+"server.reload", false, "Enable reload via HTTP request.")
+	f.BoolVar(&cfg.Reload, prefix+"server.enable-runtime-reload", false, "Enable reload via HTTP request.")
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
