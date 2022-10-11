@@ -95,7 +95,8 @@ type instance struct {
 
 	metrics *ingesterMetrics
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter          chunk.RequestChunkFilterer
+	streamRateCalculator *StreamRateCalculator
 }
 
 func newInstance(
@@ -108,6 +109,7 @@ func newInstance(
 	metrics *ingesterMetrics,
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
+	streamRateCalculator *StreamRateCalculator,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -132,6 +134,8 @@ func newInstance(
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
 		chunkFilter: chunkFilter,
+
+		streamRateCalculator: streamRateCalculator,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -261,7 +265,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -292,7 +296,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -337,12 +341,25 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	resp := &logproto.StreamRatesResponse{
-		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),
-	}
+func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) []*logproto.StreamRate {
+	rates := make([]*logproto.StreamRate, 0, i.streams.Len())
 
-	return resp, nil
+	buf := make([]byte, 256)
+	_ = i.streams.ForEach(func(s *stream) (bool, error) {
+		var streamHashNoShard uint64
+		streamHashNoShard, buf = s.labels.HashWithoutLabels(buf, ShardLbName)
+		streamHash := s.labels.Hash()
+
+		rates = append(rates, &logproto.StreamRate{
+			StreamHash:        streamHash,
+			StreamHashNoShard: streamHashNoShard,
+			Rate:              i.streamRateCalculator.RateFor(streamHash),
+		})
+
+		return true, nil
+	})
+
+	return rates
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
