@@ -235,7 +235,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Samples: samples,
 		}))
 	it, err := newRangeVectorIterator(badIterator,
-		&syntax.RangeAggregationExpr{Operation: "count_over_time"}, (30 * time.Second).Nanoseconds(),
+		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
 		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
 	require.NoError(t, err)
 
