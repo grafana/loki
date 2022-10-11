@@ -34,7 +34,7 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 Promtail can reload its configuration at runtime. If the new configuration
 is not well-formed, the changes will not be applied.
 A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
-sending a HTTP POST request to the `/-/reload` endpoint (when the `--server.reload` flag is enabled).
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
 
 ## Configuration File Reference
 
