@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sync"
 
 	// embed time zone data
 	_ "time/tzdata"
@@ -20,11 +21,12 @@ import (
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/config"
+	promtail_config "github.com/grafana/loki/clients/pkg/promtail/config"
 
 	"github.com/grafana/loki/pkg/util"
-	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
+
+	_ "github.com/grafana/loki/pkg/util/build"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -32,16 +34,18 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("promtail"))
 }
 
+var mtx sync.Mutex
+
 type Config struct {
-	config.Config   `yaml:",inline"`
-	printVersion    bool
-	printConfig     bool
-	logConfig       bool
-	dryRun          bool
-	checkSyntax     bool
-	configFile      string
-	configExpandEnv bool
-	inspect         bool
+	promtail_config.Config `yaml:",inline"`
+	printVersion           bool
+	printConfig            bool
+	logConfig              bool
+	dryRun                 bool
+	checkSyntax            bool
+	configFile             string
+	configExpandEnv        bool
+	inspect                bool
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -68,11 +72,11 @@ func (c *Config) Clone() flagext.Registerer {
 func main() {
 	// Load config, merging config file and CLI flags
 	var config Config
-	if err := cfg.DefaultUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
+	args := os.Args[1:]
+	if err := cfg.DefaultUnmarshal(&config, args, flag.CommandLine); err != nil {
 		fmt.Println("Unable to parse config:", err)
 		os.Exit(1)
 	}
-
 	if config.checkSyntax {
 		if config.configFile == "" {
 			fmt.Println("Invalid config file")
@@ -123,7 +127,17 @@ func main() {
 	}
 
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
-	p, err := promtail.New(config.Config, clientMetrics, config.dryRun)
+	newConfigFunc := func() (*promtail_config.Config, error) {
+		mtx.Lock()
+		defer mtx.Unlock()
+		var config Config
+		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
+			fmt.Println("Unable to parse config:", err)
+			return nil, fmt.Errorf("unable to parse config: %w", err)
+		}
+		return &config.Config, nil
+	}
+	p, err := promtail.New(config.Config, newConfigFunc, clientMetrics, config.dryRun)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)
