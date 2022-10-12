@@ -187,6 +187,7 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 			}
 			return nil
 		}(); err != nil {
+			it.Close()
 			errs.Add(err)
 			backoff.Wait()
 			continue
