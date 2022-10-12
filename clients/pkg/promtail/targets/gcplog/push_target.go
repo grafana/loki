@@ -1,11 +1,11 @@
 package gcplog
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -103,6 +103,14 @@ func (h *pushTarget) run() error {
 func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
+	// Create no-op context.WithTimeout returns to simplify logic
+	ctx := r.Context()
+	cancel := context.CancelFunc(func() {})
+	if h.config.PushTimeout != 0 {
+		ctx, cancel = context.WithTimeout(r.Context(), h.config.PushTimeout)
+	}
+	defer cancel()
+
 	pushMessage := PushMessage{}
 	bs, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -135,7 +143,8 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 
 	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
-	if err := h.doSendEntry(entry); err != nil {
+	if err := h.doSendEntry(ctx, entry); err != nil {
+		h.metrics.gcpPushErrors.WithLabelValues("timeout").Inc()
 		level.Warn(h.logger).Log("msg", "error sending log entry", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -145,11 +154,12 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *pushTarget) doSendEntry(entry api.Entry) error {
+func (h *pushTarget) doSendEntry(ctx context.Context, entry api.Entry) error {
+	// Since this setting is configured at the target level, it will be ignored for follow-up request due to branch prediction
 	if h.config.PushTimeout != 0 {
 		select {
 		// Timeout the api.Entry channel send operation, which is the only blocking operation in the handler
-		case <-time.After(h.config.PushTimeout):
+		case <-ctx.Done():
 			return fmt.Errorf("timeout exceeded")
 		case h.entries <- entry:
 		}
