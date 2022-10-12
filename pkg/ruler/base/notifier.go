@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -11,28 +10,17 @@ import (
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/crypto/tls"
+	"github.com/imdario/mergo"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/notifier"
 
-	"github.com/grafana/loki/pkg/util"
+	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 )
-
-type NotifierConfig struct {
-	TLS        tls.ClientConfig `yaml:",inline"`
-	BasicAuth  util.BasicAuth   `yaml:",inline"`
-	HeaderAuth util.HeaderAuth  `yaml:",inline"`
-}
-
-func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
-	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
-	cfg.HeaderAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
-}
 
 // rulerNotifier bundles a notifier.Manager together with an associated
 // Alertmanager service discovery manager and handles the lifecycle
@@ -70,8 +58,8 @@ func (rn *rulerNotifier) run() {
 	}()
 }
 
-func (rn *rulerNotifier) applyConfig(cfg config.Config) error {
-	if err := rn.notifier.ApplyConfig(&cfg); err != nil {
+func (rn *rulerNotifier) applyConfig(cfg *config.Config) error {
+	if err := rn.notifier.ApplyConfig(cfg); err != nil {
 		return err
 	}
 
@@ -88,68 +76,97 @@ func (rn *rulerNotifier) stop() {
 	rn.wg.Wait()
 }
 
+func getAlertmanagerTenantConfig(amConfig ruler_config.AlertManagerConfig, amOverrides ruler_config.AlertManagerConfig) (ruler_config.AlertManagerConfig, error) {
+	if amOverrides.AlertmanagerURL != "" {
+		amConfig.AlertmanagerURL = amOverrides.AlertmanagerURL
+	}
+
+	if len(amOverrides.AlertRelabelConfigs) > 0 {
+		amConfig.AlertRelabelConfigs = amOverrides.AlertRelabelConfigs
+	}
+
+	if amOverrides.AlertmanagerDiscovery {
+		amConfig.AlertmanagerDiscovery = amOverrides.AlertmanagerDiscovery
+	}
+
+	if amOverrides.AlertmanangerEnableV2API {
+		amConfig.AlertmanangerEnableV2API = amOverrides.AlertmanangerEnableV2API
+	}
+
+	if amOverrides.AlertmanagerRefreshInterval > 0 {
+		amConfig.AlertmanagerRefreshInterval = amOverrides.AlertmanagerRefreshInterval
+	}
+
+	if amOverrides.NotificationQueueCapacity > 0 {
+		amConfig.NotificationQueueCapacity = amOverrides.NotificationQueueCapacity
+	}
+
+	if amOverrides.NotificationTimeout > 0 {
+		amConfig.NotificationTimeout = amOverrides.NotificationTimeout
+	}
+
+	if err := mergo.Merge(&amConfig.Notifier, amOverrides.Notifier, mergo.WithOverride); err != nil {
+		return amConfig, fmt.Errorf("failed to apply alertmanager notifier limits config: %w", err)
+	}
+
+	return amConfig, nil
+}
+
 // Builds a Prometheus config.Config from a ruler.Config with just the required
-// options to configure notifications to Alertmanagers per tenant.
-func buildNotifiersConfig(rulerConfig *Config) (map[string]config.Config, error) {
+// options to configure notifications to Alertmanager.
+func buildNotifierConfig(amConfig ruler_config.AlertManagerConfig, externalLabels labels.Labels) (*config.Config, error) {
+	amURLs := strings.Split(amConfig.AlertmanagerURL, ",")
+	validURLs := make([]*url.URL, 0, len(amURLs))
 
-	configs := map[string]config.Config{}
-
-	for tenant, cfg := range rulerConfig.AlertManagersPerTenant {
-		amURLs := strings.Split(cfg.AlertmanagerURL, ",")
-		validURLs := make([]*url.URL, 0, len(amURLs))
-
-		srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
-		for _, h := range amURLs {
-			url, err := url.Parse(h)
-			if err != nil {
-				return nil, err
-			}
-
-			if url.String() == "" {
-				continue
-			}
-
-			// Given we only support SRV lookups as part of service discovery, we need to ensure
-			// hosts provided follow this specification: _service._proto.name
-			// e.g. _http._tcp.alertmanager.com
-			if cfg.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
-				return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
-			}
-
-			validURLs = append(validURLs, url)
+	srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
+	for _, h := range amURLs {
+		url, err := url.Parse(h)
+		if err != nil {
+			return nil, err
 		}
 
-		if len(validURLs) == 0 {
+		if url.String() == "" {
 			continue
 		}
 
-		apiVersion := config.AlertmanagerAPIVersionV1
-		if cfg.AlertmanangerEnableV2API {
-			apiVersion = config.AlertmanagerAPIVersionV2
+		// Given we only support SRV lookups as part of service discovery, we need to ensure
+		// hosts provided follow this specification: _service._proto.name
+		// e.g. _http._tcp.alertmanager.com
+		if amConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
+			return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
 		}
 
-		amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
-		for _, url := range validURLs {
-			amConfigs = append(amConfigs, amConfigFromURL(cfg, url, apiVersion))
-		}
-
-		promConfig := config.Config{
-			GlobalConfig: config.GlobalConfig{
-				ExternalLabels: rulerConfig.ExternalLabels,
-			},
-			AlertingConfig: config.AlertingConfig{
-				AlertRelabelConfigs: cfg.AlertRelabelConfigs,
-				AlertmanagerConfigs: amConfigs,
-			},
-		}
-
-		configs[tenant] = promConfig
+		validURLs = append(validURLs, url)
 	}
 
-	return configs, nil
+	if len(validURLs) == 0 {
+		return &config.Config{}, nil
+	}
+
+	apiVersion := config.AlertmanagerAPIVersionV1
+	if amConfig.AlertmanangerEnableV2API {
+		apiVersion = config.AlertmanagerAPIVersionV2
+	}
+
+	amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
+	for _, url := range validURLs {
+		amConfigs = append(amConfigs, amConfigFromURL(amConfig, url, apiVersion))
+	}
+
+	promConfig := &config.Config{
+		GlobalConfig: config.GlobalConfig{
+			ExternalLabels: externalLabels,
+		},
+		AlertingConfig: config.AlertingConfig{
+			AlertRelabelConfigs: amConfig.AlertRelabelConfigs,
+			AlertmanagerConfigs: amConfigs,
+		},
+	}
+
+	return promConfig, nil
 }
 
-func amConfigFromURL(cfg AlertManagerConfig, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
+func amConfigFromURL(cfg ruler_config.AlertManagerConfig, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
 	var sdConfig discovery.Configs
 	if cfg.AlertmanagerDiscovery {
 		sdConfig = discovery.Configs{

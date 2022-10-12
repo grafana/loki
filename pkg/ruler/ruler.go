@@ -1,15 +1,12 @@
 package ruler
 
 import (
-	"time"
-
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/base"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 )
@@ -29,30 +26,12 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 		cfg.RemoteWrite.Clients["default"] = *cfg.RemoteWrite.Client
 	}
 
-	if len(cfg.AlertManagersPerTenant) > 0 && cfg.AlertmanagerURL != "" {
-		return nil, errors.New("Alertmanager config: both 'alertmanagers_per_tenant' and 'alertmanager' options are defined; 'alertmanager' options are deprecated, please only use 'alertmanagers_per_tenant'")
-	}
-
-	if len(cfg.AlertManagersPerTenant) == 0 && cfg.AlertmanagerURL != "" {
-		if cfg.AlertManagersPerTenant == nil {
-			cfg.AlertManagersPerTenant = make(map[string]ruler.AlertManagerConfig)
-		}
-
-		cfg.AlertManagersPerTenant[base.DefaultNotifierConf] = cfg.AlertManagerConfig
-	}
-
-	for t, c := range cfg.AlertManagersPerTenant {
-		if c.NotificationTimeout == 0 {
-			c.NotificationTimeout = 10 * time.Second
-			cfg.AlertManagersPerTenant[t] = c
-		}
-	}
-
 	mgr, err := ruler.NewDefaultMultiTenantManager(
 		cfg.Config,
 		MultiTenantRuleManager(cfg, engine, limits, logger, reg),
 		reg,
 		logger,
+		limits,
 	)
 	if err != nil {
 		return nil, err

@@ -44,6 +44,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/series"
+	"github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
@@ -74,11 +75,6 @@ func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
 	cfg.Ring.InstanceAddr = "localhost"
 	cfg.Ring.InstanceID = "localhost"
 	cfg.EnableQueryStats = false
-	cfg.NotificationTimeout = time.Second * 10
-	/*for t, c := range cfg.AlertManagersPerTenant {
-		c.NotificationTimeout = time.Second * 10
-		cfg.AlertManagersPerTenant[t] = c
-	}*/
 
 	return cfg
 }
@@ -88,6 +84,7 @@ type ruleLimits struct {
 	tenantShard          int
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
+	alertManagerConfig   map[string]*config.AlertManagerConfig
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -104,6 +101,10 @@ func (r ruleLimits) RulerMaxRuleGroupsPerTenant(_ string) int {
 
 func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
+}
+
+func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManagerConfig {
+	return r.alertManagerConfig[tenantID]
 }
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
@@ -144,7 +145,19 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
+	require.NoError(t, err)
+
+	return manager
+}
+
+func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf map[string]*config.AlertManagerConfig) *DefaultMultiTenantManager {
+	engine, queryable, pusher, logger, _, reg := testSetup(t, q)
+
+	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
+	overrides.alertManagerConfig = amConf
+
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
 	require.NoError(t, err)
 
 	return manager
@@ -194,7 +207,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -239,13 +252,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	// We create an empty rule store so that the ruler will not load any rule from it.
 	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
-	cfg.AlertManagersPerTenant = map[string]AlertManagerConfig{
-		DefaultNotifierConf: {
-			AlertmanagerURL:       ts.URL,
-			AlertmanagerDiscovery: false,
-			NotificationTimeout:   time.Second * 10,
-		},
-	}
+	cfg.AlertmanagerURL = ts.URL
+	cfg.AlertmanagerDiscovery = false
 
 	manager := newManager(t, cfg, nil)
 	defer manager.Stop()
@@ -297,7 +305,8 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 
 	// We create an empty rule store so that the ruler will not load any rule from it.
 	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
-	cfg.AlertManagersPerTenant = map[string]AlertManagerConfig{
+
+	amCfg := map[string]*config.AlertManagerConfig{
 		tenant1: {
 			AlertmanagerURL:       ts1.URL,
 			AlertmanagerDiscovery: false,
@@ -308,12 +317,7 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 		},
 	}
 
-	for t, c := range cfg.AlertManagersPerTenant {
-		c.NotificationTimeout = time.Second * 10
-		cfg.AlertManagersPerTenant[t] = c
-	}
-
-	manager := newManager(t, cfg, nil)
+	manager := newMultiTenantManager(t, cfg, nil, amCfg)
 	defer manager.Stop()
 
 	n1, err := manager.getOrCreateNotifier(tenant1)

@@ -22,12 +22,11 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
 
-const DefaultNotifierConf = "default-notifier-config"
-
 type DefaultMultiTenantManager struct {
 	cfg            Config
-	notifiersCfg   map[string]config.Config
+	notifiersCfg   map[string]*config.Config
 	managerFactory ManagerFactory
+	limits         RulesLimits
 
 	mapper *mapper
 
@@ -49,12 +48,7 @@ type DefaultMultiTenantManager struct {
 	logger                        log.Logger
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
-	ncfg, err := buildNotifiersConfig(&cfg)
-	if err != nil {
-		return nil, err
-	}
-
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits) (*DefaultMultiTenantManager, error) {
 	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel)
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
@@ -62,8 +56,9 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 
 	return &DefaultMultiTenantManager{
 		cfg:                cfg,
-		notifiersCfg:       ncfg,
+		notifiersCfg:       map[string]*config.Config{},
 		managerFactory:     managerFactory,
+		limits:             limits,
 		notifiers:          map[string]*rulerNotifier{},
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]RulesManager{},
@@ -189,7 +184,27 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 
 	nCfg, ok := r.notifiersCfg[userID]
 	if !ok {
-		nCfg = r.notifiersCfg[DefaultNotifierConf]
+		amCfg := r.cfg.AlertManagerConfig
+		amOverrides := r.limits.RulerAlertManagerConfig(userID)
+		var err error
+
+		if amOverrides != nil {
+			tenantAmCfg, err := getAlertmanagerTenantConfig(r.cfg.AlertManagerConfig, *amOverrides)
+			if err != nil {
+				return nil, err
+			}
+
+			amCfg = tenantAmCfg
+		}
+
+		nCfg, err = buildNotifierConfig(amCfg, r.cfg.ExternalLabels)
+		if err != nil {
+			return nil, err
+		}
+
+		if nCfg != nil {
+			r.notifiersCfg[userID] = nCfg
+		}
 	}
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
