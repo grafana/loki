@@ -657,10 +657,9 @@ wal_cleaner:
 # Multiple Alertmanagers in HA per group can be supported by using DNS
 # resolution via -ruler.alertmanager-discovery.
 # CLI flag: -ruler.alertmanager-url
-# Deprecated: Use `alertmanagers_per_tenant` instead
 [alertmanager_url: <string> | default = ""]
 
-# Deprecated: Use `alertmanagers_per_tenant` instead
+
 alertmanager_client:
   # Sets the `Authorization` header on every remote write request with the
   # configured username and password.
@@ -681,38 +680,27 @@ alertmanager_client:
 
 # Use DNS SRV records to discover Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
-# Deprecated: Use `alertmanagers_per_tenant` instead
 [enable_alertmanager_discovery: <boolean> | default = false]
 
 # How long to wait between refreshing DNS resolutions of Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-refresh-interval
-# Deprecated: Use `alertmanagers_per_tenant` instead
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
 # If enabled, then requests to Alertmanager use the v2 API.
 # CLI flag: -ruler.alertmanager-use-v2
-# Deprecated: Use `alertmanagers_per_tenant` instead
 [enable_alertmanager_v2: <boolean> | default = false]
 
 # List of alert relabel configs
-# Deprecated: Use `alertmanagers_per_tenant` instead
 alert_relabel_configs:
   [- <relabel_config> ...]
 
 # Capacity of the queue for notifications to be sent to the Alertmanager.
 # CLI flag: -ruler.notification-queue-capacity
-# Deprecated: Use `alertmanagers_per_tenant` instead
 [notification_queue_capacity: <int> | default = 10000]
 
 # HTTP timeout duration when sending notifications to the Alertmanager.
 # CLI flag: -ruler.notification-timeout
-# Deprecated: Use `alertmanagers_per_tenant` instead
 [notification_timeout: <duration> | default = 10s]
-
-# Configure alertmanager per tenant.
-# A map with tenant ID as key.
-alertmanagers_per_tenant: 
-  [<string>: <alertmanager_config>]
 
 # Max time to tolerate outage for restoring "for" state of alert.
 # CLI flag: -ruler.for-outage-tolerance
@@ -2319,6 +2307,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Maximum number of rule groups per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
+
+# Ruler alertmanager configuration per tenant.
+[ruler_alertmanager_config: <alertmanager_config>]
 
 # Retention to apply for the store, if the retention is enable on the compactor side.
 # CLI flag: -store.retention
