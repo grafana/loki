@@ -42,8 +42,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{cm, dpl, svc, ing}
 
-	minTLSVersion := opts.TLSProfileSpec.MinTLSVersion
-	ciphersList := opts.TLSProfileSpec.Ciphers
+	minTLSVersion := opts.TLSProfile.MinTLSVersion
+	ciphersList := opts.TLSProfile.Ciphers
 	ciphers := strings.Join(ciphersList, `,`)
 
 	if opts.Gates.HTTPEncryption {

@@ -32,7 +32,7 @@ var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
 type IndexSet interface {
 	Init(forQuerying bool) error
 	Close()
-	ForEach(ctx context.Context, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -174,11 +174,15 @@ func (t *indexSet) Close() {
 	t.index = map[string]index.Index{}
 }
 
-func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallback) error {
+func (t *indexSet) ForEach(ctx context.Context, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	if err := t.indexMtx.rLock(ctx); err != nil {
 		return err
 	}
-	defer t.indexMtx.rUnlock()
+
+	go func() {
+		<-doneChan
+		t.indexMtx.rUnlock()
+	}()
 
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))

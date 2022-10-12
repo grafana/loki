@@ -11,7 +11,7 @@ var noParserHints = &parserHint{}
 // This is used only within metric queries since it's rare that you need all label keys.
 // For example in the following expression:
 //
-//		sum by (status_code) (rate({app="foo"} | json [5m]))
+//	sum by (status_code) (rate({app="foo"} | json [5m]))
 //
 // All we need to extract is the status_code in the json parser.
 type ParserHint interface {

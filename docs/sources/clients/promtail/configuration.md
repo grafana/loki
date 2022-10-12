@@ -163,6 +163,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 # Target managers check flag for Promtail readiness, if set to false the check is ignored
 [health_check_target: <bool> | default = true]
+
+# Enable reload via HTTP request.
+[enable_runtime_reload: <bool> | default = false]
 ```
 
 ## clients

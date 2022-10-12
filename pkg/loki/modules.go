@@ -8,6 +8,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
@@ -145,7 +147,25 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
+	if t.Cfg.Server.HTTPListenPort == 0 {
+		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
+	}
+
+	if t.Cfg.Server.GRPCListenPort == 0 {
+		t.Cfg.Server.GRPCListenPort = portFromAddr(t.Server.GRPCListenAddr().String())
+	}
+
 	return s, nil
+}
+
+func portFromAddr(addr string) int {
+	parts := strings.Split(addr, ":")
+	port := parts[len(parts)-1]
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
+		return 0
+	}
+	return portNumber
 }
 
 func (t *Loki) initInternalServer() (services.Service, error) {
@@ -438,7 +458,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ingester.RateLimitWholeStream = t.Cfg.Distributor.ShardStreams.Enabled
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -452,6 +471,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,

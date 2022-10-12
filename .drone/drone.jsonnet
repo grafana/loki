@@ -43,7 +43,7 @@ local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/
 local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
+local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -574,30 +574,44 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
+    local configFileName = 'updater-config.json',
     trigger+: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
-        name: 'image-tag',
+        name: 'prepare-updater-config',
         image: 'alpine',
+        environment: {
+          RELEASE_BRANCH_REGEXP: '^release-([0-9\\.x]+)$',
+        },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
           'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
+          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'echo $RELEASE_NAME',
+          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE_NAME and RELEASE TAG
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
+          'sed -i "s/{{version}}/$RELEASE_TAG/g" %s' % configFileName,
         ],
+        settings: {
+          config_template: { from_secret: updater_config_template.name },
+        },
         depends_on: ['clone'],
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
         settings: {
           github_token: { from_secret: github_secret.name },
-          images_json: { from_secret: deploy_configuration.name },
-          docker_tag_file: '.tag',
+          config_file: configFileName,
         },
-        depends_on: ['clone', 'image-tag'],
+        depends_on: ['prepare-updater-config'],
       },
     ],
   },
@@ -711,7 +725,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   docker_password_secret,
   ecr_key,
   ecr_secret_key,
-  deploy_configuration,
+  updater_config_template,
   gpg_passphrase,
   gpg_private_key,
 ]

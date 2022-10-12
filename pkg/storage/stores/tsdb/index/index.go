@@ -1338,6 +1338,10 @@ func (r *Reader) Version() int {
 	return r.version
 }
 
+func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
+	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
+}
+
 // Range marks a byte range.
 type Range struct {
 	Start, End int64

@@ -40,7 +40,10 @@ func TestIndexSet_Init(t *testing.T) {
 		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 		require.Len(t, indexSet.index, len(indexesSetup))
 		verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
-			return indexSet.ForEach(context.Background(), callbackFunc)
+			doneChan := make(chan struct{})
+			defer close(doneChan)
+
+			return indexSet.ForEach(context.Background(), doneChan, callbackFunc)
 		})
 		stopFunc()
 	}
@@ -85,7 +88,10 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 				require.Len(t, indexSet.index, tc)
 			}
 			verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
-				return indexSet.ForEach(context.Background(), callbackFunc)
+				doneChan := make(chan struct{})
+				defer close(doneChan)
+
+				return indexSet.ForEach(context.Background(), doneChan, callbackFunc)
 			})
 		})
 	}
@@ -104,7 +110,10 @@ func TestIndexSet_Sync(t *testing.T) {
 	checkIndexSet := func() {
 		require.Len(t, indexSet.index, len(indexesSetup))
 		verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
-			return indexSet.ForEach(context.Background(), callbackFunc)
+			doneChan := make(chan struct{})
+			defer close(doneChan)
+
+			return indexSet.ForEach(context.Background(), doneChan, callbackFunc)
 		})
 	}
 

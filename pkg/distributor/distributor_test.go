@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
@@ -398,9 +399,12 @@ func TestDistributorPushErrors(t *testing.T) {
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1 && len(ingesters[2].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
 		require.Equal(t, 0, len(ingesters[0].pushed))
-		require.Equal(t, 1, len(ingesters[1].pushed))
-		require.Equal(t, 1, len(ingesters[2].pushed))
 	})
 	t.Run("with RF=3 two push failures result in error", func(t *testing.T) {
 		distributors, ingesters := prepare(t, 1, 3, limits, nil)
@@ -411,8 +415,12 @@ func TestDistributorPushErrors(t *testing.T) {
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
 		require.Error(t, err)
+
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
 		require.Equal(t, 0, len(ingesters[0].pushed))
-		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Equal(t, 0, len(ingesters[2].pushed))
 	})
 }
@@ -476,7 +484,7 @@ func TestStreamShard(t *testing.T) {
 		// append a shard label to the given labels. The shard value will be 'idx'.
 		lbs, err := syntax.ParseLabels(baseLabels)
 		require.NoError(t, err)
-		lbs = append(lbs, labels.Label{Name: ShardLbName, Value: fmt.Sprintf("%d", idx)})
+		lbs = append(lbs, labels.Label{Name: ingester.ShardLbName, Value: fmt.Sprintf("%d", idx)})
 		return lbs
 	}
 
@@ -671,11 +679,21 @@ func TestStreamShard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			baseStream.Entries = tc.entries
 
+			distributorLimits := &validation.Limits{}
+			flagext.DefaultValues(distributorLimits)
+			distributorLimits.ShardStreams.DesiredRate = desiredRate
+
+			overrides, err := validation.NewOverrides(*distributorLimits, nil)
+			require.NoError(t, err)
+
+			validator, err := NewValidator(overrides)
+			require.NoError(t, err)
+
 			d := Distributor{
-				rateStore:              &noopRateStore{},
+				rateStore:              &fakeRateStore{},
 				streamShardingFailures: shardingFailureMetric,
+				validator:              validator,
 			}
-			d.cfg.ShardStreams.DesiredRate = desiredRate
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
 			require.Equal(t, tc.wantDerivedStream, derivedStreams)
@@ -717,7 +735,7 @@ func BenchmarkShardStream(b *testing.B) {
 	distributorBuilder := func(shards int) *Distributor {
 		d := &Distributor{streamShardingFailures: shardingFailureMetric}
 		// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
-		d.rateStore = &noopRateStore{rate: desiredRate*shards - 1}
+		d.rateStore = &fakeRateStore{rate: int64(desiredRate*shards - 1)}
 		return d
 	}
 
@@ -813,7 +831,7 @@ func TestShardCalculation(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		streamSize int
-		rate       int
+		rate       int64
 
 		wantShards int
 	}{
@@ -826,7 +844,7 @@ func TestShardCalculation(t *testing.T) {
 		{
 			name:       "enough data to have two shards, stream size (1mb) + ingested rate (4mb) > 3mb",
 			streamSize: 1 * megabyte,
-			rate:       desiredRate + 1,
+			rate:       int64(desiredRate + 1),
 			wantShards: 2,
 		},
 		{
@@ -838,7 +856,7 @@ func TestShardCalculation(t *testing.T) {
 		{
 			name:       "a lot of shards, stream size (1mb) + ingested rate (300mb) > 3mb",
 			streamSize: 1 * megabyte,
-			rate:       300 * megabyte,
+			rate:       int64(300 * megabyte),
 			wantShards: 101,
 		},
 	} {
@@ -863,13 +881,22 @@ func TestShardCountFor(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		stream      *logproto.Stream
-		rate        int
-		desiredRate int
+		rate        int64
+		desiredRate loki_flagext.ByteSize
 
 		wantStreamSize int // used for sanity check.
 		wantShards     int
 		wantErr        bool
 	}{
+		{
+			name:           "2 entries with zero rate and desired rate == 0, return 1 shard",
+			stream:         &logproto.Stream{Hash: 1},
+			rate:           0,
+			desiredRate:    0, // in bytes
+			wantStreamSize: 2, // in bytes
+			wantShards:     1,
+			wantErr:        false,
+		},
 		{
 			name:           "0 entries, return 0 shards always",
 			stream:         &logproto.Stream{Hash: 1},
@@ -934,11 +961,13 @@ func TestShardCountFor(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.EnforceMetricName = false
+			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
 				streamShardingFailures: shardingFailureMetric,
+				rateStore:              &fakeRateStore{tc.rate},
 			}
-			got := d.shardCountFor(tc.stream, tc.wantStreamSize, tc.desiredRate, &noopRateStore{tc.rate})
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
@@ -1173,6 +1202,7 @@ func makeWriteRequest(lines, size int) *logproto.PushRequest {
 type mockIngester struct {
 	grpc_health_v1.HealthClient
 	logproto.PusherClient
+	logproto.StreamDataClient
 
 	failAfter    time.Duration
 	succeedAfter time.Duration
@@ -1196,6 +1226,18 @@ func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts 
 	return nil, nil
 }
 
+func (i *mockIngester) GetStreamRates(ctx context.Context, in *logproto.StreamRatesRequest, opts ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
+	return &logproto.StreamRatesResponse{}, nil
+}
+
 func (i *mockIngester) Close() error {
 	return nil
+}
+
+type fakeRateStore struct {
+	rate int64
+}
+
+func (s *fakeRateStore) RateFor(_ uint64) int64 {
+	return s.rate
 }

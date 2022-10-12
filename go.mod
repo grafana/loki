@@ -1,6 +1,6 @@
 module github.com/grafana/loki
 
-go 1.18
+go 1.19
 
 require (
 	cloud.google.com/go/bigtable v1.3.0
@@ -51,7 +51,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/grafana/dskit v0.0.0-20220928083349-b1b307db4f30
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
+	github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.13.0

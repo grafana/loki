@@ -35,7 +35,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	})
 	require.Nil(t, err)
 
-	idx, err := NewShippableTSDBFile(dst, false)
+	idx, err := NewShippableTSDBFile(dst)
 	require.Nil(t, err)
 	return idx
 }
