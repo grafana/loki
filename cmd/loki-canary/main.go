@@ -53,7 +53,7 @@ func main() {
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
 	caFile := flag.String("ca-file", "", "Client certificate authority for optional use with TLS connection to Loki")
-  insecureSkipVerify := flag.Bool("insecure", false, "Allow insecure TLS connections")
+	insecureSkipVerify := flag.Bool("insecure", false, "Allow insecure TLS connections")
 	user := flag.String("user", "", "Loki username.")
 	pass := flag.String("pass", "", "Loki password. This credential should have both read and write permissions to Loki endpoints")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
