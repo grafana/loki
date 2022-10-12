@@ -69,7 +69,7 @@ func validateJobName(scrapeConfigs []scrapeconfig.Config) error {
 		}
 		jobNames[cfg.JobName] = struct{}{}
 
-		scrapeConfigs[i].JobName = strutil.SanitizeLabelName(cfg.JobName);
+		scrapeConfigs[i].JobName = strutil.SanitizeLabelName(cfg.JobName)
 	}
 	return nil
 }
