@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"sync"
-
 	// embed time zone data
 	_ "time/tzdata"
 
@@ -69,33 +68,41 @@ func (c *Config) Clone() flagext.Registerer {
 	}(*c)
 }
 
+// wrap os.Exit so that deferred functions execute before the process exits
+func exit(code int) {
+	// flush all logs that may be buffered in memory
+	util_log.Flush()
+
+	os.Exit(code)
+}
+
 func main() {
 	// Load config, merging config file and CLI flags
 	var config Config
 	args := os.Args[1:]
 	if err := cfg.DefaultUnmarshal(&config, args, flag.CommandLine); err != nil {
 		fmt.Println("Unable to parse config:", err)
-		os.Exit(1)
+		exit(1)
 	}
 	if config.checkSyntax {
 		if config.configFile == "" {
 			fmt.Println("Invalid config file")
-			os.Exit(1)
+			exit(1)
 		}
 		fmt.Println("Valid config file! No syntax issues found")
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Handle -version CLI flag
 	if config.printVersion {
 		fmt.Println(version.Print("promtail"))
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Init the logger which will honor the log level set in cfg.Server
 	if reflect.DeepEqual(&config.Config.ServerConfig.Config.LogLevel, &logging.Level{}) {
 		fmt.Println("Invalid log level")
-		os.Exit(1)
+		exit(1)
 	}
 	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer, true, false)
 
@@ -140,7 +147,7 @@ func main() {
 	p, err := promtail.New(config.Config, newConfigFunc, clientMetrics, config.dryRun)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Promtail", "version", version.Info())
@@ -148,6 +155,6 @@ func main() {
 
 	if err := p.Run(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error starting promtail", "error", err)
-		os.Exit(1)
+		exit(1)
 	}
 }
