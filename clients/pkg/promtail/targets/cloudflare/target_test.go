@@ -117,7 +117,6 @@ func Test_RetryErrorLogpullReceived(t *testing.T) {
 	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
 		return cfClient, nil
 	}
-	// retries as fast as possible.
 	defaultBackoff.MinBackoff = 0
 	defaultBackoff.MaxBackoff = 5
 	ta := &Target{
