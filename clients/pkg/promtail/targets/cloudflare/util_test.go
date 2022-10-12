@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var LogpullReceivedError = errors.New("error")
+var ErrorLogpullReceived = errors.New("error logpull received")
 
 type fakeCloudflareClient struct {
 	mock.Mock
@@ -48,7 +48,7 @@ func (f *fakeLogIterator) Err() error                         { return f.err }
 func (f *fakeLogIterator) Line() []byte                       { return []byte(f.current) }
 func (f *fakeLogIterator) Fields() (map[string]string, error) { return nil, nil }
 func (f *fakeLogIterator) Close() error {
-	if f.err == LogpullReceivedError {
+	if f.err == ErrorLogpullReceived {
 		f.err = nil
 	}
 	return nil
@@ -62,7 +62,7 @@ func (f *fakeCloudflareClient) LogpullReceived(ctx context.Context, start, end t
 	r := f.Called(ctx, start, end)
 	if r.Get(0) != nil {
 		it := r.Get(0).(cloudflare.LogpullReceivedIterator)
-		if it.Err() == LogpullReceivedError {
+		if it.Err() == ErrorLogpullReceived {
 			return it, it.Err()
 		}
 		return it, nil

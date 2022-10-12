@@ -111,7 +111,7 @@ func Test_RetryErrorLogpullReceived(t *testing.T) {
 		cfClient = newFakeCloudflareClient()
 	)
 	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
-		err: LogpullReceivedError,
+		err: ErrorLogpullReceived,
 	}, nil).Times(2) // just retry once
 	// replace the client.
 	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
@@ -156,7 +156,7 @@ func Test_RetryErrorIterating(t *testing.T) {
 		},
 	}, nil).Once()
 	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
-		err: LogpullReceivedError,
+		err: ErrorLogpullReceived,
 	}, nil).Once()
 	// replace the client.
 	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
