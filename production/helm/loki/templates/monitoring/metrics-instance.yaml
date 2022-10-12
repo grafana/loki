@@ -1,7 +1,7 @@
-{{- if .Values.monitoring.selfMonitoring.enabled }}
-{{- with .Values.monitoring.selfMonitoring.logsInstance }}
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+{{- with .Values.monitoring.serviceMonitor.metricsInstance }}
 apiVersion: monitoring.grafana.com/v1alpha1
-kind: LogsInstance
+kind: MetricsInstance
 metadata:
   name: {{ include "loki.fullname" $ }}
   namespace: {{ .namespace | default $.Release.Namespace }}
@@ -15,15 +15,14 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  clients:
-    {{- include "loki.logsInstanceClient" $ | nindent 4}}
-    {{- with .clients}}
+  {{- with .remoteWrite}}
+  remoteWrite:
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
 
-  podLogsNamespaceSelector: {}
+  serviceMonitorNamespaceSelector: {}
 
-  podLogsSelector:
+  serviceMonitorSelector:
     matchLabels:
       {{- include "loki.selectorLabels" $ | nindent 6 }}
 {{- end -}}
