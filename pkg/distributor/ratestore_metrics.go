@@ -40,7 +40,7 @@ func newRateStoreMetrics(reg prometheus.Registerer) *ratestoreMetrics {
 		maxUniqueStreamRate: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Name:      "rate_store_max_unique_stream_rate_bytes",
-			Help:      "The maximum stream rate for any stream reported by ingesters during a sync operation. Sharded Streams are considered seperate.",
+			Help:      "The maximum stream rate for any stream reported by ingesters during a sync operation. Sharded Streams are considered separate.",
 		}),
 		refreshDuration: instrument.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(
