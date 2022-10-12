@@ -48,7 +48,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 
 	m.gcpPushErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
-		Name:      "gcp_push_target_parsing_errors_total",
+		Name:      "gcp_push_target_errors_total",
 		Help:      "Number of parsing errors while receiving GCP Push messages",
 	}, []string{"reason"})
 

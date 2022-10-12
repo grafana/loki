@@ -104,6 +104,10 @@ The name of this metric was changed to `loki_internal_log_messages_total` to red
 
 ### Promtail
 
+### `gcp_push_target_parsing_errors_total` has been renamed to `gcp_push_target_errors_total`
+
+The `gcp_push_target_parsing_errors_total` GCP Push Target metric has been renamed to `gcp_push_target_errors_total`, to track error causes such as timeouts.
+
 #### `gcp_push_target_parsing_errors_total` has a new `reason` label
 
 The `gcp_push_target_parsing_errors_total` GCP Push Target metrics has been added a new label named `reason`. This includes detail on what might have caused the parsing to fail.
