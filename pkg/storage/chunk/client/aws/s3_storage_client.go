@@ -17,11 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/signer"
@@ -45,6 +47,14 @@ var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
+
+type FileSystemTokenFetcher struct {
+	Path string
+}
+
+func (t FileSystemTokenFetcher) FetchToken(c credentials.Context) ([]byte, error) {
+	return os.ReadFile(t.Path)
+}
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "loki",
@@ -77,6 +87,7 @@ type S3Config struct {
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
+	UseIrsa			 bool				 `yaml:"use_irsa"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -245,6 +256,21 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
 		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 		s3Config = s3Config.WithCredentials(creds)
+	} else if cfg.UseIrsa {
+		// If static credentials are not used, fall back to use IRSA (IAM Roles for Service Accounts)
+		// https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
+		// This is the recommended approach that is used to access AWS resources from inside k8s pods
+		stsSession, err := session.NewSession()
+		if err != nil {
+			return nil, err
+		}
+		stsCfg := sts.New(stsSession)
+		roleArn := os.Getenv("AWS_ROLE_ARN")
+		tokenPath := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
+		fetcher := FileSystemTokenFetcher{Path: tokenPath}
+		provider := stscreds.NewWebIdentityRoleProviderWithOptions(stsCfg, roleArn, "loki", fetcher)
+		creds := credentials.NewCredentials(provider)
+		s3Config = s3Config.WithCredentials(creds)
 	}
 
 	tlsConfig := &tls.Config{
@@ -295,7 +321,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	s3Config = s3Config.WithHTTPClient(httpClient)
-
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new s3 session")
