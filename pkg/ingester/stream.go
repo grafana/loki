@@ -34,9 +34,11 @@ type line struct {
 }
 
 type stream struct {
-	limiter *StreamRateLimiter
-	cfg     *Config
-	tenant  string
+	limiter         *StreamRateLimiter
+	shardingLimiter *StreamRateLimiter
+
+	cfg    *Config
+	tenant string
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
@@ -89,6 +91,7 @@ type entryWithError struct {
 func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics) *stream {
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
+		shardingLimiter:      NewShardingRateLimiter(limits, tenant, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               labels,
@@ -153,8 +156,11 @@ func (s *stream) Push(
 	// Lock chunkMtx while pushing.
 	// If this is false, chunkMtx must be held outside Push.
 	lockChunk bool,
-	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
-	rateLimitWholeStream bool,
+	// Whether nor not sharding is enabled or not. If it is enabled,
+	// it will ingest all entries at once. Sharding is considered disabled
+	// if the distributor who sent the push request doesn't support it, even if the runtime
+	// configuration is enabled for this stream/tenant.
+	shardingEnabled bool,
 ) (int, error) {
 	if lockChunk {
 		s.chunkMtx.Lock()
@@ -173,8 +179,8 @@ func (s *stream) Push(
 		return 0, ErrEntriesExist
 	}
 
-	toStore, invalid := s.validateEntries(entries, isReplay, rateLimitWholeStream)
-	if rateLimitWholeStream && hasRateLimitErr(invalid) {
+	toStore, invalid := s.validateEntries(entries, isReplay, shardingEnabled)
+	if shardingEnabled && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
@@ -325,13 +331,19 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 	return bytesAdded, storedEntries, invalid
 }
 
-func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWholeStream bool) ([]logproto.Entry, []entryWithError) {
+func (s *stream) shouldBeRejected(limiter *StreamRateLimiter, sharding bool) bool {
+
+	return false
+}
+
+func (s *stream) validateEntries(entries []logproto.Entry, isReplay, shardingEnabled bool) ([]logproto.Entry, []entryWithError) {
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
 		validBytes, totalBytes               int
 		failedEntriesWithError               []entryWithError
 		limit                                = s.limiter.lim.Limit()
+		shardingLimit                        = s.shardingLimiter.lim.Limit()
 		lastLine                             = s.lastLine
 		highestTs                            = s.highestTs
 		toStore                              = make([]logproto.Entry, 0, len(entries))
@@ -354,7 +366,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		totalBytes += lineBytes
 
 		now := time.Now()
-		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
+		if !shardingEnabled && !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
 			rateLimitedSamples++
 			rateLimitedBytes += lineBytes
@@ -383,14 +395,16 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 
 	// Each successful call to 'AllowN' advances the limiter. With all-or-nothing
 	// ingestion, the limiter should only be advanced when the whole stream can be
-	// sent
+	// sent.
+	// Sharding enabled means that we should rate limit all entries if any of them
+	// is above the limit.
 	now := time.Now()
-	if rateLimitWholeStream && !s.limiter.AllowN(now, totalBytes) {
+	if shardingEnabled && !s.shardingLimiter.AllowN(now, totalBytes) {
 		// Report that the whole stream was rate limited
 		rateLimitedSamples = len(entries)
 		failedEntriesWithError = make([]entryWithError, 0, len(entries))
 		for i := 0; i < len(entries); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(shardingLimit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedBytes += len(entries[i].Line)
 		}
 	}

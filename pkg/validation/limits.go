@@ -624,17 +624,6 @@ func (o *Overrides) DefaultLimits() *Limits {
 func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 	user := o.getOverridesForUser(userID)
 
-	if user.ShardStreams != nil && user.ShardStreams.Enabled {
-		if user.ShardStreams.RateLimit != 0 {
-			shardRateLimit := float64(user.ShardStreams.RateLimit.Val())
-			return RateLimit{
-				Limit: rate.Limit(shardRateLimit),
-				Burst: int(shardRateLimit * 1.25),
-			}
-		}
-
-	}
-
 	return RateLimit{
 		Limit: rate.Limit(user.PerStreamRateLimit.Val()),
 		Burst: user.PerStreamRateLimitBurst.Val(),

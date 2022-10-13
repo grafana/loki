@@ -57,6 +57,8 @@ message PushRequest {
     (gogoproto.jsontag) = "streams",
     (gogoproto.customtype) = "Stream"
   ];
+
+  bool shardingSupported = 2;
 }
 
 message PushResponse {}

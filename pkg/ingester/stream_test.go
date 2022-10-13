@@ -324,8 +324,8 @@ func TestShardStreamsRateLimit(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:                "if sharding is enabled, use shard_streams rate limit instead of per-stream rate limit",
-			wantErr:             false,
+			name:                "if sharding is enabled and its rate limit is set, use its rate limit instead of per-stream rate limit",
+			wantErr:             true,
 			perStreamLimit:      10,
 			perStreamLimitBurst: 10,
 			shardStreamsCfg: &shardstreams.Config{
@@ -354,7 +354,7 @@ func TestShardStreamsRateLimit(t *testing.T) {
 		},
 		{
 			name:                "check that sharding rate limit works as the per-stream rate limit normally",
-			wantErr:             true,
+			wantErr:             false,
 			perStreamLimit:      100,
 			perStreamLimitBurst: 100,
 			shardStreamsCfg: &shardstreams.Config{
@@ -392,7 +392,7 @@ func TestShardStreamsRateLimit(t *testing.T) {
 				{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 			}
 
-			_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true)
+			_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, tc.shardStreamsCfg.Enabled)
 
 			if tc.wantErr {
 				require.Error(t, err)

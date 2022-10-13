@@ -132,6 +132,7 @@ func (l *Limiter) minNonZero(first, second int) int {
 
 type RateLimiterStrategy interface {
 	RateLimit(tenant string) validation.RateLimit
+	ShardingRateLimit(tenant string) validation.RateLimit
 }
 
 func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
@@ -140,6 +141,31 @@ func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
 	}
 
 	return l.limits.PerStreamRateLimit(tenant)
+}
+
+func (l *Limiter) ShardingRateLimit(tenant string) validation.RateLimit {
+	shardingRateLimit := l.limits.ShardStreams(tenant)
+	if shardingRateLimit == nil || shardingRateLimit.RateLimit == 0 {
+		// If shard streams rate limit isn't set, use the per-stream-rate-limit.
+		return l.limits.PerStreamRateLimit(tenant)
+	}
+
+	rateLimit := rate.Limit(shardingRateLimit.RateLimit)
+
+	return validation.RateLimit{
+		Limit: rateLimit,
+		Burst: int(rateLimit * 1.25),
+	}
+}
+
+func NewShardingRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
+	rl := strategy.ShardingRateLimit(tenant)
+	return &StreamRateLimiter{
+		recheckPeriod: recheckPeriod,
+		strategy:      strategy,
+		tenant:        tenant,
+		lim:           rate.NewLimiter(rl.Limit, rl.Burst),
+	}
 }
 
 type StreamRateLimiter struct {
