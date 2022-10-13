@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -119,7 +120,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
-	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf", newConf)
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf.hash", md5.New().Sum([]byte(newConf)))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
