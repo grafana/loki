@@ -3,6 +3,10 @@ local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
 
+local onPRs = {
+  event: ['pull_request'],
+};
+
 local condition(verb) = {
   tagMain: {
     ref: {
@@ -44,7 +48,7 @@ local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.docke
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
+local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -286,6 +290,30 @@ local lambda_promtail(tags='') = pipeline('lambda-promtail') {
   depends_on: ['check'],
 };
 
+local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'logql-analyzer') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/logql-analyzer',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'logql-analyzer') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        repo: 'grafana/logql-analyzer',
+      },
+    },
+  ],
+  depends_on: ['check'],
+};
+
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -373,15 +401,20 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
-      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      run('clone-target-branch', commands=[
+        'cd ..',
+        'echo "cloning "$DRONE_TARGET_BRANCH ',
+        'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
+        'cd -',
+      ]) { depends_on: ['clone'], when: onPRs },
+      make('test', container=false) { depends_on: ['clone', 'clone-target-branch'] },
+      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
-        'old=../loki-main/test_results.txt',
+        'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
         'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
-      ]) { depends_on: ['test', 'test-main'] },
+      ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
       run('report-coverage', commands=[
         "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
         "body=$(jq -Rs '{body: . }' diff.txt)",
@@ -389,7 +422,7 @@ local manifest(apps) = pipeline('manifest') {
       ], env={
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
-      }) { depends_on: ['compare-coverage'] },
+      }) { depends_on: ['compare-coverage'], when: onPRs },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
@@ -463,31 +496,47 @@ local manifest(apps) = pipeline('manifest') {
     trigger: condition('include').tagMain {
       event: ['push', 'tag'],
     },
+    local configFileName = 'updater-config.json',
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
-        name: 'image-tag',
+        name: 'prepare-updater-config',
         image: 'alpine',
+        environment: {
+          RELEASE_BRANCH_REGEXP: '^release-([0-9\\.x]+)$',
+        },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
+          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
+          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'echo $RELEASE_NAME',
+          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE_NAME and RELEASE TAG
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
+          'sed -i "s/{{version}}/$RELEASE_TAG/g" %s' % configFileName,
         ],
+        settings: {
+          config_template: { from_secret: updater_config_template.name },
+        },
         depends_on: ['clone'],
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
         settings: {
           github_token: { from_secret: github_secret.name },
-          images_json: { from_secret: deploy_configuration.name },
-          docker_tag_file: '.tag',
+          config_file: configFileName,
         },
-        depends_on: ['clone', 'image-tag'],
+        depends_on: ['prepare-updater-config'],
       },
     ],
   },
 ] + [promtail_win()]
++ [logql_analyzer()]
 + [lambda_promtail('main')]
-+ [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
++ [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, updater_config_template]
