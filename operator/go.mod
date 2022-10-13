@@ -132,7 +132,7 @@ require (
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
-	github.com/weaveworks/common v0.0.0-20220629114710-e3b70df0f08b // indirect
+	github.com/weaveworks/common v0.0.0-20220901125633-ba79fa21ae79 // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	go.etcd.io/etcd v3.3.25+incompatible // indirect
 	go.etcd.io/etcd/api/v3 v3.5.4 // indirect
