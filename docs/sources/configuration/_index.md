@@ -2384,6 +2384,20 @@ shard_streams:
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <string> | default = 3MB]
 
+  # A limit used by ingesters to rate limit entries, similar to the per_stream_rate_limit.
+  # It exists as an extra-layer on top of the per-stream-rate-limit for extra safety in case a Loki instance
+  # decides to (a) rollback to a version that doesn't support shard_streams or (b) decides to disable shard_streams.
+  # Ingesters will behave the following way:
+  # - If shard_streams is enabled and rate_limit is not zero, rate limit streams based on this rate_limit
+  # - If shard_streams is enabled but rate_limit is zero, follows the normal per-stream-rate-limit behavior
+  # - If shard_streams is disabled, follows the normal per-stream-rate-limit behavior
+  # In conclusion, when enabling shard_streams, one should make sure to configure this limit to the desired
+  # limit without touching the per_stream_rate_limit. Then, when disabling shard_streams or rolling back Loki,
+  # no changes in the per_stream_rate_limit is necessary.
+  #
+  # CLI flag: -shard-streams.rate-limit
+  [rate_limit: <string> | default = 0]
+
 # Limit how far back in time series data and metadata can be queried,
 # up until lookback duration ago.
 # This limit is enforced in the query frontend, the querier and the ruler.
