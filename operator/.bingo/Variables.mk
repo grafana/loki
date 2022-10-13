@@ -59,12 +59,6 @@ $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
 	@echo "(re)installing $(GOBIN)/kustomize-v4.5.7"
 	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kustomize.mod -o=$(GOBIN)/kustomize-v4.5.7 "sigs.k8s.io/kustomize/kustomize/v4"
 
-LOGCLI := $(GOBIN)/logcli-v1.6.2-0.20220407212443-2d9d0ee236ea
-$(LOGCLI): $(BINGO_DIR)/logcli.mod
-	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/logcli-v1.6.2-0.20220407212443-2d9d0ee236ea"
-	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=logcli.mod -o=$(GOBIN)/logcli-v1.6.2-0.20220407212443-2d9d0ee236ea "github.com/grafana/loki/cmd/logcli"
-
 OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.24.0
 $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
