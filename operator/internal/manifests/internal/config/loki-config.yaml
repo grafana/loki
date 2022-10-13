@@ -208,6 +208,32 @@ ruler:
   {{ if .Timeout }}
   notification_timeout: {{ .Timeout }}
   {{ end }}
+
+  {{ with .RelabelConfigs }}
+  alert_relabel_configs:
+    {{ range $k, $cfg := . }}
+    - {{ if $cfg.SourceLabels}}
+      source_labels: {{ $cfg.SourceLabelsString }}
+      {{ end }}
+      {{ if $cfg.Regex }}
+      regex: {{ $cfg.Regex }}
+      {{ end }}
+      {{ if $cfg.Action }}
+      action: {{ $cfg.Action }}
+      {{ end }}
+      separator: {{ $cfg.SeparatorString }}
+      {{ if $cfg.Replacement }}
+      replacement: {{ $cfg.Replacement }}
+      {{ end }}
+      {{ if $cfg.TargetLabel }}
+      target_label: {{ $cfg.TargetLabel }}
+      {{ end }}
+      {{ if $cfg.Modulus }}
+      modulus: {{ $cfg.Modulus }}
+      {{ end }}
+    {{ end}}
+  {{end }}
+
   {{ if .ForOutageTolerance }}
   for_outage_tolerance: {{ .ForOutageTolerance }}
   {{ end }}
