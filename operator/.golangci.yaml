@@ -13,6 +13,10 @@ linters-settings:
     suggest-new: true
   misspell:
     locale: US
+  revive:
+    rules:
+      - name: package-comments
+        disabled: true
 
 linters:
   enable-all: false
