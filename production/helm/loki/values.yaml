@@ -212,6 +212,7 @@ loki:
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
+      use_irsa: true
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
