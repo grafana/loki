@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -312,36 +313,100 @@ func TestUnorderedPush(t *testing.T) {
 	require.Equal(t, false, sItr.Next())
 }
 
-func TestPushRateLimit(t *testing.T) {
-	l := validation.Limits{
-		PerStreamRateLimit:      10,
-		PerStreamRateLimitBurst: 10,
-	}
-	limits, err := validation.NewOverrides(l, nil)
-	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+func TestShardStreamsRateLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
 
-	s := newStream(
-		defaultConfig(),
-		limiter,
-		"fake",
-		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
+		shardStreamsCfg     *shardstreams.Config
+		perStreamLimit      int
+		perStreamLimitBurst int
+
+		wantErr bool
+	}{
+		{
+			name:                "if sharding is enabled, use shard_streams rate limit instead of per-stream rate limit",
+			wantErr:             false,
+			perStreamLimit:      10,
+			perStreamLimitBurst: 10,
+			shardStreamsCfg: &shardstreams.Config{
+				Enabled:   true,
+				RateLimit: flagext.ByteSize(100),
+			},
 		},
-		true,
-		NewStreamRateCalculator(),
-		NilMetrics,
-	)
+		{
+			name:                "if sharding is enabled but shard_streams rate limit isn't set, use the per-stream rate limit",
+			wantErr:             true,
+			perStreamLimit:      10,
+			perStreamLimitBurst: 10,
+			shardStreamsCfg: &shardstreams.Config{
+				Enabled: true,
+			},
+		},
+		{
+			name:                "if sharding is disabled, use the per-stream rate limit even if shard_streams rate limit is set",
+			wantErr:             true,
+			perStreamLimit:      10,
+			perStreamLimitBurst: 10,
+			shardStreamsCfg: &shardstreams.Config{
+				Enabled:   false,
+				RateLimit: flagext.ByteSize(100),
+			},
+		},
+		{
+			name:                "check that sharding rate limit works as the per-stream rate limit normally",
+			wantErr:             true,
+			perStreamLimit:      100,
+			perStreamLimitBurst: 100,
+			shardStreamsCfg: &shardstreams.Config{
+				Enabled:   true,
+				RateLimit: flagext.ByteSize(10),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := validation.Limits{
+				PerStreamRateLimit:      flagext.ByteSize(tc.perStreamLimit),
+				PerStreamRateLimitBurst: flagext.ByteSize(tc.perStreamLimitBurst),
+				ShardStreams:            tc.shardStreamsCfg,
+			}
 
-	entries := []logproto.Entry{
-		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
-		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+			limits, err := validation.NewOverrides(l, nil)
+			require.NoError(t, err)
+			limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+			s := newStream(
+				defaultConfig(),
+				limiter,
+				"fake",
+				model.Fingerprint(0),
+				labels.Labels{
+					{Name: "foo", Value: "bar"},
+				},
+				true,
+				NewStreamRateCalculator(),
+				NilMetrics,
+			)
+
+			entries := []logproto.Entry{
+				{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+				{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+			}
+
+			_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true)
+
+			if tc.wantErr {
+				require.Error(t, err)
+
+				limitToCheckFor := l.PerStreamRateLimit
+				if l.ShardStreams.Enabled && l.ShardStreams.RateLimit != 0 {
+					limitToCheckFor = l.ShardStreams.RateLimit
+				}
+				require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: limitToCheckFor, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
-	// Counter should be 2 now since the first line will be deduped.
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
 func TestPushRateLimitAllOrNothing(t *testing.T) {
