@@ -48,11 +48,12 @@ var (
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
 
-type FileSystemTokenFetcher struct {
+type fileSystemTokenFetcher struct {
 	Path string
 }
 
-func (t FileSystemTokenFetcher) FetchToken(c credentials.Context) ([]byte, error) {
+// Implements the sts.TokenFetcher interface by reading the token from a file path
+func (t fileSystemTokenFetcher) FetchToken(c credentials.Context) ([]byte, error) {
 	return os.ReadFile(t.Path)
 }
 
@@ -257,17 +258,30 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 		s3Config = s3Config.WithCredentials(creds)
 	} else if cfg.UseIrsa {
+
 		// If static credentials are not used, fall back to use IRSA (IAM Roles for Service Accounts)
 		// https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
 		// This is the recommended approach that is used to access AWS resources from inside k8s pods
+
+		// Use a new session with the environment defaults.  This will be used to AssumeRoleWithWebIdentity
+		// and allow the pod to assume the IRSA-specified role
 		stsSession, err := session.NewSession()
 		if err != nil {
 			return nil, err
 		}
 		stsCfg := sts.New(stsSession)
+
 		roleArn := os.Getenv("AWS_ROLE_ARN")
+		if roleArn == "" {
+			return nil, errors.New("AWS_ROLE_ARN environment variable expected but not found (or is empty)")
+		}
+
 		tokenPath := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
-		fetcher := FileSystemTokenFetcher{Path: tokenPath}
+		if tokenPath == "" {
+			return nil, errors.New("AWS_WEB_IDENTITY_TOKEN_FILE environment variable expected but not found (or is empty)")
+		}
+
+		fetcher := fileSystemTokenFetcher{Path: tokenPath}
 		provider := stscreds.NewWebIdentityRoleProviderWithOptions(stsCfg, roleArn, "loki", fetcher)
 		creds := credentials.NewCredentials(provider)
 		s3Config = s3Config.WithCredentials(creds)
