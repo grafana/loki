@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -119,7 +120,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
-	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf", newConf)
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf hash", xxhash.Sum64String(newConf))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
