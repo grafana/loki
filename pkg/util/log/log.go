@@ -20,6 +20,8 @@ var (
 	// TODO: Change all components to take a non-global logger via their constructors.
 	// Prefer accepting a non-global logger as an argument.
 	Logger = log.NewNopLogger()
+
+	bufferedLogger *log.LineBufferedLogger
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
@@ -37,11 +39,24 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sy
 	cfg.Log = logging.GoKit(log.With(l, "caller", log.Caller(4)))
 }
 
+type Flusher interface {
+	Flush() error
+}
+
+func Flush() error {
+	if bufferedLogger != nil {
+		return bufferedLogger.Flush()
+	}
+
+	return nil
+}
+
 // prometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type prometheusLogger struct {
-	logger      log.Logger
-	logMessages *prometheus.CounterVec
-	logFlushes  prometheus.Histogram
+	logger              log.Logger
+	logMessages         *prometheus.CounterVec
+	internalLogMessages *prometheus.CounterVec
+	logFlushes          prometheus.Histogram
 
 	useBufferedLogger bool
 	useSyncLogger     bool
@@ -61,7 +76,12 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "log_messages_total",
-		Help:      "Total number of log messages.",
+		Help:      "DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself.",
+	}, []string{"level"})
+	internalLogMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "internal_log_messages_total",
+		Help:      "Total number of log messages created by Loki itself.",
 	}, []string{"level"})
 	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
@@ -74,13 +94,18 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	if buffered {
 		// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
 		// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
-		writer = log.NewLineBufferedLogger(os.Stderr, logEntries,
+
+		// retain a reference to this logger because it doesn't conform to the standard Logger interface,
+		// and we can't unwrap it to get the underlying logger when we flush on shutdown
+		bufferedLogger = log.NewLineBufferedLogger(os.Stderr, logEntries,
 			log.WithFlushPeriod(flushTimeout),
 			log.WithPrellocatedBuffer(logBufferSize),
 			log.WithFlushCallback(func(entries uint32) {
 				logFlushes.Observe(float64(entries))
 			}),
 		)
+
+		writer = bufferedLogger
 	} else {
 		writer = os.Stderr
 	}
@@ -96,9 +121,10 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
 	plogger := &prometheusLogger{
-		logger:      logger,
-		logMessages: logMessages,
-		logFlushes:  logFlushes,
+		logger:              logger,
+		logMessages:         logMessages,
+		internalLogMessages: internalLogMessages,
+		logFlushes:          logFlushes,
 	}
 	// Initialise counters for all supported levels:
 	supportedLevels := []level.Value{
@@ -109,6 +135,7 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	}
 	for _, level := range supportedLevels {
 		plogger.logMessages.WithLabelValues(level.String())
+		plogger.internalLogMessages.WithLabelValues(level.String())
 	}
 
 	// return a Logger without caller information, shouldn't use directly
@@ -126,6 +153,7 @@ func (pl *prometheusLogger) Log(kv ...interface{}) error {
 		}
 	}
 	pl.logMessages.WithLabelValues(l).Inc()
+	pl.internalLogMessages.WithLabelValues(l).Inc()
 	return nil
 }
 
@@ -147,8 +175,7 @@ func CheckFatal(location string, err error, logger log.Logger) {
 	os.Exit(1)
 }
 
-// TODOe remove once weaveworks/common updates to go-kit/log
-//                                     -> we can then revert to using Level.Gokit
+// TODO: remove once weaveworks/common updates to go-kit/log, we can then revert to using Level.Gokit
 func levelFilter(l string) level.Option {
 	switch l {
 	case "debug":

@@ -1,6 +1,6 @@
 # loki
 
-![Version: 3.2.0](https://img.shields.io/badge/Version-3.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
+![Version: 3.2.1](https://img.shields.io/badge/Version-3.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
 
 Helm chart for Grafana Loki in simple, scalable mode
 
@@ -254,6 +254,7 @@ monitoring:
 | kubectlImage.registry | string | `"docker.io"` | The Docker registry |
 | kubectlImage.repository | string | `"bitnami/kubectl"` | Docker image repository |
 | kubectlImage.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
+| loki.analytics | object | `{}` | Optional analytics configuration |
 | loki.auth_enabled | bool | `true` |  |
 | loki.commonConfig | object | `{"path_prefix":"/var/loki","replication_factor":3}` | Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration |
 | loki.compactor | object | `{}` | Optional compactor configuration |

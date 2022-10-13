@@ -185,6 +185,10 @@ func send(ctx context.Context, buf []byte) (int, error) {
 		req.SetBasicAuth(username, password)
 	}
 
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err

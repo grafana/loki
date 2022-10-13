@@ -25,61 +25,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 68,
   "iteration": 1588704280892,
-  "links": [
-    {
-      "icon": "dashboard",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Chunks",
-      "tooltip": "",
-      "type": "link",
-      "url": "/grafana/d/586c2916e59d3f81282a776dbe8333e9/loki-chunks"
-    },
-    {
-      "icon": "dashboard",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Memcached",
-      "tooltip": "",
-      "type": "link",
-      "url": "/grafana/d/8127d7f60e3a3230d7c633c8b5ddf68c/memcached"
-    },
-    {
-      "icon": "dashboard",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Promtail",
-      "type": "link",
-      "url": "/grafana/d/739c15a23c04c6ace0d03f6e14ba26e8/loki-promtail?var-datasource=$datasource&var-cluster=$cluster&var-namespace=default"
-    },
-    {
-      "icon": "dashboard",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "BigTable Backup",
-      "type": "link",
-      "url": "/grafana/d/da5ce918801d6d9f775a8c7e9f9f339a/loki-bigtable-backup"
-    },
-    {
-      "icon": "dashboard",
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Consul",
-      "type": "link",
-      "url": "/grafana/d/836793349c8ce200baa98f045123d19b/consul?var-datasource=$datasource&var-job=$namespace%2Fconsul"
-    }
-  ],
   "panels": [
     {
       "collapsed": false,
@@ -2318,9 +2264,9 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (ingester)",
+              "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (pod)",
               "intervalFactor": 1,
-              "legendFormat": "{{ingester}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
