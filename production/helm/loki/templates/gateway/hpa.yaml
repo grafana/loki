@@ -1,6 +1,10 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and $isSimpleScalable .Values.gateway.autoscaling.enabled }}
+{{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}
+apiVersion: autoscaling/v2
+{{- else }}
 apiVersion: autoscaling/v2beta1
+{{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
