@@ -144,7 +144,8 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
 	if err := h.doSendEntry(ctx, entry); err != nil {
-		h.metrics.gcpPushErrors.WithLabelValues("timeout").Inc()
+		// NOTE: timeout errors can be tracked with a metrics exporter from the spun weave-works server, and the 503 status code
+		// promtail_gcp_push_target_{job name}_request_duration_seconds_count{status_code="503"}
 		level.Warn(h.logger).Log("msg", "error sending log entry", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -155,19 +156,13 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *pushTarget) doSendEntry(ctx context.Context, entry api.Entry) error {
-	// Since this setting is configured at the target level, it will be ignored for follow-up request due to branch prediction
-	if h.config.PushTimeout != 0 {
-		select {
-		// Timeout the api.Entry channel send operation, which is the only blocking operation in the handler
-		case <-ctx.Done():
-			return fmt.Errorf("timeout exceeded")
-		case h.entries <- entry:
-		}
-	} else {
-		// No timeout configured, no limit
-		h.entries <- entry
+	select {
+	// Timeout the api.Entry channel send operation, which is the only blocking operation in the handler
+	case <-ctx.Done():
+		return fmt.Errorf("timeout exceeded: %w", ctx.Err())
+	case h.entries <- entry:
+		return nil
 	}
-	return nil
 }
 
 func (h *pushTarget) Type() target.TargetType {
