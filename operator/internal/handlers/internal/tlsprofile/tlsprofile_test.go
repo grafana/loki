@@ -57,7 +57,7 @@ func TestGetTLSSecurityProfile(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if apiServer.Name == name.Name {
 			k.SetClientObject(object, &apiServer)
 			return nil
@@ -104,7 +104,7 @@ func TestGetTLSSecurityProfile_CustomProfile(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if apiServer.Name == name.Name {
 			k.SetClientObject(object, &apiServer)
 			return nil
@@ -125,7 +125,7 @@ func TestGetTLSSecurityProfile_APIServerNotFound(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 

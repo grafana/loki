@@ -28,7 +28,7 @@ func TestSetComponentsStatus_WhenGetLokiStackReturnsError_ReturnError(t *testing
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -46,7 +46,7 @@ func TestSetComponentsStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *testin
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -74,7 +74,7 @@ func TestSetComponentsStatus_WhenListReturnError_ReturnError(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -110,7 +110,7 @@ func TestSetComponentsStatus_WhenPodListExisting_SetPodStatusMap(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -186,7 +186,7 @@ func TestSetComponentsStatus_WhenRulerEnabled_SetPodStatusMap(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -262,7 +262,7 @@ func TestSetComponentsStatus_WhenRulerNotEnabled_DoNothing(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil

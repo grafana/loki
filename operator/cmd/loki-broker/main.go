@@ -152,7 +152,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var tlsSecurityProfile *openshiftv1.TLSSecurityProfile = nil
+	var tlsSecurityProfile *openshiftv1.TLSSecurityProfile
 	if cfg.featureFlags.TLSProfile != "" {
 		tlsSecurityProfile = &openshiftv1.TLSSecurityProfile{
 			Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
