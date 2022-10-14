@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
@@ -999,22 +1000,46 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
-		return nil, nil
-	}
-
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	objectClient, err := storage.NewObjectClient(t.Cfg.CompactorConfig.SharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
-	if err != nil {
-		return nil, err
+	objectClients := make(map[string]client.ObjectClient)
+	if t.Cfg.CompactorConfig.SharedStoreType != "" {
+		if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+			level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
+			return nil, nil
+		}
+
+		objectClient, err := storage.NewObjectClient(t.Cfg.CompactorConfig.SharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
+		if err != nil {
+			return nil, err
+
+		}
+		objectClients[t.Cfg.CompactorConfig.SharedStoreType] = objectClient
+	} else {
+		periodConfigs := config.FilterObjectStoreIndex(t.Cfg.SchemaConfig.Configs)
+		if len(periodConfigs) == 0 {
+			level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
+			return nil, nil
+		}
+
+		for _, periodConfig := range periodConfigs {
+			if objectClients[periodConfig.ObjectType] != nil {
+				continue
+			}
+
+			objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
+			if err != nil {
+				return nil, err
+			}
+
+			objectClients[periodConfig.ObjectType] = objectClient
+		}
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClient, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

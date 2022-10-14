@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-kit/log"
@@ -16,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -85,10 +88,10 @@ type Marker struct {
 	markTimeout      time.Duration
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
-	metrics := newMarkerMetrics(r)
+func NewMarker(workingDirectory, objectType string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+	metrics := newMarkerMetrics(objectType, r)
 	return &Marker{
-		workingDirectory: workingDirectory,
+		workingDirectory: filepath.Join(workingDirectory, objectType),
 		expiration:       expiration,
 		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
@@ -265,9 +268,10 @@ type Sweeper struct {
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
-	m := newSweeperMetrics(r)
-	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
+func NewSweeper(workingDir, objectType string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+	m := newSweeperMetrics(objectType, r)
+
+	p, err := newMarkerStorageReader(filepath.Join(workingDir, objectType), deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -403,4 +407,28 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 	}
 
 	return wroteChunks, nil
+}
+
+// with multi-store support, markers need to be stored in store specific dir
+// MoveMarkersToSharedStoreDir checks for markers in retention dir and moves them as needed
+func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) error {
+	markersDir := filepath.Join(workingDir, "retention", markersFolder)
+	info, err := os.Stat(markersDir)
+	if os.IsExist(err) && info.IsDir() {
+		if sharedStoreType != "" {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving it to retention/%s", sharedStoreType))
+			if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, "retention", sharedStoreType)); err != nil {
+				return err
+			}
+
+			err := os.Rename(filepath.Join(workingDir, "retention", markersFolder), filepath.Join(workingDir, "retention", sharedStoreType, markersFolder))
+			if err != nil {
+				return err
+			}
+		} else {
+			level.Warn(util_log.Logger).Log("msg", "found markers in retention dir. Not moving it since SharedStoreType is not configured")
+		}
+	}
+
+	return nil
 }

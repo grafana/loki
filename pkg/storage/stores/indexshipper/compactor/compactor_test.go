@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	loki_net "github.com/grafana/loki/pkg/util/net"
@@ -101,7 +102,8 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 
 	indexType := "dummy"
 
-	c, err := NewCompactor(cfg, objectClient, config.SchemaConfig{
+	objectClients := map[string]client.ObjectClient{config.StorageTypeLocal: objectClient}
+	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
 				From:        config.DayTime{Time: model.Time(0)},

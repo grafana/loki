@@ -81,6 +81,7 @@ type Config struct {
 	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
 	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
+	DeleteRequestStore        string          `yaml:"delete_request_store"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
@@ -98,13 +99,14 @@ type Config struct {
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem. If not set, compactor will be initialized to operate on all the object stores indexes defined in the schema config.")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
+	f.StringVar(&cfg.DeleteRequestStore, "boltdb.shipper.compactor.delete-request-store", "", "Store used for storing delete requests. If not set, shared_store_type is used as a fallback.")
 	f.IntVar(&cfg.DeleteBatchSize, "boltdb.shipper.compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.DurationVar(&cfg.DeleteMaxInterval, "boltdb.shipper.compactor.delete-max-interval", 0, "Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
@@ -146,9 +148,6 @@ type Compactor struct {
 	services.Service
 
 	cfg                   Config
-	indexStorageClient    shipper_storage.Client
-	tableMarker           retention.TableMarker
-	sweeper               *retention.Sweeper
 	deleteRequestsStore   deletion.DeleteRequestsStore
 	DeleteRequestsHandler *deletion.DeleteRequestHandler
 	deleteRequestsManager *deletion.DeleteRequestsManager
@@ -167,9 +166,18 @@ type Compactor struct {
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+
+	// sharded by objectType
+	containers map[string]storeContainer
 }
 
-func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
+type storeContainer struct {
+	tableMarker        retention.TableMarker
+	sweeper            *retention.Sweeper
+	indexStorageClient shipper_storage.Client
+}
+
+func NewCompactor(cfg Config, objectClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -178,7 +186,13 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 		defaultRetentionStats.Set(limits.DefaultLimits().RetentionPeriod.String())
 	}
 	if cfg.SharedStoreType == "" {
-		return nil, errors.New("compactor shared_store_type must be specified")
+		objectTypes := make([]string, len(objectClients))
+		i := 0
+		for key := range objectClients {
+			objectTypes[i] = key
+			i++
+		}
+		level.Info(util_log.Logger).Log("msg", "compactor shared_store_type not specified. Initializing compactor to operator on the following object stores", "stores", objectTypes)
 	}
 
 	compactor := &Compactor{
@@ -227,7 +241,7 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectClient, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(objectClients, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
 
@@ -235,45 +249,74 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
+func (c *Compactor) init(objectClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
 	}
-	c.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
-	c.metrics = newMetrics(r)
 
 	if c.cfg.RetentionEnabled {
-		var encoder client.KeyEncoder
-		if _, ok := objectClient.(*local.FSObjectClient); ok {
-			encoder = client.FSEncoder
-		}
-
-		chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
-
-		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
-		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
-		if err != nil {
+		if err := c.initDeletes(objectClients, r, limits); err != nil {
 			return err
 		}
 
-		if err := c.initDeletes(r, limits); err != nil {
-			return err
-		}
-
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
-		if err != nil {
+		if err := retention.MoveMarkersToSharedStoreDir(c.cfg.WorkingDirectory, c.cfg.SharedStoreType); err != nil {
 			return err
 		}
 	}
 
+	c.containers = make(map[string]storeContainer)
+	for objectType, objectClient := range objectClients {
+		var sc storeContainer
+		sc.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
+
+		if c.cfg.RetentionEnabled {
+			var encoder client.KeyEncoder
+			if _, ok := objectClient.(*local.FSObjectClient); ok {
+				encoder = client.FSEncoder
+			}
+
+			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
+
+			retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
+			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, objectType, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
+			if err != nil {
+				return err
+			}
+
+			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, objectType, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
+			if err != nil {
+				return err
+			}
+		}
+
+		c.containers[objectType] = sc
+	}
+
+	c.metrics = newMetrics(r)
 	return nil
 }
 
-func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Overrides) error {
+func (c *Compactor) initDeletes(objectClients map[string]client.ObjectClient, r prometheus.Registerer, limits *validation.Overrides) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
-	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
+	var objectType string
+	switch true {
+	case c.cfg.DeleteRequestStore != "":
+		objectType = c.cfg.DeleteRequestStore
+	case c.cfg.SharedStoreType != "":
+		level.Info(util_log.Logger).Log("msg", "compactor delete_request_store not specified. Using shared_store_type as fallback for storing delete requests")
+		objectType = c.cfg.SharedStoreType
+	default:
+		return errors.New("failed to init delete store. Ensure boltdb.shipper.compactor.delete-request-store is configured")
+	}
+
+	objectClient, ok := objectClients[objectType]
+	if !ok {
+		return fmt.Errorf("failed to init delete store. ObjectClient not found for %s", objectType)
+	}
+
+	store, err := deletion.NewDeleteStore(deletionWorkDir, shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix))
 	if err != nil {
 		return err
 	}
@@ -476,16 +519,18 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		}
 	}()
 	if c.cfg.RetentionEnabled {
-		c.wg.Add(1)
-		go func() {
-			// starts the chunk sweeper
-			defer func() {
-				c.sweeper.Stop()
-				c.wg.Done()
-			}()
-			c.sweeper.Start()
-			<-ctx.Done()
-		}()
+		for _, container := range c.containers {
+			c.wg.Add(1)
+			go func(sc storeContainer) {
+				// starts the chunk sweeper
+				defer func() {
+					sc.sweeper.Stop()
+					c.wg.Done()
+				}()
+				sc.sweeper.Start()
+				<-ctx.Done()
+			}(container)
+		}
 	}
 	level.Info(util_log.Logger).Log("msg", "compactor started")
 }
@@ -506,8 +551,8 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
 	}
 
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, indexCompactor,
-		schemaCfg, c.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.containers[schemaCfg.ObjectType].indexStorageClient, indexCompactor,
+		schemaCfg, c.containers[schemaCfg.ObjectType].tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
@@ -562,10 +607,19 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 		}
 	}()
 
-	// refresh index list cache since previous compaction would have changed the index files in the object store
-	c.indexStorageClient.RefreshIndexListCache(ctx)
+	var tables []string
+	for _, sc := range c.containers {
+		// refresh index list cache since previous compaction would have changed the index files in the object store
+		sc.indexStorageClient.RefreshIndexListCache(ctx)
+		tbls, err := sc.indexStorageClient.ListTables(ctx)
+		if err != nil {
+			status = statusFailure
+			return err
+		}
 
-	tables, err := c.indexStorageClient.ListTables(ctx)
+		tables = append(tables, tbls...)
+
+	}
 
 	// process most recent tables first
 	sortTablesByRange(tables)
@@ -576,10 +630,6 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	}
 	if c.cfg.TablesToCompact > 0 && c.cfg.TablesToCompact < len(tables) {
 		tables = tables[:c.cfg.TablesToCompact]
-	}
-	if err != nil {
-		status = statusFailure
-		return err
 	}
 
 	compactTablesChan := make(chan string)

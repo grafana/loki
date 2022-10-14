@@ -97,7 +97,7 @@ var (
 		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
 	}
 
-	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
+	sweepMetrics = newSweeperMetrics(config.StorageTypeFileSystem, prometheus.DefaultRegisterer)
 )
 
 func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
