@@ -23,7 +23,10 @@ type BatchRangeVectorAggregator func([]promql.Point) float64
 
 // RangeStreamingAgg streaming aggregates sample for each sample
 type RangeStreamingAgg interface {
+	// agg func works inside the Next func of RangeVectorIterator, agg used to agg each sample.
+	// agg will calculate the intermediate result after streaming agg each sample and try to save an aggregate value instead of keeping all samples.
 	agg(sample promql.Point)
+	// at func works inside the At func of RangeVectorIterator, get the intermediate result of agg func to provide the final value for At func of RangeVectorIterator
 	at() float64
 }
 
