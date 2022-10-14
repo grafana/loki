@@ -786,15 +786,6 @@ func TestShardCountFor(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:           "0 entries, return 0 shards always",
-			stream:         &logproto.Stream{Hash: 1},
-			rate:           0,
-			desiredRate:    3, // in bytes
-			wantStreamSize: 2, // in bytes
-			wantShards:     0,
-			wantErr:        true,
-		},
-		{
 			// although in this scenario we have enough size to be sharded, we can't divide the number of entries between the ingesters
 			// because the number of entries is lower than the number of shards.
 			name:           "not enough entries to be sharded, stream size (2b) + ingested rate (0b) < 3b = 1 shard but 0 entries",
