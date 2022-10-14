@@ -444,7 +444,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID
 		return d.divideEntriesBetweenShards(logger, userID, len(stream.Entries), shardStreamsCfg, stream, shardsOrder)
 	}
 
-	return d.divideEntriesBetweenShards(logger, userID, len(stream.Entries), shardStreamsCfg, stream, nil)
+	return d.divideEntriesBetweenShards(logger, userID, shardCount, shardStreamsCfg, stream, nil)
 }
 
 func (d *Distributor) randomizeShardsOrder(shardCount int) []int {
