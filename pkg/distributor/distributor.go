@@ -281,6 +281,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErr error
 	validationContext := d.validator.getValidationContextForTime(time.Now(), userID)
+	shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
 
 	for _, stream := range req.Streams {
 		// Return early if stream does not contain any entries
@@ -332,7 +333,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
-		shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
 		if shardStreamsCfg.Enabled {
 			derivedKeys, derivedStreams := d.shardStream(stream, streamSize, userID)
 			keys = append(keys, derivedKeys...)
@@ -389,7 +389,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendStreams(localCtx, ingester, samples, &tracker)
+			d.sendStreams(localCtx, ingester, samples, &tracker, shardStreamsCfg.Enabled)
 		}(ingesterDescs[ingester], streams)
 	}
 	select {
@@ -525,8 +525,8 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
-	err := d.sendStreamsErr(ctx, ingester, streamTrackers)
+func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker, shardingEnabled bool) {
+	err := d.sendStreamsErr(ctx, ingester, streamTrackers, shardingEnabled)
 
 	// If we succeed, decrement each stream's pending count by one.
 	// If we reach the required number of successful puts on this stream, then
@@ -557,14 +557,15 @@ func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDes
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
+func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker, shardingEnabled bool) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(streams)),
+		Streams:           make([]logproto.Stream, len(streams)),
+		ShardingSupported: shardingEnabled,
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream
