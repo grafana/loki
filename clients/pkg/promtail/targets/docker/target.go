@@ -193,7 +193,7 @@ func (t *Target) process(r io.Reader, logStream string) {
 			lb.Set(string(k), string(v))
 		}
 		lb.Set(dockerLabelLogStream, logStream)
-		processed := relabel.Process(lb.Labels(), t.relabelConfig...)
+		processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
 
 		filtered := make(model.LabelSet)
 		for _, lbl := range processed {

@@ -223,7 +223,8 @@ func TestStorage_Truncate(t *testing.T) {
 	// Forefully create a bunch of new segments so when we truncate
 	// there's enough segments to be considered for truncation.
 	for i := 0; i < 5; i++ {
-		require.NoError(t, s.wal.NextSegment())
+		_, err := s.wal.NextSegmentSync()
+		require.NoError(t, err)
 	}
 
 	// Truncate half of the samples, keeping only the second sample
