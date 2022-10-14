@@ -20,7 +20,7 @@ spec:
     - name: loki-helm-test
       image: {{ include "loki.helm-test-image" $ }}
       environment:
-        CANARY_ADDRESS: '{{ .prometheusAddress }}'
+        CANARY_PROMETHEUS_ADDRESS: '{{ .prometheusAddress }}'
         {{- with .retryDelay }}
         CANARY_RETRY_DELAY: {{ . }}
         {{- end }}
