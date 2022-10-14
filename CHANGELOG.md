@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap
 * [7346](https://github.com/grafana/loki/pull/7346) **mostafa**: Clarify how and where to download the Loki config file from
 * [7227](https://github.com/grafana/loki/pull/7227) **Red-GV**: Add ability to configure tls minimum version and cipher suites
 * [7179](https://github.com/grafana/loki/pull/7179) **vlad-diachenko**: Add ability to use Azure Service Principals credentials to authenticate to Azure Blob Storage.
