@@ -156,10 +156,10 @@ func (s *stream) Push(
 	// Lock chunkMtx while pushing.
 	// If this is false, chunkMtx must be held outside Push.
 	lockChunk bool,
-	// Whether nor not sharding is enabled or not. If it is enabled,
-	// it will ingest all entries at once. Sharding is considered disabled
-	// if the distributor who sent the push request doesn't support it, even if the runtime
-	// configuration is enabled for this stream/tenant.
+	// Whether or not sharding is enabled. In case it is enabled, it will ingest
+	// all entries or reject them all. Sharding is considered disabled if the
+	// distributor who sent the push request doesn't support it, even if the
+	// runtime configuration is enabled for this stream/tenant.
 	shardingEnabled bool,
 ) (int, error) {
 	if lockChunk {
@@ -329,11 +329,6 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
 	return bytesAdded, storedEntries, invalid
-}
-
-func (s *stream) shouldBeRejected(limiter *StreamRateLimiter, sharding bool) bool {
-
-	return false
 }
 
 func (s *stream) validateEntries(entries []logproto.Entry, isReplay, shardingEnabled bool) ([]logproto.Entry, []entryWithError) {
