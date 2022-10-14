@@ -571,23 +571,24 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.InternalServer.Enable {
-		depsToUpdate := []string{Distributor, Ingester, Querier, QueryFrontendTripperware, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
-
-		for _, dep := range depsToUpdate {
-			var idx int
-			for i, v := range deps[dep] {
+		for key, ds := range deps {
+			idx := -1
+			for i, v := range ds {
 				if v == Server {
 					idx = i
 					break
 				}
 			}
 
-			lhs := deps[dep][0 : idx+1]
-			rhs := deps[dep][idx+2:]
+			if idx == -1 {
+				continue
+			}
 
-			deps[dep] = append(lhs, InternalServer)
-			deps[dep] = append(deps[dep], rhs...)
+			a := append(ds[:idx+1], ds[idx:]...)
+			a[idx] = InternalServer
+			deps[key] = a
 		}
+
 	}
 
 	for mod, targets := range deps {
