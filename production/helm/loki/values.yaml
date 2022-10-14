@@ -39,12 +39,6 @@ loki:
       port: http-metrics
     initialDelaySeconds: 30
     timeoutSeconds: 1
-  startupProbe:
-    httpGet:
-      path: /ready
-      port: http-metrics
-    initialDelaySeconds: 60
-    timeoutSeconds: 1
   image:
     # -- The Docker registry
     registry: docker.io
