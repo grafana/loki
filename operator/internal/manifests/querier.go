@@ -225,6 +225,14 @@ func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, opts Options)
 func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
 	secretContainerSpec := corev1.Container{
 		Args: []string{
+			// Enable HTTP over TLS for compactor delete client
+			"-boltdb.shipper.compactor.client.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
 			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),

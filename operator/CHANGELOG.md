@@ -1,5 +1,6 @@
 ## Main
 
+- [7448](https://github.com/grafana/loki/pull/7448) **periklis**: Add TLS support for compactor delete client
 - [7596](https://github.com/grafana/loki/pull/7596) **periklis**: Fix fresh-installs with built-in cert management enabled
 - [7064](https://github.com/grafana/loki/pull/7064) **periklis**: Add support for built-in cert management
 - [7471](https://github.com/grafana/loki/pull/7471) **aminesnow**: Expose and migrate query_timeout in limits config
