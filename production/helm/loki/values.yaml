@@ -558,9 +558,7 @@ test:
   # -- Address of the prometheus server to query for the test
   prometheusAddress: "http://prometheus:9090"
   # -- Number of times to retry the test before failing
-  retries: 3
-  # -- Amount of time to wait in between each retry for each test
-  retryDelay: 30s
+  timeout: 1m
   # -- Additional labels for the test pods
   labels: {}
   # -- Additional annotations for test pods

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -42,8 +41,8 @@ func TestCanary(t *testing.T) {
 	totalEntriesMissingQuery := "sum(loki_canary_missing_entries_total)"
 
 	testContext := func(t *testing.T) v1.API {
-		address := os.Getenv("CANARY_ADDRESS")
-		require.NotEmpty(t, address, "CANARY_ADDRESS must be set to a valid prometheus address")
+		address := os.Getenv("CANARY_PROMETHEUS_ADDRESS")
+		require.NotEmpty(t, address, "CANARY_PROMETHEUS_ADDRESS must be set to a valid prometheus address")
 
 		client, err := api.NewClient(api.Config{
 			Address: address,
@@ -53,29 +52,18 @@ func TestCanary(t *testing.T) {
 		return v1.NewAPI(client)
 	}
 
-	withRetries := func(t *testing.T, test func() error) error {
-		retries := getEnv("CANARY_RETRIES", "3")
-		numRetries, err := strconv.Atoi(retries)
-		require.NoError(t, err, "Failed to parse number of retries. Please set CANARY_RETRIES to a valid integer.")
+	eventually := func(t *testing.T, test func() error, msg string) {
+		timeout := getEnv("CANARY_TEST_TIMEOUT", "1m")
+		timeoutDuration, err := time.ParseDuration(timeout)
+		require.NoError(t, err, "Failed to parse timeout. Please set CANARY_TEST_TIMEOUT to a valid duration.")
 
-		retryDelay := getEnv("CANARY_RETRY_DELAY", "30s")
-		retryDelayDuration, err := time.ParseDuration(retryDelay)
-		require.NoError(t, err, "Failed to parse retry delay duration. Please set CANARY_RETRY_DELAY to a valid duration.")
-
-		var queryError error
-		for i := 0; i < numRetries; i++ {
-			fmt.Printf("Running test %s, attempt %d/%d\n", t.Name(), i+1, numRetries)
-			queryError = test()
-
+		require.Eventually(t, func() bool {
+			queryError := test()
 			if queryError != nil {
-				time.Sleep(retryDelayDuration)
-				continue
-			} else {
-				break
+				fmt.Printf("Query failed\n%+v\n", queryError)
 			}
-		}
-
-		return queryError
+			return queryError == nil
+		}, timeoutDuration, 5*time.Second, msg)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -87,7 +75,7 @@ func TestCanary(t *testing.T) {
 	t.Run("Canary should have entries", func(t *testing.T) {
 		client := testContext(t)
 
-		err := withRetries(t, func() error {
+		eventually(t, func() error {
 			result, _, err := client.Query(ctx, totalEntriesQuery, time.Now(), v1.WithTimeout(5*time.Second))
 			if err != nil {
 				return err
@@ -95,15 +83,13 @@ func TestCanary(t *testing.T) {
 			return testResult(result, totalEntriesQuery, func(v model.SampleValue) bool {
 				return v > 0
 			}, fmt.Sprintf("Expected %s to be greater than 0", totalEntriesQuery))
-		})
-
-		require.NoError(t, err, "Expected Loki Canary to have entries")
+		}, "Expected Loki Canary to have entries")
 	})
 
 	t.Run("Canary should not have missed any entries", func(t *testing.T) {
 		client := testContext(t)
 
-		err := withRetries(t, func() error {
+		eventually(t, func() error {
 			result, _, err := client.Query(ctx, totalEntriesMissingQuery, time.Now(), v1.WithTimeout(5*time.Second))
 			if err != nil {
 				return err
@@ -111,8 +97,6 @@ func TestCanary(t *testing.T) {
 			return testResult(result, totalEntriesMissingQuery, func(v model.SampleValue) bool {
 				return v == 0
 			}, fmt.Sprintf("Expected %s to equal 0", totalEntriesMissingQuery))
-		})
-
-		require.NoError(t, err, "Expected Loki Canary to have entries")
+		}, "Expected Loki Canary to not have any missing entries")
 	})
 }
