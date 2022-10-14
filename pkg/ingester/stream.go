@@ -67,7 +67,8 @@ type stream struct {
 	// introduced to facilitate removing the ordering constraint.
 	entryCt int64
 
-	unorderedWrites bool
+	unorderedWrites      bool
+	streamRateCalculator *StreamRateCalculator
 }
 
 type chunkDesc struct {
@@ -85,16 +86,18 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics) *stream {
 	return &stream{
-		limiter:         NewStreamRateLimiter(limits, tenant, 10*time.Second),
-		cfg:             cfg,
-		fp:              fp,
-		labels:          labels,
-		labelsString:    labels.String(),
-		tailers:         map[uint32]*tailer{},
-		metrics:         metrics,
-		tenant:          tenant,
+		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
+		cfg:                  cfg,
+		fp:                   fp,
+		labels:               labels,
+		labelsString:         labels.String(),
+		tailers:              map[uint32]*tailer{},
+		metrics:              metrics,
+		tenant:               tenant,
+		streamRateCalculator: streamRateCalculator,
+
 		unorderedWrites: unorderedWrites,
 	}
 }
@@ -392,6 +395,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		}
 	}
 
+	s.streamRateCalculator.Record(s.labels.Hash(), int64(totalBytes))
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }

@@ -1052,6 +1052,45 @@ spec:
       - description: HTTP timeout duration when sending notifications to the Alertmanager.
         displayName: Timeout
         path: alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: alertmanager.relabelConfigs[0].targetLabel
       - description: Interval on how frequently to evaluate rules.
         displayName: Evaluation Interval
         path: evaluationInterval

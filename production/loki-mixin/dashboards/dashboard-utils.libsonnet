@@ -90,7 +90,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   containerLabelMatcher(containerName)::
     'label_name=~"%s.*"' % containerName,
 
-  logPanel(title, selector, datasource='$loki_datasources'):: {
+  logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
     type: 'logs',
     datasource: datasource,

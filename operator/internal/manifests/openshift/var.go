@@ -15,7 +15,7 @@ var (
 	// GatewayOPAInternalPortName is the HTTP container metrics port name of the OpenPolicyAgent sidecar.
 	GatewayOPAInternalPortName = "opa-metrics"
 
-	bearerTokenFile string = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	bearerTokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
 	cookieSecretLength = 32
 	allowedRunes       = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")

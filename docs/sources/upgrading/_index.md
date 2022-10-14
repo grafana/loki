@@ -98,6 +98,10 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
 - Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
+#### Metric name for `loki_log_messages_total` changed 
+
+The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
+
 ### Promtail
 
 #### `gcp_push_target_parsing_errors_total` has a new `reason` label
@@ -202,6 +206,11 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
 While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+
+#### `added Docker target` log message has been demoted from level=error to level=info
+
+If you have dashboards that depended on the log level, change them to search for the `msg="added
+Docker target"` property.
 
 ### Jsonnet
 

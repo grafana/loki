@@ -45,7 +45,7 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "lokistack-dev-gateway" && name.Namespace == "some-ns" {
 			k.SetClientObject(object, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
@@ -93,7 +93,7 @@ func TestGetTenantConfigMapData_ConfigMapNotExist(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
