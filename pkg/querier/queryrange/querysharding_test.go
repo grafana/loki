@@ -42,7 +42,7 @@ var (
 			Limit:     defaultReq().Limit,
 			Version:   1,
 			Headers: []definitions.PrometheusResponseHeader{
-				{"Header", []string{"value"}},
+				{Name: "Header", Values: []string{"value"}},
 			},
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
@@ -63,7 +63,7 @@ var (
 			Limit:     100,
 			Version:   1,
 			Headers: []definitions.PrometheusResponseHeader{
-				{"Header", []string{"value"}},
+				{Name: "Header", Values: []string{"value"}},
 			},
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
@@ -172,7 +172,7 @@ func Test_astMapper(t *testing.T) {
 	require.Nil(t, err)
 
 	require.Equal(t, []*definitions.PrometheusResponseHeader{
-		{"Header", []string{"value"}},
+		{Name: "Header", Values: []string{"value"}},
 	}, resp.GetHeaders())
 
 	expected, err := LokiCodec.MergeResponse(lokiResps...)
