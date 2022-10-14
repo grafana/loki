@@ -155,6 +155,7 @@ cmd/loki-canary/loki-canary:
 .PHONY: production/helm/loki/src/helm-test/helm-test
 helm-test: production/helm/loki/src/helm-test/helm-test
 
+# Package Helm tests but do not run them.
 production/helm/loki/src/helm-test/helm-test:
 	CGO_ENABLED=0 go test $(GO_FLAGS) -c -o $@ ./$(@D)
 
