@@ -835,7 +835,7 @@
             "height": "250px",
             "panels": [
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "id": 11,
                   "span": 6,
                   "targets": [
@@ -848,7 +848,7 @@
                   "type": "logs"
                },
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "id": 12,
                   "span": 6,
                   "targets": [
