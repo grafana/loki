@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
@@ -54,6 +55,125 @@ func newfakePeekingSampleIterator() iter.PeekingSampleIterator {
 
 func newPoint(t time.Time, v float64) promql.Point {
 	return promql.Point{T: t.UnixNano() / 1e+6, V: v}
+}
+
+func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
+
+	buildStreamingIt := func() (RangeVectorIterator, error) {
+		tt := struct {
+			selRange   int64
+			step       int64
+			offset     int64
+			start, end time.Time
+		}{
+			(5 * time.Second).Nanoseconds(), // no overlap
+			(30 * time.Second).Nanoseconds(),
+			0,
+			time.Unix(10, 0),
+			time.Unix(100, 0),
+		}
+
+		iter := newfakePeekingSampleIterator()
+		expr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+		selRange := tt.selRange
+		step := tt.step
+		start := tt.start.UnixNano()
+		end := tt.end.UnixNano()
+		offset := tt.offset
+		if step == 0 {
+			step = 1
+		}
+		if offset != 0 {
+			start = start - offset
+			end = end - offset
+		}
+
+		it := &streamRangeVectorIterator{
+			iter:     iter,
+			step:     step,
+			end:      end,
+			selRange: selRange,
+			metrics:  map[string]labels.Labels{},
+			r:        expr,
+			current:  start - step, // first loop iteration will set it to start
+			offset:   offset,
+		}
+		return it, nil
+	}
+
+	buildBatchIt := func() (RangeVectorIterator, error) {
+		tt := struct {
+			selRange   int64
+			step       int64
+			offset     int64
+			start, end time.Time
+		}{
+			(5 * time.Second).Nanoseconds(), // no overlap
+			(30 * time.Second).Nanoseconds(),
+			0,
+			time.Unix(10, 0),
+			time.Unix(100, 0),
+		}
+
+		iter := newfakePeekingSampleIterator()
+		expr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+		selRange := tt.selRange
+		step := tt.step
+		start := tt.start.UnixNano()
+		end := tt.end.UnixNano()
+		offset := tt.offset
+		if step == 0 {
+			step = 1
+		}
+		if offset != 0 {
+			start = start - offset
+			end = end - offset
+		}
+
+		vectorAggregator, err := aggregator(expr)
+		if err != nil {
+			return nil, err
+		}
+
+		return &batchRangeVectorIterator{
+			iter:     iter,
+			step:     step,
+			end:      end,
+			selRange: selRange,
+			metrics:  map[string]labels.Labels{},
+			window:   map[string]*promql.Series{},
+			agg:      vectorAggregator,
+			current:  start - step, // first loop iteration will set it to start
+			offset:   offset,
+		}, nil
+	}
+
+	b.Run("streaming agg", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			it, err := buildStreamingIt()
+			if err != nil {
+				b.Fatal(err)
+			}
+			for it.Next() {
+				_, _ = it.At()
+			}
+		}
+	})
+
+	b.Run("batch agg", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			it, err := buildBatchIt()
+			if err != nil {
+				b.Fatal(err)
+			}
+			for it.Next() {
+				_, _ = it.At()
+			}
+		}
+	})
+
 }
 
 func Benchmark_RangeVectorIterator(b *testing.B) {
