@@ -73,7 +73,7 @@ Promtail exposes these metrics:
 | `promtail_encoded_bytes_total`            | Counter     | Number of bytes encoded and ready to send.                                                 |
 | `promtail_file_bytes_total`               | Gauge       | Number of bytes read from files.                                                           |
 | `promtail_files_active_total`             | Gauge       | Number of active files.                                                                    |
-| `promtail_request_duration_seconds_count` | Histogram   | Number of send requests.                                                                   |
+| `promtail_request_duration_seconds` | Histogram   | Number of send requests.                                                                   |
 | `promtail_sent_bytes_total`               | Counter     | Number of bytes sent.                                                                      |
 | `promtail_sent_entries_total`             | Counter     | Number of log entries sent to the ingester.                                                |
 | `promtail_targets_active_total`           | Gauge       | Number of total active targets.                                                            |
