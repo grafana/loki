@@ -19,13 +19,12 @@ spec:
   containers:
     - name: loki-helm-test
       image: {{ include "loki.helm-test-image" $ }}
-      environment:
-        CANARY_PROMETHEUS_ADDRESS: '{{ .prometheusAddress }}'
-        {{- with .retryDelay }}
-        CANARY_RETRY_DELAY: {{ . }}
-        {{- end }}
-        {{- with .retries }}
-        CANARY_RETRIES: {{ . }}
+      env:
+        - name: CANARY_PROMETHEUS_ADDRESS
+          value: "{{ .prometheusAddress }}"
+        {{- with .timeout }}
+        - name: CANARY_TEST_TIMEOUT
+          value: "{{ . }}"
         {{- end }}
   restartPolicy: Never
 {{- end }}
