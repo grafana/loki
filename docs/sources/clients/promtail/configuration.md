@@ -964,6 +964,11 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
+# than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
+# and respond with a 503 HTTP status code.
+[push_timeout: <duration>|  default = 0 (no timeout)]
+
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
