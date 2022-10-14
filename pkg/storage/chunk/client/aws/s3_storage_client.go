@@ -88,7 +88,7 @@ type S3Config struct {
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
-	UseIrsa			 bool				 `yaml:"use_irsa"`
+	UseIRSA			 bool				 `yaml:"use_irsa"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -257,7 +257,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
 		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 		s3Config = s3Config.WithCredentials(creds)
-	} else if cfg.UseIrsa {
+	} else if cfg.UseIRSA {
 
 		// If static credentials are not used, fall back to use IRSA (IAM Roles for Service Accounts)
 		// https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
