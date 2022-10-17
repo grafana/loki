@@ -278,6 +278,7 @@ module Fluent
           case @line_format
           when :json
             line = Yajl.dump(record)
+            line = line.gsub("\\n", "\n").gsub("\\r", "\r").gsub("\\s", "\s").gsub("\\t", "\t")
           when :key_value
             formatted_labels = []
             record.each do |k, v|
