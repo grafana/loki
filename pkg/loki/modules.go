@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -388,7 +390,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.supportIndexDeleteRequest() {
 		toMerge = append(
 			toMerge,
-			serverutil.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 		)
 	}
 	httpMiddleware := middleware.Merge(toMerge...)
