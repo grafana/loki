@@ -133,3 +133,5 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 	return changes, nil
 }
+
+func (fw *InotifyFileWatcher) SetFile(_ *os.File) {}

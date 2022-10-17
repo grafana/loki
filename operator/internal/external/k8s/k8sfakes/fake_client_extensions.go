@@ -11,10 +11,10 @@ import (
 //
 // Examples:
 //
-//  k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object) error {
-//  	k.SetClientObject(object, &stack)
-//  	return nil
-//  }
+//	k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object) error {
+//		k.SetClientObject(object, &stack)
+//		return nil
+//	}
 func (fake *FakeClient) SetClientObject(out, v client.Object) {
 	reflect.Indirect(reflect.ValueOf(out)).Set(reflect.ValueOf(v).Elem())
 }
@@ -24,10 +24,10 @@ func (fake *FakeClient) SetClientObject(out, v client.Object) {
 //
 // Examples:
 //
-//  k.GetStub = func(_ context.Context, _ types.NamespacedName, list client.ObjectList) error {
-//  	k.SetClientObjectList(list, &podList)
-//  	return nil
-//  }
+//	k.GetStub = func(_ context.Context, _ types.NamespacedName, list client.ObjectList) error {
+//		k.SetClientObjectList(list, &podList)
+//		return nil
+//	}
 func (fake *FakeClient) SetClientObjectList(out, v client.ObjectList) {
 	reflect.Indirect(reflect.ValueOf(out)).Set(reflect.ValueOf(v).Elem())
 }

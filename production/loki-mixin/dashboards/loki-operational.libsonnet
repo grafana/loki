@@ -142,7 +142,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
                                  else if ds == '$datasource' then '$datasource'
-                                 else '$loki_datasources',
+                                 else '$loki_datasource',
 
                                local isRowHidden(row) =
                                  std.member(dashboards['loki-operational.json'].hiddenRows, row),

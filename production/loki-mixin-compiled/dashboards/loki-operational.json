@@ -2039,7 +2039,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -2127,7 +2127,7 @@
                   }
                },
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "gridPos": {
                      "h": 18,
                      "w": 12,
@@ -2712,7 +2712,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -2800,7 +2800,7 @@
                   }
                },
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "gridPos": {
                      "h": 18,
                      "w": 18,
@@ -3652,7 +3652,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -3740,7 +3740,7 @@
                   }
                },
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "gridPos": {
                      "h": 18,
                      "w": 18,
