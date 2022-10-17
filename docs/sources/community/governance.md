@@ -58,6 +58,7 @@ The current team members are:
 - Joe Elliott - [joe-elliott](https://github.com/joe-elliott) ([Grafana Labs](https://grafana.com/))
 - Karsten Jeschkies - [jeschkies](https://github.com/jeschkies) ([Grafana Labs](https://grafana.com/))
 - Kaviraj Kanagaraj - [kavirajk](https://github.com/kavirajk) ([Grafana Labs](https://grafana.com/))
+- Li Guozhong - [liguozhong](https://github.com/liguozhong) ([Alibaba Cloud](https://alibabacloud.com/))
 - Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
 - Periklis Tsirakidis - [periklis](https://github.com/periklis) ([Red Hat](https://www.redhat.com/))
 - Sandeep Sukhani - [sandeepsukhani](https://github.com/sandeepsukhani) ([Grafana Labs](https://grafana.com/))
