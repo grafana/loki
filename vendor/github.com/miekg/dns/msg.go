@@ -265,6 +265,11 @@ loop:
 
 			wasDot = false
 		case '.':
+			if i == 0 && len(s) > 1 {
+				// leading dots are not legal except for the root zone
+				return len(msg), ErrRdata
+			}
+
 			if wasDot {
 				// two dots back to back is not legal
 				return len(msg), ErrRdata

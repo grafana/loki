@@ -25,7 +25,7 @@ import (
 //go:generate stringer -type=Type
 
 // Type describes the type of the data Value holds.
-type Type int
+type Type int // nolint: revive  // redefines builtin Type.
 
 // Value represents the value part in key-value pairs.
 type Value struct {
