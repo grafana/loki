@@ -151,14 +151,16 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 		tlsSecurityProfile = profile
 	}
 
-	profileSpec, ok := openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
-
-	if !ok {
-		return kverrors.New("unable to determine tls profile settings")
-	}
-
+	var profileSpec *openshiftconfigv1.TLSProfileSpec
 	if tlsSecurityProfile.Type == openshiftconfigv1.TLSProfileCustomType && tlsSecurityProfile.Custom != nil {
 		profileSpec = &tlsSecurityProfile.Custom.TLSProfileSpec
+	} else {
+		var ok bool
+		profileSpec, ok = openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
+
+		if !ok {
+			return kverrors.New("unable to determine tls profile settings")
+		}
 	}
 
 	// need to remap all ciphers to their respective IANA names used by Go
