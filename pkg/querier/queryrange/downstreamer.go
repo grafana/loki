@@ -221,6 +221,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       streams,
+			Headers:    resp.GetHeaders(),
 		}, nil
 
 	case *LokiPromResponse:
@@ -231,11 +232,13 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			return logqlmodel.Result{
 				Statistics: r.Statistics,
 				Data:       sampleStreamToVector(r.Response.Data.Result),
+				Headers:    resp.GetHeaders(),
 			}, nil
 		}
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
+			Headers:    resp.GetHeaders(),
 		}, nil
 
 	default:
