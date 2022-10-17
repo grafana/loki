@@ -160,7 +160,7 @@ func (tf TraceFlags) IsSampled() bool {
 }
 
 // WithSampled sets the sampling bit in a new copy of the TraceFlags.
-func (tf TraceFlags) WithSampled(sampled bool) TraceFlags {
+func (tf TraceFlags) WithSampled(sampled bool) TraceFlags { // nolint:revive  // sampled is not a control flag.
 	if sampled {
 		return tf | FlagsSampled
 	}

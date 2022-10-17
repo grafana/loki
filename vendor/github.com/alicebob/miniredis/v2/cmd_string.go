@@ -21,8 +21,10 @@ func commandsString(m *Miniredis) {
 	m.srv.Register("DECR", m.cmdDecr)
 	m.srv.Register("GETBIT", m.cmdGetbit)
 	m.srv.Register("GET", m.cmdGet)
+	m.srv.Register("GETEX", m.cmdGetex)
 	m.srv.Register("GETRANGE", m.cmdGetrange)
 	m.srv.Register("GETSET", m.cmdGetset)
+	m.srv.Register("GETDEL", m.cmdGetdel)
 	m.srv.Register("INCRBYFLOAT", m.cmdIncrbyfloat)
 	m.srv.Register("INCRBY", m.cmdIncrby)
 	m.srv.Register("INCR", m.cmdIncr)
@@ -52,36 +54,46 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	var (
-		nx  = false // set iff not exists
-		xx  = false // set iff exists
-		keepttl = false // set keepttl
-		ttl time.Duration
-	)
+	var opts struct {
+		key     string
+		value   string
+		nx      bool // set iff not exists
+		xx      bool // set iff exists
+		keepttl bool // set keepttl
+		ttlSet  bool
+		ttl     time.Duration
+		get     bool
+	}
 
-	key, value, args := args[0], args[1], args[2:]
+	opts.key, opts.value, args = args[0], args[1], args[2:]
 	for len(args) > 0 {
 		timeUnit := time.Second
-		switch strings.ToUpper(args[0]) {
+		switch arg := strings.ToUpper(args[0]); arg {
 		case "NX":
-			nx = true
+			opts.nx = true
 			args = args[1:]
 			continue
 		case "XX":
-			xx = true
+			opts.xx = true
 			args = args[1:]
 			continue
 		case "KEEPTTL":
-			keepttl = true
+			opts.keepttl = true
 			args = args[1:]
 			continue
-		case "PX":
+		case "PX", "PXAT":
 			timeUnit = time.Millisecond
 			fallthrough
-		case "EX":
+		case "EX", "EXAT":
 			if len(args) < 2 {
 				setDirty(c)
 				c.WriteError(msgInvalidInt)
+				return
+			}
+			if opts.ttlSet {
+				// multiple ex/exat/px/pxat options set
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
 				return
 			}
 			expire, err := strconv.Atoi(args[1])
@@ -90,14 +102,24 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgInvalidInt)
 				return
 			}
-			ttl = time.Duration(expire) * timeUnit
-			if ttl <= 0 {
+			if expire <= 0 {
 				setDirty(c)
 				c.WriteError(msgInvalidSETime)
 				return
 			}
 
+			if arg == "PXAT" || arg == "EXAT" {
+				opts.ttl = m.at(expire, timeUnit)
+			} else {
+				opts.ttl = time.Duration(expire) * timeUnit
+			}
+			opts.ttlSet = true
+
 			args = args[2:]
+			continue
+		case "GET":
+			opts.get = true
+			args = args[1:]
 			continue
 		default:
 			setDirty(c)
@@ -109,29 +131,45 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if nx {
-			if db.exists(key) {
+		if opts.nx {
+			if db.exists(opts.key) {
 				c.WriteNull()
 				return
 			}
 		}
-		if xx {
-			if !db.exists(key) {
+		if opts.xx {
+			if !db.exists(opts.key) {
 				c.WriteNull()
 				return
 			}
 		}
-		if keepttl {
-			if val, ok := db.ttl[key]; ok {
-				ttl = val
+		if opts.keepttl {
+			if val, ok := db.ttl[opts.key]; ok {
+				opts.ttl = val
 			}
 		}
-
-		db.del(key, true) // be sure to remove existing values of other type keys.
+		if opts.get {
+			if t, ok := db.keys[opts.key]; ok && t != "string" {
+				c.WriteError(msgWrongType)
+				return
+			}
+		}
+		old, existed := db.stringKeys[opts.key]
+		db.del(opts.key, true) // be sure to remove existing values of other type keys.
 		// a vanilla SET clears the expire
-		db.stringSet(key, value)
-		if ttl != 0 {
-			db.ttl[key] = ttl
+		if opts.ttl >= 0 { // EXAT/PXAT can expire right away
+			db.stringSet(opts.key, opts.value)
+		}
+		if opts.ttl != 0 {
+			db.ttl[opts.key] = opts.ttl
+		}
+		if opts.get {
+			if !existed {
+				c.WriteNull()
+			} else {
+				c.WriteBulk(old)
+			}
+			return
 		}
 		c.WriteOK()
 	})
@@ -357,6 +395,93 @@ func (m *Miniredis) cmdGet(c *server.Peer, cmd string, args []string) {
 	})
 }
 
+// GETEX
+func (m *Miniredis) cmdGetex(c *server.Peer, cmd string, args []string) {
+	if len(args) < 1 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	var opts struct {
+		key     string
+		ttl     time.Duration
+		persist bool // remove existing TTL on the key.
+	}
+
+	opts.key, args = args[0], args[1:]
+	if len(args) > 0 {
+		timeUnit := time.Second
+		switch arg := strings.ToUpper(args[0]); arg {
+		case "PERSIST":
+			if len(args) > 1 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			opts.persist = true
+		case "PX", "PXAT":
+			timeUnit = time.Millisecond
+			fallthrough
+		case "EX", "EXAT":
+			if len(args) != 2 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			expire, err := strconv.Atoi(args[1])
+			if err != nil {
+				setDirty(c)
+				c.WriteError(msgInvalidInt)
+				return
+			}
+			if expire <= 0 {
+				setDirty(c)
+				c.WriteError(msgInvalidSETime)
+				return
+			}
+
+			if arg == "PXAT" || arg == "EXAT" {
+				opts.ttl = m.at(expire, timeUnit)
+			} else {
+				opts.ttl = time.Duration(expire) * timeUnit
+			}
+		default:
+			setDirty(c)
+			c.WriteError(msgSyntaxError)
+			return
+		}
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if !db.exists(opts.key) {
+			c.WriteNull()
+			return
+		}
+		switch {
+		case opts.persist:
+			delete(db.ttl, opts.key)
+		case opts.ttl != 0:
+			db.ttl[opts.key] = opts.ttl
+		}
+
+		if db.t(opts.key) != "string" {
+			c.WriteError(msgWrongType)
+			return
+		}
+
+		c.WriteBulk(db.stringGet(opts.key))
+	})
+}
+
 // GETSET
 func (m *Miniredis) cmdGetset(c *server.Peer, cmd string, args []string) {
 	if len(args) != 2 {
@@ -391,6 +516,41 @@ func (m *Miniredis) cmdGetset(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		c.WriteBulk(old)
+	})
+}
+
+// GETDEL
+func (m *Miniredis) cmdGetdel(c *server.Peer, cmd string, args []string) {
+	if len(args) != 1 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		key := args[0]
+
+		if !db.exists(key) {
+			c.WriteNull()
+			return
+		}
+
+		if db.t(key) != "string" {
+			c.WriteError(msgWrongType)
+			return
+		}
+
+		v := db.stringGet(key)
+		db.del(key, true)
+		c.WriteBulk(v)
 	})
 }
 
@@ -774,38 +934,40 @@ func (m *Miniredis) cmdBitcount(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	var (
-		useRange   = false
-		start, end = 0, 0
-		key        = args[0]
-	)
-	args = args[1:]
+	var opts struct {
+		useRange   bool
+		start, end int
+		key        string
+	}
+	opts.key, args = args[0], args[1:]
 	if len(args) >= 2 {
-		useRange = true
+		opts.useRange = true
 		var err error
-		start, err = strconv.Atoi(args[0])
+		n, err := strconv.Atoi(args[0])
 		if err != nil {
 			setDirty(c)
 			c.WriteError(msgInvalidInt)
 			return
 		}
-		end, err = strconv.Atoi(args[1])
+		opts.start = n
+		n, err = strconv.Atoi(args[1])
 		if err != nil {
 			setDirty(c)
 			c.WriteError(msgInvalidInt)
 			return
 		}
+		opts.end = n
 		args = args[2:]
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(key) {
+		if !db.exists(opts.key) {
 			c.WriteInt(0)
 			return
 		}
-		if db.t(key) != "string" {
+		if db.t(opts.key) != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -816,9 +978,9 @@ func (m *Miniredis) cmdBitcount(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		v := db.stringKeys[key]
-		if useRange {
-			v = withRange(v, start, end)
+		v := db.stringKeys[opts.key]
+		if opts.useRange {
+			v = withRange(v, opts.start, opts.end)
 		}
 
 		c.WriteInt(countBits([]byte(v)))
@@ -919,71 +1081,87 @@ func (m *Miniredis) cmdBitpos(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	bit, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		Key     string
+		Bit     int
+		Start   int
+		End     int
+		WithEnd bool
+	}
+
+	opts.Key = args[0]
+	if ok := optInt(c, args[1], &opts.Bit); !ok {
 		return
 	}
-	var start, end int
-	withEnd := false
 	if len(args) > 2 {
-		start, err = strconv.Atoi(args[2])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
+		if ok := optInt(c, args[2], &opts.Start); !ok {
 			return
 		}
 	}
 	if len(args) > 3 {
-		end, err = strconv.Atoi(args[3])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
+		if ok := optInt(c, args[3], &opts.End); !ok {
 			return
 		}
-		withEnd = true
+		opts.WithEnd = true
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.Key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
+		} else if !ok {
+			// non-existing key behaves differently
+			if opts.Bit == 0 {
+				c.WriteInt(0)
+			} else {
+				c.WriteInt(-1)
+			}
+			return
 		}
-		value := db.stringKeys[key]
-		if start != 0 {
-			if start > len(value) {
-				start = len(value)
+		value := db.stringKeys[opts.Key]
+		start := opts.Start
+		end := opts.End
+		if start < 0 {
+			start += len(value)
+			if start < 0 {
+				start = 0
 			}
 		}
-		if withEnd {
-			end++ // redis end semantics.
+		if start > len(value) {
+			start = len(value)
+		}
+
+		if opts.WithEnd {
 			if end < 0 {
-				end = len(value) + end
+				end += len(value)
 			}
+			if end < 0 {
+				end = 0
+			}
+			end++ // +1 for redis end semantics
 			if end > len(value) {
 				end = len(value)
 			}
 		} else {
 			end = len(value)
 		}
-		if start != 0 || withEnd {
+
+		if start != 0 || opts.WithEnd {
 			if end < start {
 				value = ""
 			} else {
 				value = value[start:end]
 			}
 		}
-		pos := bitPos([]byte(value), bit == 1)
+		pos := bitPos([]byte(value), opts.Bit == 1)
 		if pos >= 0 {
 			pos += start * 8
 		}
 		// Special case when looking for 0, but not when start and end are
 		// given.
-		if bit == 0 && pos == -1 && !withEnd {
+		if opts.Bit == 0 && pos == -1 && !opts.WithEnd && len(value) > 0 {
 			pos = start*8 + len(value)*8
 		}
 		c.WriteInt(pos)
