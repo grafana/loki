@@ -151,22 +151,30 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 		tlsSecurityProfile = profile
 	}
 
-	var profileSpec *openshiftconfigv1.TLSProfileSpec
-	if tlsSecurityProfile.Type == openshiftconfigv1.TLSProfileCustomType && tlsSecurityProfile.Custom != nil {
-		profileSpec = &tlsSecurityProfile.Custom.TLSProfileSpec
-	} else {
-		var ok bool
-		profileSpec, ok = openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
+	var (
+		minTLSVersion openshiftconfigv1.TLSProtocolVersion
+		ciphers       []string
+	)
 
-		if !ok {
-			return kverrors.New("unable to determine tls profile settings")
+	switch tlsSecurityProfile.Type {
+	case openshiftconfigv1.TLSProfileCustomType:
+		if tlsSecurityProfile.Custom == nil {
+			return kverrors.New("missing TLS custom profile spec")
 		}
+		minTLSVersion = tlsSecurityProfile.Custom.MinTLSVersion
+		ciphers = tlsSecurityProfile.Custom.Ciphers
+	case openshiftconfigv1.TLSProfileOldType, openshiftconfigv1.TLSProfileIntermediateType, openshiftconfigv1.TLSProfileModernType:
+		spec := openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
+		minTLSVersion = spec.MinTLSVersion
+		ciphers = spec.Ciphers
+	default:
+		return kverrors.New("unable to determine tls profile settings %s", tlsSecurityProfile.Type)
 	}
 
 	// need to remap all ciphers to their respective IANA names used by Go
 	opts.TLSProfile = TLSProfileSpec{
-		MinTLSVersion: string(profileSpec.MinTLSVersion),
-		Ciphers:       crypto.OpenSSLToIANACipherSuites(profileSpec.Ciphers),
+		MinTLSVersion: string(minTLSVersion),
+		Ciphers:       crypto.OpenSSLToIANACipherSuites(ciphers),
 	}
 
 	return nil

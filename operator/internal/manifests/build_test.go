@@ -185,7 +185,7 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			profile: openshiftconfigv1.TLSSecurityProfile{
 				Type: openshiftconfigv1.TLSProfileCustomType,
 			},
-			err: kverrors.New("unable to determine tls profile settings"),
+			err: kverrors.New("missing TLS custom profile spec"),
 		},
 	}
 
