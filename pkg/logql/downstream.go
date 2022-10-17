@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
@@ -216,6 +218,10 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 	for _, res := range results {
 		stats.JoinResults(ctx, res.Statistics)
+	}
+
+	for _, res := range results {
+		metadata.JoinHeaders(ctx, res.Headers)
 	}
 
 	return results, nil
