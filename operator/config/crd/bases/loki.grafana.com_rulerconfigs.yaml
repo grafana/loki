@@ -115,8 +115,8 @@ spec:
                     items:
                       description: 'RelabelConfig allows dynamic rewriting of the
                         label set, being applied to samples before ingestion. It defines
-                        `<alert_relabel_configs>`-section of Prometheus configuration.
-                        More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#alert_relabel_configs'
+                        `<metric_relabel_configs>` and `<alert_relabel_configs>` sections
+                        of Prometheus configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
                       properties:
                         action:
                           default: replace
@@ -223,8 +223,8 @@ spec:
                         items:
                           description: 'RelabelConfig allows dynamic rewriting of
                             the label set, being applied to samples before ingestion.
-                            It defines `<metric_relabel_configs>`-section of Prometheus
-                            configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                            It defines `<metric_relabel_configs>` and `<alert_relabel_configs>`
+                            sections of Prometheus configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
                           properties:
                             action:
                               default: replace
