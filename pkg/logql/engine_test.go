@@ -2199,7 +2199,7 @@ func TestEngine_Stats(t *testing.T) {
 type metaQuerier struct{}
 
 func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{
 			Name:   "Header",
 			Values: []string{"value"},
@@ -2209,7 +2209,7 @@ func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.Entr
 }
 
 func (metaQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
-	metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{Name: "Header", Values: []string{"value"}},
 	})
 	return iter.NoopIterator, nil

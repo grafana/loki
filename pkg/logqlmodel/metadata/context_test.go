@@ -53,5 +53,5 @@ func TestHeadersNoKey(t *testing.T) {
 		},
 	})
 
-	require.True(t, errors.Is(err, NoCtxDataErr))
+	require.True(t, errors.Is(err, ErrNoCtxData))
 }

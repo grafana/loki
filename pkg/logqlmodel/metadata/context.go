@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	NoCtxDataErr = errors.New("unable to add headers to context: no existing context data")
+	ErrNoCtxData = errors.New("unable to add headers to context: no existing context data")
 )
 
 // Context is the metadata context. It is passed through the query path and accumulates metadata.
@@ -78,7 +78,7 @@ func (c *Context) Headers() []*definitions.PrometheusResponseHeader {
 func JoinHeaders(ctx context.Context, headers []*definitions.PrometheusResponseHeader) error {
 	context, ok := ctx.Value(metadataKey).(*Context)
 	if !ok {
-		return NoCtxDataErr
+		return ErrNoCtxData
 	}
 
 	context.mtx.Lock()
