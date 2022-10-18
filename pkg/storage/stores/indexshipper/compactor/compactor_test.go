@@ -137,6 +137,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		err           error
 	)
 	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+	require.NoError(t, err)
 
 	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
 	err = compactor.RunCompaction(context.Background(), false)
@@ -150,7 +151,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		require.Len(t, files, 1)
 		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 
-		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)))
+		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(tablesPath, name))
 	}
 }
 
@@ -204,9 +205,12 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 		err           error
 	)
 	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodOnePath})
-	objectClients["fs_02"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
-	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+	require.NoError(t, err)
 
+	objectClients["fs_02"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
+	require.NoError(t, err)
+
+	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
 	err = compactor.RunCompaction(context.Background(), false)
 	require.NoError(t, err)
 
