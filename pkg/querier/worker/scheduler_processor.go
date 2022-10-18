@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -52,7 +51,7 @@ func newSchedulerProcessor(cfg Config, handler http.Handler, log log.Logger, met
 // Handles incoming queries from query-scheduler.
 type schedulerProcessor struct {
 	log            log.Logger
-	handler        http.Handler 
+	handler        http.Handler
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
@@ -141,129 +140,6 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-type nopCloser struct {
-	*bytes.Buffer
-}
-
-func (nopCloser) Close() error { return nil }
-
-// BytesBuffer returns the underlaying `bytes.buffer` used to build this io.ReadCloser.
-func (n nopCloser) BytesBuffer() *bytes.Buffer { return n.Buffer }
-
-func toHeader(hs []*httpgrpc.Header, header http.Header) {
-	for _, h := range hs {
-		header[h.Key] = h.Values
-	}
-}
-
-func fromHeader(hs http.Header) []*httpgrpc.Header {
-	result := make([]*httpgrpc.Header, 0, len(hs))
-	for k, vs := range hs {
-		result = append(result, &httpgrpc.Header{
-			Key:    k,
-			Values: vs,
-		})
-	}
-	return result
-}
-
-type responseWriter struct {
-	stats     *querier_stats.Stats
-	queryID   uint64
-	stream    frontendv2pb.FrontendForQuerier_QueryResultChunkedClient
-	recorder  *httptest.ResponseRecorder
-	body      *bytes.Buffer // TODO: should use buffered writer instead.
-	sentFirst bool
-
-	logger log.Logger
-}
-
-func newReponseWriter(stream frontendv2pb.FrontendForQuerier_QueryResultChunkedClient, stats *querier_stats.Stats, queryID uint64, logger log.Logger) *responseWriter {
-	return &responseWriter{
-		stats: stats,
-		queryID: queryID,
-		stream: stream,
-		recorder: httptest.NewRecorder(),
-		body: new(bytes.Buffer),
-		sentFirst: false,
-		logger: logger,
-	}
-}
-
-func(r *responseWriter) Header() http.Header {
-	return r.recorder.Header()
-}
-
-func(r *responseWriter) Write(buf []byte) (int, error) {
-	level.Debug(r.logger).Log("msg", "writing chunk", "size", len(buf))
-
-	// Split so we use continuation.
-	for {
-		if len(buf) < 512 {
-			break
-		}
-
-		one := buf[0:512]
-		buf = buf[512:]
-
-		if !r.sentFirst {
-			r.recorder.Write(one)
-		} else {
-			r.body.Write(one)
-		}
-		r.Flush()
-	}
-
-	if !r.sentFirst {
-		return r.recorder.Write(buf)
-	}
-
-	n, err := r.body.Write(buf)
-
-	if r.body.Len() > 512 || r.recorder.Body.Len() > 512 {
-		r.Flush()
-	}
-
-	return n, err
-}
-
-func(r *responseWriter) WriteHeader(statusCode int) {
-	if !r.sentFirst {
-		r.recorder.WriteHeader(statusCode)
-	}
-}
-
-func(r *responseWriter) Flush() {
-	if !r.sentFirst {
-		level.Debug(r.logger).Log("msg", "flushing first chunk", "size", r.recorder.Body.Len())
-		resp := &httpgrpc.HTTPResponse{
-			Code:    int32(r.recorder.Code),
-			Headers: fromHeader(r.recorder.Header()),
-			Body:    r.recorder.Body.Bytes(),
-		}
-		msg := &frontendv2pb.QueryResultRequestChunked{
-			Type: &frontendv2pb.QueryResultRequestChunked_First{
-				First: &frontendv2pb.QueryResultRequest{
-					QueryID:      r.queryID,
-					HttpResponse: resp,
-					Stats:        r.stats,
-				},
-			},
-		}
-		r.stream.Send(msg)
-		r.sentFirst = true
-	} else {
-		level.Debug(r.logger).Log("msg", "flushing continuation chunk", "size", r.recorder.Body.Len())
-		msg := &frontendv2pb.QueryResultRequestChunked{
-			Type: &frontendv2pb.QueryResultRequestChunked_Continuation{
-				Continuation: r.body.Bytes(),	
-			},
-		}
-		r.stream.Send(msg)
-		r.body.Reset() // TODO: not sure this is save here.
-	}
-}
-
 func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, r *httpgrpc.HTTPRequest) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
@@ -281,23 +157,26 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		return
 	}
 
-	req, err := http.NewRequest(r.Method, r.Url, nopCloser{Buffer: bytes.NewBuffer(r.Body)})
+	// Convert httpgrpc request to http.Request
+	req, err := http.NewRequest(r.Method, r.Url, noopCloser{Buffer: bytes.NewBuffer(r.Body)})
 	if err != nil {
 		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
-		return 
+		return
 	}
-
 	toHeader(r.Headers, req.Header)
 	req = req.WithContext(ctx)
 	req.RequestURI = r.Url
 	req.ContentLength = int64(len(r.Body))
 
+	// Write chunked response
 	writer := newReponseWriter(stream, stats, queryID, logger)
-
-	sp.handler.ServeHTTP(writer, req)
+	sp.handler.ServeHTTP(&writer, req)
 	writer.Flush()
 
 	_, err = stream.CloseAndRecv()
+	if err != nil {
+		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+	}
 	//httpgrpc_server.NewServer(externalHandler)
 	/*response, err := sp.handler.Handle(ctx, request)
 	if err != nil {
@@ -313,31 +192,31 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	*/
 
 	/*
-	c, err := sp.frontendPool.GetClientFor(frontendAddress)
-	if err == nil {
-		stream, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResultChunked(ctx)
-		if err != nil {
-			level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
-		} else {
-			msg := &frontendv2pb.QueryResultRequestChunked{
-				Type: &frontendv2pb.QueryResultRequestChunked_First{
-					First: &frontendv2pb.QueryResultRequest{
-						QueryID:      queryID,
-						HttpResponse: response,
-						Stats:        stats,
-					},
-				},
-			}
-			err = stream.Send(msg)
+		c, err := sp.frontendPool.GetClientFor(frontendAddress)
+		if err == nil {
+			stream, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResultChunked(ctx)
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+			} else {
+				msg := &frontendv2pb.QueryResultRequestChunked{
+					Type: &frontendv2pb.QueryResultRequestChunked_First{
+						First: &frontendv2pb.QueryResultRequest{
+							QueryID:      queryID,
+							HttpResponse: response,
+							Stats:        stats,
+						},
+					},
+				}
+				err = stream.Send(msg)
+				if err != nil {
+					level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+				}
+				_, err = stream.CloseAndRecv()
 			}
-			_, err = stream.CloseAndRecv()
 		}
-	}
-	if err != nil {
-		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
-	}
+		if err != nil {
+			level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+		}
 	*/
 }
 
