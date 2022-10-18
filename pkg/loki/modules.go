@@ -202,6 +202,10 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		return
 	}
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
+	}
 	return t.ring, nil
 }
 
@@ -343,6 +347,10 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+	}
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
@@ -930,8 +938,12 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
-
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
+
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET").Handler(t.ruler)
+		}
+
 		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
@@ -992,6 +1004,10 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/memberlist").Methods("GET").Handler(t.MemberlistKV)
+	}
+
 	return t.MemberlistKV, nil
 }
 
@@ -1022,6 +1038,10 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET").Handler(t.compactor)
+	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler))
@@ -1081,6 +1101,11 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.indexGatewayRingManager = rm
 
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET").Handler(t.indexGatewayRingManager)
+	}
+
 	return t.indexGatewayRingManager, nil
 }
 
@@ -1096,6 +1121,11 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
 	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
 	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(s)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET").Handler(s)
+	}
+
 	t.queryScheduler = s
 	return s, nil
 }
