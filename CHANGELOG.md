@@ -27,6 +27,7 @@
 * [7270](https://github.com/grafana/loki/pull/7270) **wilfriedroset**: Add support for `username` to redis cache configuration.
 
 ##### Fixes
+* [7426](https://github.com/grafana/loki/pull/7426) **periklis**: Add missing compactor delete client tls client config
 * [7238](https://github.com/grafana/loki/pull/7328) **periklis**: Fix internal server bootstrap for query frontend
 * [7288](https://github.com/grafana/loki/pull/7288) **ssncferreira**: Fix query mapping in AST mapper `rangemapper` to support the new `VectorExpr` expression.
 * [7040](https://github.com/grafana/loki/pull/7040) **bakunowski**: Remove duplicated `loki_boltdb_shipper` prefix from `tables_upload_operation_total` metric.
