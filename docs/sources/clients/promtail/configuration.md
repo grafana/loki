@@ -108,6 +108,9 @@ scrape_configs:
 
 # Configures additional promtail configurations.
 [options: <options_config>]
+
+# Configures tracing support
+[tracing: <tracing_config>]
 ```
 
 ## server
@@ -1933,6 +1936,15 @@ sync_period: "10s"
 # on writes to Loki; be mindful about using too many labels,
 # as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
+```
+
+## tracing_config
+
+The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# When true, 
+[enabled: <boolean> | default = false]
 ```
 
 ## Example Docker Config
