@@ -67,7 +67,7 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 		return api.Entry{}, fmt.Errorf("failed to decode data: %w", err)
 	}
 
-	entry, err := parseGCPLogsEntry(decodedData, fixedLabels, lbs.Labels(), useIncomingTimestamp, relabelConfigs)
+	entry, err := parseGCPLogsEntry(decodedData, fixedLabels, lbs.Labels(nil), useIncomingTimestamp, relabelConfigs)
 	if err != nil {
 		return api.Entry{}, fmt.Errorf("failed to parse logs entry: %w", err)
 	}

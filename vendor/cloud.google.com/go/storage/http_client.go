@@ -16,14 +16,21 @@ package storage
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
+	"time"
 
+	"cloud.google.com/go/internal/optional"
+	"cloud.google.com/go/internal/trace"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -378,14 +385,143 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 
 // Object metadata methods.
 
-func (c *httpStorageClient) DeleteObject(ctx context.Context, bucket, object string, conds *Conditions, opts ...storageOption) error {
-	return errMethodNotSupported
+func (c *httpStorageClient) DeleteObject(ctx context.Context, bucket, object string, gen int64, conds *Conditions, opts ...storageOption) error {
+	s := callSettings(c.settings, opts...)
+	req := c.raw.Objects.Delete(bucket, object).Context(ctx)
+	if err := applyConds("Delete", gen, conds, req); err != nil {
+		return err
+	}
+	if s.userProject != "" {
+		req.UserProject(s.userProject)
+	}
+	err := run(ctx, func() error { return req.Context(ctx).Do() }, s.retry, s.idempotent, setRetryHeaderHTTP(req))
+	var e *googleapi.Error
+	if ok := errors.As(err, &e); ok && e.Code == http.StatusNotFound {
+		return ErrObjectNotExist
+	}
+	return err
 }
-func (c *httpStorageClient) GetObject(ctx context.Context, bucket, object string, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error) {
-	return nil, errMethodNotSupported
+
+func (c *httpStorageClient) GetObject(ctx context.Context, bucket, object string, gen int64, encryptionKey []byte, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error) {
+	s := callSettings(c.settings, opts...)
+	req := c.raw.Objects.Get(bucket, object).Projection("full").Context(ctx)
+	if err := applyConds("Attrs", gen, conds, req); err != nil {
+		return nil, err
+	}
+	if s.userProject != "" {
+		req.UserProject(s.userProject)
+	}
+	if err := setEncryptionHeaders(req.Header(), encryptionKey, false); err != nil {
+		return nil, err
+	}
+	var obj *raw.Object
+	var err error
+	err = run(ctx, func() error {
+		obj, err = req.Context(ctx).Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(req))
+	var e *googleapi.Error
+	if ok := errors.As(err, &e); ok && e.Code == http.StatusNotFound {
+		return nil, ErrObjectNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	return newObject(obj), nil
 }
-func (c *httpStorageClient) UpdateObject(ctx context.Context, bucket, object string, uattrs *ObjectAttrsToUpdate, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error) {
-	return nil, errMethodNotSupported
+
+func (c *httpStorageClient) UpdateObject(ctx context.Context, bucket, object string, uattrs *ObjectAttrsToUpdate, gen int64, encryptionKey []byte, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error) {
+	s := callSettings(c.settings, opts...)
+
+	var attrs ObjectAttrs
+	// Lists of fields to send, and set to null, in the JSON.
+	var forceSendFields, nullFields []string
+	if uattrs.ContentType != nil {
+		attrs.ContentType = optional.ToString(uattrs.ContentType)
+		// For ContentType, sending the empty string is a no-op.
+		// Instead we send a null.
+		if attrs.ContentType == "" {
+			nullFields = append(nullFields, "ContentType")
+		} else {
+			forceSendFields = append(forceSendFields, "ContentType")
+		}
+	}
+	if uattrs.ContentLanguage != nil {
+		attrs.ContentLanguage = optional.ToString(uattrs.ContentLanguage)
+		// For ContentLanguage it's an error to send the empty string.
+		// Instead we send a null.
+		if attrs.ContentLanguage == "" {
+			nullFields = append(nullFields, "ContentLanguage")
+		} else {
+			forceSendFields = append(forceSendFields, "ContentLanguage")
+		}
+	}
+	if uattrs.ContentEncoding != nil {
+		attrs.ContentEncoding = optional.ToString(uattrs.ContentEncoding)
+		forceSendFields = append(forceSendFields, "ContentEncoding")
+	}
+	if uattrs.ContentDisposition != nil {
+		attrs.ContentDisposition = optional.ToString(uattrs.ContentDisposition)
+		forceSendFields = append(forceSendFields, "ContentDisposition")
+	}
+	if uattrs.CacheControl != nil {
+		attrs.CacheControl = optional.ToString(uattrs.CacheControl)
+		forceSendFields = append(forceSendFields, "CacheControl")
+	}
+	if uattrs.EventBasedHold != nil {
+		attrs.EventBasedHold = optional.ToBool(uattrs.EventBasedHold)
+		forceSendFields = append(forceSendFields, "EventBasedHold")
+	}
+	if uattrs.TemporaryHold != nil {
+		attrs.TemporaryHold = optional.ToBool(uattrs.TemporaryHold)
+		forceSendFields = append(forceSendFields, "TemporaryHold")
+	}
+	if !uattrs.CustomTime.IsZero() {
+		attrs.CustomTime = uattrs.CustomTime
+		forceSendFields = append(forceSendFields, "CustomTime")
+	}
+	if uattrs.Metadata != nil {
+		attrs.Metadata = uattrs.Metadata
+		if len(attrs.Metadata) == 0 {
+			// Sending the empty map is a no-op. We send null instead.
+			nullFields = append(nullFields, "Metadata")
+		} else {
+			forceSendFields = append(forceSendFields, "Metadata")
+		}
+	}
+	if uattrs.ACL != nil {
+		attrs.ACL = uattrs.ACL
+		// It's an error to attempt to delete the ACL, so
+		// we don't append to nullFields here.
+		forceSendFields = append(forceSendFields, "Acl")
+	}
+	rawObj := attrs.toRawObject(bucket)
+	rawObj.ForceSendFields = forceSendFields
+	rawObj.NullFields = nullFields
+	call := c.raw.Objects.Patch(bucket, object, rawObj).Projection("full").Context(ctx)
+	if err := applyConds("Update", gen, conds, call); err != nil {
+		return nil, err
+	}
+	if s.userProject != "" {
+		call.UserProject(s.userProject)
+	}
+	if uattrs.PredefinedACL != "" {
+		call.PredefinedAcl(uattrs.PredefinedACL)
+	}
+	if err := setEncryptionHeaders(call.Header(), encryptionKey, false); err != nil {
+		return nil, err
+	}
+	var obj *raw.Object
+	var err error
+	err = run(ctx, func() error { obj, err = call.Do(); return err }, s.retry, s.idempotent, setRetryHeaderHTTP(call))
+	var e *googleapi.Error
+	if errors.As(err, &e) && e.Code == http.StatusNotFound {
+		return nil, ErrObjectNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	return newObject(obj), nil
 }
 
 // Default Object ACL methods.
@@ -479,9 +615,25 @@ func configureACLCall(ctx context.Context, userProject string, call interface{ H
 func (c *httpStorageClient) DeleteObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, opts ...storageOption) error {
 	return errMethodNotSupported
 }
+
+// ListObjectACLs retrieves object ACL entries. By default, it operates on the latest generation of this object.
+// Selecting a specific generation of this object is not currently supported by the client.
 func (c *httpStorageClient) ListObjectACLs(ctx context.Context, bucket, object string, opts ...storageOption) ([]ACLRule, error) {
-	return nil, errMethodNotSupported
+	s := callSettings(c.settings, opts...)
+	var acls *raw.ObjectAccessControls
+	var err error
+	req := c.raw.ObjectAccessControls.List(bucket, object)
+	configureACLCall(ctx, s.userProject, req)
+	err = run(ctx, func() error {
+		acls, err = req.Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(req))
+	if err != nil {
+		return nil, err
+	}
+	return toObjectACLRules(acls.Items), nil
 }
+
 func (c *httpStorageClient) UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error) {
 	return nil, errMethodNotSupported
 }
@@ -495,11 +647,305 @@ func (c *httpStorageClient) RewriteObject(ctx context.Context, req *rewriteObjec
 	return nil, errMethodNotSupported
 }
 
-func (c *httpStorageClient) OpenReader(ctx context.Context, r *Reader, opts ...storageOption) error {
-	return errMethodNotSupported
+func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (r *Reader, err error) {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.httpStorageClient.NewRangeReader")
+	defer func() { trace.EndSpan(ctx, err) }()
+
+	s := callSettings(c.settings, opts...)
+
+	if params.offset < 0 && params.length >= 0 {
+		return nil, fmt.Errorf("storage: invalid offset %d < 0 requires negative length", params.offset)
+	}
+	if params.conds != nil {
+		if err := params.conds.validate("NewRangeReader"); err != nil {
+			return nil, err
+		}
+	}
+	u := &url.URL{
+		Scheme: c.scheme,
+		Host:   c.readHost,
+		Path:   fmt.Sprintf("/%s/%s", params.bucket, params.object),
+	}
+	verb := "GET"
+	if params.length == 0 {
+		verb = "HEAD"
+	}
+	req, err := http.NewRequest(verb, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if s.userProject != "" {
+		req.Header.Set("X-Goog-User-Project", s.userProject)
+	}
+	// TODO(noahdietz): add option for readCompressed.
+	// if o.readCompressed {
+	// 	req.Header.Set("Accept-Encoding", "gzip")
+	// }
+	if err := setEncryptionHeaders(req.Header, params.encryptionKey, false); err != nil {
+		return nil, err
+	}
+
+	// Define a function that initiates a Read with offset and length, assuming we
+	// have already read seen bytes.
+	reopen := func(seen int64) (*http.Response, error) {
+		// If the context has already expired, return immediately without making a
+		// call.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		start := params.offset + seen
+		if params.length < 0 && start < 0 {
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d", start))
+		} else if params.length < 0 && start > 0 {
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", start))
+		} else if params.length > 0 {
+			// The end character isn't affected by how many bytes we've seen.
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, params.offset+params.length-1))
+		}
+		// We wait to assign conditions here because the generation number can change in between reopen() runs.
+		if err := setConditionsHeaders(req.Header, params.conds); err != nil {
+			return nil, err
+		}
+		// If an object generation is specified, include generation as query string parameters.
+		if params.gen >= 0 {
+			req.URL.RawQuery = fmt.Sprintf("generation=%d", params.gen)
+		}
+
+		var res *http.Response
+		err = run(ctx, func() error {
+			res, err = c.hc.Do(req)
+			if err != nil {
+				return err
+			}
+			if res.StatusCode == http.StatusNotFound {
+				res.Body.Close()
+				return ErrObjectNotExist
+			}
+			if res.StatusCode < 200 || res.StatusCode > 299 {
+				body, _ := ioutil.ReadAll(res.Body)
+				res.Body.Close()
+				return &googleapi.Error{
+					Code:   res.StatusCode,
+					Header: res.Header,
+					Body:   string(body),
+				}
+			}
+
+			partialContentNotSatisfied :=
+				!decompressiveTranscoding(res) &&
+					start > 0 && params.length != 0 &&
+					res.StatusCode != http.StatusPartialContent
+
+			if partialContentNotSatisfied {
+				res.Body.Close()
+				return errors.New("storage: partial request not satisfied")
+			}
+
+			// With "Content-Encoding": "gzip" aka decompressive transcoding, GCS serves
+			// back the whole file regardless of the range count passed in as per:
+			//      https://cloud.google.com/storage/docs/transcoding#range,
+			// thus we have to manually move the body forward by seen bytes.
+			if decompressiveTranscoding(res) && seen > 0 {
+				_, _ = io.CopyN(ioutil.Discard, res.Body, seen)
+			}
+
+			// If a generation hasn't been specified, and this is the first response we get, let's record the
+			// generation. In future requests we'll use this generation as a precondition to avoid data races.
+			if params.gen < 0 && res.Header.Get("X-Goog-Generation") != "" {
+				gen64, err := strconv.ParseInt(res.Header.Get("X-Goog-Generation"), 10, 64)
+				if err != nil {
+					return err
+				}
+				params.gen = gen64
+			}
+			return nil
+		}, s.retry, s.idempotent, setRetryHeaderHTTP(nil))
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
+
+	res, err := reopen(0)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		size        int64 // total size of object, even if a range was requested.
+		checkCRC    bool
+		crc         uint32
+		startOffset int64 // non-zero if range request.
+	)
+	if res.StatusCode == http.StatusPartialContent {
+		cr := strings.TrimSpace(res.Header.Get("Content-Range"))
+		if !strings.HasPrefix(cr, "bytes ") || !strings.Contains(cr, "/") {
+			return nil, fmt.Errorf("storage: invalid Content-Range %q", cr)
+		}
+		// Content range is formatted <first byte>-<last byte>/<total size>. We take
+		// the total size.
+		size, err = strconv.ParseInt(cr[strings.LastIndex(cr, "/")+1:], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("storage: invalid Content-Range %q", cr)
+		}
+
+		dashIndex := strings.Index(cr, "-")
+		if dashIndex >= 0 {
+			startOffset, err = strconv.ParseInt(cr[len("bytes="):dashIndex], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("storage: invalid Content-Range %q: %v", cr, err)
+			}
+		}
+	} else {
+		size = res.ContentLength
+		// Check the CRC iff all of the following hold:
+		// - We asked for content (length != 0).
+		// - We got all the content (status != PartialContent).
+		// - The server sent a CRC header.
+		// - The Go http stack did not uncompress the file.
+		// - We were not served compressed data that was uncompressed on download.
+		// The problem with the last two cases is that the CRC will not match -- GCS
+		// computes it on the compressed contents, but we compute it on the
+		// uncompressed contents.
+		if params.length != 0 && !res.Uncompressed && !uncompressedByServer(res) {
+			crc, checkCRC = parseCRC32c(res)
+		}
+	}
+
+	remain := res.ContentLength
+	body := res.Body
+	if params.length == 0 {
+		remain = 0
+		body.Close()
+		body = emptyBody
+	}
+	var metaGen int64
+	if res.Header.Get("X-Goog-Metageneration") != "" {
+		metaGen, err = strconv.ParseInt(res.Header.Get("X-Goog-Metageneration"), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var lm time.Time
+	if res.Header.Get("Last-Modified") != "" {
+		lm, err = http.ParseTime(res.Header.Get("Last-Modified"))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	attrs := ReaderObjectAttrs{
+		Size:            size,
+		ContentType:     res.Header.Get("Content-Type"),
+		ContentEncoding: res.Header.Get("Content-Encoding"),
+		CacheControl:    res.Header.Get("Cache-Control"),
+		LastModified:    lm,
+		StartOffset:     startOffset,
+		Generation:      params.gen,
+		Metageneration:  metaGen,
+	}
+	return &Reader{
+		Attrs:    attrs,
+		size:     size,
+		remain:   remain,
+		wantCRC:  crc,
+		checkCRC: checkCRC,
+		reader: &httpReader{
+			reopen: reopen,
+			body:   body,
+		},
+	}, nil
 }
-func (c *httpStorageClient) OpenWriter(ctx context.Context, w *Writer, opts ...storageOption) error {
-	return errMethodNotSupported
+
+func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error) {
+	s := callSettings(c.settings, opts...)
+	errorf := params.setError
+	setObj := params.setObj
+	progress := params.progress
+	attrs := params.attrs
+
+	mediaOpts := []googleapi.MediaOption{
+		googleapi.ChunkSize(params.chunkSize),
+	}
+	if c := attrs.ContentType; c != "" {
+		mediaOpts = append(mediaOpts, googleapi.ContentType(c))
+	}
+	if params.chunkRetryDeadline != 0 {
+		mediaOpts = append(mediaOpts, googleapi.ChunkRetryDeadline(params.chunkRetryDeadline))
+	}
+
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer close(params.donec)
+
+		rawObj := attrs.toRawObject(params.bucket)
+		if params.sendCRC32C {
+			rawObj.Crc32c = encodeUint32(attrs.CRC32C)
+		}
+		if attrs.MD5 != nil {
+			rawObj.Md5Hash = base64.StdEncoding.EncodeToString(attrs.MD5)
+		}
+		call := c.raw.Objects.Insert(params.bucket, rawObj).
+			Media(pr, mediaOpts...).
+			Projection("full").
+			Context(params.ctx).
+			Name(params.attrs.Name)
+		call.ProgressUpdater(func(n, _ int64) { progress(n) })
+
+		if attrs.KMSKeyName != "" {
+			call.KmsKeyName(attrs.KMSKeyName)
+		}
+		if attrs.PredefinedACL != "" {
+			call.PredefinedAcl(attrs.PredefinedACL)
+		}
+		if err := setEncryptionHeaders(call.Header(), params.encryptionKey, false); err != nil {
+			errorf(err)
+			pr.CloseWithError(err)
+			return
+		}
+		var resp *raw.Object
+		err := applyConds("NewWriter", params.attrs.Generation, params.conds, call)
+		if err == nil {
+			if s.userProject != "" {
+				call.UserProject(s.userProject)
+			}
+			// TODO(tritone): Remove this code when Uploads begin to support
+			// retry attempt header injection with "client header" injection.
+			setClientHeader(call.Header())
+
+			// The internals that perform call.Do automatically retry both the initial
+			// call to set up the upload as well as calls to upload individual chunks
+			// for a resumable upload (as long as the chunk size is non-zero). Hence
+			// there is no need to add retries here.
+
+			// Retry only when the operation is idempotent or the retry policy is RetryAlways.
+			isIdempotent := params.conds != nil && (params.conds.GenerationMatch >= 0 || params.conds.DoesNotExist == true)
+			var useRetry bool
+			if (s.retry == nil || s.retry.policy == RetryIdempotent) && isIdempotent {
+				useRetry = true
+			} else if s.retry != nil && s.retry.policy == RetryAlways {
+				useRetry = true
+			}
+			if useRetry {
+				if s.retry != nil {
+					call.WithRetry(s.retry.backoff, s.retry.shouldRetry)
+				} else {
+					call.WithRetry(nil, nil)
+				}
+			}
+			resp, err = call.Do()
+		}
+		if err != nil {
+			errorf(err)
+			pr.CloseWithError(err)
+			return
+		}
+		setObj(newObject(resp))
+	}()
+
+	return pw, nil
 }
 
 // IAM methods.
@@ -574,4 +1020,97 @@ func (c *httpStorageClient) CreateHMACKey(ctx context.Context, desc *hmacKeyDesc
 }
 func (c *httpStorageClient) DeleteHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) error {
 	return errMethodNotSupported
+}
+
+// Notification methods.
+
+// ListNotifications returns all the Notifications configured for this bucket, as a map indexed by notification ID.
+//
+// Note: This API does not support pagination. However, entity limits cap the number of notifications on a single bucket,
+// so all results will be returned in the first response. See https://cloud.google.com/storage/quotas#buckets.
+func (c *httpStorageClient) ListNotifications(ctx context.Context, bucket string, opts ...storageOption) (n map[string]*Notification, err error) {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.httpStorageClient.ListNotifications")
+	defer func() { trace.EndSpan(ctx, err) }()
+
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Notifications.List(bucket)
+	if s.userProject != "" {
+		call.UserProject(s.userProject)
+	}
+	var res *raw.Notifications
+	err = run(ctx, func() error {
+		res, err = call.Context(ctx).Do()
+		return err
+	}, s.retry, true, setRetryHeaderHTTP(call))
+	if err != nil {
+		return nil, err
+	}
+	return notificationsToMap(res.Items), nil
+}
+
+func (c *httpStorageClient) CreateNotification(ctx context.Context, bucket string, n *Notification, opts ...storageOption) (ret *Notification, err error) {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.httpStorageClient.CreateNotification")
+	defer func() { trace.EndSpan(ctx, err) }()
+
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Notifications.Insert(bucket, toRawNotification(n))
+	if s.userProject != "" {
+		call.UserProject(s.userProject)
+	}
+	var rn *raw.Notification
+	err = run(ctx, func() error {
+		rn, err = call.Context(ctx).Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(call))
+	if err != nil {
+		return nil, err
+	}
+	return toNotification(rn), nil
+}
+
+func (c *httpStorageClient) DeleteNotification(ctx context.Context, bucket string, id string, opts ...storageOption) (err error) {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.httpStorageClient.DeleteNotification")
+	defer func() { trace.EndSpan(ctx, err) }()
+
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Notifications.Delete(bucket, id)
+	if s.userProject != "" {
+		call.UserProject(s.userProject)
+	}
+	return run(ctx, func() error {
+		return call.Context(ctx).Do()
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(call))
+}
+
+type httpReader struct {
+	body   io.ReadCloser
+	seen   int64
+	reopen func(seen int64) (*http.Response, error)
+}
+
+func (r *httpReader) Read(p []byte) (int, error) {
+	n := 0
+	for len(p[n:]) > 0 {
+		m, err := r.body.Read(p[n:])
+		n += m
+		r.seen += int64(m)
+		if err == nil || err == io.EOF {
+			return n, err
+		}
+		// Read failed (likely due to connection issues), but we will try to reopen
+		// the pipe and continue. Send a ranged read request that takes into account
+		// the number of bytes we've already seen.
+		res, err := r.reopen(r.seen)
+		if err != nil {
+			// reopen already retries
+			return n, err
+		}
+		r.body.Close()
+		r.body = res.Body
+	}
+	return n, nil
+}
+
+func (r *httpReader) Close() error {
+	return r.body.Close()
 }

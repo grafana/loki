@@ -11,7 +11,7 @@ operations such as PutItem, and unmarshaling Query and Scan APIs' responses.
 See the dynamodbattribute package documentation for more information.
 https://docs.aws.amazon.com/sdk-for-go/api/service/dynamodb/dynamodbattribute/
 
-Expression Builders
+# Expression Builders
 
 The expression package provides utility types and functions to build DynamoDB
 expression for type safe construction of API ExpressionAttributeNames, and
