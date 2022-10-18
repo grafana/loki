@@ -4,8 +4,8 @@
 //
 // import "github.com/alicebob/miniredis/v2"
 //
-// Start a server with `s, err := miniredis.Run()`.
-// Stop it with `defer s.Close()`.
+// Start a server with `s := miniredis.RunT(t)`, it'll be shutdown via a t.Cleanup().
+// Or do everything manual: `s, err := miniredis.Run(); defer s.Close()`
 //
 // Point your Redis client to `s.Addr()` or `s.Host(), s.Port()`.
 //
@@ -29,24 +29,26 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 )
 
+var DumpMaxLineLen = 60
+
 type hashKey map[string]string
 type listKey []string
 type setKey map[string]struct{}
 
 // RedisDB holds a single (numbered) Redis database.
 type RedisDB struct {
-	master          *Miniredis                // pointer to the lock in Miniredis
-	id              int                       // db id
-	keys            map[string]string         // Master map of keys with their type
-	stringKeys      map[string]string         // GET/SET &c. keys
-	hashKeys        map[string]hashKey        // MGET/MSET &c. keys
-	listKeys        map[string]listKey        // LPUSH &c. keys
-	setKeys         map[string]setKey         // SADD &c. keys
-	sortedsetKeys   map[string]sortedSet      // ZADD &c. keys
-	streamKeys      map[string]streamKey      // XADD &c. keys
-	streamGroupKeys map[string]streamGroupKey // XREADGROUP &c. keys
-	ttl             map[string]time.Duration  // effective TTL values
-	keyVersion      map[string]uint           // used to watch values
+	master        *Miniredis               // pointer to the lock in Miniredis
+	id            int                      // db id
+	keys          map[string]string        // Master map of keys with their type
+	stringKeys    map[string]string        // GET/SET &c. keys
+	hashKeys      map[string]hashKey       // MGET/MSET &c. keys
+	listKeys      map[string]listKey       // LPUSH &c. keys
+	setKeys       map[string]setKey        // SADD &c. keys
+	hllKeys       map[string]*hll          // PFADD &c. keys
+	sortedsetKeys map[string]sortedSet     // ZADD &c. keys
+	streamKeys    map[string]*streamKey    // XADD &c. keys
+	ttl           map[string]time.Duration // effective TTL values
+	keyVersion    map[string]uint          // used to watch values
 }
 
 // Miniredis is a Redis server implementation.
@@ -99,18 +101,18 @@ func NewMiniRedis() *Miniredis {
 
 func newRedisDB(id int, m *Miniredis) RedisDB {
 	return RedisDB{
-		id:              id,
-		master:          m,
-		keys:            map[string]string{},
-		stringKeys:      map[string]string{},
-		hashKeys:        map[string]hashKey{},
-		listKeys:        map[string]listKey{},
-		setKeys:         map[string]setKey{},
-		sortedsetKeys:   map[string]sortedSet{},
-		streamKeys:      map[string]streamKey{},
-		streamGroupKeys: map[string]streamGroupKey{},
-		ttl:             map[string]time.Duration{},
-		keyVersion:      map[string]uint{},
+		id:            id,
+		master:        m,
+		keys:          map[string]string{},
+		stringKeys:    map[string]string{},
+		hashKeys:      map[string]hashKey{},
+		listKeys:      map[string]listKey{},
+		setKeys:       map[string]setKey{},
+		hllKeys:       map[string]*hll{},
+		sortedsetKeys: map[string]sortedSet{},
+		streamKeys:    map[string]*streamKey{},
+		ttl:           map[string]time.Duration{},
+		keyVersion:    map[string]uint{},
 	}
 }
 
@@ -124,6 +126,23 @@ func Run() (*Miniredis, error) {
 func RunTLS(cfg *tls.Config) (*Miniredis, error) {
 	m := NewMiniRedis()
 	return m, m.StartTLS(cfg)
+}
+
+// Tester is a minimal version of a testing.T
+type Tester interface {
+	Fatalf(string, ...interface{})
+	Cleanup(func())
+}
+
+// RunT start a new miniredis, pass it a testing.T. It also registers the cleanup after your test is done.
+func RunT(t Tester) *Miniredis {
+	m := NewMiniRedis()
+	if err := m.Start(); err != nil {
+		t.Fatalf("could not start miniredis: %s", err)
+		// not reached
+	}
+	t.Cleanup(m.Close)
+	return m
 }
 
 // Start starts a server. It listens on a random port on localhost. See also
@@ -176,6 +195,7 @@ func (m *Miniredis) start(s *server.Server) error {
 	commandsGeo(m)
 	commandsCluster(m)
 	commandsCommand(m)
+	commandsHll(m)
 
 	return nil
 }
@@ -323,12 +343,19 @@ func (m *Miniredis) Server() *server.Server {
 }
 
 // Dump returns a text version of the selected DB, usable for debugging.
+//
+// Dump limits the maximum length of each key:value to "DumpMaxLineLen" characters.
+// To increase that, call something like:
+//
+//	    miniredis.DumpMaxLineLen = 1024
+//      mr, _ = miniredis.Run()
+// 		mr.Dump()
 func (m *Miniredis) Dump() string {
 	m.Lock()
 	defer m.Unlock()
 
 	var (
-		maxLen = 60
+		maxLen = DumpMaxLineLen
 		indent = "   "
 		db     = m.db(m.selectedDB)
 		r      = ""
@@ -341,6 +368,7 @@ func (m *Miniredis) Dump() string {
 			return fmt.Sprintf("%q%s", s, suffix)
 		}
 	)
+
 	for _, k := range db.allKeys() {
 		r += fmt.Sprintf("- %s\n", k)
 		t := db.t(k)
@@ -364,12 +392,16 @@ func (m *Miniredis) Dump() string {
 				r += fmt.Sprintf("%s%f: %s\n", indent, el.score, v(el.member))
 			}
 		case "stream":
-			for _, entry := range db.streamKeys[k] {
+			for _, entry := range db.streamKeys[k].entries {
 				r += fmt.Sprintf("%s%s\n", indent, entry.ID)
 				ev := entry.Values
 				for i := 0; i < len(ev)/2; i++ {
 					r += fmt.Sprintf("%s%s%s: %s\n", indent, indent, v(ev[2*i]), v(ev[2*i+1]))
 				}
+			}
+		case "hll":
+			for _, entry := range db.hllKeys {
+				r += fmt.Sprintf("%s%s\n", indent, v(string(entry.Bytes())))
 			}
 		default:
 			r += fmt.Sprintf("%s(a %s, fixme!)\n", indent, t)
@@ -584,7 +616,7 @@ func (m *Miniredis) randIntn(n int) int {
 	return m.rand.Intn(n)
 }
 
-// shuffle shuffles a string. Kinda.
+// shuffle shuffles a list of strings. Kinda.
 func (m *Miniredis) shuffle(l []string) {
 	for range l {
 		i := m.randIntn(len(l))
@@ -598,4 +630,79 @@ func (m *Miniredis) effectiveNow() time.Time {
 		return m.now
 	}
 	return time.Now().UTC()
+}
+
+// convert a unixtimestamp to a duration, to use an absolute time as TTL.
+// d can be either time.Second or time.Millisecond.
+func (m *Miniredis) at(i int, d time.Duration) time.Duration {
+	var ts time.Time
+	switch d {
+	case time.Millisecond:
+		ts = time.Unix(int64(i/1000), 1000000*int64(i%1000))
+	case time.Second:
+		ts = time.Unix(int64(i), 0)
+	default:
+		panic("invalid time unit (d). Fixme!")
+	}
+	now := m.effectiveNow()
+	return ts.Sub(now)
+}
+
+// copy does not mind if dst already exists.
+func (m *Miniredis) copy(
+	srcDB *RedisDB, src string,
+	destDB *RedisDB, dst string,
+) error {
+	if !srcDB.exists(src) {
+		return ErrKeyNotFound
+	}
+
+	switch srcDB.t(src) {
+	case "string":
+		destDB.stringKeys[dst] = srcDB.stringKeys[src]
+	case "hash":
+		destDB.hashKeys[dst] = copyHashKey(srcDB.hashKeys[src])
+	case "list":
+		destDB.listKeys[dst] = srcDB.listKeys[src]
+	case "set":
+		destDB.setKeys[dst] = copySetKey(srcDB.setKeys[src])
+	case "zset":
+		destDB.sortedsetKeys[dst] = copySortedSet(srcDB.sortedsetKeys[src])
+	case "stream":
+		destDB.streamKeys[dst] = srcDB.streamKeys[src].copy()
+	case "hll":
+		destDB.hllKeys[dst] = srcDB.hllKeys[src].copy()
+	default:
+		panic("missing case")
+	}
+	destDB.keys[dst] = srcDB.keys[src]
+	destDB.keyVersion[dst]++
+	if v, ok := srcDB.ttl[src]; ok {
+		destDB.ttl[dst] = v
+	}
+	return nil
+}
+
+func copyHashKey(orig hashKey) hashKey {
+	cpy := hashKey{}
+	for k, v := range orig {
+		cpy[k] = v
+	}
+	return cpy
+}
+
+func copySetKey(orig setKey) setKey {
+	cpy := setKey{}
+	for k, v := range orig {
+		cpy[k] = v
+	}
+	return cpy
+}
+
+func copySortedSet(orig sortedSet) sortedSet {
+	cpy := sortedSet{}
+	for k, v := range orig {
+		cpy[k] = v
+	}
+	return cpy
 }

@@ -206,6 +206,11 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 //     - error: nil if ok otherwise the specific error
 func GetObject(cli bce.Client, bucket, object string, responseHeaders map[string]string,
 	ranges ...int64) (*GetObjectResult, error) {
+
+	if object == "" {
+		err := fmt.Errorf("Get Object don't accept \"\" as a parameter")
+		return nil, err
+	}
 	req := &bce.BceRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
@@ -653,10 +658,19 @@ func DeleteMultipleObjects(cli bce.Client, bucket string,
 //     - params: optional sign params, default is empty
 // RETURNS:
 //     - string: the presigned url with authorization string
+
 func GeneratePresignedUrl(conf *bce.BceClientConfiguration, signer auth.Signer, bucket,
 	object string, expire int, method string, headers, params map[string]string) string {
-	req := &bce.BceRequest{}
+	return GeneratePresignedUrlInternal(conf, signer, bucket, object, expire, method, headers, params, false)
+}
+func GeneratePresignedUrlPathStyle(conf *bce.BceClientConfiguration, signer auth.Signer, bucket,
+	object string, expire int, method string, headers, params map[string]string) string {
+	return GeneratePresignedUrlInternal(conf, signer, bucket, object, expire, method, headers, params, true)
+}
 
+func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.Signer, bucket,
+	object string, expire int, method string, headers, params map[string]string, path_style bool) string {
+	req := &bce.BceRequest{}
 	// Set basic arguments
 	if len(method) == 0 {
 		method = http.GET
@@ -670,18 +684,24 @@ func GeneratePresignedUrl(conf *bce.BceClientConfiguration, signer auth.Signer, 
 	if pos := strings.Index(domain, ":"); pos != -1 {
 		domain = domain[:pos]
 	}
-	if len(bucket) != 0 && net.ParseIP(domain) == nil { // not use an IP as the endpoint by client
-		req.SetUri(bce.URI_PREFIX + object)
-		if !conf.CnameEnabled && !isCnameLikeHost(conf.Endpoint) {
-			req.SetHost(bucket + "." + req.Host())
-		}
-	} else {
+	if path_style {
 		req.SetUri(getObjectUri(bucket, object))
 		if conf.CnameEnabled || isCnameLikeHost(conf.Endpoint) {
 			req.SetUri(getCnameUri(req.Uri()))
 		}
+	} else {
+		if len(bucket) != 0 && net.ParseIP(domain) == nil { // not use an IP as the endpoint by client
+			req.SetUri(bce.URI_PREFIX + object)
+			if !conf.CnameEnabled && !isCnameLikeHost(conf.Endpoint) {
+				req.SetHost(bucket + "." + req.Host())
+			}
+		} else {
+			req.SetUri(getObjectUri(bucket, object))
+			if conf.CnameEnabled || isCnameLikeHost(conf.Endpoint) {
+				req.SetUri(getCnameUri(req.Uri()))
+			}
+		}
 	}
-
 	// Set headers and params if given.
 	req.SetHeader(http.HOST, req.Host())
 	if headers != nil {
@@ -694,13 +714,11 @@ func GeneratePresignedUrl(conf *bce.BceClientConfiguration, signer auth.Signer, 
 			req.SetParam(k, v)
 		}
 	}
-
 	// Copy one SignOptions object to rewrite it.
 	option := *conf.SignOption
 	if expire != 0 {
 		option.ExpireSeconds = expire
 	}
-
 	// Generate the authorization string and return the signed url.
 	signer.Sign(&req.Request, conf.Credentials, &option)
 	req.SetParam("authorization", req.Header(http.AUTHORIZATION))
