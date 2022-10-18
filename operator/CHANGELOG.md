@@ -1,5 +1,6 @@
 ## Main
 
+- [7437](https://github.com/grafana/loki/pull/7437) **aminesnow**: Fix Custom TLS profile setting for LokiStack on OpenShift
 - [7415](https://github.com/grafana/loki/pull/7415) **aminesnow**: Add alert relabel config
 - [7418](https://github.com/grafana/loki/pull/7418) **Red-GV**: Update golang to v1.19 and k8s dependencies to v0.25.2
 - [7322](https://github.com/grafana/loki/pull/7322) **Red-GV**: Configuring server and client HTTP and GRPC TLS options
