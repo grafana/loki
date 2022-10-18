@@ -2077,6 +2077,8 @@ compacts index shards to more performant forms.
 
 # The shared store used for storing boltdb files.
 # Supported types: gcs, s3, azure, swift, filesystem, bos.
+# If not set, compactor will be initialized to operate on all the object store
+# indexes (tsdb, boltdb) defined in the schema config.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 
@@ -2109,6 +2111,11 @@ compacts index shards to more performant forms.
 # The total amount of worker to use to delete chunks.
 # CLI flag: -boltdb.shipper.compactor.retention-delete-worker-count
 [retention_delete_worker_count: <int> | default = 150]
+
+# Store used for managing delete requests.
+# If not set, -boltdb.shipper.compactor.shared-store is used as a fallback.
+# CLI flag: -boltdb.shipper.compactor.delete-request-store
+[delete_request_store: <string>]
 
 # Allow cancellation of delete request until duration after they are created.
 # Data would be deleted only after delete requests have been older than this duration.
