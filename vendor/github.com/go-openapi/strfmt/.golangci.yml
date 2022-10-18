@@ -37,6 +37,7 @@ linters:
     - paralleltest
     - varnamelen
     - ireturn
+    - exhaustruct
     #- thelper
 
 issues:

@@ -3,6 +3,8 @@ package distributor
 import (
 	"time"
 
+	"github.com/grafana/loki/pkg/validation"
+
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 )
 
@@ -22,4 +24,5 @@ type Limits interface {
 	IncrementDuplicateTimestamps(userID string) bool
 
 	ShardStreams(userID string) *shardstreams.Config
+	AllByUserID() map[string]*validation.Limits
 }

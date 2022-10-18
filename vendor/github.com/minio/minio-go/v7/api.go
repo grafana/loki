@@ -111,7 +111,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.24"
+	libraryVersion = "v7.0.32"
 )
 
 // User Agent should always following the below style.
@@ -315,14 +315,16 @@ func (c *Client) SetS3TransferAccelerate(accelerateEndpoint string) {
 //  - For signature v4 request if the connection is insecure compute only sha256.
 //  - For signature v4 request if the connection is secure compute only md5.
 //  - For anonymous request compute md5.
-func (c *Client) hashMaterials(isMd5Requested bool) (hashAlgos map[string]md5simd.Hasher, hashSums map[string][]byte) {
+func (c *Client) hashMaterials(isMd5Requested, isSha256Requested bool) (hashAlgos map[string]md5simd.Hasher, hashSums map[string][]byte) {
 	hashSums = make(map[string][]byte)
 	hashAlgos = make(map[string]md5simd.Hasher)
 	if c.overrideSignerType.IsV4() {
 		if c.secure {
 			hashAlgos["md5"] = c.md5Hasher()
 		} else {
-			hashAlgos["sha256"] = c.sha256Hasher()
+			if isSha256Requested {
+				hashAlgos["sha256"] = c.sha256Hasher()
+			}
 		}
 	} else {
 		if c.overrideSignerType.IsAnonymous() {
@@ -377,7 +379,6 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 				atomic.StoreInt32(&c.healthStatus, unknown)
 				return
 			case <-timer.C:
-				timer.Reset(duration)
 				// Do health check the first time and ONLY if the connection is marked offline
 				if c.IsOffline() {
 					gctx, gcancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -392,6 +393,8 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 						atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
 					}
 				}
+
+				timer.Reset(duration)
 			}
 		}
 	}(hcDuration)
@@ -417,6 +420,7 @@ type requestMetadata struct {
 	contentLength    int64
 	contentMD5Base64 string // carries base64 encoded md5sum
 	contentSHA256Hex string // carries hex encoded sha256sum
+	streamSha256     bool
 }
 
 // dumpHTTP - dump HTTP request and response.
@@ -812,7 +816,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 	case signerType.IsV2():
 		// Add signature version '2' authorization header.
 		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
-	case metadata.objectName != "" && metadata.queryValues == nil && method == http.MethodPut && metadata.customHeader.Get("X-Amz-Copy-Source") == "" && !c.secure:
+	case metadata.streamSha256 && !c.secure:
 		// Streaming signature is used by default for a PUT object request. Additionally we also
 		// look if the initialized client is secure, if yes then we don't need to perform
 		// streaming signature.

@@ -28,7 +28,7 @@ func TestSetReadyCondition_WhenGetLokiStackReturnsError_ReturnError(t *testing.T
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -46,7 +46,7 @@ func TestSetReadyCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testing.
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -79,7 +79,7 @@ func TestSetReadyCondition_WhenExisting_DoNothing(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -120,7 +120,7 @@ func TestSetReadyCondition_WhenExisting_SetReadyConditionTrue(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -162,7 +162,7 @@ func TestSetReadyCondition_WhenNoneExisting_AppendReadyCondition(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -193,7 +193,7 @@ func TestSetFailedCondition_WhenGetLokiStackReturnsError_ReturnError(t *testing.
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -211,7 +211,7 @@ func TestSetFailedCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testing
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -244,7 +244,7 @@ func TestSetFailedCondition_WhenExisting_DoNothing(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -285,7 +285,7 @@ func TestSetFailedCondition_WhenExisting_SetFailedConditionTrue(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -327,7 +327,7 @@ func TestSetFailedCondition_WhenNoneExisting_AppendFailedCondition(t *testing.T)
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -361,7 +361,7 @@ func TestSetDegradedCondition_WhenGetLokiStackReturnsError_ReturnError(t *testin
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -379,7 +379,7 @@ func TestSetPendingCondition_WhenGetLokiStackReturnsError_ReturnError(t *testing
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -397,7 +397,7 @@ func TestSetPendingCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testin
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -430,7 +430,7 @@ func TestSetPendingCondition_WhenExisting_DoNothing(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -471,7 +471,7 @@ func TestSetPendingCondition_WhenExisting_SetPendingConditionTrue(t *testing.T) 
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -512,7 +512,7 @@ func TestSetPendingCondition_WhenNoneExisting_AppendPendingCondition(t *testing.
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -546,7 +546,7 @@ func TestSetDegradedCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testi
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -582,7 +582,7 @@ func TestSetDegradedCondition_WhenExisting_DoNothing(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -626,7 +626,7 @@ func TestSetDegradedCondition_WhenExisting_SetDegradedConditionTrue(t *testing.T
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -669,7 +669,7 @@ func TestSetDegradedCondition_WhenNoneExisting_AppendDegradedCondition(t *testin
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil

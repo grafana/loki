@@ -42,7 +42,7 @@ type IndexGatewayOwnsTenant func(tenant string) bool
 
 type TableManager interface {
 	Stop()
-	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 }
 
 type Config struct {
@@ -155,12 +155,12 @@ func (tm *tableManager) Stop() {
 	}
 }
 
-func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	table, err := tm.getOrCreateTable(tableName)
 	if err != nil {
 		return err
 	}
-	return table.ForEach(ctx, userID, callback)
+	return table.ForEach(ctx, userID, doneChan, callback)
 }
 
 func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {

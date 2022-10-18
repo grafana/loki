@@ -422,7 +422,7 @@ scrape_configs:
 ```
 
 Only `api_token` and `zone_id` are required.
-Refer to the [Cloudfare](../configuration/#cloudflare) configuration section for details.
+Refer to the [Cloudfare](configuration/#cloudflare) configuration section for details.
 
 ## Heroku Drain
 Promtail supports receiving logs from a Heroku application by using a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).

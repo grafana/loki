@@ -38,14 +38,12 @@ type afCounter struct {
 }
 
 func (i *afCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.AsyncFloat64().Counter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *afCounter) Observe(ctx context.Context, x float64, attrs ...attribute.KeyValue) {
@@ -71,14 +69,12 @@ type afUpDownCounter struct {
 }
 
 func (i *afUpDownCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.AsyncFloat64().UpDownCounter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *afUpDownCounter) Observe(ctx context.Context, x float64, attrs ...attribute.KeyValue) {
@@ -104,14 +100,12 @@ type afGauge struct {
 }
 
 func (i *afGauge) setDelegate(m metric.Meter) {
-
 	ctr, err := m.AsyncFloat64().Gauge(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *afGauge) Observe(ctx context.Context, x float64, attrs ...attribute.KeyValue) {
@@ -137,14 +131,12 @@ type aiCounter struct {
 }
 
 func (i *aiCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.AsyncInt64().Counter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *aiCounter) Observe(ctx context.Context, x int64, attrs ...attribute.KeyValue) {
@@ -170,14 +162,12 @@ type aiUpDownCounter struct {
 }
 
 func (i *aiUpDownCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.AsyncInt64().UpDownCounter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *aiUpDownCounter) Observe(ctx context.Context, x int64, attrs ...attribute.KeyValue) {
@@ -203,14 +193,12 @@ type aiGauge struct {
 }
 
 func (i *aiGauge) setDelegate(m metric.Meter) {
-
 	ctr, err := m.AsyncInt64().Gauge(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *aiGauge) Observe(ctx context.Context, x int64, attrs ...attribute.KeyValue) {
@@ -226,7 +214,7 @@ func (i *aiGauge) unwrap() instrument.Asynchronous {
 	return nil
 }
 
-//Sync Instruments.
+// Sync Instruments.
 type sfCounter struct {
 	name string
 	opts []instrument.Option
@@ -237,14 +225,12 @@ type sfCounter struct {
 }
 
 func (i *sfCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.SyncFloat64().Counter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *sfCounter) Add(ctx context.Context, incr float64, attrs ...attribute.KeyValue) {
@@ -263,14 +249,12 @@ type sfUpDownCounter struct {
 }
 
 func (i *sfUpDownCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.SyncFloat64().UpDownCounter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *sfUpDownCounter) Add(ctx context.Context, incr float64, attrs ...attribute.KeyValue) {
@@ -295,7 +279,6 @@ func (i *sfHistogram) setDelegate(m metric.Meter) {
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *sfHistogram) Record(ctx context.Context, x float64, attrs ...attribute.KeyValue) {
@@ -314,14 +297,12 @@ type siCounter struct {
 }
 
 func (i *siCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.SyncInt64().Counter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *siCounter) Add(ctx context.Context, x int64, attrs ...attribute.KeyValue) {
@@ -340,14 +321,12 @@ type siUpDownCounter struct {
 }
 
 func (i *siUpDownCounter) setDelegate(m metric.Meter) {
-
 	ctr, err := m.SyncInt64().UpDownCounter(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *siUpDownCounter) Add(ctx context.Context, x int64, attrs ...attribute.KeyValue) {
@@ -366,14 +345,12 @@ type siHistogram struct {
 }
 
 func (i *siHistogram) setDelegate(m metric.Meter) {
-
 	ctr, err := m.SyncInt64().Histogram(i.name, i.opts...)
 	if err != nil {
 		otel.Handle(err)
 		return
 	}
 	i.delegate.Store(ctr)
-
 }
 
 func (i *siHistogram) Record(ctx context.Context, x int64, attrs ...attribute.KeyValue) {

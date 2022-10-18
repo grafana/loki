@@ -108,6 +108,9 @@ scrape_configs:
 
 # Configures additional promtail configurations.
 [options: <options_config>]
+
+# Configures tracing support
+[tracing: <tracing_config>]
 ```
 
 ## server
@@ -163,6 +166,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 # Target managers check flag for Promtail readiness, if set to false the check is ignored
 [health_check_target: <bool> | default = true]
+
+# Enable reload via HTTP request.
+[enable_runtime_reload: <bool> | default = false]
 ```
 
 ## clients
@@ -960,6 +966,11 @@ When using the `push` subscription type, keep in mind:
 # When false, or if no timestamp is present in the GCP Log message, Promtail will assign the current
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
+
+# If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
+# than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
+# and respond with a 503 HTTP status code.
+[push_timeout: <duration>|  default = 0 (no timeout)]
 
 # Label map to add to every log message.
 labels:
@@ -1925,6 +1936,15 @@ sync_period: "10s"
 # on writes to Loki; be mindful about using too many labels,
 # as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
+```
+
+## tracing_config
+
+The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# When true, 
+[enabled: <boolean> | default = false]
 ```
 
 ## Example Docker Config

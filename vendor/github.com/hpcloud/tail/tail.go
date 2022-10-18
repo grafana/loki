@@ -129,6 +129,7 @@ func TailFile(filename string, config Config) (*Tail, error) {
 		if err != nil {
 			return nil, err
 		}
+		t.watcher.SetFile(t.file)
 	}
 
 	go t.tailFileSync()
@@ -225,6 +226,7 @@ func (tail *Tail) reopen(truncated bool) error {
 		var err error
 		tail.fileMtx.Lock()
 		tail.file, err = OpenFile(tail.Filename)
+		tail.watcher.SetFile(tail.file)
 		tail.fileMtx.Unlock()
 		if err != nil {
 			if os.IsNotExist(err) {

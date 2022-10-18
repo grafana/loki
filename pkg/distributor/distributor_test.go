@@ -134,6 +134,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
@@ -159,6 +160,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
@@ -184,6 +186,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
@@ -209,6 +212,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
@@ -234,6 +238,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 1), Line: "heyiiiiiii"},
@@ -259,6 +264,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
@@ -285,6 +291,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 1), Line: "hi"},
@@ -312,6 +319,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 1), Line: "hi"},
@@ -399,9 +407,12 @@ func TestDistributorPushErrors(t *testing.T) {
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1 && len(ingesters[2].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
 		require.Equal(t, 0, len(ingesters[0].pushed))
-		require.Equal(t, 1, len(ingesters[1].pushed))
-		require.Equal(t, 1, len(ingesters[2].pushed))
 	})
 	t.Run("with RF=3 two push failures result in error", func(t *testing.T) {
 		distributors, ingesters := prepare(t, 1, 3, limits, nil)
@@ -412,8 +423,12 @@ func TestDistributorPushErrors(t *testing.T) {
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
 		require.Error(t, err)
+
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
 		require.Equal(t, 0, len(ingesters[0].pushed))
-		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Equal(t, 0, len(ingesters[2].pushed))
 	})
 }
@@ -686,6 +701,7 @@ func TestStreamShard(t *testing.T) {
 				rateStore:              &fakeRateStore{},
 				streamShardingFailures: shardingFailureMetric,
 				validator:              validator,
+				streamShardCount:       prometheus.NewCounter(prometheus.CounterOpts{}),
 			}
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
@@ -785,7 +801,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
+		_, _, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
