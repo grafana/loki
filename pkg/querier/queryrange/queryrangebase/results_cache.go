@@ -163,6 +163,7 @@ type resultsCache struct {
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
+	retentionEnabled     bool
 	metrics              *ResultsCacheMetrics
 }
 
@@ -181,6 +182,7 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
+	retentionEnabled bool,
 	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
@@ -199,6 +201,7 @@ func NewResultsCacheMiddleware(
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
+			retentionEnabled:     retentionEnabled,
 			metrics:              metrics,
 		}
 	}), nil
@@ -214,7 +217,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return s.next.Do(ctx, r)
 	}
 
-	if s.cacheGenNumberLoader != nil {
+	if s.cacheGenNumberLoader != nil && s.retentionEnabled {
 		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
