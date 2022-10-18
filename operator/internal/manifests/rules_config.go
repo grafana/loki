@@ -10,8 +10,15 @@ import (
 
 // RulesConfigMap returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
+// If the size of the data is more than 1MB, the ConfigMap will
+// be split into multiple shards, and this function will return
+// the list of shards
 func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
-	data := make(map[string]string)
+	l := commonLabels(opts.Name)
+
+	template := newConfigMapTemplate(opts, l)
+
+	shardedConfigMap := NewShardedConfigMap(template, RulesConfigMapName(opts.Namespace))
 
 	for _, r := range opts.AlertingRules {
 		c, err := rules.MarshalAlertingRule(r)
@@ -22,7 +29,7 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 		key := fmt.Sprintf("%s-%s-%s.yaml", r.Namespace, r.Name, r.UID)
 		if tenant, ok := opts.Tenants.Configs[r.Spec.TenantID]; ok {
 			tenant.RuleFiles = append(tenant.RuleFiles, key)
-			data[key] = c
+			shardedConfigMap.data[key] = c
 			opts.Tenants.Configs[r.Spec.TenantID] = tenant
 		}
 	}
@@ -36,12 +43,24 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 		key := fmt.Sprintf("%s-%s-%s.yaml", r.Namespace, r.Name, r.UID)
 		if tenant, ok := opts.Tenants.Configs[r.Spec.TenantID]; ok {
 			tenant.RuleFiles = append(tenant.RuleFiles, key)
-			data[key] = c
+			shardedConfigMap.data[key] = c
 			opts.Tenants.Configs[r.Spec.TenantID] = tenant
 		}
 	}
+	// If configmap size exceeds 1MB, split it into shards
 
-	l := commonLabels(opts.Name)
+	// start the sharding process, shards will contain a list of the resulting
+	// configmaps, identified by a "prefix+index"
+	shards := shardedConfigMap.Shard()
+
+	// TODO: what happens when there's an update to the rules?
+
+	for _, shard := range shards {
+		println("--------%s--------", shard.Name)
+		for k, v := range shard.Data {
+			println(k, v)
+		}
+	}
 
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -53,6 +72,21 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 			Namespace: opts.Namespace,
 			Labels:    l,
 		},
-		Data: data,
+		//Data: data,
 	}, nil
+}
+
+func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      RulesConfigMapName(opts.Name),
+			Namespace: opts.Namespace,
+			Labels:    l,
+		},
+		Data: make(map[string]string),
+	}
 }

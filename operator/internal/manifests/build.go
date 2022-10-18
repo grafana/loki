@@ -61,12 +61,13 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	res = append(res, BuildLokiGossipRingService(opts.Name))
 
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
-		rulesCm, err := RulesConfigMap(&opts)
+
+		rulesCMShards, err := RulesConfigMap(&opts)
 		if err != nil {
 			return nil, err
 		}
 
-		res = append(res, rulesCm)
+		res = append(res, rulesCMShards)
 
 		rulerObjs, err := BuildRuler(opts)
 		if err != nil {

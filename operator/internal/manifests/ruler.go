@@ -86,7 +86,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						DefaultMode: &defaultConfigMapMode,
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: RulesConfigMapName(opts.Name),
+							Name: RulesConfigMapName(opts.Name), //this should be the shards (shardnames)
 						},
 						Items: ruleVolumeItems(opts.Tenants.Configs),
 					},
