@@ -1,3 +1,5 @@
+common:
+    compactor_address: compactor:8006
 auth_enabled: true 
 chunk_store_config:
     chunk_cache_config:
