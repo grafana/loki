@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [7436](https://github.com/grafana/loki/pull/7436) **periklis**: Expose ring and memberlist handlers through internal server listener
 * [7346](https://github.com/grafana/loki/pull/7346) **mostafa**: Clarify how and where to download the Loki config file from
 * [7227](https://github.com/grafana/loki/pull/7227) **Red-GV**: Add ability to configure tls minimum version and cipher suites
 * [7179](https://github.com/grafana/loki/pull/7179) **vlad-diachenko**: Add ability to use Azure Service Principals credentials to authenticate to Azure Blob Storage.
