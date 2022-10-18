@@ -412,16 +412,18 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 // with multi-store support, markers need to be stored in store specific dir
 // MoveMarkersToSharedStoreDir checks for markers in retention dir and moves them as needed
 func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) error {
-	markersDir := filepath.Join(workingDir, "retention", markersFolder)
+	markersDir := filepath.Join(workingDir, markersFolder)
 	info, err := os.Stat(markersDir)
-	if os.IsExist(err) && info.IsDir() {
+	if os.IsNotExist(err) {
+		return nil
+	} else if err == nil && info.IsDir() {
 		if sharedStoreType != "" {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving it to retention/%s", sharedStoreType))
-			if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, "retention", sharedStoreType)); err != nil {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s/markers", sharedStoreType))
+			if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, sharedStoreType)); err != nil {
 				return err
 			}
 
-			err := os.Rename(filepath.Join(workingDir, "retention", markersFolder), filepath.Join(workingDir, "retention", sharedStoreType, markersFolder))
+			err := os.Rename(markersDir, filepath.Join(workingDir, sharedStoreType, markersFolder))
 			if err != nil {
 				return err
 			}
@@ -430,5 +432,5 @@ func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) erro
 		}
 	}
 
-	return nil
+	return err
 }

@@ -84,11 +84,10 @@ var (
 	}
 )
 
-func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
+func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string) *Compactor {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
-	cfg.SharedStoreType = "filesystem"
 	cfg.RetentionEnabled = false
 
 	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
@@ -97,20 +96,10 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 
 	require.NoError(t, cfg.Validate())
 
-	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
-	require.NoError(t, err)
-
 	indexType := "dummy"
 
-	objectClients := map[string]client.ObjectClient{config.StorageTypeLocal: objectClient}
 	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:        config.DayTime{Time: model.Time(0)},
-				IndexType:   indexType,
-				IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
-			},
-		},
+		Configs: periodConfigs,
 	}, nil, nil)
 	require.NoError(t, err)
 
@@ -130,12 +119,27 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	tableNumEnd := time.Now().Unix() / daySeconds
 	tableNumStart := tableNumEnd - 5
 
+	periodConfigs := []config.PeriodConfig{
+		{
+			From:        config.DayTime{Time: model.Time(0)},
+			IndexType:   "dummy",
+			ObjectType:  "fs_01",
+			IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+		},
+	}
+
 	for i := tableNumStart; i <= tableNumEnd; i++ {
 		SetupTable(t, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)), IndexesConfig{NumUnCompactedFiles: 5}, PerUserIndexesConfig{})
 	}
 
-	compactor := setupTestCompactor(t, tempDir)
-	err := compactor.RunCompaction(context.Background(), false)
+	var (
+		objectClients = map[string]client.ObjectClient{}
+		err           error
+	)
+	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+
+	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+	err = compactor.RunCompaction(context.Background(), false)
 	require.NoError(t, err)
 
 	for i := tableNumStart; i <= tableNumEnd; i++ {
@@ -147,6 +151,85 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 
 		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)))
+	}
+}
+
+func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
+	tempDir := t.TempDir()
+
+	commonDBsConfig := IndexesConfig{NumUnCompactedFiles: 5}
+	perUserDBsConfig := PerUserIndexesConfig{}
+
+	daySeconds := int64(24 * time.Hour / time.Second)
+	tableNumEnd := time.Now().Unix() / daySeconds
+	periodOneStart := tableNumEnd - 10
+	periodTwoStart := tableNumEnd - 5
+
+	periodConfigs := []config.PeriodConfig{
+		{
+			From:       config.DayTime{Time: model.Time(0)},
+			IndexType:  "dummy",
+			ObjectType: "fs_01",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: 24 * time.Hour,
+			},
+		},
+		{
+			From:       config.DayTime{Time: model.Time(periodTwoStart * daySeconds * 1000)},
+			IndexType:  "dummy",
+			ObjectType: "fs_02",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: 24 * time.Hour,
+			},
+		},
+	}
+
+	periodOnePath := filepath.Join(tempDir, "p1")
+	periodTwoPath := filepath.Join(tempDir, "p2")
+
+	tablesPath := filepath.Join(periodOnePath, "index")
+	for i := periodOneStart; i < periodTwoStart; i++ {
+		SetupTable(t, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)), IndexesConfig{NumUnCompactedFiles: 5}, PerUserIndexesConfig{})
+	}
+
+	tablesPath = filepath.Join(periodTwoPath, "index")
+	for i := periodTwoStart; i < tableNumEnd; i++ {
+		SetupTable(t, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)), IndexesConfig{NumUnCompactedFiles: 5}, PerUserIndexesConfig{})
+	}
+
+	var (
+		objectClients = map[string]client.ObjectClient{}
+		err           error
+	)
+	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodOnePath})
+	objectClients["fs_02"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
+	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+
+	err = compactor.RunCompaction(context.Background(), false)
+	require.NoError(t, err)
+
+	for i := periodOneStart; i < periodTwoStart; i++ {
+		name := fmt.Sprintf("%s%d", indexTablePrefix, i)
+		// verify that we have only 1 file left in storage after compaction.
+		files, err := os.ReadDir(filepath.Join(periodOnePath, "index", name))
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+
+		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(periodOnePath, "index", name))
+	}
+
+	for i := periodTwoStart; i < tableNumEnd; i++ {
+		name := fmt.Sprintf("%s%d", indexTablePrefix, i)
+		// verify that we have only 1 file left in storage after compaction.
+		files, err := os.ReadDir(filepath.Join(periodTwoPath, "index", name))
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+
+		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(periodTwoPath, "index", name))
 	}
 }
 

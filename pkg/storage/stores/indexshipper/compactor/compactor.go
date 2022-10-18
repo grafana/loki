@@ -99,7 +99,7 @@ type Config struct {
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem. If not set, compactor will be initialized to operate on all the object stores indexes defined in the schema config.")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem. If not set, compactor will be initialized to operate on all the object store indexes defined in the schema config.")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
@@ -260,7 +260,7 @@ func (c *Compactor) init(objectClients map[string]client.ObjectClient, schemaCon
 			return err
 		}
 
-		if err := retention.MoveMarkersToSharedStoreDir(c.cfg.WorkingDirectory, c.cfg.SharedStoreType); err != nil {
+		if err := retention.MoveMarkersToSharedStoreDir(filepath.Join(c.cfg.WorkingDirectory, "retention"), c.cfg.SharedStoreType); err != nil {
 			return err
 		}
 	}
@@ -551,8 +551,13 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
 	}
 
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.containers[schemaCfg.ObjectType].indexStorageClient, indexCompactor,
-		schemaCfg, c.containers[schemaCfg.ObjectType].tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+	sc, ok := c.containers[schemaCfg.ObjectType]
+	if !ok {
+		return fmt.Errorf("storeContainer not found for %s", schemaCfg.ObjectType)
+	}
+
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
+		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err

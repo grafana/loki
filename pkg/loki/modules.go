@@ -1006,18 +1006,18 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	objectClients := make(map[string]client.ObjectClient)
-	if t.Cfg.CompactorConfig.SharedStoreType != "" {
+	if sharedStoreType := t.Cfg.CompactorConfig.SharedStoreType; sharedStoreType != "" {
 		if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 			level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
 			return nil, nil
 		}
 
-		objectClient, err := storage.NewObjectClient(t.Cfg.CompactorConfig.SharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
+		objectClient, err := storage.NewObjectClient(sharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
 		if err != nil {
 			return nil, err
 
 		}
-		objectClients[t.Cfg.CompactorConfig.SharedStoreType] = objectClient
+		objectClients[sharedStoreType] = objectClient
 	} else {
 		periodConfigs := config.FilterObjectStoreIndex(t.Cfg.SchemaConfig.Configs)
 		if len(periodConfigs) == 0 {
