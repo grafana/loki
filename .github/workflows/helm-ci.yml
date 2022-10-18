@@ -1,0 +1,19 @@
+---
+name: helm-ci
+on:
+  pull_request:
+    paths:
+      - 'production/helm/**'
+
+jobs:
+  call-lint:
+    uses: grafana/helm-charts/.github/workflows/linter.yml@main
+    with:
+      filter_regex_include: .*production/helm/.*
+
+  call-lint-test:
+    uses: grafana/helm-charts/.github/workflows/lint-test.yaml@main
+    with:
+      ct_configfile: production/helm/ct.yaml
+      ct_check_version_increment: false
+      helm_version: v3.8.2

@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"path"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
@@ -41,16 +42,27 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{cm, dpl, svc, ing}
 
+	minTLSVersion := opts.TLSProfile.MinTLSVersion
+	ciphersList := opts.TLSProfile.Ciphers
+	ciphers := strings.Join(ciphersList, `,`)
+
 	if opts.Gates.HTTPEncryption {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
-		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName); err != nil {
+		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName, minTLSVersion, ciphers); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
+		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace); err != nil {
+
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace, minTLSVersion, ciphers); err != nil {
 			return nil, err
 		}
 
@@ -69,6 +81,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -342,7 +355,7 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	}
 }
 
-func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) error {
+func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName, minTLSVersion, ciphers string) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
 		if c.Name == gatewayContainerName {
@@ -377,6 +390,8 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 		Args: []string{
 			fmt.Sprintf("--tls.internal.server.cert-file=%s", certFile),
 			fmt.Sprintf("--tls.internal.server.key-file=%s", keyFile),
+			fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
+			fmt.Sprintf("--tls.cipher-suites=%s", ciphers),
 		},
 	}
 	uriSchemeContainerSpec := corev1.Container{
@@ -405,6 +420,29 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	}
 
 	if err := mergo.Merge(&podSpec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	return nil
+}
+
+func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string) error {
+	var gwIndex int
+	for i, c := range podSpec.Containers {
+		if c.Name == gatewayContainerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--logs.rules.endpoint=http://%s:%d", fqdn(serviceNameRulerHTTP(stackName), stackNs), httpPort),
+			"--logs.rules.read-only=true",
+		},
+	}
+
+	if err := mergo.Merge(&podSpec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 

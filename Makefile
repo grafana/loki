@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.22.0
+BUILD_IMAGE_VERSION := 0.24.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -54,15 +54,6 @@ DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(G
 DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
 MOUNT_FLAGS := :delegated
-
-NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-       rm $@; \
-       echo "\nYour go standard library was built without the 'netgo' build tag."; \
-       echo "To fix that, run"; \
-       echo "    sudo go clean -i net"; \
-       echo "    sudo go install -tags netgo std"; \
-       false; \
-}
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -135,7 +126,6 @@ logcli-image:
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
-	$(NETGO_CHECK)
 
 ########
 # Loki #
@@ -146,11 +136,9 @@ loki-debug: cmd/loki/loki-debug
 
 cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ###############
 # Loki-Canary #
@@ -160,7 +148,6 @@ loki-canary: cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #################
 # Loki-QueryTee #
@@ -170,7 +157,6 @@ loki-querytee: cmd/querytee/querytee
 
 cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ############
 # Promtail #
@@ -204,11 +190,9 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 
 clients/cmd/promtail/promtail:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #########
 # Mixin #
@@ -246,7 +230,6 @@ migrate: cmd/migrate/migrate
 
 cmd/migrate/migrate:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #############
 # Releasing #
@@ -263,11 +246,7 @@ dist: clean
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
 packages: dist
-	mkdir -p dist/tmp
-	unzip dist/logcli-linux-amd64.zip -d dist/tmp
-	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
-	nfpm package -f tools/nfpm.yaml -p deb -t dist/
-	rm -rf dist/tmp
+	@tools/packaging/nfpm.sh
 
 publish: packages
 	./tools/release
@@ -277,8 +256,10 @@ publish: packages
 ########
 
 # To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.22.0 lint
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint:
+	go version
+	golangci-lint version
 	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
@@ -311,6 +292,7 @@ clean:
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
+	rm -rf cmd/logql-analyzer/logql-analyzer
 	go clean ./...
 
 #########
@@ -415,7 +397,6 @@ docker-driver: docker-driver-clean
 
 clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
@@ -565,6 +546,12 @@ loki-querytee-push: loki-querytee-image-cross
 # migrate-image
 migrate-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+
+# LogQL Analyzer
+logql-analyzer-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
+logql-analyzer-push: logql-analyzer-image
+	$(call push-image,logql-analyzer)
 
 
 # build-image (only amd64)

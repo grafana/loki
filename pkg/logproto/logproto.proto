@@ -26,10 +26,30 @@ service Querier {
   rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {}
 
   rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}
+
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
 }
 
 service Ingester {
   rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {}
+}
+
+service StreamData {
+  rpc GetStreamRates(StreamRatesRequest) returns (StreamRatesResponse) {}
+}
+
+message StreamRatesRequest {}
+
+message StreamRatesResponse {
+  repeated StreamRate streamRates = 1;
+}
+
+message StreamRate {
+  uint64 streamHash = 1;
+  uint64 streamHashNoShard = 2;
+  int64 rate = 3; // rate in plain bytes.
 }
 
 message PushRequest {
@@ -110,6 +130,10 @@ message LabelRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = true
   ];
+}
+
+message RateLimitedStream {
+  string labels = 1;
 }
 
 message LabelResponse {
@@ -275,4 +299,113 @@ message ChunkRef {
   // The checksum is not written to the external storage. We use crc32,
   // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
   uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message LabelValuesForMetricNameRequest {
+  string metric_name = 1;
+  string label_name = 2;
+  int64 from = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 4 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 5;
+}
+
+message LabelNamesForMetricNameRequest {
+  string metric_name = 1;
+  int64 from = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message GetChunkRefRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message GetChunkRefResponse {
+  repeated ChunkRef refs = 1;
+}
+
+message GetSeriesRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message GetSeriesResponse {
+  repeated IndexSeries series = 1 [(gogoproto.nullable) = false];
+}
+
+// Series calls to the TSDB Index
+message IndexSeries {
+  repeated LabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter"
+  ];
+}
+
+message QueryIndexResponse {
+  string QueryKey = 1;
+  repeated Row rows = 2;
+}
+
+message Row {
+  bytes rangeValue = 1;
+  bytes value = 2;
+}
+
+message QueryIndexRequest {
+  repeated IndexQuery Queries = 1;
+}
+
+message IndexQuery {
+  string tableName = 1;
+  string hashValue = 2;
+  bytes rangeValuePrefix = 3;
+  bytes rangeValueStart = 4;
+  bytes valueEqual = 5;
+}
+
+message IndexStatsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  // TODO(owen-d): add shards to grpc calls so we don't have
+  // to extract via labels
+}
+
+message IndexStatsResponse {
+  uint64 streams = 1 [(gogoproto.jsontag) = "streams"];
+  uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
+  uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
+  uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
 }

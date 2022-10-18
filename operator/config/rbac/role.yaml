@@ -54,6 +54,7 @@ rules:
 - apiGroups:
   - config.openshift.io
   resources:
+  - apiservers
   - dnses
   verbs:
   - get
@@ -174,10 +175,17 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - alertmanagers
+  verbs:
+  - patch
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
   - prometheusrules
   - servicemonitors
   verbs:
   - create
+  - delete
   - get
   - list
   - update
@@ -213,6 +221,7 @@ rules:
   - routes
   verbs:
   - create
+  - delete
   - get
   - list
   - update

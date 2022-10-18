@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	strings "strings"
 	"testing"
@@ -19,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -83,12 +81,12 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			EndTs:   end,
 		}, false},
 		{"index_stats", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &indexgatewaypb.IndexStatsRequest{
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 			})
-		}, &indexgatewaypb.IndexStatsRequest{
+		}, &logproto.IndexStatsRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
@@ -118,13 +116,13 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		want    queryrangebase.Response
 		wantErr bool
 	}{
-		{"500", &http.Response{StatusCode: 500, Body: ioutil.NopCloser(strings.NewReader("some error"))}, nil, nil, true},
-		{"no body", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(badReader{})}, nil, nil, true},
-		{"bad json", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(""))}, nil, nil, true},
-		{"not success", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(`{"status":"fail"}`))}, nil, nil, true},
-		{"unknown", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(`{"status":"success"}`))}, nil, nil, true},
+		{"500", &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("some error"))}, nil, nil, true},
+		{"no body", &http.Response{StatusCode: 200, Body: io.NopCloser(badReader{})}, nil, nil, true},
+		{"bad json", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(""))}, nil, nil, true},
+		{"not success", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"fail"}`))}, nil, nil, true},
+		{"unknown", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success"}`))}, nil, nil, true},
 		{
-			"matrix", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixString))}, nil,
+			"matrix", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(matrixString))}, nil,
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -138,7 +136,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"matrix-empty-streams",
-			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixStringEmptyResult))},
+			&http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(matrixStringEmptyResult))},
 			nil,
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
@@ -153,7 +151,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"vector-empty-streams",
-			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(vectorStringEmptyResult))},
+			&http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(vectorStringEmptyResult))},
 			nil,
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
@@ -167,7 +165,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"streams v1", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
+			"streams v1", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
@@ -182,7 +180,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"streams legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
+			"streams legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/api/prom/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
@@ -197,7 +195,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"series", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(seriesString))},
+			"series", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesString))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
 			&LokiSeriesResponse{
 				Status:  "success",
@@ -206,7 +204,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"labels legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(labelsString))},
+			"labels legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelsString))},
 			&LokiLabelNamesRequest{Path: "/api/prom/label"},
 			&LokiLabelNamesResponse{
 				Status:  "success",
@@ -215,10 +213,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"index stats", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(indexStatsString))},
-			&indexgatewaypb.IndexStatsRequest{},
+			"index stats", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(indexStatsString))},
+			&logproto.IndexStatsRequest{},
 			&IndexStatsResponse{
-				Response: &indexgatewaypb.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
 					Streams: 1,
 					Chunks:  2,
 					Bytes:   3,
@@ -354,7 +352,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 
 func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 	from, through := util.RoundToMilliseconds(start, end)
-	toEncode := &indexgatewaypb.IndexStatsRequest{
+	toEncode := &logproto.IndexStatsRequest{
 		From:     from,
 		Through:  through,
 		Matchers: `{job="foo"}`,
@@ -439,7 +437,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 		{
 			"index stats",
 			&IndexStatsResponse{
-				Response: &indexgatewaypb.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
 					Streams: 1,
 					Chunks:  2,
 					Bytes:   3,
@@ -457,7 +455,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}
 			if err == nil {
 				require.Equal(t, 200, got.StatusCode)
-				body, err := ioutil.ReadAll(got.Body)
+				body, err := io.ReadAll(got.Body)
 				require.Nil(t, err)
 				bodyString := string(body)
 				require.JSONEq(t, tt.body, bodyString)
@@ -1309,7 +1307,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	require.Nil(b, err)
 	reader := bytes.NewReader(buf)
 	resp.Body = &buffer{
-		ReadCloser: ioutil.NopCloser(reader),
+		ReadCloser: io.NopCloser(reader),
 		buff:       buf,
 	}
 	b.ResetTimer()
@@ -1345,7 +1343,7 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 	buf, err := io.ReadAll(resp.Body)
 	require.Nil(b, err)
 	reader := bytes.NewReader(buf)
-	resp.Body = ioutil.NopCloser(reader)
+	resp.Body = io.NopCloser(reader)
 	b.ResetTimer()
 	b.ReportAllocs()
 

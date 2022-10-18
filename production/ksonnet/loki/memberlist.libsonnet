@@ -22,7 +22,7 @@
     // Cluster label and verification flag can be set here or directly to
     // `_config.loki.memberlist.cluster_label` and `_config.loki.memberlist.cluster_label_verification_disabled` respectively.
     // Retaining this config to keep it backwards compatible with 2.6.1 release.
-    memberlist_cluster_label: '',
+    memberlist_cluster_label: '%(cluster)s.%(namespace)s' % self,
     memberlist_cluster_label_verification_disabled: false,
 
     // Migrating from consul to memberlist is a multi-step process:
@@ -46,9 +46,6 @@
       },
     } else {
       store: 'memberlist',
-      consul: {
-        host: null,
-      },
     },
 
     loki+: if $._config.memberlist_ring_enabled then {
@@ -145,4 +142,8 @@
         { [$._config.gossip_member_label]: 'true' },  // point to all gossip members
         ports,
       ) + service.mixin.spec.withClusterIp('None'),  // headless service
+
+  // Disable the consul deployment if not migrating and using memberlist
+  consul_deployment: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_deployment,
+  consul_service: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_service,
 }

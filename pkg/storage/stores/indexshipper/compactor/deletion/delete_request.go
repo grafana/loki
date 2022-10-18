@@ -2,7 +2,6 @@ package deletion
 
 import (
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -20,10 +19,13 @@ type DeleteRequest struct {
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID            string                 `json:"-"`
-	matchers          []*labels.Matcher      `json:"-"`
-	logSelectorExpr   syntax.LogSelectorExpr `json:"-"`
-	deletedLinesTotal prometheus.Counter     `json:"-"`
+	UserID          string                 `json:"-"`
+	SequenceNum     int64                  `json:"-"`
+	matchers        []*labels.Matcher      `json:"-"`
+	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
+
+	Metrics      *deleteRequestsManagerMetrics `json:"-"`
+	DeletedLines int32                         `json:"-"`
 }
 
 func (d *DeleteRequest) SetQuery(logQL string) error {
@@ -60,7 +62,8 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	return func(s string) bool {
 		result, _, skip := f(0, s)
 		if len(result) != 0 || skip {
-			d.deletedLinesTotal.Inc()
+			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
+			d.DeletedLines++
 			return true
 		}
 		return false
@@ -97,12 +100,6 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		return false, nil
 	}
 
-	level.Debug(util_log.Logger).Log(
-		"msg", "starting filter function",
-		"delete_request_id", d.RequestID,
-		"user", d.UserID,
-		"labels", entry.Labels.String(),
-	)
 	ff, err := d.FilterFunction(entry.Labels)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
@@ -115,12 +112,6 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		)
 		return false, nil
 	}
-	level.Debug(util_log.Logger).Log(
-		"msg", "finished filter function",
-		"delete_request_id", d.RequestID,
-		"user", d.UserID,
-		"labels", entry.Labels.String(),
-	)
 
 	if d.StartTime <= entry.From && d.EndTime >= entry.Through {
 		// if the logSelectorExpr has a filter part return the chunk boundaries as intervals

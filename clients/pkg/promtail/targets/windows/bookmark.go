@@ -4,7 +4,7 @@
 package windows
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 
 	"github.com/spf13/afero"
@@ -52,7 +52,7 @@ func newBookMark(path string) (*bookMark, error) {
 	if err != nil {
 		return nil, err
 	}
-	fileContent, err := ioutil.ReadAll(file)
+	fileContent, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}

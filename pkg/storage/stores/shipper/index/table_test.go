@@ -3,7 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -41,7 +41,7 @@ func (m *mockIndexShipper) AddIndex(tableName, _ string, index shipper_index.Ind
 	return nil
 }
 
-func (m *mockIndexShipper) ForEach(ctx context.Context, tableName, _ string, callback shipper_index.ForEachIndexCallback) error {
+func (m *mockIndexShipper) ForEach(ctx context.Context, tableName, _ string, _ <-chan struct{}, callback shipper_index.ForEachIndexCallback) error {
 	for _, idx := range m.addedIndexes[tableName] {
 		if err := callback(false, idx); err != nil {
 			return err
@@ -104,7 +104,7 @@ func TestLoadTable(t *testing.T) {
 
 	// change a boltdb file to text file which would fail to open.
 	invalidFilePath := filepath.Join(tablePath, "invalid")
-	require.NoError(t, ioutil.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0o666))
+	require.NoError(t, os.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0o666))
 
 	// verify that changed boltdb file can't be opened.
 	_, err = local.OpenBoltdbFile(invalidFilePath)
@@ -120,9 +120,9 @@ func TestLoadTable(t *testing.T) {
 	}()
 
 	// verify that we still have 3 files(2 valid, 1 invalid)
-	filesInfo, err := ioutil.ReadDir(tablePath)
+	dirEntries, err := os.ReadDir(tablePath)
 	require.NoError(t, err)
-	require.Len(t, filesInfo, 3)
+	require.Len(t, dirEntries, 3)
 
 	// query the loaded table to see if it has right data.
 	require.NoError(t, table.Snapshot())
@@ -228,7 +228,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
-					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
+					return indexShipper.ForEach(ctx, table.name, "", nil, func(_ bool, index shipper_index.Index) error {
 						return callback(index.(*indexfile.IndexFile).GetBoltDB())
 					})
 				},
@@ -248,7 +248,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			require.Len(t, indexShipper.addedIndexes[table.name], 2)
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
-					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
+					return indexShipper.ForEach(ctx, table.name, "", nil, func(_ bool, index shipper_index.Index) error {
 						return callback(index.(*indexfile.IndexFile).GetBoltDB())
 					})
 				},
@@ -301,9 +301,9 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 		require.NoError(t, boltdb.Close())
 	}
 
-	filesInfo, err := ioutil.ReadDir(tablePath)
+	dirEntries, err := os.ReadDir(tablePath)
 	require.NoError(t, err)
-	require.Len(t, filesInfo, 2)
+	require.Len(t, dirEntries, 2)
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {

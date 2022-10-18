@@ -39,9 +39,11 @@ local ecr_key = secret('ecr_key', 'infra/data/ci/loki/aws-credentials', 'access_
 local ecr_secret_key = secret('ecr_secret_key', 'infra/data/ci/loki/aws-credentials', 'secret_access_key');
 local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.dockerconfigjson');
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
+local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/gpg', 'passphrase');
+local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
+local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -309,6 +311,31 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
+local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'logql-analyzer') {
+      depends_on: ['image-tag'],
+      when: onPRs,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/logql-analyzer',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'logql-analyzer') {
+      depends_on: ['image-tag'],
+      when: onTagOrMain,
+      settings+: {
+        repo: 'grafana/logql-analyzer',
+      },
+    },
+  ],
+  depends_on: ['check'],
+};
+
+
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -419,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.22.0',
+    local build_image_tag = '0.24.2',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -547,51 +574,140 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
+    local configFileName = 'updater-config.json',
     trigger+: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
-        name: 'image-tag',
+        name: 'prepare-updater-config',
         image: 'alpine',
+        environment: {
+          RELEASE_BRANCH_REGEXP: '^release-([0-9\\.x]+)$',
+        },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
           'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
+          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'echo $RELEASE_NAME',
+          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE_NAME and RELEASE TAG
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
+          'sed -i "s/{{version}}/$RELEASE_TAG/g" %s' % configFileName,
         ],
+        settings: {
+          config_template: { from_secret: updater_config_template.name },
+        },
         depends_on: ['clone'],
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
         settings: {
           github_token: { from_secret: github_secret.name },
-          images_json: { from_secret: deploy_configuration.name },
-          docker_tag_file: '.tag',
+          config_file: configFileName,
         },
-        depends_on: ['clone', 'image-tag'],
+        depends_on: ['prepare-updater-config'],
       },
     ],
   },
   promtail_win(),
+  logql_analyzer(),
   pipeline('release') {
     trigger+: {
       event: ['pull_request', 'tag'],
     },
     image_pull_secrets: [pull_secret.name],
+    volumes+: [
+      {
+        name: 'cgroup',
+        host: {
+          path: '/sys/fs/cgroup',
+        },
+      },
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
+    ],
+    // Launch docker images with systemd
+    services: [
+      {
+        name: 'systemd-debian',
+        image: 'jrei/systemd-debian:12',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
+        privileged: true,
+      },
+      {
+        name: 'systemd-centos',
+        image: 'jrei/systemd-centos:8',
+        volumes: [
+          {
+            name: 'cgroup',
+            path: '/sys/fs/cgroup',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    // Package and test the packages
     steps: [
-      run(
-        'test packaging',
-        commands=['make BUILD_IN_CONTAINER=false packages']
-      ) { when: { event: ['pull_request'] } },
-      run(
-        'publish',
-        commands=['make BUILD_IN_CONTAINER=false publish'],
-        env={
-          GITHUB_TOKEN: { from_secret: github_secret.name },
-        }
-      ) { when: { event: ['tag'] } },
+      run('write-key',
+          commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
+          env={
+            NFPM_SIGNING_KEY: { from_secret: gpg_private_key.name },
+            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+          }),
+      run('test packaging',
+          commands=[
+            'make BUILD_IN_CONTAINER=false packages',
+          ],
+          env={
+            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
+            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+          }),
+      {
+        name: 'test deb package',
+        image: 'docker',
+        commands: ['./tools/packaging/verify-deb-install.sh'],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+      {
+        name: 'test rpm package',
+        image: 'docker',
+        commands: ['./tools/packaging/verify-rpm-install.sh'],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+      run('publish',
+          commands=['make BUILD_IN_CONTAINER=false publish'],
+          env={
+            GITHUB_TOKEN: { from_secret: github_secret.name },
+            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
+            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+          }) { when: { event: ['tag'] } },
     ],
   },
 ]
@@ -609,5 +725,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   docker_password_secret,
   ecr_key,
   ecr_secret_key,
-  deploy_configuration,
+  updater_config_template,
+  gpg_passphrase,
+  gpg_private_key,
 ]

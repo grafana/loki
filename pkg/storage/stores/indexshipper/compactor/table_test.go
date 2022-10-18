@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +30,8 @@ type indexSetState struct {
 }
 
 func TestTable_Compaction(t *testing.T) {
-	for _, numUsers := range []int{uploadIndexSetsConcurrency / 2, uploadIndexSetsConcurrency, uploadIndexSetsConcurrency * 2} {
+	// user counts are aligned with default upload parallelism
+	for _, numUsers := range []int{5, 10, 20} {
 		t.Run(fmt.Sprintf("numUsers=%d", numUsers), func(t *testing.T) {
 			for _, tc := range []struct {
 				numUnCompactedCommonDBs  int
@@ -199,7 +199,7 @@ func TestTable_Compaction(t *testing.T) {
 					require.NoError(t, err)
 
 					table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -236,7 +236,7 @@ func TestTable_Compaction(t *testing.T) {
 
 					// running compaction again should not do anything.
 					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -302,7 +302,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 			"emptied table": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+					_, err := os.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
 				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
@@ -379,7 +379,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					newTestIndexCompactor(), config.PeriodConfig{},
 					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
 						return true
-					}))
+					}), 10)
 				require.NoError(t, err)
 
 				require.NoError(t, table.compact(true))
@@ -410,14 +410,14 @@ func validateTable(t *testing.T, path string, expectedNumCommonDBs, numUsers int
 }
 
 func listDir(t *testing.T, path string) (files, folders []string) {
-	filesInfo, err := ioutil.ReadDir(path)
+	dirEntries, err := os.ReadDir(path)
 	require.NoError(t, err)
 
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
-			folders = append(folders, fileInfo.Name())
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			folders = append(folders, entry.Name())
 		} else {
-			files = append(files, fileInfo.Name())
+			files = append(files, entry.Name())
 		}
 	}
 
@@ -445,21 +445,21 @@ func TestTable_CompactionFailure(t *testing.T) {
 	SetupTable(t, filepath.Join(objectStoragePath, tableName), IndexesConfig{NumCompactedFiles: numDBs}, PerUserIndexesConfig{})
 
 	// put a corrupt zip file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.gz"), []byte("fail the compaction"), 0o666))
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, "fail.gz"), []byte("fail the compaction"), 0o666))
 
 	// do the compaction
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
 	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
 	require.Error(t, table.compact(false))
 
 	// ensure that files in storage are intact.
-	files, err := ioutil.ReadDir(tablePathInStorage)
+	files, err := os.ReadDir(tablePathInStorage)
 	require.NoError(t, err)
 	require.Len(t, files, numDBs+1)
 
@@ -470,7 +470,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.gz")))
 
 	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 	require.NoError(t, err)
 	require.NoError(t, table.compact(false))
 

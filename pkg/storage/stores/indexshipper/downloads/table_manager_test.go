@@ -20,6 +20,7 @@ import (
 const (
 	objectsStorageDirName = "objects"
 	cacheDirName          = "cache"
+	indexTablePrefix      = "table_"
 )
 
 func buildTestStorageClient(t *testing.T, path string) storage.Client {
@@ -46,9 +47,11 @@ func buildTestTableManager(t *testing.T, path string, tableRangesToHandle config
 	if tableRangesToHandle == nil {
 		tableRangesToHandle = config.TableRanges{
 			{
-				Start:        0,
-				End:          math.MaxInt64,
-				PeriodConfig: &config.PeriodConfig{},
+				Start: 0,
+				End:   math.MaxInt64,
+				PeriodConfig: &config.PeriodConfig{
+					IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+				},
 			},
 		}
 	}
@@ -84,7 +87,10 @@ func TestTableManager_ForEach(t *testing.T) {
 				expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 			}
 			verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-				return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
+				doneChan := make(chan struct{})
+				defer close(doneChan)
+
+				return tableManager.ForEach(context.Background(), tableName, userID, doneChan, callbackFunc)
 			})
 		}
 	}
@@ -269,14 +275,18 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			queryReadyNumDaysCfg: 20,
 			tableRangesToHandle: config.TableRanges{
 				{
-					End:          buildTableNumber(0),
-					Start:        buildTableNumber(4),
-					PeriodConfig: &config.PeriodConfig{},
+					End:   buildTableNumber(0),
+					Start: buildTableNumber(4),
+					PeriodConfig: &config.PeriodConfig{
+						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+					},
 				},
 				{
-					End:          buildTableNumber(7),
-					Start:        buildTableNumber(9),
-					PeriodConfig: &config.PeriodConfig{},
+					End:   buildTableNumber(7),
+					Start: buildTableNumber(9),
+					PeriodConfig: &config.PeriodConfig{
+						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+					},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
@@ -299,14 +309,18 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			queryReadyNumDaysCfg: 5,
 			tableRangesToHandle: config.TableRanges{
 				{
-					End:          buildTableNumber(0),
-					Start:        buildTableNumber(1),
-					PeriodConfig: &config.PeriodConfig{},
+					End:   buildTableNumber(0),
+					Start: buildTableNumber(1),
+					PeriodConfig: &config.PeriodConfig{
+						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+					},
 				},
 				{
-					End:          buildTableNumber(4),
-					Start:        buildTableNumber(5),
-					PeriodConfig: &config.PeriodConfig{},
+					End:   buildTableNumber(4),
+					Start: buildTableNumber(5),
+					PeriodConfig: &config.PeriodConfig{
+						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+					},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
@@ -324,7 +338,9 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
 			if tc.tableRangesToHandle == nil {
 				tableManager.tableRangesToHandle = config.TableRanges{{
-					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{},
+					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{
+						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+					},
 				}}
 			} else {
 				tableManager.tableRangesToHandle = tc.tableRangesToHandle
@@ -363,7 +379,10 @@ func TestTableManager_loadTables(t *testing.T) {
 					expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 				}
 				verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-					return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
+					doneChan := make(chan struct{})
+					defer close(doneChan)
+
+					return tableManager.ForEach(context.Background(), tableName, userID, doneChan, callbackFunc)
 				})
 			}
 		}
@@ -377,14 +396,22 @@ func TestTableManager_loadTables(t *testing.T) {
 
 	tableManager, stopFunc = buildTestTableManager(t, tempDir, config.TableRanges{
 		{
-			End:          buildTableNumber(0),
-			Start:        buildTableNumber(1),
-			PeriodConfig: &config.PeriodConfig{},
+			End:   buildTableNumber(0),
+			Start: buildTableNumber(1),
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+				},
+			},
 		},
 		{
-			End:          buildTableNumber(5),
-			Start:        buildTableNumber(8),
-			PeriodConfig: &config.PeriodConfig{},
+			End:   buildTableNumber(5),
+			Start: buildTableNumber(8),
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+				},
+			},
 		},
 	})
 	defer stopFunc()
@@ -428,7 +455,7 @@ type mockTable struct {
 	queryReadinessDoneForUsers []string
 }
 
-func (m *mockTable) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+func (m *mockTable) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	return nil
 }
 
@@ -466,5 +493,5 @@ func buildTableNumber(idx int) int64 {
 }
 
 func buildTableName(idx int) string {
-	return fmt.Sprintf("table_%d", buildTableNumber(idx))
+	return fmt.Sprintf("%s%d", indexTablePrefix, buildTableNumber(idx))
 }

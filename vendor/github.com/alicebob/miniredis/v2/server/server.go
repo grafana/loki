@@ -354,6 +354,13 @@ func (c *Peer) WriteRaw(s string) {
 	})
 }
 
+// WriteStrings is a helper to (bulk)write a string list
+func (c *Peer) WriteStrings(strs []string) {
+	c.Block(func(w *Writer) {
+		w.WriteStrings(strs)
+	})
+}
+
 func toInline(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
@@ -405,6 +412,14 @@ func (w *Writer) WritePushLen(n int) {
 // WriteBulk writes a bulk string
 func (w *Writer) WriteBulk(s string) {
 	fmt.Fprintf(w.w, "$%d\r\n%s\r\n", len(s), s)
+}
+
+// WriteStrings writes a list of strings (bulk)
+func (w *Writer) WriteStrings(strs []string) {
+	w.WriteLen(len(strs))
+	for _, s := range strs {
+		w.WriteBulk(s)
+	}
 }
 
 // WriteInt writes an integer

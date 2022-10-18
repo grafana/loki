@@ -3,8 +3,7 @@ package ingester
 import (
 	"bytes"
 	"context"
-	fmt "fmt"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -425,7 +424,7 @@ func checkpointIndex(filename string, includeTmp bool) (int, error) {
 // lastCheckpoint returns the directory name and index of the most recent checkpoint.
 // If dir does not contain any checkpoints, -1 is returned as index.
 func lastCheckpoint(dir string) (string, int, error) {
-	dirs, err := ioutil.ReadDir(dir)
+	dirs, err := os.ReadDir(dir)
 	if err != nil {
 		return "", -1, err
 	}
@@ -466,7 +465,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 
 	errs := tsdb_errors.NewMulti()
 
-	files, err := ioutil.ReadDir(w.segmentWAL.Dir())
+	files, err := os.ReadDir(w.segmentWAL.Dir())
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,25 @@
 ## Main
 
+- [7415](https://github.com/grafana/loki/pull/7415) **aminesnow**: Add alert relabel config
+- [7418](https://github.com/grafana/loki/pull/7418) **Red-GV**: Update golang to v1.19 and k8s dependencies to v0.25.2
+- [7322](https://github.com/grafana/loki/pull/7322) **Red-GV**: Configuring server and client HTTP and GRPC TLS options
+- [7272](https://github.com/grafana/loki/pull/7272) **aminesnow**: Use cluster monitoring alertmanager by default on openshift clusters
+- [7295](https://github.com/grafana/loki/pull/7295) **xperimental**: Add extended-validation for rules on OpenShift
+- [6951](https://github.com/grafana/loki/pull/6951) **Red-GV**: Adding operational Lokistack alerts
+- [7254](https://github.com/grafana/loki/pull/7254) **periklis**: Expose Loki Ruler API via the lokistack-gateway
+- [7214](https://github.com/grafana/loki/pull/7214) **periklis**: Fix ruler GRPC tls client configuration
+- [7201](https://github.com/grafana/loki/pull/7201) **xperimental**: Write configuration for per-tenant retention
+- [7037](https://github.com/grafana/loki/pull/7037) **xperimental**: Skip enforcing matcher for certain tenants on OpenShift
+- [7106](https://github.com/grafana/loki/pull/7106) **xperimental**: Manage global stream-based retention
+- [7092](https://github.com/grafana/loki/pull/7092) **aminesnow**: Configure kube-rbac-proxy sidecar to use Intermediate TLS security profile in OCP
+- [6870](https://github.com/grafana/loki/pull/6870) **aminesnow**: Configure gateway to honor the global tlsSecurityProfile on Openshift
+- [6999](https://github.com/grafana/loki/pull/6999) **Red-GV**: Adding LokiStack Gateway alerts
+- [7000](https://github.com/grafana/loki/pull/7000) **xperimental**: Configure default node affinity for all pods
+- [6923](https://github.com/grafana/loki/pull/6923) **xperimental**: Reconcile owner reference for existing objects
+- [6907](https://github.com/grafana/loki/pull/6907) **Red-GV**: Adding valid subscription annotation to operator metadata
+- [6479](https://github.com/grafana/loki/pull/6749) **periklis**: Update Loki operand to v2.6.1
+- [6748](https://github.com/grafana/loki/pull/6748) **periklis**: Update go4.org/unsafe/assume-no-moving-gc to latest
+- [6741](https://github.com/grafana/loki/pull/6741) **aminesnow**: Golang version to 1.18 and k8s client to 1.24
 - [6669](https://github.com/grafana/loki/pull/6669) **xperimental**: Set minimum TLS version to 1.2 to support FIPS
 - [6663](https://github.com/grafana/loki/pull/6663) **aminesnow**: Generalize live tail fix to all clusters using TLS
 - [6443](https://github.com/grafana/loki/pull/6443) **aminesnow**: Fix live tail of logs not working on OpenShift-based clusters

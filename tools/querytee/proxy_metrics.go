@@ -8,6 +8,9 @@ import (
 const (
 	comparisonSuccess = "success"
 	comparisonFailed  = "fail"
+
+	unknownIssuer = "unknown"
+	canaryIssuer  = "loki-canary"
 )
 
 type ProxyMetrics struct {
@@ -23,17 +26,17 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Name:      "request_duration_seconds",
 			Help:      "Time (in seconds) spent serving HTTP requests.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
-		}, []string{"backend", "method", "route", "status_code"}),
+		}, []string{"backend", "method", "route", "status_code", "issuer"}),
 		responsesTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex_querytee",
 			Name:      "responses_total",
 			Help:      "Total number of responses sent back to the client by the selected backend.",
-		}, []string{"backend", "method", "route"}),
+		}, []string{"backend", "method", "route", "issuer"}),
 		responsesComparedTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex_querytee",
 			Name:      "responses_compared_total",
-			Help:      "Total number of responses compared per route name by result.",
-		}, []string{"route", "result"}),
+			Help:      "Total number of responses compared per route and backend name by result.",
+		}, []string{"backend", "route", "result", "issuer"}),
 	}
 
 	return m

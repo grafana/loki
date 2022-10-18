@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -21,27 +24,38 @@ import (
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureRulerHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureRulerHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureRulerGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureRulerGRPCServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
 
-	return []client.Object{
+	objs := []client.Object{}
+
+	if opts.Stack.Tenants != nil {
+		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode, opts.Name); err != nil {
+			return nil, err
+		}
+
+		objs = configureRulerObjsForMode(opts)
+	}
+
+	return append(objs,
 		statefulSet,
 		NewRulerGRPCService(opts),
 		NewRulerHTTPService(opts),
-	}, nil
+	), nil
 }
 
-// NewRulerStatefulSet creates a statefulset object for an ruler
+// NewRulerStatefulSet creates a statefulset object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -70,7 +84,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name:  "loki-ruler",
+				Name:  rulerContainerName,
 				Resources: corev1.ResourceRequirements{
 					Limits:   opts.ResourceRequirements.Ruler.Limits,
 					Requests: opts.ResourceRequirements.Ruler.Requests,
@@ -128,6 +142,13 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
@@ -209,6 +230,43 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 }
 
+func configureRulerStatefulSetForMode(
+	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
+	stackName string,
+) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		caBundleName := signingCABundleName(stackName)
+		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
+		return openshift.ConfigureRulerStatefulSet(
+			ss,
+			BearerTokenFile,
+			caBundleName,
+			caBundleDir,
+			caFile,
+			monitorServerName,
+			rulerContainerName,
+		)
+	}
+
+	return nil
+}
+
+func configureRulerObjsForMode(opts Options) []client.Object {
+	openShiftObjs := []client.Object{}
+
+	switch opts.Stack.Tenants.Mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
+	}
+
+	return openShiftObjs
+}
+
 // NewRulerGRPCService creates a k8s service for the ruler GRPC endpoint
 func NewRulerGRPCService(opts Options) *corev1.Service {
 	serviceName := serviceNameRulerGRPC(opts.Name)
@@ -268,13 +326,13 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameRulerHTTP(stackName)
+func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameRulerHTTP(opts.Name)
 	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
-	caBundleName := signingCABundleName(stackName)
+func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	caBundleName := signingCABundleName(opts.Name)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -301,7 +359,22 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) err
 		Args: []string{
 			// Enable GRPC over TLS for ruler client
 			"-ruler.client.tls-enabled=true",
+			fmt.Sprintf("-ruler.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ruler.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(opts.Name), opts.Namespace)),
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
+			// Enable GRPC over TLS for boltb-shipper index-gateway client
+			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
 		},
 	}
 
@@ -313,7 +386,7 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) err
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	serviceName := serviceNameRulerGRPC(stackName)
+	serviceName := serviceNameRulerGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 

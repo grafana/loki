@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,12 +55,12 @@ func (c *CompactedIndex) isEmpty() (bool, error) {
 }
 
 // recreateCompactedDB just copies the old db to the new one using bbolt.Compact for following reasons:
-// 1. When index entries are deleted, boltdb leaves free pages in the file. The only way to drop those free pages is to re-create the file.
-//    See https://github.com/boltdb/bolt/issues/308 for more details.
-// 2. boltdb by default fills only about 50% of the page in the file. See https://github.com/etcd-io/bbolt/blob/master/bucket.go#L26.
-//    This setting is optimal for unordered writes.
-//    bbolt.Compact fills the whole page by setting FillPercent to 1 which works well here since while copying the data, it receives the index entries in order.
-//    The storage space goes down from anywhere between 25% to 50% as per my(Sandeep) tests.
+//  1. When index entries are deleted, boltdb leaves free pages in the file. The only way to drop those free pages is to re-create the file.
+//     See https://github.com/boltdb/bolt/issues/308 for more details.
+//  2. boltdb by default fills only about 50% of the page in the file. See https://github.com/etcd-io/bbolt/blob/master/bucket.go#L26.
+//     This setting is optimal for unordered writes.
+//     bbolt.Compact fills the whole page by setting FillPercent to 1 which works well here since while copying the data, it receives the index entries in order.
+//     The storage space goes down from anywhere between 25% to 50% as per my(Sandeep) tests.
 func (c *CompactedIndex) recreateCompactedDB() error {
 	destDB, err := openBoltdbFileWithNoSync(filepath.Join(c.workingDir, fmt.Sprint(time.Now().Unix())))
 	if err != nil {
@@ -135,7 +136,7 @@ func (c *CompactedIndex) setupIndexProcessors() error {
 	return nil
 }
 
-func (c *CompactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) error {
+func (c *CompactedIndex) ForEachChunk(ctx context.Context, callback retention.ChunkEntryCallback) error {
 	if err := c.setupIndexProcessors(); err != nil {
 		return err
 	}
@@ -145,7 +146,7 @@ func (c *CompactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) err
 		return fmt.Errorf("required boltdb bucket not found")
 	}
 
-	return ForEachChunk(bucket, c.periodConfig, callback)
+	return ForEachChunk(ctx, bucket, c.periodConfig, callback)
 }
 
 func (c *CompactedIndex) IndexChunk(chunk chunk.Chunk) (bool, error) {

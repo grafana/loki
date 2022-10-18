@@ -9,6 +9,8 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -21,18 +23,37 @@ const (
 	tenantInfrastructure = "infrastructure"
 	// tenantAudit is the name of the tenant holding audit logs.
 	tenantAudit = "audit"
+	// tenantNetwork is the name of the tenant holding network logs.
+	tenantNetwork = "network"
 )
 
 var (
-	// defaultTenants represents the slice of all supported LokiStack on OpenShift.
-	defaultTenants = []string{
+	// loggingTenants represents the slice of all supported tenants on OpenshiftLogging mode.
+	loggingTenants = []string{
 		tenantApplication,
 		tenantInfrastructure,
 		tenantAudit,
 	}
 
+	// networkTenants represents the slice of all supported tenants on OpenshiftNetwork mode.
+	networkTenants = []string{
+		tenantNetwork,
+	}
+
 	logsEndpointRe = regexp.MustCompile(`.*logs..*.endpoint.*`)
 )
+
+// GetTenants return the slice of all supported tenants for a specified mode
+func GetTenants(mode lokiv1.ModeType) []string {
+	switch mode {
+	case lokiv1.OpenshiftLogging:
+		return loggingTenants
+	case lokiv1.OpenshiftNetwork:
+		return networkTenants
+	default:
+		return []string{}
+	}
+}
 
 // ConfigureGatewayDeployment merges an OpenPolicyAgent sidecar into the deployment spec.
 // With this, the deployment will route authorization request to the OpenShift
@@ -40,12 +61,15 @@ var (
 // This function also forces the use of a TLS connection for the gateway.
 func ConfigureGatewayDeployment(
 	d *appsv1.Deployment,
+	mode lokiv1.ModeType,
 	gwContainerName string,
 	secretVolumeName, tlsDir, certFile, keyFile string,
 	caBundleVolumeName, caDir, caFile string,
 	withTLS, withCertSigningService bool,
 	secretName, serverName string,
 	gatewayHTTPPort int,
+	minTLSVersion string,
+	ciphers string,
 ) error {
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
@@ -99,7 +123,6 @@ func ConfigureGatewayDeployment(
 	caFilePath := path.Join(caDir, caFile)
 	gwArgs = append(gwArgs,
 		"--tls.client-auth-type=NoClientCert",
-		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
 		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
 		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
@@ -107,7 +130,6 @@ func ConfigureGatewayDeployment(
 
 	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
-	gwContainer.Args = gwArgs
 
 	// Create and mount TLS secrets volumes if not already created.
 	if !withTLS {
@@ -125,13 +147,20 @@ func ConfigureGatewayDeployment(
 			ReadOnly:  true,
 			MountPath: tlsDir,
 		})
+
+		// Add TLS profile info args since openshift gateway always uses TLS.
+		gwArgs = append(gwArgs,
+			fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
+			fmt.Sprintf("--tls.cipher-suites=%s", ciphers))
 	}
+
+	gwContainer.Args = gwArgs
 
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
 			*gwContainer,
-			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, withTLS),
+			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphers, withTLS),
 		},
 		Volumes: gwVolumes,
 	}
@@ -247,6 +276,64 @@ func ConfigureQueryFrontendDeployment(
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to add tls volumes")
+	}
+
+	return nil
+}
+
+// ConfigureRulerStatefulSet configures the ruler to use the cluster monitoring alertmanager.
+func ConfigureRulerStatefulSet(
+	ss *appsv1.StatefulSet,
+	token, caBundleVolumeName, caDir, caFile string,
+	monitorServerName, rulerContainerName string,
+) error {
+	var rulerIndex int
+	for i, c := range ss.Spec.Template.Spec.Containers {
+		if c.Name == rulerContainerName {
+			rulerIndex = i
+			break
+		}
+	}
+
+	rulerContainer := ss.Spec.Template.Spec.Containers[rulerIndex].DeepCopy()
+
+	rulerContainer.Args = append(rulerContainer.Args,
+		fmt.Sprintf("-ruler.alertmanager-client.tls-ca-path=%s/%s", caDir, caFile),
+		fmt.Sprintf("-ruler.alertmanager-client.tls-server-name=%s", monitorServerName),
+		fmt.Sprintf("-ruler.alertmanager-client.credentials-file=%s", token),
+	)
+
+	p := corev1.PodSpec{
+		ServiceAccountName: ss.GetName(),
+		Containers: []corev1.Container{
+			*rulerContainer,
+		},
+	}
+
+	if err := mergo.Merge(&ss.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge ruler container spec ")
+	}
+
+	return nil
+}
+
+// ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
+func ConfigureOptions(configOpt *config.Options) error {
+	if configOpt.Ruler.AlertManager == nil {
+		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
+	}
+
+	if len(configOpt.Ruler.AlertManager.Hosts) == 0 {
+		amc := &config.AlertManagerConfig{
+			Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			EnableV2:        true,
+			EnableDiscovery: true,
+			RefreshInterval: "1m",
+		}
+
+		if err := mergo.Merge(configOpt.Ruler.AlertManager, amc); err != nil {
+			return kverrors.Wrap(err, "failed merging AlertManager config")
+		}
 	}
 
 	return nil

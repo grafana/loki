@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/validation"
+
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -76,11 +80,19 @@ type Config struct {
 	RetentionEnabled          bool            `yaml:"retention_enabled"`
 	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
-	DeletionMode              string          `yaml:"deletion_mode"`
+	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
+	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
+	UploadParallelism         int             `yaml:"upload_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
-	RunOnce                   bool            `yaml:"-"`
+	RunOnce                   bool            `yaml:"_"`
+	TablesToCompact           int             `yaml:"tables_to_compact"`
+	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
+
+	// Deprecated
+	DeletionMode string `yaml:"deletion_mode"`
 }
 
 // RegisterFlags registers flags.
@@ -93,11 +105,21 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
+	f.IntVar(&cfg.DeleteBatchSize, "boltdb.shipper.compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.DurationVar(&cfg.DeleteMaxInterval, "boltdb.shipper.compactor.delete-max-interval", 0, "Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
+	f.DurationVar(&cfg.RetentionTableTimeout, "boltdb.shipper.compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "disabled", fmt.Sprintf("Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
-	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
+	f.IntVar(&cfg.UploadParallelism, "boltdb.shipper.compactor.upload-parallelism", 10, "Number of upload/remove operations to execute in parallel when finalizing a compaction. ")
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
+
+	// Deprecated
+	flagext.DeprecatedFlag(f, "boltdb.shipper.compactor.deletion-mode", "Deprecated. This has been moved to the deletion_mode per tenant configuration.", util_log.Logger)
+
+	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
+	f.IntVar(&cfg.TablesToCompact, "boltdb.shipper.compactor.tables-to-compact", 0, "The number of most recent tables to compact in a single run. Default: all")
+	f.IntVar(&cfg.SkipLatestNTables, "boltdb.shipper.compactor.skip-latest-n-tables", 0, "Skip compacting latest N tables")
+
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -109,11 +131,15 @@ func (cfg *Config) Validate() error {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
 	}
 
-	if _, err := deletion.ParseMode(cfg.DeletionMode); err != nil {
+	if err := shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix); err != nil {
 		return err
 	}
 
-	return shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+	if cfg.DeletionMode != "" {
+		level.Warn(util_log.Logger).Log("msg", "boltdb.shipper.compactor.deletion-mode has been deprecated and will be ignored. This has been moved to the deletion_mode per tenant configuration.")
+	}
+
+	return nil
 }
 
 type Compactor struct {
@@ -130,7 +156,6 @@ type Compactor struct {
 	metrics               *metrics
 	running               bool
 	wg                    sync.WaitGroup
-	deleteMode            deletion.Mode
 	indexCompactors       map[string]IndexCompactor
 	schemaConfig          config.SchemaConfig
 
@@ -144,7 +169,7 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -202,12 +227,6 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	mode, err := deletion.ParseMode(cfg.DeletionMode)
-	if err != nil {
-		return nil, err
-	}
-	compactor.deleteMode = mode
-
 	if err := compactor.init(objectClient, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
@@ -216,7 +235,7 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits retention.Limits, r prometheus.Registerer) error {
+func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -238,19 +257,11 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 			return err
 		}
 
-		if c.deleteMode.DeleteEnabled() {
-			if err := c.initDeletes(r, limits); err != nil {
-				return err
-			}
-		} else {
-			c.expirationChecker = newExpirationChecker(
-				retention.NewExpirationChecker(limits),
-				// This is a dummy deletion ExpirationChecker that never expires anything
-				retention.NeverExpiringExpirationChecker(limits),
-			)
+		if err := c.initDeletes(r, limits); err != nil {
+			return err
 		}
 
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, chunkClient, r)
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
 		if err != nil {
 			return err
 		}
@@ -259,7 +270,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 	return nil
 }
 
-func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits) error {
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Overrides) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -270,16 +281,16 @@ func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits
 
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
-		c.cfg.DeleteRequestCancelPeriod,
-		limits,
+		c.cfg.DeleteMaxInterval,
 		r,
 	)
 
 	c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
 		c.deleteRequestsStore,
 		c.cfg.DeleteRequestCancelPeriod,
+		c.cfg.DeleteBatchSize,
+		limits,
 		r,
-		c.deleteMode,
 	)
 
 	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
@@ -496,7 +507,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, indexCompactor,
-		schemaCfg, c.tableMarker, c.expirationChecker)
+		schemaCfg, c.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
@@ -555,6 +566,17 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	c.indexStorageClient.RefreshIndexListCache(ctx)
 
 	tables, err := c.indexStorageClient.ListTables(ctx)
+
+	// process most recent tables first
+	sortTablesByRange(tables)
+
+	// apply passed in compaction limits
+	if c.cfg.SkipLatestNTables <= len(tables) {
+		tables = tables[c.cfg.SkipLatestNTables:]
+	}
+	if c.cfg.TablesToCompact > 0 && c.cfg.TablesToCompact < len(tables) {
+		tables = tables[:c.cfg.TablesToCompact]
+	}
 	if err != nil {
 		status = statusFailure
 		return err
@@ -620,10 +642,6 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	return firstErr
 }
 
-func (c *Compactor) DeleteMode() deletion.Mode {
-	return c.deleteMode
-}
-
 type expirationChecker struct {
 	retentionExpiryChecker retention.ExpirationChecker
 	deletionExpiryChecker  retention.ExpirationChecker
@@ -654,6 +672,11 @@ func (e *expirationChecker) MarkPhaseFailed() {
 func (e *expirationChecker) MarkPhaseFinished() {
 	e.retentionExpiryChecker.MarkPhaseFinished()
 	e.deletionExpiryChecker.MarkPhaseFinished()
+}
+
+func (e *expirationChecker) MarkPhaseTimedOut() {
+	e.retentionExpiryChecker.MarkPhaseTimedOut()
+	e.deletionExpiryChecker.MarkPhaseTimedOut()
 }
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
@@ -689,6 +712,19 @@ func (c *Compactor) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Des
 
 func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.ring.ServeHTTP(w, req)
+}
+
+func sortTablesByRange(tables []string) {
+	tableRanges := make(map[string]model.Interval)
+	for _, table := range tables {
+		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
+	}
+
+	sort.Slice(tables, func(i, j int) bool {
+		// less than if start time is after produces a most recent first sort order
+		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
+	})
+
 }
 
 func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {

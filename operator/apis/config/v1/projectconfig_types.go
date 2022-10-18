@@ -17,6 +17,14 @@ type OpenShiftFeatureGates struct {
 	// gateway to expose the service to public internet access.
 	// More details: https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html
 	GatewayRoute bool `json:"gatewayRoute,omitempty"`
+
+	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
+	// to enforce tenancy in an OpenShift context.
+	ExtendedRuleValidation bool `json:"ruleExtendedValidation,omitempty"`
+
+	// ClusterTLSPolicy enables usage of TLS policies set in the API Server.
+	// More details: https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html
+	ClusterTLSPolicy bool `json:"clusterTLSPolicy,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.
@@ -67,9 +75,33 @@ type FeatureGates struct {
 	// RecordingRuleWebhook enables the RecordingRule CR validation webhook.
 	RecordingRuleWebhook bool `json:"recordingRuleWebhook,omitempty"`
 
+	// When DefaultNodeAffinity is enabled the operator will set a default node affinity on all pods.
+	// This will limit scheduling of the pods to Nodes with Linux.
+	DefaultNodeAffinity bool `json:"defaultNodeAffinity,omitempty"`
+
 	// OpenShift contains a set of feature gates supported only on OpenShift.
 	OpenShift OpenShiftFeatureGates `json:"openshift,omitempty"`
+
+	// TLSProfile allows to chose a TLS security profile. Enforced
+	// when using HTTPEncryption or GRPCEncryption.
+	TLSProfile string `json:"tlsProfile,omitempty"`
 }
+
+// TLSProfileType is a TLS security profile based on the Mozilla definitions:
+// https://wiki.mozilla.org/Security/Server_Side_TLS
+type TLSProfileType string
+
+const (
+	// TLSProfileOldType is a TLS security profile based on:
+	// https://wiki.mozilla.org/Security/Server_Side_TLS#Old_backward_compatibility
+	TLSProfileOldType TLSProfileType = "Old"
+	// TLSProfileIntermediateType is a TLS security profile based on:
+	// https://wiki.mozilla.org/Security/Server_Side_TLS#Intermediate_compatibility_.28default.29
+	TLSProfileIntermediateType TLSProfileType = "Intermediate"
+	// TLSProfileModernType is a TLS security profile based on:
+	// https://wiki.mozilla.org/Security/Server_Side_TLS#Modern_compatibility
+	TLSProfileModernType TLSProfileType = "Modern"
+)
 
 //+kubebuilder:object:root=true
 

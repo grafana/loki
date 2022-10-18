@@ -52,6 +52,7 @@ func NewTripperware(
 		c   cache.Cache
 		err error
 	)
+
 	if cfg.CacheResults {
 		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
 		if err != nil {
@@ -426,7 +427,7 @@ func NewMetricTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
-			registerer,
+			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
 			return nil, err

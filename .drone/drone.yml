@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.22.0
+    - 0.24.2
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.22.0
+    - 0.24.2
     username:
       from_secret: docker_username
   when:
@@ -53,14 +53,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: check-generated-files
 - commands:
   - cd ..
@@ -69,7 +69,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: clone-main
 - commands:
   - make BUILD_IN_CONTAINER=false test
@@ -77,7 +77,7 @@ steps:
   - clone
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: test
 - commands:
   - cd ../loki-main
@@ -85,7 +85,7 @@ steps:
   depends_on:
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
@@ -95,7 +95,7 @@ steps:
   - test
   - test-main
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: compare-coverage
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
@@ -108,7 +108,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: report-coverage
 - commands:
   - make BUILD_IN_CONTAINER=false lint
@@ -116,7 +116,7 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -125,7 +125,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -137,21 +137,21 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: check-example-config-doc
 trigger:
   ref:
@@ -178,7 +178,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.22.0
+  image: grafana/loki-build-image:0.24.1
   name: loki-mixin-check
 trigger:
   ref:
@@ -1132,21 +1132,30 @@ steps:
   - git fetch origin --tags
   - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
+  - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
+    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" | sed "s/\./-/g" || echo "next")
+  - echo $RELEASE_NAME
+  - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
+  - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
+  - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
+  - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
   depends_on:
   - clone
+  environment:
+    RELEASE_BRANCH_REGEXP: ^release-([0-9\.x]+)$
   image: alpine
-  name: image-tag
+  name: prepare-updater-config
+  settings:
+    config_template:
+      from_secret: updater_config_template
 - depends_on:
-  - clone
-  - image-tag
-  image: us.gcr.io/kubernetes-dev/drone/plugins/deploy-image
+  - prepare-updater-config
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
   name: trigger
   settings:
-    docker_tag_file: .tag
+    config_file: updater-config.json
     github_token:
       from_secret: github_token
-    images_json:
-      from_secret: deploy_config
 trigger:
   event:
   - push
@@ -1179,25 +1188,117 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+depends_on:
+- check
+kind: pipeline
+name: logql-analyzer
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-logql-analyzer-image
+  settings:
+    dockerfile: cmd/logql-analyzer/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/logql-analyzer
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-logql-analyzer-image
+  settings:
+    dockerfile: cmd/logql-analyzer/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/logql-analyzer
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
 name: release
+services:
+- image: jrei/systemd-debian:12
+  name: systemd-debian
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
+- image: jrei/systemd-centos:8
+  name: systemd-centos
+  privileged: true
+  volumes:
+  - name: cgroup
+    path: /sys/fs/cgroup
 steps:
 - commands:
+  - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
+  environment:
+    NFPM_SIGNING_KEY:
+      from_secret: gpg_private_key
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+  image: grafana/loki-build-image:0.24.1
+  name: write-key
+- commands:
   - make BUILD_IN_CONTAINER=false packages
-  environment: {}
-  image: grafana/loki-build-image:0.22.0
+  environment:
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+  image: grafana/loki-build-image:0.24.1
   name: test packaging
-  when:
-    event:
-    - pull_request
+- commands:
+  - ./tools/packaging/verify-deb-install.sh
+  image: docker
+  name: test deb package
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+- commands:
+  - ./tools/packaging/verify-rpm-install.sh
+  image: docker
+  name: test rpm package
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
 - commands:
   - make BUILD_IN_CONTAINER=false publish
   environment:
     GITHUB_TOKEN:
       from_secret: github_token
-  image: grafana/loki-build-image:0.22.0
+    NFPM_PASSPHRASE:
+      from_secret: gpg_passphrase
+    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+  image: grafana/loki-build-image:0.24.1
   name: publish
   when:
     event:
@@ -1211,6 +1312,13 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+volumes:
+- host:
+    path: /sys/fs/cgroup
+  name: cgroup
+- host:
+    path: /var/run/docker.sock
+  name: docker
 ---
 depends_on:
 - check
@@ -1411,12 +1519,24 @@ kind: secret
 name: ecr_secret_key
 ---
 get:
-  name: config.json
+  name: updater-config-template.json
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
-name: deploy_config
+name: updater_config_template
+---
+get:
+  name: passphrase
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_passphrase
+---
+get:
+  name: private-key
+  path: infra/data/ci/packages-publish/gpg
+kind: secret
+name: gpg_private_key
 ---
 kind: signature
-hmac: 4fa63210e8bdd946f1732051b6b841eba0ae1b0313436301c743341d29893c8f
+hmac: 8738700b68f651859a25c2c9bd9f70efb8092aa1eca2ad35238a85ec19f9fe31
 
 ...

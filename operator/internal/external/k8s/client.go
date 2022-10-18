@@ -17,7 +17,7 @@ import (
 //counterfeiter:generate . Client
 type Client interface {
 	Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error
-	Get(ctx context.Context, key client.ObjectKey, obj client.Object) error
+	Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error
 
 	Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error
 	Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error

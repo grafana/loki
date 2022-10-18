@@ -42,13 +42,15 @@ const (
 	dataDirectory         = "/tmp/loki"
 	rulesStorageDirectory = "/tmp/rules"
 
+	rulerContainerName = "loki-ruler"
+
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.6.0"
+	DefaultContainerImage = "docker.io/grafana/loki:2.6.1"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -90,6 +92,9 @@ const (
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
 	caFile = "service-ca.crt"
+
+	kubernetesNodeOSLabel = "kubernetes.io/os"
+	kubernetesNodeOSLinux = "linux"
 )
 
 var (
@@ -139,7 +144,7 @@ func CompactorName(stackName string) string {
 	return fmt.Sprintf("%s-compactor", stackName)
 }
 
-// DistributorName is the name of the distibutor deployment
+// DistributorName is the name of the distributor deployment
 func DistributorName(stackName string) string {
 	return fmt.Sprintf("%s-distributor", stackName)
 }
@@ -296,6 +301,32 @@ func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS b
 		Port:   portName,
 		Path:   "/metrics",
 		Scheme: "http",
+	}
+}
+
+func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+	if !enableNodeAffinity {
+		return nil
+	}
+
+	return &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      kubernetesNodeOSLabel,
+								Operator: corev1.NodeSelectorOpIn,
+								Values: []string{
+									kubernetesNodeOSLinux,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 }
 

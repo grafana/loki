@@ -135,7 +135,7 @@ type ObjectInfo struct {
 	VersionID      string `xml:"VersionId"`
 
 	// x-amz-replication-status value is either in one of the following states
-	// - COMPLETE
+	// - COMPLETED
 	// - PENDING
 	// - FAILED
 	// - REPLICA (on the destination)

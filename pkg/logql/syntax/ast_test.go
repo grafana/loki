@@ -72,6 +72,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
+		`vector(123)`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -152,6 +153,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		)
 		`,
 		`10 / (5/2)`,
+		`(count_over_time({job="postgres"}[5m])/2) or vector(2)`,
 		`10 / (count_over_time({job="postgres"}[5m])/2)`,
 		`{app="foo"} | json response_status="response.status.code", first_param="request.params[0]"`,
 		`label_replace(
@@ -176,6 +178,21 @@ func Test_SampleExpr_String(t *testing.T) {
 			expr2, err := ParseExpr(expr.String())
 			require.Nil(t, err)
 			require.Equal(t, expr, expr2)
+		})
+	}
+}
+
+func Test_SampleExpr_String_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`topk(0, sum(rate({region="us-east1"}[5m])) by (name))`,
+		`topk by (name)(0,sum(rate({region="us-east1"}[5m])))`,
+		`bottomk(0, sum(rate({region="us-east1"}[5m])) by (name))`,
+		`bottomk by (name)(0,sum(rate({region="us-east1"}[5m])))`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "parse error : invalid parameter (must be greater than 0)")
 		})
 	}
 }

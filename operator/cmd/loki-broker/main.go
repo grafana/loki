@@ -3,17 +3,18 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 
-	"github.com/ViaQ/logerr/v2/log"
-	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
+	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -58,6 +59,8 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	// Input and output file/dir options
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
+	// TLS profile option
+	f.StringVar(&c.featureFlags.TLSProfile, "tls-profile", "", "The TLS security Profile configuration.")
 }
 
 func (c *config) validateFlags(log logr.Logger) {
@@ -114,7 +117,7 @@ func main() {
 
 	cfg.validateFlags(logger)
 
-	b, err := ioutil.ReadFile(cfg.crFilepath)
+	b, err := os.ReadFile(cfg.crFilepath)
 	if err != nil {
 		logger.Info("failed to read custom resource file", "path", cfg.crFilepath)
 		os.Exit(1)
@@ -123,6 +126,14 @@ func main() {
 	ls := &lokiv1.LokiStack{}
 	if err = yaml.Unmarshal(b, ls); err != nil {
 		logger.Error(err, "failed to unmarshal LokiStack CR", "path", cfg.crFilepath)
+		os.Exit(1)
+	}
+
+	if cfg.featureFlags.TLSProfile != "" &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileModernType) {
+		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
 		os.Exit(1)
 	}
 
@@ -138,6 +149,18 @@ func main() {
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
 		logger.Error(optErr, "failed to conform options to build settings")
+		os.Exit(1)
+	}
+
+	var tlsSecurityProfile *openshiftv1.TLSSecurityProfile
+	if cfg.featureFlags.TLSProfile != "" {
+		tlsSecurityProfile = &openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+		}
+	}
+
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsSecurityProfile); optErr != nil {
+		logger.Error(optErr, "failed to conform options to tls profile settings")
 		os.Exit(1)
 	}
 
@@ -157,7 +180,7 @@ func main() {
 		if cfg.writeToDir != "" {
 			basename := fmt.Sprintf("%s-%s.yaml", o.GetObjectKind().GroupVersionKind().Kind, o.GetName())
 			fname := strings.ToLower(path.Join(cfg.writeToDir, basename))
-			if err := ioutil.WriteFile(fname, b, 0o644); err != nil {
+			if err := os.WriteFile(fname, b, 0o644); err != nil {
 				logger.Error(err, "failed to write file to directory", "path", fname)
 				os.Exit(1)
 			}

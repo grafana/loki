@@ -6,7 +6,6 @@ package journal
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"syscall"
 	"time"
@@ -174,12 +173,26 @@ func journalTargetWithReader(
 		return nil, errors.Wrap(err, "parsing journal reader 'max_age' config value")
 	}
 
-	cfg := t.generateJournalConfig(journalConfigBuilder{
+	cb := journalConfigBuilder{
 		JournalPath: targetConfig.Path,
 		Position:    position,
 		MaxAge:      maxAge,
 		EntryFunc:   entryFunc,
-	})
+	}
+
+	matches := strings.Fields(targetConfig.Matches)
+	for _, m := range matches {
+		fv := strings.Split(m, "=")
+		if len(fv) != 2 {
+			return nil, errors.New("Error parsing journal reader 'matches' config value")
+		}
+		cb.Matches = append(cb.Matches, sdjournal.Match{
+			Field: fv[0],
+			Value: fv[1],
+		})
+	}
+
+	cfg := t.generateJournalConfig(cb)
 	t.r, err = readerFunc(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating journal reader")
@@ -187,7 +200,7 @@ func journalTargetWithReader(
 
 	go func() {
 		for {
-			err := t.r.Follow(until, ioutil.Discard)
+			err := t.r.Follow(until, io.Discard)
 			if err != nil {
 				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
 
@@ -208,6 +221,7 @@ func journalTargetWithReader(
 type journalConfigBuilder struct {
 	JournalPath string
 	Position    string
+	Matches     []sdjournal.Match
 	MaxAge      time.Duration
 	EntryFunc   journalEntryFunc
 }
@@ -221,6 +235,7 @@ func (t *JournalTarget) generateJournalConfig(
 
 	cfg := sdjournal.JournalReaderConfig{
 		Path:      cb.JournalPath,
+		Matches:   cb.Matches,
 		Formatter: t.formatter,
 	}
 

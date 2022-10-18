@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
@@ -65,9 +67,9 @@ func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
 func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.Expr) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.opts.Timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
+		timeout:   ng.opts.Timeout,
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
@@ -97,6 +99,8 @@ func (d DownstreamLogSelectorExpr) String() string {
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
 
+var defaultMaxDepth = 4
+
 // ConcatSampleExpr is an expr for concatenating multiple SampleExpr
 // Contract: The embedded SampleExprs within a linked list of ConcatSampleExprs must be of the
 // same structure. This makes special implementations of SampleExpr.Associative() unnecessary.
@@ -110,7 +114,19 @@ func (c ConcatSampleExpr) String() string {
 		return c.DownstreamSampleExpr.String()
 	}
 
-	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.String())
+	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(defaultMaxDepth-1))
+}
+
+// in order to not display huge queries with thousands of shards,
+// we can limit the number of stringified subqueries.
+func (c ConcatSampleExpr) string(maxDepth int) string {
+	if c.next == nil {
+		return c.DownstreamSampleExpr.String()
+	}
+	if maxDepth <= 1 {
+		return fmt.Sprintf("%s ++ ...", c.DownstreamSampleExpr.String())
+	}
+	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
 func (c ConcatSampleExpr) Walk(f syntax.WalkFn) {
@@ -129,7 +145,19 @@ func (c ConcatLogSelectorExpr) String() string {
 		return c.DownstreamLogSelectorExpr.String()
 	}
 
-	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.String())
+	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(defaultMaxDepth-1))
+}
+
+// in order to not display huge queries with thousands of shards,
+// we can limit the number of stringified subqueries.
+func (c ConcatLogSelectorExpr) string(maxDepth int) string {
+	if c.next == nil {
+		return c.DownstreamLogSelectorExpr.String()
+	}
+	if maxDepth <= 1 {
+		return fmt.Sprintf("%s ++ ...", c.DownstreamLogSelectorExpr.String())
+	}
+	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
 type Shards []astmapper.ShardAnnotation
@@ -190,6 +218,13 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 	for _, res := range results {
 		stats.JoinResults(ctx, res.Statistics)
+	}
+
+	for _, res := range results {
+		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+			break
+		}
 	}
 
 	return results, nil
