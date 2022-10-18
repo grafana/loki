@@ -153,6 +153,18 @@ func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerCon
 		c.ResendDelay = string(n.ResendDelay)
 	}
 
+	for _, cfg := range s.RelabelConfigs {
+		c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
+			SourceLabels: cfg.SourceLabels,
+			Separator:    cfg.Separator,
+			TargetLabel:  cfg.TargetLabel,
+			Regex:        cfg.Regex,
+			Modulus:      cfg.Modulus,
+			Replacement:  cfg.Replacement,
+			Action:       string(cfg.Action),
+		})
+	}
+
 	return c
 }
 
@@ -185,7 +197,7 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		for _, cfg := range cls.RelabelConfigs {
-			c.RelabelConfigs = append(c.RelabelConfigs, config.RemoteWriteRelabelConfig{
+			c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
 				SourceLabels: cfg.SourceLabels,
 				Separator:    cfg.Separator,
 				TargetLabel:  cfg.TargetLabel,

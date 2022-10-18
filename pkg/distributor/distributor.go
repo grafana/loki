@@ -103,6 +103,7 @@ type Distributor struct {
 	ingesterAppendFailures *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardingFailures *prometheus.CounterVec
+	streamShardCount       prometheus.Counter
 }
 
 // New a distributor creates.
@@ -193,6 +194,11 @@ func New(
 			Help:      "Total number of failures when sharding a stream",
 		}, []string{
 			"reason",
+		}),
+		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "stream_sharding_count",
+			Help:      "Total number of times the distributor has sharded streams",
 		}),
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
@@ -291,7 +297,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Truncate first so subsequent steps have consistent line lengths
 		d.truncateLines(validationContext, &stream)
 
-		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+		stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
 			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, userID).Add(float64(len(stream.Entries)))
@@ -421,6 +427,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
+	d.streamShardCount.Inc()
 	if shardStreamsCfg.LoggingEnabled {
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
@@ -578,22 +585,32 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {
-	labelVal, ok := d.labelCache.Get(key)
-	if ok {
-		return labelVal.(string), nil
+type labelData struct {
+	labels string
+	hash   uint64
+}
+
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
+	if val, ok := d.labelCache.Get(key); ok {
+		labelVal := val.(labelData)
+		return labelVal.labels, labelVal.hash, nil
 	}
+
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
+		return "", 0, httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
 	}
+
 	// ensure labels are correctly sorted.
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
-		return "", err
+		return "", 0, err
 	}
+
 	lsVal := ls.String()
-	d.labelCache.Add(key, lsVal)
-	return lsVal, nil
+	lsHash := ls.Hash()
+
+	d.labelCache.Add(key, labelData{lsVal, lsHash})
+	return lsVal, lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
@@ -624,6 +641,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		// 1 shard is enough for the given stream.
 		return 1
 	}
+
 	return shards
 }
 

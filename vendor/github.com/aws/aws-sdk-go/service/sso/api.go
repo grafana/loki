@@ -157,7 +157,8 @@ func (c *SSO) ListAccountRolesRequest(input *ListAccountRolesInput) (req *reques
 
 // ListAccountRoles API operation for AWS Single Sign-On.
 //
-// Lists all roles that are assigned to the user for a given AWS account.
+// Lists all roles that are assigned to the user for a given Amazon Web Services
+// account.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -307,10 +308,11 @@ func (c *SSO) ListAccountsRequest(input *ListAccountsInput) (req *request.Reques
 
 // ListAccounts API operation for AWS Single Sign-On.
 //
-// Lists all AWS accounts assigned to the user. These AWS accounts are assigned
-// by the administrator of the account. For more information, see Assign User
-// Access (https://docs.aws.amazon.com/singlesignon/latest/userguide/useraccess.html#assignusers)
-// in the AWS SSO User Guide. This operation returns a paginated response.
+// Lists all Amazon Web Services accounts assigned to the user. These Amazon
+// Web Services accounts are assigned by the administrator of the account. For
+// more information, see Assign User Access (https://docs.aws.amazon.com/singlesignon/latest/userguide/useraccess.html#assignusers)
+// in the Amazon Web Services SSO User Guide. This operation returns a paginated
+// response.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -455,7 +457,21 @@ func (c *SSO) LogoutRequest(input *LogoutInput) (req *request.Request, output *L
 
 // Logout API operation for AWS Single Sign-On.
 //
-// Removes the client- and server-side session that is associated with the user.
+// Removes the locally stored SSO tokens from the client-side cache and sends
+// an API call to the Amazon Web Services SSO service to invalidate the corresponding
+// server-side Amazon Web Services SSO sign in session.
+//
+// If a user uses Amazon Web Services SSO to access the AWS CLI, the user’s
+// Amazon Web Services SSO sign in session is used to obtain an IAM session,
+// as specified in the corresponding Amazon Web Services SSO permission set.
+// More specifically, Amazon Web Services SSO assumes an IAM role in the target
+// account on behalf of the user, and the corresponding temporary Amazon Web
+// Services credentials are returned to the client.
+//
+// After user logout, any existing IAM role sessions that were created by using
+// Amazon Web Services SSO permission sets continue based on the duration configured
+// in the permission set. For more information, see User authentications (https://docs.aws.amazon.com/singlesignon/latest/userguide/authconcept.html)
+// in the Amazon Web Services SSO User Guide.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -499,17 +515,20 @@ func (c *SSO) LogoutWithContext(ctx aws.Context, input *LogoutInput, opts ...req
 	return out, req.Send()
 }
 
-// Provides information about your AWS account.
+// Provides information about your Amazon Web Services account.
 type AccountInfo struct {
 	_ struct{} `type:"structure"`
 
-	// The identifier of the AWS account that is assigned to the user.
+	// The identifier of the Amazon Web Services account that is assigned to the
+	// user.
 	AccountId *string `locationName:"accountId" type:"string"`
 
-	// The display name of the AWS account that is assigned to the user.
+	// The display name of the Amazon Web Services account that is assigned to the
+	// user.
 	AccountName *string `locationName:"accountName" type:"string"`
 
-	// The email address of the AWS account that is assigned to the user.
+	// The email address of the Amazon Web Services account that is assigned to
+	// the user.
 	EmailAddress *string `locationName:"emailAddress" min:"1" type:"string"`
 }
 
@@ -554,7 +573,7 @@ type GetRoleCredentialsInput struct {
 
 	// The token issued by the CreateToken API call. For more information, see CreateToken
 	// (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html)
-	// in the AWS SSO OIDC API Reference Guide.
+	// in the Amazon Web Services SSO OIDC API Reference Guide.
 	//
 	// AccessToken is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by GetRoleCredentialsInput's
@@ -563,7 +582,8 @@ type GetRoleCredentialsInput struct {
 	// AccessToken is a required field
 	AccessToken *string `location:"header" locationName:"x-amz-sso_bearer_token" type:"string" required:"true" sensitive:"true"`
 
-	// The identifier for the AWS account that is assigned to the user.
+	// The identifier for the Amazon Web Services account that is assigned to the
+	// user.
 	//
 	// AccountId is a required field
 	AccountId *string `location:"querystring" locationName:"account_id" type:"string" required:"true"`
@@ -730,7 +750,7 @@ type ListAccountRolesInput struct {
 
 	// The token issued by the CreateToken API call. For more information, see CreateToken
 	// (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html)
-	// in the AWS SSO OIDC API Reference Guide.
+	// in the Amazon Web Services SSO OIDC API Reference Guide.
 	//
 	// AccessToken is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by ListAccountRolesInput's
@@ -739,7 +759,8 @@ type ListAccountRolesInput struct {
 	// AccessToken is a required field
 	AccessToken *string `location:"header" locationName:"x-amz-sso_bearer_token" type:"string" required:"true" sensitive:"true"`
 
-	// The identifier for the AWS account that is assigned to the user.
+	// The identifier for the Amazon Web Services account that is assigned to the
+	// user.
 	//
 	// AccountId is a required field
 	AccountId *string `location:"querystring" locationName:"account_id" type:"string" required:"true"`
@@ -859,7 +880,7 @@ type ListAccountsInput struct {
 
 	// The token issued by the CreateToken API call. For more information, see CreateToken
 	// (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html)
-	// in the AWS SSO OIDC API Reference Guide.
+	// in the Amazon Web Services SSO OIDC API Reference Guide.
 	//
 	// AccessToken is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by ListAccountsInput's
@@ -974,7 +995,7 @@ type LogoutInput struct {
 
 	// The token issued by the CreateToken API call. For more information, see CreateToken
 	// (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html)
-	// in the AWS SSO OIDC API Reference Guide.
+	// in the Amazon Web Services SSO OIDC API Reference Guide.
 	//
 	// AccessToken is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by LogoutInput's
@@ -1113,17 +1134,18 @@ type RoleCredentials struct {
 	_ struct{} `type:"structure"`
 
 	// The identifier used for the temporary security credentials. For more information,
-	// see Using Temporary Security Credentials to Request Access to AWS Resources
-	// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html)
-	// in the AWS IAM User Guide.
+	// see Using Temporary Security Credentials to Request Access to Amazon Web
+	// Services Resources (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html)
+	// in the Amazon Web Services IAM User Guide.
 	AccessKeyId *string `locationName:"accessKeyId" type:"string"`
 
 	// The date on which temporary security credentials expire.
 	Expiration *int64 `locationName:"expiration" type:"long"`
 
 	// The key that is used to sign the request. For more information, see Using
-	// Temporary Security Credentials to Request Access to AWS Resources (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html)
-	// in the AWS IAM User Guide.
+	// Temporary Security Credentials to Request Access to Amazon Web Services Resources
+	// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html)
+	// in the Amazon Web Services IAM User Guide.
 	//
 	// SecretAccessKey is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by RoleCredentials's
@@ -1131,8 +1153,9 @@ type RoleCredentials struct {
 	SecretAccessKey *string `locationName:"secretAccessKey" type:"string" sensitive:"true"`
 
 	// The token used for temporary credentials. For more information, see Using
-	// Temporary Security Credentials to Request Access to AWS Resources (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html)
-	// in the AWS IAM User Guide.
+	// Temporary Security Credentials to Request Access to Amazon Web Services Resources
+	// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html)
+	// in the Amazon Web Services IAM User Guide.
 	//
 	// SessionToken is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by RoleCredentials's
@@ -1186,7 +1209,7 @@ func (s *RoleCredentials) SetSessionToken(v string) *RoleCredentials {
 type RoleInfo struct {
 	_ struct{} `type:"structure"`
 
-	// The identifier of the AWS account assigned to the user.
+	// The identifier of the Amazon Web Services account assigned to the user.
 	AccountId *string `locationName:"accountId" type:"string"`
 
 	// The friendly name of the role that is assigned to the user.
