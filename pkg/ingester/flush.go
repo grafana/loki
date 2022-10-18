@@ -282,7 +282,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	// It's required by historical index stores so we keep it for now.
 	labelsBuilder := labels.NewBuilder(labelPairs)
 	labelsBuilder.Set(nameLabel, logsValue)
-	metric := labelsBuilder.Labels()
+	metric := labelsBuilder.Labels(nil)
 
 	sizePerTenant := i.metrics.chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := i.metrics.chunksPerTenant.WithLabelValues(userID)

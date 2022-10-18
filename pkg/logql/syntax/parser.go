@@ -204,5 +204,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	}
 	sort.Sort(ls)
 
-	return labels.NewBuilder(ls).Labels(), nil
+	return labels.NewBuilder(ls).Labels(nil), nil
 }

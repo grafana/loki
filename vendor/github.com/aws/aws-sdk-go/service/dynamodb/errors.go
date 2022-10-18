@@ -71,6 +71,20 @@ const (
 	// payload but with an idempotent token that was already used.
 	ErrCodeIdempotentParameterMismatchException = "IdempotentParameterMismatchException"
 
+	// ErrCodeImportConflictException for service response error code
+	// "ImportConflictException".
+	//
+	// There was a conflict when importing from the specified S3 source. This can
+	// occur when the current import conflicts with a previous import request that
+	// had the same client token.
+	ErrCodeImportConflictException = "ImportConflictException"
+
+	// ErrCodeImportNotFoundException for service response error code
+	// "ImportNotFoundException".
+	//
+	// The specified import was not found.
+	ErrCodeImportNotFoundException = "ImportNotFoundException"
+
 	// ErrCodeIndexNotFoundException for service response error code
 	// "IndexNotFoundException".
 	//
@@ -306,6 +320,8 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"GlobalTableAlreadyExistsException":        newErrorGlobalTableAlreadyExistsException,
 	"GlobalTableNotFoundException":             newErrorGlobalTableNotFoundException,
 	"IdempotentParameterMismatchException":     newErrorIdempotentParameterMismatchException,
+	"ImportConflictException":                  newErrorImportConflictException,
+	"ImportNotFoundException":                  newErrorImportNotFoundException,
 	"IndexNotFoundException":                   newErrorIndexNotFoundException,
 	"InternalServerError":                      newErrorInternalServerError,
 	"InvalidExportTimeException":               newErrorInvalidExportTimeException,
