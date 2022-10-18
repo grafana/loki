@@ -16,7 +16,7 @@ within a Kubernetes cluster.
 
 ## Deploy Loki to the Kubernetes cluster
 
-1. Add [Loki's chart repository](https://github.com/grafana/helm-charts) to Helm:
+1. Add [Loki's chart repository](https://github.com/grafana/loki/tree/main/production/helm/loki) to Helm:
 
     ```bash
     helm repo add grafana https://grafana.github.io/helm-charts
@@ -33,28 +33,28 @@ within a Kubernetes cluster.
     - Deploy with the default configuration:
 
         ```bash
-        helm upgrade --install loki grafana/loki-simple-scalable
+        helm upgrade --install loki grafana/loki
         ```
 
     - Deploy with the default configuration in a custom Kubernetes cluster namespace:
 
         ```bash
-        helm upgrade --install loki --namespace=loki grafana/loki-simple-scalable
+        helm upgrade --install loki --namespace=loki grafana/loki
         ```
 
     - Deploy with added custom configuration using an overrides YAML file, useful for overriding a set of values:
 
         ```bash
-        helm upgrade --install loki grafana/loki-simple-scalable --values {PATH_TO_OVERRIDES_VALUES_FILE}
+        helm upgrade --install loki grafana/loki --values {PATH_TO_OVERRIDES_VALUES_FILE}
         ```
 
     - Deploy with added custom configuration, useful for overriding a small quantity of values:
 
         ```bash
-        helm upgrade --install loki grafana/loki-simple-scalable --set "key1=val1,key2=val2,..."
+        helm upgrade --install loki grafana/loki --set "key1=val1,key2=val2,..."
         ```
 
-Find deployment examples at [https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable/docs/examples](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable/docs/examples).
+Find deployment examples at [https://github.com/grafana/loki/tree/main/production/helm/loki/docs/examples](https://github.com/grafana/loki/tree/main/production/helm/loki/docs/examples).
 
 ## Deploy Grafana to your Kubernetes cluster
 
