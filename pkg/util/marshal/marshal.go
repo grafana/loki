@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/gorilla/websocket"
+	"gopkg.in/launchdarkly/go-jsonstream.v1/jwriter"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -18,6 +19,19 @@ import (
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
+
+	jw := jwriter.NewStreamingWriter(w, 1024)
+	err := WriteResultValue(v.Data, &jw)
+	if err != nil {
+		return err
+	}
+	jw.Flush()
+	return nil
+	/*
+	jw := jwriter.NewStreamingWriter(w, 1024)
+	return jw.Flush()
+	*/
+	/*
 	value, err := NewResultValue(v.Data)
 	if err != nil {
 		return err
@@ -33,6 +47,7 @@ func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
 	}
 
 	return jsoniter.NewEncoder(w).Encode(q)
+	*/
 }
 
 // WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON

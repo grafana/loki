@@ -2,17 +2,149 @@ package marshal
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"gopkg.in/launchdarkly/go-jsonstream.v1/jwriter"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
+
+func WriteResultValue(v parser.Value, w *jwriter.Writer) error {
+	root:= w.Object()
+	root.Name("status").String("success")
+	dataWriter := root.Name("data")
+	err := writeData(v, dataWriter)
+	if err != nil {
+		return err
+	}
+	root.End()
+	return nil
+}
+
+func writeData(v parser.Value, w *jwriter.Writer) error {
+	dataObj := w.Object()
+	dataObj.Name("resultType").String(string(v.Type()))
+	resultWriter := dataObj.Name("result")
+	err := writeResult(v, resultWriter)
+	if err != nil {
+		return err
+	}
+	//dataObj.Name("stats")
+
+	dataObj.End()
+	return nil
+}
+
+func writeResult(v parser.Value, w *jwriter.Writer) error {
+	switch v.Type() {
+	case loghttp.ResultTypeStream:
+		s, ok := v.(logqlmodel.Streams)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for streams", s)
+		}
+
+		writeStreams(s, w)
+
+	case loghttp.ResultTypeScalar:
+		scalar, ok := v.(promql.Scalar)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for scalar", scalar)
+		}
+
+		writeScalar(scalar, w)
+
+	case loghttp.ResultTypeVector:
+		vector, ok := v.(promql.Vector)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for vector", vector)
+		}
+
+		writeVector(vector, w)
+
+	case loghttp.ResultTypeMatrix:
+		m, ok := v.(promql.Matrix)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for matrix", m)
+		}
+
+		writeMatrix(m, w)
+
+	default:
+		w.Null()
+		return fmt.Errorf("v1 endpoints do not support type %s", v.Type())
+	}
+	return nil
+}
+
+func writeStreams(s logqlmodel.Streams, w *jwriter.Writer) error {
+	arr := w.Array()
+	defer arr.End()
+
+	for _, stream := range s {
+		err := writeStream(stream, arr)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeStream(s logproto.Stream, arr jwriter.ArrayState) error {
+
+	obj := arr.Object()
+	defer obj.End()
+
+	labels := obj.Name("stream").Object()
+	labelSet, err := NewLabelSet(s.Labels)
+	if err != nil {
+		return err
+	}
+
+	for key, value := range labelSet {
+		labels.Name(key).String(value)
+	}
+	labels.End()
+
+	entries := obj.Name("values").Array()
+	for _, e := range s.Entries {
+		ea := entries.Array()
+		ea.String(strconv.FormatInt(e.Timestamp.UnixNano(), 10))
+		ea.String(e.Line)
+		ea.End()
+	}
+	entries.End()
+
+	return nil
+}
+
+func writeScalar(v promql.Scalar, w *jwriter.Writer) error {
+	w.Null()
+	return nil
+}
+
+func writeVector(v promql.Vector, w *jwriter.Writer) error {
+	arr := w.Array()
+	defer arr.End()
+	return nil
+}
+
+func writeMatrix(v promql.Matrix, w *jwriter.Writer) error {
+	arr := w.Array()
+	defer arr.End()
+	return nil
+}
 
 // NewResultValue constructs a ResultValue from a promql.Value
 func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {

@@ -1547,6 +1547,9 @@ gopkg.in/inf.v0
 # gopkg.in/ini.v1 v1.66.6
 ## explicit
 gopkg.in/ini.v1
+# gopkg.in/launchdarkly/go-jsonstream.v1 v1.0.1
+## explicit; go 1.14
+gopkg.in/launchdarkly/go-jsonstream.v1/jwriter
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 ## explicit
 gopkg.in/tomb.v1

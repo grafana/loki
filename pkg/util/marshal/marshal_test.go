@@ -627,7 +627,7 @@ func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string
 
 	var actualValue map[string]interface{}
 	err = json.Unmarshal(actual, &actualValue)
-	require.NoError(t, err)
+	require.NoErrorf(t, err, "error %s", string(actual))
 
 	require.Equalf(t, expectedValue, actualValue, msg, args)
 }
