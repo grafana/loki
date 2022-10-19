@@ -12,12 +12,47 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/server"
+	serverww "github.com/weaveworks/common/server"
 
 	internalserver "github.com/grafana/loki/pkg/server"
 )
+
+func TestFlagGRPCServerConnectionTimeout(t *testing.T) {
+	c := Config{}
+
+	f := flag.NewFlagSet("test", flag.PanicOnError)
+	c.RegisterFlags(f)
+
+	buf := bytes.Buffer{}
+
+	f.SetOutput(&buf)
+	f.PrintDefaults()
+
+	const delim = '\n'
+
+	// Populate map with parsed default flags.
+	// Key is the flag and value is the default text.
+	gotFlags := make(map[string]string)
+	for {
+		line, err := buf.ReadString(delim)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+
+		nextLine, err := buf.ReadString(delim)
+		require.NoError(t, err)
+
+		trimmedLine := strings.Trim(line, " \n")
+		splittedLine := strings.Split(trimmedLine, " ")[0]
+		gotFlags[splittedLine] = nextLine
+	}
+
+	require.Equal(t, c.Server.GRPCServerConnectionTimeout, time.Minute*2)
+}
 
 func TestFlagDefaults(t *testing.T) {
 	c := Config{}
@@ -102,8 +137,10 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 	fake := &Loki{
 		Cfg: Config{
 			Target: flagext.StringSliceCSV{All},
-			Server: server.Config{
-				HTTPListenAddress: "3100",
+			Server: server.CommonConfig{
+				Config: serverww.Config{
+					HTTPListenAddress: "3100",
+				},
 			},
 		},
 	}
@@ -127,11 +164,13 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 			l := &Loki{
 				Cfg: Config{
 					Target: flagext.StringSliceCSV{tt},
-					Server: server.Config{
-						HTTPListenAddress: "3100",
+					Server: server.CommonConfig{
+						Config: serverww.Config{
+							HTTPListenAddress: "3100",
+						},
 					},
 					InternalServer: internalserver.Config{
-						Config: server.Config{
+						Config: serverww.Config{
 							HTTPListenAddress: "3101",
 						},
 						Enable: true,

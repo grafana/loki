@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -32,6 +30,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
@@ -44,6 +43,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -112,9 +112,12 @@ func (t *Loki) initServer() (services.Service, error) {
 		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
 	))
 
+	if t.Cfg.Server.GRPCServerConnectionTimeout != 0 {
+		t.Cfg.Server.Config.GRPCOptions = append(t.Cfg.Server.Config.GRPCOptions, grpc.ConnectionTimeout(t.Cfg.Server.GRPCServerConnectionTimeout))
+	}
 	// Loki handles signals on its own.
-	DisableSignalHandling(&t.Cfg.Server)
-	serv, err := server.New(t.Cfg.Server)
+	DisableSignalHandling(&t.Cfg.Server.Config)
+	serv, err := server.New(t.Cfg.Server.Config)
 	if err != nil {
 		return nil, err
 	}

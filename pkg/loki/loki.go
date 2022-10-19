@@ -41,7 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
-	internalserver "github.com/grafana/loki/pkg/server"
+	lokiserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -71,8 +71,8 @@ type Config struct {
 	UseSyncLogger     bool `yaml:"use_sync_logger"`
 
 	Common           common.Config            `yaml:"common,omitempty"`
-	Server           server.Config            `yaml:"server,omitempty"`
-	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
+	Server           lokiserver.CommonConfig  `yaml:"server,omitempty"`
+	InternalServer   lokiserver.Config        `yaml:"internal_server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
 	DeleteClient     deletion.Config          `yaml:"delete_client,omitempty"`
@@ -298,7 +298,7 @@ func New(cfg Config) (*Loki, error) {
 func (t *Loki) setupAuthMiddleware() {
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
-	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
+	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server.Config, t.Cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
