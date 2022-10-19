@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	log2 "github.com/grafana/loki/pkg/util/log"
 	"math"
 	"sort"
 	"strings"
@@ -30,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -194,9 +194,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	defer log.Finish()
 
 	if GetRangeType(q.params) == InstantType {
-		level.Info(log2.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query())
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query())
 	} else {
-		level.Info(log2.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
 	}
 
 	rangeType := GetRangeType(q.params)
