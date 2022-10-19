@@ -114,7 +114,7 @@ func getAlertmanagerTenantConfig(amConfig ruler_config.AlertManagerConfig, amOve
 
 // Builds a Prometheus config.Config from a ruler.Config with just the required
 // options to configure notifications to Alertmanager.
-func buildNotifierConfig(amConfig ruler_config.AlertManagerConfig, externalLabels labels.Labels) (*config.Config, error) {
+func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabels labels.Labels) (*config.Config, error) {
 	amURLs := strings.Split(amConfig.AlertmanagerURL, ",")
 	validURLs := make([]*url.URL, 0, len(amURLs))
 
@@ -166,7 +166,7 @@ func buildNotifierConfig(amConfig ruler_config.AlertManagerConfig, externalLabel
 	return promConfig, nil
 }
 
-func amConfigFromURL(cfg ruler_config.AlertManagerConfig, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
+func amConfigFromURL(cfg *ruler_config.AlertManagerConfig, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
 	var sdConfig discovery.Configs
 	if cfg.AlertmanagerDiscovery {
 		sdConfig = discovery.Configs{
