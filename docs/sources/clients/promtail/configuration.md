@@ -183,6 +183,12 @@ Loki:
 # Example: http://example.com:3100/loki/api/v1/push
 url: <string>
 
+# Custom HTTP headers to be sent along with each push request.
+# Be aware that headers that are set by Promtail itself (e.g. X-Scope-OrgID) can't be overwritten.
+headers:
+  # Example: CF-Access-Client-Id: xxx
+  [ <labelname>: <labelvalue> ... ]
+
 # The tenant ID used by default to push logs to Loki. If omitted or empty
 # it assumes Loki is running in single-tenant mode and no X-Scope-OrgID header
 # is sent.
