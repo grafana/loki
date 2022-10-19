@@ -376,6 +376,12 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 		UserTags:     userTags,
 		UserTagCount: tagCount,
 		Restore:      restore,
+
+		// Checksum values
+		ChecksumCRC32:  h.Get("x-amz-checksum-crc32"),
+		ChecksumCRC32C: h.Get("x-amz-checksum-crc32c"),
+		ChecksumSHA1:   h.Get("x-amz-checksum-sha1"),
+		ChecksumSHA256: h.Get("x-amz-checksum-sha256"),
 	}, nil
 }
 
@@ -501,7 +507,7 @@ func isSSEHeader(headerKey string) bool {
 func isAmzHeader(headerKey string) bool {
 	key := strings.ToLower(headerKey)
 
-	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey)
+	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey) || strings.HasPrefix(key, "x-amz-checksum-")
 }
 
 var (

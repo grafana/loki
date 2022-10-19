@@ -4,7 +4,6 @@
 package metadata
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-kit/log"
+	"github.com/minio/sha256-simd"
 	"github.com/pkg/errors"
 
 	"github.com/thanos-io/thanos/pkg/runutil"

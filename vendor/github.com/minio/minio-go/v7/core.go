@@ -89,7 +89,7 @@ func (c Core) ListMultipartUploads(ctx context.Context, bucket, prefix, keyMarke
 // PutObjectPart - Upload an object part.
 func (c Core) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data io.Reader, size int64, md5Base64, sha256Hex string, sse encrypt.ServerSide) (ObjectPart, error) {
 	streamSha256 := true
-	return c.uploadPart(ctx, bucket, object, uploadID, data, partID, md5Base64, sha256Hex, size, sse, streamSha256)
+	return c.uploadPart(ctx, bucket, object, uploadID, data, partID, md5Base64, sha256Hex, size, sse, streamSha256, nil)
 }
 
 // ListObjectParts - List uploaded parts of an incomplete upload.x

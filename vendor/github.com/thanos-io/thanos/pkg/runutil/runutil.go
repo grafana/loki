@@ -9,36 +9,36 @@
 //
 // For repeat executes, use Repeat:
 //
-// 	err := runutil.Repeat(10*time.Second, stopc, func() error {
-// 		// ...
-// 	})
+//	err := runutil.Repeat(10*time.Second, stopc, func() error {
+//		// ...
+//	})
 //
 // Retry starts executing closure function f until no error is returned from f:
 //
-// 	err := runutil.Retry(10*time.Second, stopc, func() error {
-// 		// ...
-// 	})
+//	err := runutil.Retry(10*time.Second, stopc, func() error {
+//		// ...
+//	})
 //
 // For logging an error on each f error, use RetryWithLog:
 //
-// 	err := runutil.RetryWithLog(logger, 10*time.Second, stopc, func() error {
-// 		// ...
-// 	})
+//	err := runutil.RetryWithLog(logger, 10*time.Second, stopc, func() error {
+//		// ...
+//	})
 //
 // Another use case for runutil package is when you want to close a `Closer` interface. As we all know, we should close all implements of `Closer`, such as *os.File. Commonly we will use:
 //
-// 	defer closer.Close()
+//	defer closer.Close()
 //
 // The problem is that Close() usually can return important error e.g for os.File the actual file flush might happen (and fail) on `Close` method. It's important to *always* check error. Thanos provides utility functions to log every error like those, allowing to put them in convenient `defer`:
 //
-// 	defer runutil.CloseWithLogOnErr(logger, closer, "log format message")
+//	defer runutil.CloseWithLogOnErr(logger, closer, "log format message")
 //
 // For capturing error, use CloseWithErrCapture:
 //
-// 	var err error
-// 	defer runutil.CloseWithErrCapture(&err, closer, "log format message")
+//	var err error
+//	defer runutil.CloseWithErrCapture(&err, closer, "log format message")
 //
-// 	// ...
+//	// ...
 //
 // If Close() returns error, err will capture it and return by argument.
 //

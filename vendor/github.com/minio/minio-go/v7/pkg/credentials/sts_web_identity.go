@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2019 MinIO, Inc.
+ * Copyright 2019-2022 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -139,12 +140,12 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSession
 		return AssumeRoleWithWebIdentityResponse{}, err
 	}
 
-	u.RawQuery = v.Encode()
-
-	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))
 	if err != nil {
 		return AssumeRoleWithWebIdentityResponse{}, err
 	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := clnt.Do(req)
 	if err != nil {

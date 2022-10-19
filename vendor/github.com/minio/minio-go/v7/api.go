@@ -111,7 +111,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.32"
+	libraryVersion = "v7.0.37"
 )
 
 // User Agent should always following the below style.
@@ -384,13 +384,11 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 					gctx, gcancel := context.WithTimeout(context.Background(), 3*time.Second)
 					_, err := c.getBucketLocation(gctx, probeBucketName)
 					gcancel()
-					if IsNetworkOrHostDown(err, false) {
-						// Still network errors do not need to do anything.
-						continue
-					}
-					switch ToErrorResponse(err).Code {
-					case "NoSuchBucket", "AccessDenied", "":
-						atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
+					if !IsNetworkOrHostDown(err, false) {
+						switch ToErrorResponse(err).Code {
+						case "NoSuchBucket", "AccessDenied", "":
+							atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
+						}
 					}
 				}
 
@@ -597,12 +595,11 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		// Initiate the request.
 		res, err = c.do(req)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
+			if isRequestErrorRetryable(err) {
+				// Retry the request
+				continue
 			}
-
-			// Retry the request
-			continue
+			return nil, err
 		}
 
 		// For any known successful http status, return quickly.

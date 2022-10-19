@@ -96,6 +96,9 @@ const (
 	// NOTE: we're using a context value only because it's a very specific S3 option. If SSE will
 	// be available to wider set of backends we should probably add a variadic option to Get() and Upload().
 	sseConfigKey = ctxKey(0)
+
+	// Storage class header.
+	amzStorageClass = "X-Amz-Storage-Class"
 )
 
 var DefaultConfig = Config{
@@ -160,6 +163,7 @@ type Bucket struct {
 	client          *minio.Client
 	defaultSSE      encrypt.ServerSide
 	putUserMetadata map[string]string
+	storageClass    string
 	partSize        uint64
 	listObjectsV1   bool
 }
@@ -310,12 +314,23 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		return nil, errors.Errorf("Initialize s3 client list objects version: Unsupported version %q was provided. Supported values are v1, v2", config.ListObjectsVersion)
 	}
 
+	var storageClass string
+	amzStorageClassLower := strings.ToLower(amzStorageClass)
+	for k, v := range config.PutUserMetadata {
+		if strings.ToLower(k) == amzStorageClassLower {
+			delete(config.PutUserMetadata, k)
+			storageClass = v
+			break
+		}
+	}
+
 	bkt := &Bucket{
 		logger:          logger,
 		name:            config.Bucket,
 		client:          client,
 		defaultSSE:      sse,
 		putUserMetadata: config.PutUserMetadata,
+		storageClass:    storageClass,
 		partSize:        config.PartSize,
 		listObjectsV1:   config.ListObjectsVersion == "v1",
 	}
@@ -486,6 +501,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
 			UserMetadata:         b.putUserMetadata,
+			StorageClass:         b.storageClass,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.
 			// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.

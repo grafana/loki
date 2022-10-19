@@ -84,6 +84,12 @@ type UploadInfo struct {
 	// not to be confused with `Expires` HTTP header.
 	Expiration       time.Time
 	ExpirationRuleID string
+
+	// Verified checksum values, if any.
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // RestoreInfo contains information of the restore operation of an archived object
@@ -147,6 +153,12 @@ type ObjectInfo struct {
 	ExpirationRuleID string
 
 	Restore *RestoreInfo
+
+	// Checksum values
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 
 	// Error
 	Err error `json:"-"`
