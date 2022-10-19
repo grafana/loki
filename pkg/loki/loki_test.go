@@ -32,6 +32,9 @@ func TestFlagGRPCServerConnectionTimeout(t *testing.T) {
 	f.PrintDefaults()
 
 	const delim = '\n'
+
+	// Populate map with parsed default flags.
+	// Key is the flag and value is the default text.
 	gotFlags := make(map[string]string)
 	for {
 		line, err := buf.ReadString(delim)
