@@ -476,7 +476,7 @@ func unpackDataNsec(msg []byte, off int) ([]uint16, int, error) {
 	length, window, lastwindow := 0, 0, -1
 	for off < len(msg) {
 		if off+2 > len(msg) {
-			return nsec, len(msg), &Error{err: "overflow unpacking nsecx"}
+			return nsec, len(msg), &Error{err: "overflow unpacking NSEC(3)"}
 		}
 		window = int(msg[off])
 		length = int(msg[off+1])
@@ -484,17 +484,17 @@ func unpackDataNsec(msg []byte, off int) ([]uint16, int, error) {
 		if window <= lastwindow {
 			// RFC 4034: Blocks are present in the NSEC RR RDATA in
 			// increasing numerical order.
-			return nsec, len(msg), &Error{err: "out of order NSEC block"}
+			return nsec, len(msg), &Error{err: "out of order NSEC(3) block in type bitmap"}
 		}
 		if length == 0 {
 			// RFC 4034: Blocks with no types present MUST NOT be included.
-			return nsec, len(msg), &Error{err: "empty NSEC block"}
+			return nsec, len(msg), &Error{err: "empty NSEC(3) block in type bitmap"}
 		}
 		if length > 32 {
-			return nsec, len(msg), &Error{err: "NSEC block too long"}
+			return nsec, len(msg), &Error{err: "NSEC(3) block too long in type bitmap"}
 		}
 		if off+length > len(msg) {
-			return nsec, len(msg), &Error{err: "overflowing NSEC block"}
+			return nsec, len(msg), &Error{err: "overflowing NSEC(3) block in type bitmap"}
 		}
 
 		// Walk the bytes in the window and extract the type bits

@@ -112,12 +112,6 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 
 	var tests []string
 	for target, deps := range fake.deps {
-		switch target {
-		// Blacklist these targets for using the internal server
-		case IndexGatewayRing, MemberlistKV, OverridesExporter, Ring, Embededcache, Server:
-			continue
-		}
-
 		for _, dep := range deps {
 			if dep == Server {
 				tests = append(tests, target)

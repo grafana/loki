@@ -79,6 +79,7 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
+	defer func() { resp.Body().Close() }()
 	return result, nil
 }
 
