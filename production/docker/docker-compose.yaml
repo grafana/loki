@@ -120,7 +120,7 @@ services:
       - ./config:/etc/loki/
     ports:
       - "3100"
-    command: "-config.file=/etc/loki/loki.yaml -runtime-config.file=/etc/loki/loki-runtime.yaml -target=query-frontend -frontend.downstream-url=http://loki-read:3100"
+    command: "-config.file=/etc/loki/loki.yaml -target=query-frontend -frontend.downstream-url=http://loki-read:3100"
     networks:
       - loki
     deploy:
@@ -140,7 +140,7 @@ services:
       #  - SYS_PTRACE
       #security_opt:
       #  - apparmor=unconfined
-    command: "-config.file=/etc/loki/loki.yaml -runtime-config.file=/etc/loki/loki-runtime.yaml -target=read"
+    command: "-config.file=/etc/loki/loki.yaml -target=read"
     networks:
       - loki
     restart: always
@@ -162,7 +162,7 @@ services:
       #   - SYS_PTRACE
       # security_opt:
       #   - apparmor=unconfined
-    command: "-config.file=/etc/loki/loki.yaml -runtime-config.file=/etc/loki/loki-runtime.yaml -target=write"
+    command: "-config.file=/etc/loki/loki.yaml -target=write"
     networks:
       - loki
     restart: always

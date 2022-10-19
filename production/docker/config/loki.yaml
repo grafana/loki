@@ -104,17 +104,3 @@ querier:
 compactor:
   working_directory: /tmp/compactor
   shared_store: s3
-
-ruler:
-  enable_api: true
-#  alertmanager_url: http://alertmanager:9093
-#  enable_alertmanager_v2: true
-#  alertmanager_refresh_interval: 1m
-  storage:
-    type: local
-    local:
-      directory: /etc/loki/rules-multi-tenant
-  ring:
-    kvstore:
-      store: inmemory
-  rule_path: /loki
