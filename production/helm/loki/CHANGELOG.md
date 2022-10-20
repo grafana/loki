@@ -14,8 +14,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.3.0
 
 - [CHANGE] Remove ServiceMonitor and PrometheusRule CRD
-- [CHANGE] Set `monitoring.serviceMonitor.enabled` to `false` by default.
-- [CHANGE] Set `monitoring.rules.enabled` to `false` by default.
 
 ## 3.2.1
 
