@@ -523,7 +523,7 @@ migrate:
     # -- Set to true if migrating from a distributed helm chart
     enabled: false
     # -- If migrating from a distributed service, provide the distributed deployment's
-    # memberlis service DNS so the new deployment can join it's ring.
+    # memberlist service DNS so the new deployment can join it's ring.
     memberlistService: ""
 
 serviceAccount:
