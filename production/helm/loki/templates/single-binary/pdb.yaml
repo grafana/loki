@@ -11,6 +11,6 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
+      {{- include "loki.singleBinarySelectorLabels" . | nindent 6 }}
 {{ toYaml .Values.podDisruptionBudget | indent 2 }}
 {{- end }}
