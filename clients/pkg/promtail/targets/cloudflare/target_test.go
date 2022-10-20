@@ -113,7 +113,7 @@ func Test_RetryErrorLogpullReceived(t *testing.T) {
 	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
 		err: ErrorLogpullReceived,
 	}, nil).Times(2) // just retry once
-	// replace the client.
+	// replace the client
 	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
 		return cfClient, nil
 	}
