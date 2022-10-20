@@ -22,7 +22,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -488,13 +487,6 @@ func TestStreamShard(t *testing.T) {
 		}
 		return entries
 	}
-	generateShardLabels := func(baseLabels string, idx int) labels.Labels {
-		// append a shard label to the given labels. The shard value will be 'idx'.
-		lbs, err := syntax.ParseLabels(baseLabels)
-		require.NoError(t, err)
-		lbs = append(lbs, labels.Label{Name: ingester.ShardLbName, Value: fmt.Sprintf("%d", idx)})
-		return lbs
-	}
 
 	totalEntries := generateEntries(100)
 
@@ -515,173 +507,60 @@ func TestStreamShard(t *testing.T) {
 		entries    []logproto.Entry
 		streamSize int
 
-		wantDerivedStream []streamTracker
+		wantDerivedStreamSize int
 	}{
 		{
-			name:              "zero shard because no entries",
-			entries:           nil,
-			streamSize:        50,
-			wantDerivedStream: []streamTracker{{stream: baseStream}},
+			name:                  "zero shard because no entries",
+			entries:               nil,
+			streamSize:            50,
+			wantDerivedStreamSize: 1,
 		},
 		{
-			name:       "one shard with one entry",
-			streamSize: 1,
-			entries:    totalEntries[0:1],
-			wantDerivedStream: []streamTracker{
-				{
-					stream: logproto.Stream{
-						Entries: []logproto.Entry{totalEntries[0]},
-						Labels:  baseStream.Labels,
-						Hash:    baseStream.Hash,
-					},
-				},
-			},
+			name:                  "one shard with one entry",
+			streamSize:            1,
+			entries:               totalEntries[0:1],
+			wantDerivedStreamSize: 1,
 		},
 		{
-			name:       "two shards with 3 entries",
-			streamSize: desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
-			entries:    totalEntries[0:3],
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:1],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				}, // shard 2.
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[1:3],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "two shards with 3 entries",
+			streamSize:            desiredRate.Val() + 1, // pass the desired rate by 1 byte to force two shards.
+			entries:               totalEntries[0:3],
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:       "two shards with 5 entries",
-			entries:    totalEntries[0:5],
-			streamSize: desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:2],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				}, // shard 2.
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[2:5],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "two shards with 5 entries",
+			entries:               totalEntries[0:5],
+			streamSize:            desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:       "one shard with 20 entries",
-			entries:    totalEntries[0:20],
-			streamSize: 1,
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:20],
-						Labels:  baseStream.Labels,
-						Hash:    baseStream.Hash,
-					},
-				},
-			},
+			name:                  "one shard with 20 entries",
+			entries:               totalEntries[0:20],
+			streamSize:            1,
+			wantDerivedStreamSize: 1,
 		},
 		{
-			name:       "two shards with 20 entries",
-			entries:    totalEntries[0:20],
-			streamSize: desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:10],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				}, // shard 2.
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[10:20],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "two shards with 20 entries",
+			entries:               totalEntries[0:20],
+			streamSize:            desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:       "four shards with 20 entries",
-			entries:    totalEntries[0:20],
-			streamSize: 1 + (desiredRate.Val() * 3), // force 4 shards.
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:5],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				},
-				{ // shard 2.
-					stream: logproto.Stream{
-						Entries: totalEntries[5:10],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-				{ // shard 3.
-					stream: logproto.Stream{
-						Entries: totalEntries[10:15],
-						Labels:  generateShardLabels(baseLabels, 2).String(),
-						Hash:    generateShardLabels(baseLabels, 2).Hash(),
-					},
-				},
-				{ // shard 4.
-					stream: logproto.Stream{
-						Entries: totalEntries[15:20],
-						Labels:  generateShardLabels(baseLabels, 3).String(),
-						Hash:    generateShardLabels(baseLabels, 3).Hash(),
-					},
-				},
-			},
+			name:                  "four shards with 20 entries",
+			entries:               totalEntries[0:20],
+			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
+			wantDerivedStreamSize: 4,
 		},
 		{
-			name:       "size for four shards with 2 entries, ends up with 4 shards ",
-			streamSize: 1 + (desiredRate.Val() * 3), // force 4 shards.
-			entries:    totalEntries[0:2],
-			wantDerivedStream: []streamTracker{
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[0:1],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				},
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[1:2],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "size for four shards with 2 entries, ends up with 4 shards ",
+			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
+			entries:               totalEntries[0:2],
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:    "four shards with 1 entry, ends up with 1 shard only",
-			entries: totalEntries[0:1],
-			wantDerivedStream: []streamTracker{
-				{
-					stream: logproto.Stream{ // when only one shard we don't even add the stream_shard label.
-						Labels:  baseStream.Labels,
-						Hash:    baseStream.Hash,
-						Entries: totalEntries[0:1],
-					},
-				},
-			},
+			name:                  "four shards with 1 entry, ends up with 1 shard only",
+			entries:               totalEntries[0:1],
+			wantDerivedStreamSize: 1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -705,7 +584,7 @@ func TestStreamShard(t *testing.T) {
 			}
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
-			require.Equal(t, tc.wantDerivedStream, derivedStreams)
+			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 		})
 	}
 }
@@ -905,15 +784,6 @@ func TestShardCountFor(t *testing.T) {
 			wantStreamSize: 2, // in bytes
 			wantShards:     1,
 			wantErr:        false,
-		},
-		{
-			name:           "0 entries, return 0 shards always",
-			stream:         &logproto.Stream{Hash: 1},
-			rate:           0,
-			desiredRate:    3, // in bytes
-			wantStreamSize: 2, // in bytes
-			wantShards:     0,
-			wantErr:        true,
 		},
 		{
 			// although in this scenario we have enough size to be sharded, we can't divide the number of entries between the ingesters
