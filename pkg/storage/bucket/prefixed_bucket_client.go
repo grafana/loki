@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 )
 
 type PrefixedBucketClient struct {

@@ -28,9 +28,11 @@ var _ FloatingIPsService = &FloatingIPsServiceOp{}
 
 // FloatingIP represents a Digital Ocean floating IP.
 type FloatingIP struct {
-	Region  *Region  `json:"region"`
-	Droplet *Droplet `json:"droplet"`
-	IP      string   `json:"ip"`
+	Region    *Region  `json:"region"`
+	Droplet   *Droplet `json:"droplet"`
+	IP        string   `json:"ip"`
+	ProjectID string   `json:"project_id"`
+	Locked    bool     `json:"locked"`
 }
 
 func (f FloatingIP) String() string {
@@ -59,6 +61,7 @@ type floatingIPRoot struct {
 type FloatingIPCreateRequest struct {
 	Region    string `json:"region,omitempty"`
 	DropletID int    `json:"droplet_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 // List all floating IPs.

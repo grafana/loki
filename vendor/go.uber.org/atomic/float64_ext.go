@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Uber Technologies, Inc.
+// Copyright (c) 2020-2022 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -45,21 +45,28 @@ func (f *Float64) Sub(delta float64) float64 {
 
 // CAS is an atomic compare-and-swap for float64 values.
 //
-// Note: CAS handles NaN incorrectly. NaN != NaN using Go's inbuilt operators
-// but CAS allows a stored NaN to compare equal to a passed in NaN.
-// This avoids typical CAS loops from blocking forever, e.g.,
-//
-//   for {
-//     old := atom.Load()
-//     new = f(old)
-//     if atom.CAS(old, new) {
-//       break
-//     }
-//   }
-//
-// If CAS did not match NaN to match, then the above would loop forever.
+// Deprecated: Use CompareAndSwap
 func (f *Float64) CAS(old, new float64) (swapped bool) {
-	return f.v.CAS(math.Float64bits(old), math.Float64bits(new))
+	return f.CompareAndSwap(old, new)
+}
+
+// CompareAndSwap is an atomic compare-and-swap for float64 values.
+//
+// Note: CompareAndSwap handles NaN incorrectly. NaN != NaN using Go's inbuilt operators
+// but CompareAndSwap allows a stored NaN to compare equal to a passed in NaN.
+// This avoids typical CompareAndSwap loops from blocking forever, e.g.,
+//
+//	for {
+//	  old := atom.Load()
+//	  new = f(old)
+//	  if atom.CompareAndSwap(old, new) {
+//	    break
+//	  }
+//	}
+//
+// If CompareAndSwap did not match NaN to match, then the above would loop forever.
+func (f *Float64) CompareAndSwap(old, new float64) (swapped bool) {
+	return f.v.CompareAndSwap(math.Float64bits(old), math.Float64bits(new))
 }
 
 // String encodes the wrapped value as a string.

@@ -111,6 +111,13 @@ type AlertManagerSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Notification Queue"
 	NotificationQueueSpec *AlertManagerNotificationQueueSpec `json:"notificationQueue,omitempty"`
+
+	// List of alert relabel configurations.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Alert Relabel Configuration"
+	RelabelConfigs []RelabelConfig `json:"relabelConfigs,omitempty"`
 }
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.
@@ -198,7 +205,7 @@ type RemoteWriteClientSpec struct {
 type RelabelActionType string
 
 // RelabelConfig allows dynamic rewriting of the label set, being applied to samples before ingestion.
-// It defines `<metric_relabel_configs>`-section of Prometheus configuration.
+// It defines `<metric_relabel_configs>` and `<alert_relabel_configs>` sections of Prometheus configuration.
 // More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs
 type RelabelConfig struct {
 	// The source labels select values from existing labels. Their content is concatenated

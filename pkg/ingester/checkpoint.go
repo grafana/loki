@@ -329,7 +329,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 
 	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
 	// low throughput scenarios and to minimize segment replays on top of checkpoints.
-	if err := w.segmentWAL.NextSegment(); err != nil {
+	if _, err := w.segmentWAL.NextSegment(); err != nil {
 		return false, err
 	}
 

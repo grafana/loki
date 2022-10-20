@@ -120,7 +120,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
-	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf.hash", md5.New().Sum([]byte(newConf)))
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "md5sum", fmt.Sprintf("%x", md5.Sum([]byte(newConf))))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}

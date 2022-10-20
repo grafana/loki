@@ -677,13 +677,13 @@ func (s *Scheduler) running(ctx context.Context) error {
 
 func (s *Scheduler) setRunState(isInSet bool) {
 	if isInSet {
-		if s.shouldRun.CAS(false, true) {
+		if s.shouldRun.CompareAndSwap(false, true) {
 			// Value was swapped, meaning this was a state change from stopped to running.
 			level.Info(s.log).Log("msg", "this scheduler is in the ReplicationSet, will now accept requests.")
 			s.schedulerRunning.Set(1)
 		}
 	} else {
-		if s.shouldRun.CAS(true, false) {
+		if s.shouldRun.CompareAndSwap(true, false) {
 			// Value was swapped, meaning this was a state change from running to stopped,
 			// we need to send shutdown to all the connected frontends.
 			level.Info(s.log).Log("msg", "this scheduler is no longer in the ReplicationSet, disconnecting frontends, canceling queries and no longer accepting requests.")
