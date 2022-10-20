@@ -59,7 +59,7 @@ func newPoint(t time.Time, v float64) promql.Point {
 
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 
-	// no overlap test case
+	// no overlap test case.
 	buildStreamingIt := func() (RangeVectorIterator, error) {
 		tt := struct {
 			selRange   int64
