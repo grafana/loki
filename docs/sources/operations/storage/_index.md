@@ -2,9 +2,10 @@
 title: Storage
 weight: 40
 ---
+
 # Grafana Loki Storage
 
-[High level storage overview here]({{< relref "../../storage/_index.md" >}})
+[High level storage overview here]({{< relref "../../storage" >}})
 
 Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
@@ -62,28 +63,23 @@ The following policy sets these permissions
 
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "LokiStorage",
-            "Effect": "Allow",
-            "Principal": {
-                "AWS": [
-                    "arn:aws:iam::<account_ID>"
-                ]
-            },
-            "Action": [
-                "s3:ListBucket",
-                "s3:PutObject",
-                "s3:GetObject",
-                "s3:DeleteObject"
-            ],
-            "Resource": [
-                "arn:aws:s3:::<bucket_name>",
-                "arn:aws:s3:::<bucket_name>/*"
-            ]
-        }
-    ]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "LokiStorage",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": ["arn:aws:iam::<account_ID>"]
+      },
+      "Action": [
+        "s3:ListBucket",
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": ["arn:aws:s3:::<bucket_name>", "arn:aws:s3:::<bucket_name>/*"]
+    }
+  ]
 }
 ```
 
@@ -134,7 +130,6 @@ Resources: `*`
 
 Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
-
 ## Chunk Format
 
 ```
@@ -164,4 +159,3 @@ Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
   |           metasOffset - offset to the point with #blocks        |
   -------------------------------------------------------------------
 ```
-
