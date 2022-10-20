@@ -57,8 +57,16 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	r.Log.Info("Checking if LokiStack certificates expired", "name", req.String())
 
 	var expired *certrotation.CertExpiredError
+
 	err = handlers.CheckCertExpiry(ctx, r.Log, req, r.Client, r.FeatureGates)
-	if !errors.As(err, &expired) {
+	switch {
+	case errors.As(err, &expired):
+		r.Log.Info("Certificate expired: %s", expired)
+	case err != nil:
+		return ctrl.Result{
+			Requeue: true,
+		}, err
+	default:
 		r.Log.Info("Skipping cert rotation, all LokiStack certificates still valid", "name", req.String())
 		return ctrl.Result{
 			RequeueAfter: checkCertExpiryAfter,

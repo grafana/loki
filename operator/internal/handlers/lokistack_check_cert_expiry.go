@@ -51,6 +51,19 @@ func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k
 		return nil
 	}
 
+	var incomplete bool
+	for _, cert := range opts.Certificates {
+		if cert.Secret == nil {
+			incomplete = true
+			break
+		}
+	}
+
+	// Skip checks if we haven't completed PKI reconciliation yet.
+	if incomplete {
+		return nil
+	}
+
 	var expired *certrotation.CertExpiredError
 	err = certrotation.SigningCAExpired(opts)
 	if errors.As(err, &expired) {
@@ -63,7 +76,8 @@ func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k
 	}
 	opts.Signer.RawCA = rawCA
 
-	caCerts, err := crypto.CertsFromPEM(opts.Signer.Secret.Data[certrotation.CAFile])
+	caBundle := opts.CABundle.Data[certrotation.CAFile]
+	caCerts, err := crypto.CertsFromPEM([]byte(caBundle))
 	if err != nil {
 		return kverrors.Wrap(err, "failed to get ca bundle certificates from configmap", "name", req.String())
 	}
