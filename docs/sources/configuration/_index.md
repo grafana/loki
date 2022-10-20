@@ -806,6 +806,23 @@ storage:
 # CLI flag: -ruler.alertmanager-url
 [alertmanager_url: <string> | default = ""]
 
+
+alertmanager_client:
+  # Sets the `Authorization` header on every remote write request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  [basic_auth_username: <string>]
+  [basic_auth_password: <secret>]
+
+  # Sets the authentication type.
+  [type: <string> | default: Bearer]
+  # Sets the credentials. It is mutually exclusive with
+  # `credentials_file`.
+  [credentials: <secret>]
+  # Sets the credentials to the credentials read from the configured file.
+  # It is mutually exclusive with `credentials`.
+  [credentials_file: <filename>]
+
 # Use DNS SRV records to discover Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
 [enable_alertmanager_discovery: <boolean> | default = false]
@@ -855,7 +872,7 @@ alertmanager_client:
 
   # Override the default cipher suite list (separated by commas). Allowed
   # values:
-  # 
+  #
   # Secure Ciphers:
   # - TLS_RSA_WITH_AES_128_CBC_SHA
   # - TLS_RSA_WITH_AES_256_CBC_SHA
@@ -874,7 +891,7 @@ alertmanager_client:
   # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
   # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
+  #
   # Insecure Ciphers:
   # - TLS_RSA_WITH_RC4_128_SHA
   # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
@@ -1049,7 +1066,7 @@ wal_cleaner:
 
   # Deprecated: CLI flag -ruler.wal-cleaer.period.
   # Use -ruler.wal-cleaner.period instead.
-  # 
+  #
   # How often to run the WAL cleaner. 0 = disabled.
   # CLI flag: -ruler.wal-cleaner.period
   [period: <duration> | default = 0s]
@@ -3021,7 +3038,7 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-# 
+#
 # Secure Ciphers:
 # - TLS_RSA_WITH_AES_128_CBC_SHA
 # - TLS_RSA_WITH_AES_256_CBC_SHA
@@ -3040,7 +3057,7 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
+#
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
@@ -3151,7 +3168,7 @@ backoff_config:
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-# 
+#
 # Secure Ciphers:
 # - TLS_RSA_WITH_AES_128_CBC_SHA
 # - TLS_RSA_WITH_AES_256_CBC_SHA
@@ -3170,7 +3187,7 @@ backoff_config:
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
+#
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
@@ -3218,7 +3235,7 @@ The TLS configuration.
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-# 
+#
 # Secure Ciphers:
 # - TLS_RSA_WITH_AES_128_CBC_SHA
 # - TLS_RSA_WITH_AES_256_CBC_SHA
@@ -3237,7 +3254,7 @@ The TLS configuration.
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
+#
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
