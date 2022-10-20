@@ -4,12 +4,12 @@ import (
 	"flag"
 	"time"
 
-	serverww "github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/server"
 )
 
 // CommonConfig extends weaveworks server config
 type CommonConfig struct {
-	serverww.Config             `yaml:",inline"`
+	server.Config               `yaml:",inline"`
 	GRPCServerConnectionTimeout time.Duration `yaml:"grpc_server_connection_timeout"`
 }
 

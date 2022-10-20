@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	serverww "github.com/weaveworks/common/server"
+	wwserver "github.com/weaveworks/common/server"
 
 	internalserver "github.com/grafana/loki/pkg/server"
 )
@@ -138,7 +138,7 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 		Cfg: Config{
 			Target: flagext.StringSliceCSV{All},
 			Server: server.CommonConfig{
-				Config: serverww.Config{
+				Config: wwserver.Config{
 					HTTPListenAddress: "3100",
 				},
 			},
@@ -165,12 +165,12 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 				Cfg: Config{
 					Target: flagext.StringSliceCSV{tt},
 					Server: server.CommonConfig{
-						Config: serverww.Config{
+						Config: wwserver.Config{
 							HTTPListenAddress: "3100",
 						},
 					},
 					InternalServer: internalserver.Config{
-						Config: serverww.Config{
+						Config: wwserver.Config{
 							HTTPListenAddress: "3101",
 						},
 						Enable: true,
