@@ -545,7 +545,7 @@ monitoring:
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
     # -- If enabled, create PrometheusRule resource with Loki recording rules
-    enabled: true
+    enabled: false
     # -- Include alerting rules
     alerting: true
     # -- Alternative namespace to create recording rules PrometheusRule resource in
@@ -579,7 +579,7 @@ monitoring:
   # ServiceMonitor configuration
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
-    enabled: true
+    enabled: false
     # -- Alternative namespace for ServiceMonitor resources
     namespace: null
     # -- Namespace selector for ServiceMonitor resources

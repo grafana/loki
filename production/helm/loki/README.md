@@ -1,6 +1,6 @@
 # loki
 
-![Version: 3.2.1](https://img.shields.io/badge/Version-3.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
+![Version: 3.3.0](https://img.shields.io/badge/Version-3.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
 
 Helm chart for Grafana Loki in simple, scalable mode
 
@@ -293,7 +293,7 @@ monitoring:
 | monitoring.rules.additionalGroups | list | `[]` | Additional groups to add to the rules file |
 | monitoring.rules.alerting | bool | `true` | Include alerting rules |
 | monitoring.rules.annotations | object | `{}` | Additional annotations for the rules PrometheusRule resource |
-| monitoring.rules.enabled | bool | `true` | If enabled, create PrometheusRule resource with Loki recording rules |
+| monitoring.rules.enabled | bool | `false` | If enabled, create PrometheusRule resource with Loki recording rules |
 | monitoring.rules.labels | object | `{}` | Additional labels for the rules PrometheusRule resource |
 | monitoring.rules.namespace | string | `nil` | Alternative namespace to create recording rules PrometheusRule resource in |
 | monitoring.selfMonitoring.enabled | bool | `true` |  |
@@ -324,7 +324,7 @@ monitoring:
 | monitoring.selfMonitoring.podLogs.relabelings | list | `[]` | PodLogs relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig |
 | monitoring.selfMonitoring.tenant | string | `"self-monitoring"` | Tenant to use for self monitoring |
 | monitoring.serviceMonitor.annotations | object | `{}` | ServiceMonitor annotations |
-| monitoring.serviceMonitor.enabled | bool | `true` | If enabled, ServiceMonitor resources for Prometheus Operator are created |
+| monitoring.serviceMonitor.enabled | bool | `false` | If enabled, ServiceMonitor resources for Prometheus Operator are created |
 | monitoring.serviceMonitor.interval | string | `nil` | ServiceMonitor scrape interval |
 | monitoring.serviceMonitor.labels | object | `{}` | Additional ServiceMonitor labels |
 | monitoring.serviceMonitor.namespace | string | `nil` | Alternative namespace for ServiceMonitor resources |

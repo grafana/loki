@@ -11,7 +11,13 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-## 3.2.1 
+## 3.3.0
+
+- [CHANGE] Remove ServiceMonitor and PrometheusRule CRD
+- [CHANGE] Set `monitoring.serviceMonitor.enabled` to `false` by default.
+- [CHANGE] Set `monitoring.rules.enabled` to `false` by default.
+
+## 3.2.1
 
 - [BUGFIX] Fixed k8s selectors in k8s Service for single-binary mode.
 
