@@ -465,7 +465,7 @@ func (d *Distributor) divideEntriesBetweenShards(logger log.Logger, userID strin
 
 	for i := 0; i < shardCount; i++ {
 		j := i
-		if alternateShardsOrder != nil {
+		if len(alternateShardsOrder) > 0 {
 			j = alternateShardsOrder[i]
 		}
 		shard, ok := d.createShard(shardStreamsCfg, stream, streamLabels, streamPattern, shardCount, i, j)
@@ -516,12 +516,12 @@ func (d *Distributor) createShard(streamshardCfg *shardstreams.Config, stream lo
 	}, true
 }
 
-func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, spot int, loggingEnabled bool) (int, int, bool) {
+func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, idx int, loggingEnabled bool) (int, int, bool) {
 	entriesPerWindow := float64(len(stream.Entries)) / float64(totalShards)
 
-	idx := float64(spot)
-	lowerBound := int(idx * entriesPerWindow)
-	upperBound := min(int(entriesPerWindow*(1+idx)), len(stream.Entries))
+	fidx := float64(idx)
+	lowerBound := int(fidx * entriesPerWindow)
+	upperBound := min(int(entriesPerWindow*(1+fidx)), len(stream.Entries))
 
 	if lowerBound > upperBound {
 		if loggingEnabled {
