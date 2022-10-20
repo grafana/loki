@@ -124,19 +124,17 @@ func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate
 	shardCount := make(map[uint64]int)
 	rates := make(map[uint64]int64)
 	for _, sr := range streamRates {
+		shardCount[sr.StreamHashNoShard]++
+
 		if _, ok := rates[sr.StreamHashNoShard]; ok {
 			rates[sr.StreamHashNoShard] += sr.Rate
-
 			maxRate = max(rates[sr.StreamHashNoShard], maxRate)
-			shardCount[sr.StreamHashNoShard]++
 
 			continue
 		}
 
 		rates[sr.StreamHashNoShard] = sr.Rate
-
 		maxRate = max(rates[sr.StreamHashNoShard], maxRate)
-		shardCount[sr.StreamHashNoShard]++
 	}
 
 	var maxShards int64
@@ -169,7 +167,7 @@ func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[
 	}
 	close(parallelClients)
 
-	return ratesPerStream(responses, len(clients))
+	return s.ratesPerStream(responses, len(clients))
 }
 
 func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan ingesterClient, responses chan *logproto.StreamRatesResponse) {
@@ -187,7 +185,8 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[uint64]*logproto.StreamRate {
+func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[uint64]*logproto.StreamRate {
+	var maxRate int64
 	streamRates := make(map[uint64]*logproto.StreamRate)
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
@@ -197,6 +196,7 @@ func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses
 
 		for j := 0; j < len(resp.StreamRates); j++ {
 			rate := resp.StreamRates[j]
+			maxRate = max(maxRate, rate.Rate)
 
 			if r, ok := streamRates[rate.StreamHash]; ok {
 				if r.Rate < rate.Rate {
@@ -209,6 +209,7 @@ func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses
 		}
 	}
 
+	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
 	return streamRates
 }
 

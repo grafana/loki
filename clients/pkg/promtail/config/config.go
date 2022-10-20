@@ -8,7 +8,9 @@ import (
 	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
 
-	yaml "gopkg.in/yaml.v2"
+	"github.com/grafana/loki/pkg/tracing"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/limit"
@@ -36,6 +38,7 @@ type Config struct {
 	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
 	LimitsConfig    limit.Config          `yaml:"limits_config,omitempty"`
 	Options         Options               `yaml:"options,omitempty"`
+	Tracing         tracing.Config        `yaml:"tracing"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -46,6 +49,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.TargetConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.LimitsConfig.RegisterFlagsWithPrefix(prefix, f)
+	c.Tracing.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlags registers flags.

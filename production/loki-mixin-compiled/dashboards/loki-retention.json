@@ -1401,7 +1401,7 @@
             "height": "250px",
             "panels": [
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "id": 17,
                   "span": 12,
                   "targets": [

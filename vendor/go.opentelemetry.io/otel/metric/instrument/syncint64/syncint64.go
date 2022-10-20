@@ -39,7 +39,7 @@ type Counter interface {
 	instrument.Synchronous
 }
 
-// UpDownCounter is an instrument that records increasing or decresing values.
+// UpDownCounter is an instrument that records increasing or decreasing values.
 type UpDownCounter interface {
 	// Add records a change to the counter.
 	Add(ctx context.Context, incr int64, attrs ...attribute.KeyValue)

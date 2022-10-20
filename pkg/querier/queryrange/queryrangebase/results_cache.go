@@ -39,9 +39,6 @@ import (
 var (
 	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
 	noStoreValue = "no-store"
-
-	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
-	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
 
 const (
