@@ -177,7 +177,8 @@ monitoring:
 | enterprise.tokengen.extraVolumes | list | `[]` | Additional volumes for Pods |
 | enterprise.tokengen.labels | object | `{}` | Additional labels for the `tokengen` Job |
 | enterprise.tokengen.securityContext | object | `{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001}` | Run containers as user `enterprise-logs(uid=10001)` |
-| enterprise.tokengen.tolerations | list | `[]` | Tolerations for tokengen Job |
+| enterprise.tokengen.tolerations | list | `[]` | Tolerations for `tokengen` Job |
+| enterprise.tokengen.extraEnvFrom | list | `[]` | Additional variables from secrets or configmaps for the `tokengen` Job |
 | enterprise.useExternalLicense | bool | `false` | Set to true when providing an external license |
 | enterprise.version | string | `"v1.5.2"` |  |
 | fullnameOverride | string | `nil` | Overrides the chart's computed fullname |
