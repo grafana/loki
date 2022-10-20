@@ -21,7 +21,7 @@ import (
 func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
 
 	jw := jwriter.NewStreamingWriter(w, 1024)
-	err := WriteResultValue(v.Data, &jw)
+	err := WriteResultValue(v, &jw)
 	if err != nil {
 		return err
 	}

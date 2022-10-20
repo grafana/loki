@@ -14,9 +14,10 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
-func WriteResultValue(v parser.Value, w *jwriter.Writer) error {
+func WriteResultValue(v logqlmodel.Result, w *jwriter.Writer) error {
 	root:= w.Object()
 	root.Name("status").String("success")
 	dataWriter := root.Name("data")
@@ -28,15 +29,20 @@ func WriteResultValue(v parser.Value, w *jwriter.Writer) error {
 	return nil
 }
 
-func writeData(v parser.Value, w *jwriter.Writer) error {
+func writeData(v logqlmodel.Result, w *jwriter.Writer) error {
 	dataObj := w.Object()
-	dataObj.Name("resultType").String(string(v.Type()))
+	dataObj.Name("resultType").String(string(v.Data.Type()))
 	resultWriter := dataObj.Name("result")
-	err := writeResult(v, resultWriter)
+	err := writeResult(v.Data, resultWriter)
 	if err != nil {
 		return err
 	}
-	//dataObj.Name("stats")
+
+	statsWriter := dataObj.Name("stats")
+	err = writeStats(v.Statistics, statsWriter)
+	if err != nil {
+		return err
+	}
 
 	dataObj.End()
 	return nil
@@ -143,6 +149,10 @@ func writeVector(v promql.Vector, w *jwriter.Writer) error {
 func writeMatrix(v promql.Matrix, w *jwriter.Writer) error {
 	arr := w.Array()
 	defer arr.End()
+	return nil
+}
+
+func writeStats(s stats.Result, w *jwriter.Writer) error {
 	return nil
 }
 
