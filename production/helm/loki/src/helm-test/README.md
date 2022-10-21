@@ -4,4 +4,4 @@ This folder contains a collection of go tests that test if a Loki canary is runn
 
 ## Instructions
 
-Run `go test .` from this directory, or use the docker image published at `grafana/loki-helm-test`.
+Run `go test .` from this directory, or use the Docker image published at `grafana/loki-helm-test`.
