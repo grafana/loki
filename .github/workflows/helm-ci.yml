@@ -10,7 +10,7 @@ env:
 
 jobs:
   call-lint:
-    name: Lint Code Base
+    name: Lint Helm Chart
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -36,6 +36,7 @@ jobs:
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   call-test:
+    name: Test Helm Chart
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
