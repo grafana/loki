@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"golang.org/x/time/rate"
+
+	"github.com/grafana/loki/pkg/ruler/config"
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
@@ -82,10 +84,11 @@ type Limits struct {
 	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        int            `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerEvaluationDelay        model.Duration             `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize        int                        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup   int                        `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int                        `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerAlertManagerConfig     *config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -513,6 +516,11 @@ func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
 // RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
 func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
+}
+
+// RulerAlertManagerConfig returns the alertmanager configurations to use for a given user.
+func (o *Overrides) RulerAlertManagerConfig(userID string) *config.AlertManagerConfig {
+	return o.getOverridesForUser(userID).RulerAlertManagerConfig
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.

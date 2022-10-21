@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
@@ -95,9 +96,10 @@ type Limits struct {
 	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config"`
 
 	// TODO(dannyk): add HTTP client overrides (basic auth / tls config, etc)
 	// Ruler remote-write limits.
@@ -502,6 +504,11 @@ func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
 // RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
 func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
+}
+
+// RulerAlertManagerConfig returns the alertmanager configurations to use for a given user.
+func (o *Overrides) RulerAlertManagerConfig(userID string) *ruler_config.AlertManagerConfig {
+	return o.getOverridesForUser(userID).RulerAlertManagerConfig
 }
 
 // RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
