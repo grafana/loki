@@ -7,12 +7,12 @@ on:
 
 jobs:
   call-lint:
-    uses: ./.github/workflows/helm-chart-linter.yml
+    uses: ./helm-chart-linter.yml
     with:
       filter_regex_include: .*production/helm/.*
 
   call-test:
-    uses: ./.github/workflows/helm-chart-test.yaml
+    uses: ./helm-chart-test.yaml
     with:
       ct_configfile: production/helm/ct.yaml
       ct_check_version_increment: false
