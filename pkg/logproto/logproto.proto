@@ -132,10 +132,6 @@ message LabelRequest {
   ];
 }
 
-message RateLimitedStream {
-  string labels = 1;
-}
-
 message LabelResponse {
   repeated string values = 1;
 }
