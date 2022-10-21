@@ -38,9 +38,11 @@ spec:
             - -labelvalue=$(POD_NAME)
             {{- if $.Values.enterprise.enabled }}
             - -user=$(USER)
+            - -tenant-id=$(USER)
             - -pass=$(PASS)
             {{- else if $.Values.loki.auth_enabled }}
             - -user={{ $.Values.monitoring.selfMonitoring.tenant }}
+            - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant }}
             {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
