@@ -168,17 +168,17 @@ monitoring:
 | enterprise.provisioner.provisionedSecretPrefix | string | `"{{ include \"loki.name\" . }}-provisioned"` | Name of the secret to store provisioned tokens in |
 | enterprise.provisioner.securityContext | object | `{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001}` | Run containers as user `enterprise-logs(uid=10001)` |
 | enterprise.provisioner.tenants | list | `[]` | Tenants to be created. Each tenant will get a read and write policy and associated token. |
-| enterprise.tokengen | object | `{"annotations":{},"enabled":true,"env":[],"extraArgs":[],"extraVolumeMounts":[],"extraVolumes":[],"labels":{},"securityContext":{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001},"tolerations":[]}` | Configuration for `tokengen` target |
+| enterprise.tokengen | object | `{"annotations":{},"enabled":true,"env":[],"extraArgs":[],"extraEnvFrom":[],"extraVolumeMounts":[],"extraVolumes":[],"labels":{},"securityContext":{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001},"tolerations":[]}` | Configuration for `tokengen` target |
 | enterprise.tokengen.annotations | object | `{}` | Additional annotations for the `tokengen` Job |
 | enterprise.tokengen.enabled | bool | `true` | Whether the job should be part of the deployment |
 | enterprise.tokengen.env | list | `[]` | Additional Kubernetes environment |
 | enterprise.tokengen.extraArgs | list | `[]` | Additional CLI arguments for the `tokengen` target |
+| enterprise.tokengen.extraEnvFrom | list | `[]` | Environment variables from secrets or configmaps to add to the tokengen pods |
 | enterprise.tokengen.extraVolumeMounts | list | `[]` | Additional volume mounts for Pods |
 | enterprise.tokengen.extraVolumes | list | `[]` | Additional volumes for Pods |
 | enterprise.tokengen.labels | object | `{}` | Additional labels for the `tokengen` Job |
 | enterprise.tokengen.securityContext | object | `{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001}` | Run containers as user `enterprise-logs(uid=10001)` |
-| enterprise.tokengen.tolerations | list | `[]` | Tolerations for `tokengen` Job |
-| enterprise.tokengen.extraEnvFrom | list | `[]` | Additional variables from secrets or configmaps for the `tokengen` Job |
+| enterprise.tokengen.tolerations | list | `[]` | Tolerations for tokengen Job |
 | enterprise.useExternalLicense | bool | `false` | Set to true when providing an external license |
 | enterprise.version | string | `"v1.5.2"` |  |
 | fullnameOverride | string | `nil` | Overrides the chart's computed fullname |
