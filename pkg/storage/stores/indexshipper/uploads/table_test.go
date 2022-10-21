@@ -36,12 +36,12 @@ func TestTable(t *testing.T) {
 
 			// see if we can find all the added indexes in the table.
 			indexesFound := map[string]*mockIndex{}
-			doneChan := make(chan struct{})
-			err := testTable.ForEach(context.Background(), userID, doneChan, func(_ bool, index index.Index) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			err := testTable.ForEach(ctx, userID, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})
-			close(doneChan)
+			cancel()
 
 			require.NoError(t, err)
 
