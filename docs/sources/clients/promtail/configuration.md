@@ -1918,6 +1918,12 @@ The optional `limits_config` block configures global limits for this instance of
 # log lines, rather than sending them to Loki. When false, exceeding the rate limit
 # causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
 [readline_rate_drop: <bool> | default = true]
+
+# Limits the max number of active streams.
+# Limiting the number of streams is useful as a mechanism to limit memory usage by Promtail, which helps
+# to avoid OOM scenarios.
+# 0 means it is disabled.
+[max_streams: <int> | default = 0]
 ```
 
 ## target_config
