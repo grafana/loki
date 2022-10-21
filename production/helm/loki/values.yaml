@@ -349,6 +349,8 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+    # -- Environment variables from secrets or configmaps to add to the tokengen pods
+    extraEnvFrom: []
 
   # -- Configuration for `provisioner` target
   provisioner:
