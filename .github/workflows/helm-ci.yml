@@ -7,7 +7,7 @@ on:
 
 jobs:
   call-lint:
-    uses: grafana/helm-charts/.github/workflows/linter.yml@main
+    uses: ./.github/workflows/helm-chart-linter.yml
     with:
       filter_regex_include: .*production/helm/.*
 

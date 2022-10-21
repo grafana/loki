@@ -1,0 +1,41 @@
+name: Lint Helm Chart
+
+# Documentation:
+# https://help.github.com/en/articles/workflow-syntax-for-github-actions
+
+on:
+  workflow_call:
+    inputs:
+      filter_regex_include:
+        description: this sets the scope of the super linter
+        default: ".*"
+        required: false
+        type: string
+
+jobs:
+  build:
+    name: Lint Code Base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Check Docs
+        run: |
+          docker run --rm --volume "$(pwd):/helm-docs" -u "$(id -u)" jnorwood/helm-docs:v1.8.1
+          if ! git diff --exit-code; then
+              echo "Documentation not up to date. Please run helm-docs and commit changes!" >&2
+              exit 1
+          fi
+
+      - name: Lint Code Base
+        uses: docker://github/super-linter:v3.12.0
+        env:
+          FILTER_REGEX_EXCLUDE: .*(README\.md|Chart\.yaml|NOTES.txt).*
+          FILTER_REGEX_INCLUDE: ${{ inputs.filter_regex_include }}
+          VALIDATE_ALL_CODEBASE: false
+          VALIDATE_KUBERNETES_KUBEVAL: false
+          VALIDATE_YAML: false
+          VALIDATE_GO: false
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
