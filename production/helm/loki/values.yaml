@@ -546,7 +546,7 @@ rbac:
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
 
-# -- Section for configuring optional helm test
+# -- Section for configuring optional Helm test
 test:
   enabled: true
   # -- Address of the prometheus server to query for the test
