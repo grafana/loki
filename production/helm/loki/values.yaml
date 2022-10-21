@@ -84,6 +84,11 @@ loki:
     memberlist:
       join_members:
         - {{ include "loki.memberlist" . }}
+        {{- with .Values.migrate.fromDistributed }}
+        {{- if .enabled }}
+        - {{ .memberlistService }}
+        {{- end }}
+        {{- end }}
 
     {{- if .Values.loki.commonConfig}}
     common:
@@ -510,6 +515,16 @@ enterprise:
           {{- end }}
         }
       }
+
+# -- Options that may be necessary when performing a migration from another helm chart
+migrate:
+  # -- When migrating from a distributed chart like loki-distributed or enterprise-logs
+  fromDistributed:
+    # -- Set to true if migrating from a distributed helm chart
+    enabled: false
+    # -- If migrating from a distributed service, provide the distributed deployment's
+    # memberlist service DNS so the new deployment can join it's ring.
+    memberlistService: ""
 
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
