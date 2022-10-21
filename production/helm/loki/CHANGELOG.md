@@ -11,9 +11,12 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-## 3.2.2
+## 3.2.3
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
+
+## 3.2.2
+
 - [CHANGE] Add envFrom section to the tokengen job
 
 ## 3.2.1
