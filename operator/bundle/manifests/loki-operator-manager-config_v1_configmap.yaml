@@ -45,6 +45,8 @@ data:
       openshift:
         servingCertsService: true
         gatewayRoute: true
+        ruleExtendedValidation: true
+        clusterTLSPolicy: true
 kind: ConfigMap
 metadata:
   labels:

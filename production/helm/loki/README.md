@@ -1,6 +1,6 @@
 # loki
 
-![Version: 3.2.0](https://img.shields.io/badge/Version-3.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
+![Version: 3.2.2](https://img.shields.io/badge/Version-3.2.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.6.1](https://img.shields.io/badge/AppVersion-2.6.1-informational?style=flat-square)
 
 Helm chart for Grafana Loki in simple, scalable mode
 
@@ -168,11 +168,12 @@ monitoring:
 | enterprise.provisioner.provisionedSecretPrefix | string | `"{{ include \"loki.name\" . }}-provisioned"` | Name of the secret to store provisioned tokens in |
 | enterprise.provisioner.securityContext | object | `{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001}` | Run containers as user `enterprise-logs(uid=10001)` |
 | enterprise.provisioner.tenants | list | `[]` | Tenants to be created. Each tenant will get a read and write policy and associated token. |
-| enterprise.tokengen | object | `{"annotations":{},"enabled":true,"env":[],"extraArgs":[],"extraVolumeMounts":[],"extraVolumes":[],"labels":{},"securityContext":{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001},"tolerations":[]}` | Configuration for `tokengen` target |
+| enterprise.tokengen | object | `{"annotations":{},"enabled":true,"env":[],"extraArgs":[],"extraEnvFrom":[],"extraVolumeMounts":[],"extraVolumes":[],"labels":{},"securityContext":{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001},"tolerations":[]}` | Configuration for `tokengen` target |
 | enterprise.tokengen.annotations | object | `{}` | Additional annotations for the `tokengen` Job |
 | enterprise.tokengen.enabled | bool | `true` | Whether the job should be part of the deployment |
 | enterprise.tokengen.env | list | `[]` | Additional Kubernetes environment |
 | enterprise.tokengen.extraArgs | list | `[]` | Additional CLI arguments for the `tokengen` target |
+| enterprise.tokengen.extraEnvFrom | list | `[]` | Environment variables from secrets or configmaps to add to the tokengen pods |
 | enterprise.tokengen.extraVolumeMounts | list | `[]` | Additional volume mounts for Pods |
 | enterprise.tokengen.extraVolumes | list | `[]` | Additional volumes for Pods |
 | enterprise.tokengen.labels | object | `{}` | Additional labels for the `tokengen` Job |
@@ -254,6 +255,7 @@ monitoring:
 | kubectlImage.registry | string | `"docker.io"` | The Docker registry |
 | kubectlImage.repository | string | `"bitnami/kubectl"` | Docker image repository |
 | kubectlImage.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
+| loki.analytics | object | `{}` | Optional analytics configuration |
 | loki.auth_enabled | bool | `true` |  |
 | loki.commonConfig | object | `{"path_prefix":"/var/loki","replication_factor":3}` | Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration |
 | loki.compactor | object | `{}` | Optional compactor configuration |

@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.19']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -25,12 +25,11 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v3.1.0
     - name: Lint
       uses: golangci/golangci-lint-action@v3.2.0
       with:
-        version: v1.47.2
-        skip-go-installation: true
+        version: v1.50.0
         args: --timeout=4m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -43,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.19']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -52,7 +51,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v3.1.0
     - name: Build Manager
       working-directory: ./operator
       run: |-
@@ -64,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.19']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -73,7 +72,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v3.1.0
     - name: Build Broker
       working-directory: ./operator
       run: |-
@@ -85,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.19']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -94,7 +93,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v3.1.0
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...

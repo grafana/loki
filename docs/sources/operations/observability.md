@@ -12,10 +12,11 @@ for more information.
 
 All components of Loki expose the following metrics:
 
-| Metric Name                     | Metric Type | Description                              |
-| ------------------------------- | ----------- | ---------------------------------------- |
-| `loki_log_messages_total`       | Counter     | Total number of messages logged by Loki. |
-| `loki_request_duration_seconds` | Histogram   | Number of received HTTP requests.        |
+| Metric Name                        | Metric Type | Description                                                                                                                  |
+| ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by loki itself. |
+| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by loki itself.                                                                         |
+| `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                                                                            |
 
 The Loki Distributors expose the following metrics:
 
@@ -72,7 +73,7 @@ Promtail exposes these metrics:
 | `promtail_encoded_bytes_total`            | Counter     | Number of bytes encoded and ready to send.                                                 |
 | `promtail_file_bytes_total`               | Gauge       | Number of bytes read from files.                                                           |
 | `promtail_files_active_total`             | Gauge       | Number of active files.                                                                    |
-| `promtail_request_duration_seconds_count` | Histogram   | Number of send requests.                                                                   |
+| `promtail_request_duration_seconds` | Histogram   | Number of send requests.                                                                   |
 | `promtail_sent_bytes_total`               | Counter     | Number of bytes sent.                                                                      |
 | `promtail_sent_entries_total`             | Counter     | Number of log entries sent to the ingester.                                                |
 | `promtail_targets_active_total`           | Gauge       | Number of total active targets.                                                            |

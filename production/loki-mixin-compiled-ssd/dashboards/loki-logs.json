@@ -6,7 +6,6 @@
       "gnetId": null,
       "graphTooltip": 0,
       "hideControls": false,
-      "id": 8,
       "iteration": 1583185057230,
       "links": [
          {
@@ -719,7 +718,7 @@
             "bars": false,
             "dashLength": 10,
             "dashes": false,
-            "datasource": "$loki_datasources",
+            "datasource": "$loki_datasource",
             "fill": 1,
             "fillGradient": 0,
             "gridPos": {
@@ -820,7 +819,7 @@
             }
          },
          {
-            "datasource": "$loki_datasources",
+            "datasource": "$loki_datasource",
             "gridPos": {
                "h": 19,
                "w": 24,

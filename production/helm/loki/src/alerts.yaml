@@ -39,3 +39,14 @@ groups:
     for: 5m
     labels:
       severity: warning
+  name: 'loki_canaries_alerts',
+  rules:
+  - alert: 'LokiCanaryLatency',
+    annotations:
+      message: |
+        {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
+    expr: |
+      histogram_quantile(0.99, sum(rate(loki_canary_response_latency_seconds_bucket[5m])) by (le, namespace, cluster)) > 5
+    for: '15m'
+    labels:
+      severity: 'warning'

@@ -43,7 +43,7 @@ func main() {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.

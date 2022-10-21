@@ -1892,17 +1892,28 @@ func PrctlRetInt(option int, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uint
 	return int(ret), nil
 }
 
-// issue 1435.
-// On linux Setuid and Setgid only affects the current thread, not the process.
-// This does not match what most callers expect so we must return an error
-// here rather than letting the caller think that the call succeeded.
-
 func Setuid(uid int) (err error) {
-	return EOPNOTSUPP
+	return syscall.Setuid(uid)
 }
 
-func Setgid(uid int) (err error) {
-	return EOPNOTSUPP
+func Setgid(gid int) (err error) {
+	return syscall.Setgid(gid)
+}
+
+func Setreuid(ruid, euid int) (err error) {
+	return syscall.Setreuid(ruid, euid)
+}
+
+func Setregid(rgid, egid int) (err error) {
+	return syscall.Setregid(rgid, egid)
+}
+
+func Setresuid(ruid, euid, suid int) (err error) {
+	return syscall.Setresuid(ruid, euid, suid)
+}
+
+func Setresgid(rgid, egid, sgid int) (err error) {
+	return syscall.Setresgid(rgid, egid, sgid)
 }
 
 // SetfsgidRetGid sets fsgid for current thread and returns previous fsgid set.

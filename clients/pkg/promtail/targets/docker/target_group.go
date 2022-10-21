@@ -92,7 +92,7 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 		return err
 	}
 	tg.targets[id] = t
-	level.Error(tg.logger).Log("msg", "added Docker target", "containerID", id)
+	level.Info(tg.logger).Log("msg", "added Docker target", "containerID", id)
 	return nil
 }
 

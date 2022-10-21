@@ -6,7 +6,6 @@
       "gnetId": null,
       "graphTooltip": 0,
       "hideControls": false,
-      "id": 68,
       "iteration": 1588704280892,
       "links": [
          {
@@ -2040,7 +2039,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -2128,7 +2127,7 @@
                   }
                },
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "gridPos": {
                      "h": 18,
                      "w": 12,
@@ -2286,9 +2285,9 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (ingester)",
+                        "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (pod)",
                         "intervalFactor": 1,
-                        "legendFormat": "{{ingester}}",
+                        "legendFormat": "{{pod}}",
                         "refId": "A"
                      }
                   ],
@@ -3247,7 +3246,7 @@
                   "bars": true,
                   "dashLength": 10,
                   "dashes": false,
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "fill": 1,
                   "fillGradient": 0,
                   "gridPos": {
@@ -3335,7 +3334,7 @@
                   }
                },
                {
-                  "datasource": "$loki_datasources",
+                  "datasource": "$loki_datasource",
                   "gridPos": {
                      "h": 18,
                      "w": 18,

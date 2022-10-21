@@ -87,7 +87,10 @@ func TestTableManager_ForEach(t *testing.T) {
 				expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 			}
 			verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-				return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
+				doneChan := make(chan struct{})
+				defer close(doneChan)
+
+				return tableManager.ForEach(context.Background(), tableName, userID, doneChan, callbackFunc)
 			})
 		}
 	}
@@ -376,7 +379,10 @@ func TestTableManager_loadTables(t *testing.T) {
 					expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 				}
 				verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-					return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
+					doneChan := make(chan struct{})
+					defer close(doneChan)
+
+					return tableManager.ForEach(context.Background(), tableName, userID, doneChan, callbackFunc)
 				})
 			}
 		}
@@ -449,7 +455,7 @@ type mockTable struct {
 	queryReadinessDoneForUsers []string
 }
 
-func (m *mockTable) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+func (m *mockTable) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	return nil
 }
 
