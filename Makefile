@@ -157,7 +157,7 @@ helm-test: production/helm/loki/src/helm-test/helm-test
 
 # Package Helm tests but do not run them.
 production/helm/loki/src/helm-test/helm-test:
-	CGO_ENABLED=0 go test $(GO_FLAGS) -c -o $@ ./$(@D)
+	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
 
 #################
 # Loki-QueryTee #

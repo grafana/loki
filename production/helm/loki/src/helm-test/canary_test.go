@@ -1,3 +1,6 @@
+//go:build helm_test
+// +build helm_test
+
 package test
 
 import (
