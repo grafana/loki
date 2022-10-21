@@ -31,6 +31,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 		MultiTenantRuleManager(cfg, engine, limits, logger, reg),
 		reg,
 		logger,
+		limits,
 	)
 	if err != nil {
 		return nil, err

@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.2.2
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
+- [CHANGE] Add envFrom section to the tokengen job
 
 ## 3.2.1
 
@@ -31,7 +32,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Default minio replicas to 1 node with 2 drives. The old config used the default, which was 16 nodes with 1 drive each.
 - [BUGFIX] Minio subchart values `accessKey` and `secretKey` were removed in the new chart and replaced with `rootUser` and `rootPassword`.
-- [Cahnge] The tokengen job no longer creates a `grafana-token`, as the base64 encoding was not working in a Grafana Enterprise GEL plugin installation.
+- [CHANGE] The tokengen job no longer creates a `grafana-token`, as the base64 encoding was not working in a Grafana Enterprise GEL plugin installation.
 
 ## 3.0.0
 

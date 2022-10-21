@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/ruler/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -134,6 +135,7 @@ type RulesLimits interface {
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
+	RulerAlertManagerConfig(userID string) *config.AlertManagerConfig
 }
 
 // EngineQueryFunc returns a new query function using the rules.EngineQueryFunc function

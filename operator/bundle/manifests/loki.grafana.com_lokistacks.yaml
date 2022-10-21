@@ -123,6 +123,11 @@ spec:
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
+                          queryTimeout:
+                            default: 1m
+                            description: Timeout when querying ingesters or storage
+                              during the execution of a query request.
+                            type: string
                         type: object
                       retention:
                         description: Retention defines how long logs are kept in storage.
@@ -231,6 +236,11 @@ spec:
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
+                            queryTimeout:
+                              default: 1m
+                              description: Timeout when querying ingesters or storage
+                                during the execution of a query request.
+                              type: string
                           type: object
                         retention:
                           description: Retention defines how long logs are kept in
