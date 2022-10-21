@@ -7,8 +7,7 @@ networks:
 volumes:
   prometheus:
   grafana:
-  alertmanager1-data:
-  alertmanager2-data:
+  alertmanager-data:
 
 
 services:
@@ -170,26 +169,15 @@ services:
       mode: replicated
       replicas: 3
 
-  # alertmanagers can able enable to receive alerts
-  alertmanager1:
+  # alertmanager can able enable to receive alerts
+  alertmanager:
     image: prom/alertmanager:v0.23.0
     restart: unless-stopped
     ports:
       - "9093:9093"
     volumes:
       - "./config:/config"
-      - alertmanager1-data:/data
-    command: --config.file=/config/alertmanager.yml --log.level=debug
-    networks:
-      - loki
-  alertmanager2:
-    image: prom/alertmanager:v0.23.0
-    restart: unless-stopped
-    ports:
-      - "9094:9093"
-    volumes:
-      - "./config:/config"
-      - alertmanager2-data:/data
+      - alertmanager-data:/data
     command: --config.file=/config/alertmanager.yml --log.level=debug
     networks:
       - loki
