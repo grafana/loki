@@ -169,7 +169,7 @@ services:
       mode: replicated
       replicas: 3
 
-  # alertmanager can able enable to receive alerts
+  # alertmanager to enable receiving alerts
   alertmanager:
     image: prom/alertmanager:v0.23.0
     restart: unless-stopped
