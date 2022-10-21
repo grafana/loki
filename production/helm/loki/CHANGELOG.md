@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
 
-## 3.2.1 
+## 3.2.1
 
 - [BUGFIX] Fixed k8s selectors in k8s Service for single-binary mode.
 
