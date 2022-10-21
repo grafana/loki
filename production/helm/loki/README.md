@@ -285,7 +285,7 @@ monitoring:
 | migrate | object | `{"fromDistributed":{"enabled":false,"memberlistService":""}}` | Options that may be necessary when performing a migration from another helm chart |
 | migrate.fromDistributed | object | `{"enabled":false,"memberlistService":""}` | When migrating from a distributed chart like loki-distributed or enterprise-logs |
 | migrate.fromDistributed.enabled | bool | `false` | Set to true if migrating from a distributed helm chart |
-| migrate.fromDistributed.memberlistService | string | `""` | If migrating from a distributed service, provide the distributed deployment's memberlis service DNS so the new deployment can join it's ring. |
+| migrate.fromDistributed.memberlistService | string | `""` | If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join it's ring. |
 | minio | object | `{"buckets":[{"name":"chunks","policy":"none","purge":false},{"name":"ruler","policy":"none","purge":false},{"name":"admin","policy":"none","purge":false}],"drivesPerNode":2,"enabled":false,"persistence":{"size":"5Gi"},"replicas":1,"resources":{"requests":{"cpu":"100m","memory":"128Mi"}},"rootPassword":"supersecret","rootUser":"enterprise-logs"}` | ----------------------------------- |
 | monitoring.alerts.annotations | object | `{}` | Additional annotations for the alerts PrometheusRule resource |
 | monitoring.alerts.enabled | bool | `true` | If enabled, create PrometheusRule resource with Loki alerting rules |
