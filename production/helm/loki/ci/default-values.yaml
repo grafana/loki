@@ -10,7 +10,5 @@ monitoring:
   serviceMonitor:
     labels:
       release: "prometheus"
-  selfMonitoring:
-    lokiCanary:
-      test:
-        prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local:9090"
+test:
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local:9090"
