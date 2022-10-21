@@ -14,6 +14,11 @@ import (
 
 // SigningCAExpired returns true if the singer certificate expired and the reason of expiry.
 func SigningCAExpired(opts Options) error {
+	// Skip as secret not created or loaded
+	if opts.Signer.Secret == nil {
+		return nil
+	}
+
 	expired, reason := needNewSigningCertKeyPair(opts.Signer.Secret.Annotations, opts.CACertRefresh, opts.RefreshOnlyWhenExpired)
 	if !expired {
 		return nil

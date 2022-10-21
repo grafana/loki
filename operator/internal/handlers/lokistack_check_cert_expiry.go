@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -11,9 +10,7 @@ import (
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/certificates"
-	"github.com/openshift/library-go/pkg/crypto"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -46,45 +43,13 @@ func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k
 		return optErr
 	}
 
-	// Skip checks if we haven't reconciled a PKI once.
-	if opts.Signer.Secret == nil || opts.CABundle == nil {
-		return nil
-	}
-
-	var incomplete bool
-	for _, cert := range opts.Certificates {
-		if cert.Secret == nil {
-			incomplete = true
-			break
-		}
-	}
-
-	// Skip checks if we haven't completed PKI reconciliation yet.
-	if incomplete {
-		return nil
-	}
-
-	var expired *certrotation.CertExpiredError
 	err = certrotation.SigningCAExpired(opts)
-	if errors.As(err, &expired) {
+	if err != nil {
 		return err
 	}
 
-	rawCA, err := crypto.GetCAFromBytes(opts.Signer.Secret.Data[corev1.TLSCertKey], opts.Signer.Secret.Data[corev1.TLSPrivateKeyKey])
-	if err != nil {
-		return kverrors.Wrap(err, "failed to get signing CA from secret", "name", req.String())
-	}
-	opts.Signer.RawCA = rawCA
-
-	caBundle := opts.CABundle.Data[certrotation.CAFile]
-	caCerts, err := crypto.CertsFromPEM([]byte(caBundle))
-	if err != nil {
-		return kverrors.Wrap(err, "failed to get ca bundle certificates from configmap", "name", req.String())
-	}
-	opts.RawCACerts = caCerts
-
 	err = certrotation.CertificatesExpired(opts)
-	if errors.As(err, &expired) {
+	if err != nil {
 		return err
 	}
 

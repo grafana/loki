@@ -3,6 +3,7 @@ package certrotation
 import (
 	"bytes"
 	"crypto/x509"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,6 +14,93 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/cert"
 )
+
+func TestCertificatesExpired(t *testing.T) {
+	stackName := "dev"
+	stackNamespce := "ns"
+
+	// A default test CA
+	testCA, err := crypto.MakeSelfSignedCAConfigForDuration("dev-ca-bundle", 1*time.Hour)
+	require.NoError(t, err)
+
+	certBytes := &bytes.Buffer{}
+	keyBytes := &bytes.Buffer{}
+	err = testCA.WriteCertConfig(certBytes, keyBytes)
+	require.NoError(t, err)
+
+	rawCA, err := crypto.GetCAFromBytes(certBytes.Bytes(), keyBytes.Bytes())
+	require.NoError(t, err)
+
+	caBytes, err := crypto.EncodeCertificates(rawCA.Config.Certs...)
+	require.NoError(t, err)
+
+	cfg := configv1.BuiltInCertManagement{
+		CACertValidity: "10m",
+		CACertRefresh:  "5m",
+		CertValidity:   "2m",
+		CertRefresh:    "1m",
+	}
+
+	opts := Options{
+		StackName:      stackName,
+		StackNamespace: stackNamespce,
+		Signer: SigningCA{
+			RawCA: rawCA,
+			Secret: &corev1.Secret{
+				Data: map[string][]byte{
+					corev1.TLSCertKey:       certBytes.Bytes(),
+					corev1.TLSPrivateKeyKey: keyBytes.Bytes(),
+				},
+			},
+		},
+		CABundle: &corev1.ConfigMap{
+			Data: map[string]string{
+				CAFile: string(caBytes),
+			},
+		},
+		RawCACerts: rawCA.Config.Certs,
+	}
+	err = ApplyDefaultSettings(&opts, cfg)
+	require.NoError(t, err)
+
+	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
+	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
+
+	opts.GatewayClientCertificate.Secret = &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-gateway-client-http", stackName),
+			Namespace: stackNamespce,
+			Annotations: map[string]string{
+				CertificateIssuer:              "dev_ns@signing-ca@10000",
+				CertificateNotAfterAnnotation:  invalidNotAfter.Format(time.RFC3339),
+				CertificateNotBeforeAnnotation: invalidNotBefore.Format(time.RFC3339),
+			},
+		},
+	}
+
+	for _, name := range ComponentCertSecretNames(stackName) {
+		cert := opts.Certificates[name]
+		cert.Secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: stackNamespce,
+				Annotations: map[string]string{
+					CertificateIssuer:              "dev_ns@signing-ca@10000",
+					CertificateNotAfterAnnotation:  invalidNotAfter.Format(time.RFC3339),
+					CertificateNotBeforeAnnotation: invalidNotBefore.Format(time.RFC3339),
+				},
+			},
+		}
+		opts.Certificates[name] = cert
+	}
+
+	var expired *CertExpiredError
+	err = CertificatesExpired(opts)
+
+	require.Error(t, err)
+	require.ErrorAs(t, err, &expired)
+	require.Len(t, err.(*CertExpiredError).Reasons, 15)
+}
 
 func TestBuildTargetCertKeyPairSecrets(t *testing.T) {
 	// A default test CA

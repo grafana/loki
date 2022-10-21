@@ -9,6 +9,64 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func TestSigningCAExpired(t *testing.T) {
+	stackName := "dev"
+	stackNamespace := "ns"
+
+	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
+	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
+
+	tt := []struct {
+		desc       string
+		opts       Options
+		wantErr    error
+		wantReason string
+	}{
+		{
+			desc: "empty secret",
+			opts: Options{
+				StackName:      stackName,
+				StackNamespace: stackNamespace,
+			},
+		},
+		{
+			desc: "expired secret",
+			opts: Options{
+				StackName:      stackName,
+				StackNamespace: stackNamespace,
+				Signer: SigningCA{
+					Secret: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      SigningCASecretName(stackName),
+							Namespace: stackNamespace,
+							Annotations: map[string]string{
+								CertificateIssuer:              "dev_ns@signing-ca@10000",
+								CertificateNotAfterAnnotation:  invalidNotAfter.Format(time.RFC3339),
+								CertificateNotBeforeAnnotation: invalidNotBefore.Format(time.RFC3339),
+							},
+						},
+					},
+				},
+			},
+			wantErr:    &CertExpiredError{},
+			wantReason: "already expired",
+		},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			err := SigningCAExpired(tc.opts)
+			if tc.wantErr != nil {
+				require.Error(t, err)
+				require.ErrorAs(t, err, &tc.wantErr)
+				require.Contains(t, err.(*CertExpiredError).Reasons, tc.wantReason)
+			}
+		})
+	}
+}
+
 func TestBuildSigningCASecret(t *testing.T) {
 	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
 	invalidNotBefore, _ := time.Parse(time.RFC3339, "")

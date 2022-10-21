@@ -3,6 +3,7 @@ package certrotation
 import (
 	"time"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/openshift/library-go/pkg/crypto"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,28 +12,47 @@ import (
 
 // CertificatesExpired returns an error if any certificates expired and the list of expiry reasons.
 func CertificatesExpired(opts Options) error {
-	var (
-		res                    = make([]string, 0)
-		rawCA                  = opts.Signer.RawCA
-		caBundle               = opts.RawCACerts
-		refresh                = opts.TargetCertRefresh
-		refreshOnlyWhenExpired = opts.RefreshOnlyWhenExpired
-	)
-
-	gwCert := opts.GatewayClientCertificate
-	reason := gwCert.Creator.NeedNewTargetCertKeyPair(gwCert.Secret.Annotations, rawCA, caBundle, refresh, refreshOnlyWhenExpired)
-	res = append(res, reason)
-
-	for _, cert := range opts.Certificates {
-		reason = cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caBundle, refresh, refreshOnlyWhenExpired)
-		res = append(res, reason)
-	}
-
-	if len(res) == 0 {
+	if opts.Signer.Secret == nil || opts.CABundle == nil {
 		return nil
 	}
 
-	return &CertExpiredError{Message: "certificates expired", Reasons: res}
+	if opts.GatewayClientCertificate.Secret == nil {
+		return nil
+	}
+
+	for _, cert := range opts.Certificates {
+		if cert.Secret == nil {
+			return nil
+		}
+	}
+
+	rawCA, err := crypto.GetCAFromBytes(opts.Signer.Secret.Data[corev1.TLSCertKey], opts.Signer.Secret.Data[corev1.TLSPrivateKeyKey])
+	if err != nil {
+		return kverrors.Wrap(err, "failed to get signing CA from secret")
+	}
+
+	caBundle := opts.CABundle.Data[CAFile]
+	caCerts, err := crypto.CertsFromPEM([]byte(caBundle))
+	if err != nil {
+		return kverrors.Wrap(err, "failed to get ca bundle certificates from configmap")
+	}
+
+	var reasons []string
+
+	annotations := opts.GatewayClientCertificate.Secret.Annotations
+	reason := opts.GatewayClientCertificate.Creator.NeedNewTargetCertKeyPair(annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
+	reasons = append(reasons, reason)
+
+	for _, cert := range opts.Certificates {
+		reason = cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
+		reasons = append(reasons, reason)
+	}
+
+	if len(reasons) == 0 {
+		return nil
+	}
+
+	return &CertExpiredError{Message: "certificates expired", Reasons: reasons}
 }
 
 // buildTargetCertKeyPairSecrets returns a slice of all rotated client and serving lokistack certificates.

@@ -111,14 +111,14 @@ func TestGetOptions(t *testing.T) {
 			require.Equal(t, req.Name, opts.StackName)
 			require.Equal(t, req.Namespace, opts.StackNamespace)
 
-			if len(test.objs) > 0 {
+			if test.objs != nil {
 				// Check signingCA and CABundle populated into options
 				require.NotNil(t, opts.Signer.Secret)
 				require.NotNil(t, opts.CABundle)
 
 				// Check client certificates populated into options
 				for _, cert := range opts.Certificates {
-					require.NotNil(t, cert)
+					require.NotNil(t, cert.Secret)
 				}
 			}
 		})
