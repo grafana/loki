@@ -655,7 +655,7 @@ http {
 {{/* Configure enableServiceLinks in pod */}}
 {{- define "loki.enableServiceLinks" -}}
 {{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.GitVersion -}}
-{{- if or (.Values.loki.enableServiceLinks) (eq (.Values.loki.enableServiceLinks | toString) "<nil>") -}}
+{{- if or (.Values.loki.enableServiceLinks) (ne .Values.loki.enableServiceLinks false) -}}
 enableServiceLinks: true
 {{- else -}}
 enableServiceLinks: false
