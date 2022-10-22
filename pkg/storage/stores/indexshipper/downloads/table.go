@@ -24,6 +24,7 @@ import (
 const (
 	downloadTimeout        = 5 * time.Minute
 	maxDownloadConcurrency = 50
+	CommonTenantIdentifier = ""
 )
 
 type Table interface {
@@ -116,7 +117,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		table.indexSets[userID] = userIndexSet
 	}
 
-	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
+	commonIndexSet, err := NewIndexSet(name, CommonTenantIdentifier, cacheLocation, table.baseCommonIndexSet,
 		openIndexFileFunc, table.logger)
 	if err != nil {
 		return nil, err
@@ -127,7 +128,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	table.indexSets[""] = commonIndexSet
+	table.indexSets[CommonTenantIdentifier] = commonIndexSet
 
 	return &table, nil
 }
@@ -145,7 +146,7 @@ func (t *table) Close() {
 }
 
 func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
-	ids := []string{userID, ""}
+	ids := []string{userID, CommonTenantIdentifier}
 	sets, err := t.getOrCreateIndexSets(ctx, ids, true)
 	if err != nil {
 		return err
@@ -180,7 +181,7 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 	for userID, userIndexSet := range t.indexSets {
 		lastUsedAt := userIndexSet.LastUsedAt()
 		if lastUsedAt.Add(ttl).Before(now) {
-			if userID == "" {
+			if userID == CommonTenantIdentifier {
 				// add the userID for common index set at the end of the list to make sure it is the last one cleaned up
 				// because we remove directories containing the index sets which in case of common index is
 				// the parent directory of all the user index sets.
@@ -193,7 +194,7 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 
 	// common index set should expire only after all the user index sets have expired.
 	if commonIndexSetExpired && len(expiredIndexSets) == len(t.indexSets)-1 {
-		expiredIndexSets = append(expiredIndexSets, "")
+		expiredIndexSets = append(expiredIndexSets, CommonTenantIdentifier)
 	}
 
 	return expiredIndexSets
@@ -210,7 +211,7 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 		for _, userID := range indexSetsToCleanup {
 			// additional check for cleaning up the common index set when it is the only one left.
 			// This is just for safety because the index sets could change between findExpiredIndexSets and the actual cleanup.
-			if userID == "" && len(t.indexSets) != 1 {
+			if userID == CommonTenantIdentifier && len(t.indexSets) != 1 {
 				level.Info(t.logger).Log("msg", "skipping cleanup of common index set because we possibly have unexpired user index sets left")
 				continue
 			}
@@ -293,7 +294,7 @@ func (t *table) getOrCreateIndexSets(ctx context.Context, ids []string, forQuery
 		set, ok := t.indexSets[id]
 		if !ok {
 			baseIndexSet := t.baseUserIndexSet
-			if id == "" {
+			if id == CommonTenantIdentifier {
 				baseIndexSet = t.baseCommonIndexSet
 			}
 
@@ -352,7 +353,7 @@ func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
 // When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
 func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
-	res, err := t.getOrCreateIndexSets(ctx, []string{""}, false)
+	res, err := t.getOrCreateIndexSets(ctx, []string{CommonTenantIdentifier}, false)
 	if err != nil {
 		return err
 	}
@@ -393,7 +394,7 @@ func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error
 }
 
 func loggerWithUserID(logger log.Logger, userID string) log.Logger {
-	if userID == "" {
+	if userID == CommonTenantIdentifier {
 		return logger
 	}
 
