@@ -3,14 +3,24 @@ package distributor
 import (
 	"context"
 	"flag"
+	"math"
+	"math/rand"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
-	"github.com/grafana/dskit/kv"
+	"github.com/grafana/loki/pkg/ingester"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -20,14 +30,13 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/distributor/clientpool"
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -50,11 +59,19 @@ type Config struct {
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
+
+	RateStore RateStoreConfig `yaml:"rate_store"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
+	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+}
+
+// RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
+type RateStore interface {
+	RateFor(streamHash uint64) int64
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -69,33 +86,47 @@ type Distributor struct {
 	validator        *Validator
 	pool             *ring_client.Pool
 
+	rateStore RateStore
+
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
-	distributorsRing       *ring.Ring
 	distributorsLifecycler *ring.Lifecycler
 
 	rateLimitStrat string
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
-
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
 	labelCache           *lru.Cache
-
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
+	streamShardingFailures *prometheus.CounterVec
+	streamShardCount       prometheus.Counter
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
+func New(
+	cfg Config,
+	clientCfg client.Config,
+	configs *runtime.TenantConfigs,
+	ingestersRing ring.ReadRing,
+	overrides *validation.Overrides,
+	registerer prometheus.Registerer,
+) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
 		}
+	}
+
+	internalFactory := func(addr string) (ring_client.PoolClient, error) {
+		internalCfg := clientCfg
+		internalCfg.Internal = true
+		return client.New(internalCfg, addr)
 	}
 
 	validator, err := NewValidator(overrides)
@@ -106,17 +137,11 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifecycler *ring.Lifecycler
-	var distributorsRing *ring.Ring
 	rateLimitStrat := validation.LocalIngestionRateStrategy
 
 	var servs []services.Service
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		rateLimitStrat = validation.GlobalIngestionRateStrategy
-		ringStore, err := kv.NewClient(
-			cfg.DistributorRing.KVStore,
-			ring.GetCodec(),
-			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "distributor"),
-			util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
@@ -126,13 +151,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			return nil, errors.Wrap(err, "create distributor lifecycler")
 		}
 
-		distributorsRing, err = ring.NewWithStoreClientAndStrategy(cfg.DistributorRing.ToRingConfig(),
-			"distributor", "distributor", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
-		if err != nil {
-			return nil, errors.Wrap(err, "create distributor ring client")
-		}
-
-		servs = append(servs, distributorsLifecycler, distributorsRing)
+		servs = append(servs, distributorsLifecycler)
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsLifecycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
@@ -142,13 +161,13 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	if err != nil {
 		return nil, err
 	}
+
 	d := Distributor{
 		cfg:                    cfg,
 		clientCfg:              clientCfg,
 		tenantConfigs:          configs,
 		tenantsRetention:       retention.NewTenantsRetention(overrides),
 		ingestersRing:          ingestersRing,
-		distributorsRing:       distributorsRing,
 		distributorsLifecycler: distributorsLifecycler,
 		validator:              validator,
 		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
@@ -170,11 +189,37 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
+		streamShardingFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "stream_sharding_failures",
+			Help:      "Total number of failures when sharding a stream",
+		}, []string{
+			"reason",
+		}),
+		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "stream_sharding_count",
+			Help:      "Total number of times the distributor has sharded streams",
+		}),
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
-	servs = append(servs, d.pool)
+	rs := NewRateStore(
+		d.cfg.RateStore,
+		ingestersRing,
+		clientpool.NewPool(
+			clientCfg.PoolConfig,
+			ingestersRing,
+			internalFactory,
+			util_log.Logger,
+		),
+		overrides,
+		registerer,
+	)
+	d.rateStore = rs
+
+	servs = append(servs, d.pool, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
 		return nil, errors.Wrap(err, "services manager")
@@ -214,13 +259,14 @@ type streamTracker struct {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type pushTracker struct {
-	samplesPending atomic.Int32
-	samplesFailed  atomic.Int32
+	streamsPending atomic.Int32
+	streamsFailed  atomic.Int32
 	done           chan struct{}
 	err            chan error
 }
 
 // Push a set of streams.
+// The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -237,8 +283,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We also work out the hash value at the same time.
 	streams := make([]streamTracker, 0, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
-	validatedSamplesSize := 0
-	validatedSamplesCount := 0
+	validatedLineSize := 0
+	validatedLineCount := 0
 
 	var validationErr error
 	validationContext := d.validator.getValidationContextForTime(time.Now(), userID)
@@ -252,7 +298,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Truncate first so subsequent steps have consistent line lengths
 		d.truncateLines(validationContext, &stream)
 
-		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+		stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
 			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, userID).Add(float64(len(stream.Entries)))
@@ -265,6 +311,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 
 		n := 0
+		streamSize := 0
 		for _, entry := range stream.Entries {
 			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 				validationErr = err
@@ -276,23 +323,31 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 			// since Loki will accept out of order writes it doesn't account for separate
 			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.incrementDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
+			if validationContext.incrementDuplicateTimestamps && n != 0 {
 				// Traditional logic for Loki is that 2 lines with the same timestamp and
 				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 				// To maintain this behavior, only increment the timestamp if the log content is different
 				if stream.Entries[n-1].Line != entry.Line {
-					stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
+					stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
 				}
 			}
 
 			n++
-			validatedSamplesSize += len(entry.Line)
-			validatedSamplesCount++
+			validatedLineSize += len(entry.Line)
+			validatedLineCount++
+			streamSize += len(entry.Line)
 		}
 		stream.Entries = stream.Entries[:n]
 
-		keys = append(keys, util.TokenFor(userID, stream.Labels))
-		streams = append(streams, streamTracker{stream: stream})
+		shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
+		if shardStreamsCfg.Enabled {
+			derivedKeys, derivedStreams := d.shardStream(stream, streamSize, userID)
+			keys = append(keys, derivedKeys...)
+			streams = append(streams, derivedStreams...)
+		} else {
+			keys = append(keys, util.TokenFor(userID, stream.Labels))
+			streams = append(streams, streamTracker{stream: stream})
+		}
 	}
 
 	// Return early if none of the streams contained entries
@@ -301,17 +356,17 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedLineSize) {
 		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedLineCount))
+		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedLineSize))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedLineCount, validatedLineSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	samplesByIngester := map[string][]*streamTracker{}
+	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
 		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
@@ -322,7 +377,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Instances {
-			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &streams[i])
+			streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
 			ingesterDescs[ingester.Addr] = ingester
 		}
 	}
@@ -331,8 +386,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
 		err:  make(chan error, 1),
 	}
-	tracker.samplesPending.Store(int32(len(streams)))
-	for ingester, samples := range samplesByIngester {
+	tracker.streamsPending.Store(int32(len(streams)))
+	for ingester, streams := range streamsByIngester {
 		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
@@ -341,8 +396,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, ingester, samples, &tracker)
-		}(ingesterDescs[ingester], samples)
+			d.sendStreams(localCtx, ingester, samples, &tracker)
+		}(ingesterDescs[ingester], streams)
 	}
 	select {
 	case err := <-tracker.err:
@@ -352,6 +407,139 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func min(x1, x2 int) int {
+	if x1 < x2 {
+		return x1
+	}
+	return x2
+}
+
+// shardStream shards (divides) the given stream into N smaller streams, where
+// N is the sharding size for the given stream. shardSteam returns the smaller
+// streams and their associated keys for hashing to ingesters.
+//
+// The number of shards is limited by the number of entries.
+// If the right number of shards for the current load is bigger than the number of entries, entries are randomized between shards
+// to avoid hotspots.
+// Ex: If the right amount of shards for a stream is 8 but it only has 3 entries, the 3 entries are randomized between the 8 shards.
+// This way we avoid the first 3 shards receiving all the load while the last 5 would receive no load.
+func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID string) ([]uint32, []streamTracker) {
+	shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
+	logger := log.With(util_log.WithUserID(userID, util_log.Logger), "stream", stream.Labels)
+	shardCount := d.shardCountFor(logger, &stream, streamSize, shardStreamsCfg)
+
+	if shardCount <= 1 {
+		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
+	}
+
+	d.streamShardCount.Inc()
+	if shardStreamsCfg.LoggingEnabled {
+		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
+	}
+
+	if shardCount > len(stream.Entries) {
+		shardsOrder := d.randomizeShardsOrder(shardCount)
+		return d.divideEntriesBetweenShards(logger, userID, len(stream.Entries), shardStreamsCfg, stream, shardsOrder)
+	}
+
+	return d.divideEntriesBetweenShards(logger, userID, shardCount, shardStreamsCfg, stream, nil)
+}
+
+func (d *Distributor) randomizeShardsOrder(shardCount int) []int {
+	shardsOrder := make([]int, shardCount)
+	for i := 0; i < shardCount; i++ {
+		shardsOrder = append(shardsOrder, i)
+	}
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(shardsOrder), func(i, j int) { shardsOrder[i], shardsOrder[j] = shardsOrder[j], shardsOrder[i] })
+	return shardsOrder
+}
+
+func (d *Distributor) divideEntriesBetweenShards(logger log.Logger, userID string, shardCount int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream, alternateShardsOrder []int) ([]uint32, []streamTracker) {
+	derivedKeys := make([]uint32, 0, shardCount)
+	derivedStreams := make([]streamTracker, 0, shardCount)
+	streamLabels := labelTemplate(stream.Labels)
+	streamPattern := streamLabels.String()
+
+	for i := 0; i < shardCount; i++ {
+		j := i
+		if len(alternateShardsOrder) > 0 {
+			j = alternateShardsOrder[i]
+		}
+		shard, ok := d.createShard(shardStreamsCfg, stream, streamLabels, streamPattern, shardCount, i, j)
+		if !ok {
+			level.Error(logger).Log("msg", "couldn't create shard", "idx", i)
+			continue
+		}
+
+		derivedKeys = append(derivedKeys, util.TokenFor(userID, shard.Labels))
+		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
+
+		if shardStreamsCfg.LoggingEnabled {
+			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+		}
+	}
+
+	return derivedKeys, derivedStreams
+}
+
+// labelTemplate returns a label set that includes the dummy label to be replaced
+// To avoid allocations, this slice is reused when we know the stream value
+func labelTemplate(lbls string) labels.Labels {
+	baseLbls, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
+		return nil
+	}
+
+	streamLabels := make([]labels.Label, len(baseLbls)+1)
+	copy(streamLabels, baseLbls)
+	streamLabels[len(baseLbls)] = labels.Label{Name: ingester.ShardLbName, Value: ingester.ShardLbPlaceholder}
+
+	return streamLabels
+}
+
+func (d *Distributor) createShard(streamshardCfg *shardstreams.Config, stream logproto.Stream, lbls labels.Labels, streamPattern string, totalShards, spot, shardNumber int) (logproto.Stream, bool) {
+	lowerBound, upperBound, ok := d.boundsFor(stream, totalShards, spot, streamshardCfg.LoggingEnabled)
+	if !ok {
+		return logproto.Stream{}, false
+	}
+
+	shardLabel := strconv.Itoa(shardNumber)
+	lbls[len(lbls)-1] = labels.Label{Name: ingester.ShardLbName, Value: shardLabel}
+	return logproto.Stream{
+		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
+		Hash:    lbls.Hash(),
+		Entries: stream.Entries[lowerBound:upperBound],
+	}, true
+}
+
+func (d *Distributor) boundsFor(stream logproto.Stream, totalShards, idx int, loggingEnabled bool) (int, int, bool) {
+	entriesPerWindow := float64(len(stream.Entries)) / float64(totalShards)
+
+	fidx := float64(idx)
+	lowerBound := int(fidx * entriesPerWindow)
+	upperBound := min(int(entriesPerWindow*(1+fidx)), len(stream.Entries))
+
+	if lowerBound > upperBound {
+		if loggingEnabled {
+			level.Warn(util_log.Logger).Log("msg", "sharding with lowerbound > upperbound", "lowerbound", lowerBound, "upperbound", upperBound, "shards", totalShards, "labels", stream.Labels)
+		}
+		return 0, 0, false
+	}
+
+	return lowerBound, upperBound, true
+}
+
+// maxT returns the highest between two given timestamps.
+func maxT(t1, t2 time.Time) time.Time {
+	if t1.Before(t2) {
+		return t2
+	}
+
+	return t1
 }
 
 func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
@@ -374,31 +562,31 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
-	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
+func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
+	err := d.sendStreamsErr(ctx, ingester, streamTrackers)
 
-	// If we succeed, decrement each sample's pending count by one.  If we reach
-	// the required number of successful puts on this sample, then decrement the
-	// number of pending samples by one.  If we successfully push all samples to
-	// min success ingesters, wake up the waiting rpc so it can return early.
-	// Similarly, track the number of errors, and if it exceeds maxFailures
-	// shortcut the waiting rpc.
+	// If we succeed, decrement each stream's pending count by one.
+	// If we reach the required number of successful puts on this stream, then
+	// decrement the number of pending streams by one.
+	// If we successfully push all streams to min success ingesters, wake up the
+	// waiting rpc so it can return early. Similarly, track the number of errors,
+	// and if it exceeds maxFailures shortcut the waiting rpc.
 	//
-	// The use of atomic increments here guarantees only a single sendSamples
+	// The use of atomic increments here guarantees only a single sendStreams
 	// goroutine will write to either channel.
 	for i := range streamTrackers {
 		if err != nil {
 			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
 				continue
 			}
-			if pushTracker.samplesFailed.Inc() == 1 {
+			if pushTracker.streamsFailed.Inc() == 1 {
 				pushTracker.err <- err
 			}
 		} else {
 			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
 				continue
 			}
-			if pushTracker.samplesPending.Dec() == 0 {
+			if pushTracker.streamsPending.Dec() == 0 {
 				pushTracker.done <- struct{}{}
 			}
 		}
@@ -406,7 +594,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDes
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
+func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -427,20 +615,70 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {
-	labelVal, ok := d.labelCache.Get(key)
-	if ok {
-		return labelVal.(string), nil
+type labelData struct {
+	labels string
+	hash   uint64
+}
+
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
+	if val, ok := d.labelCache.Get(key); ok {
+		labelVal := val.(labelData)
+		return labelVal.labels, labelVal.hash, nil
 	}
+
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
+		return "", 0, httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
 	}
+
 	// ensure labels are correctly sorted.
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
-		return "", err
+		return "", 0, err
 	}
+
 	lsVal := ls.String()
-	d.labelCache.Add(key, lsVal)
-	return lsVal, nil
+	lsHash := ls.Hash()
+
+	d.labelCache.Add(key, labelData{lsVal, lsHash})
+	return lsVal, lsHash, nil
+}
+
+// shardCountFor returns the right number of shards to be used by the given stream.
+//
+// It first checks if the number of shards is present in the shard store. If it isn't it will calculate it
+// based on the rate stored in the rate store and will store the new evaluated number of shards.
+//
+// desiredRate is expected to be given in bytes.
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize int, streamShardcfg *shardstreams.Config) int {
+	if streamShardcfg.DesiredRate.Val() <= 0 {
+		if streamShardcfg.LoggingEnabled {
+			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
+		}
+		return 1
+	}
+
+	rate := d.rateStore.RateFor(stream.Hash)
+	shards := calculateShards(rate, streamSize, streamShardcfg.DesiredRate.Val())
+	if shards > len(stream.Entries) {
+		d.streamShardingFailures.WithLabelValues("too_many_shards").Inc()
+		if streamShardcfg.LoggingEnabled {
+			level.Error(logger).Log("msg", "number of shards bigger than number of entries", "shards", shards, "entries", len(stream.Entries))
+		}
+		return shards
+	}
+
+	if shards == 0 {
+		// 1 shard is enough for the given stream.
+		return 1
+	}
+
+	return shards
+}
+
+func calculateShards(rate int64, streamSize, desiredRate int) int {
+	shards := float64(rate+int64(streamSize)) / float64(desiredRate)
+	if shards <= 1 {
+		return 1
+	}
+	return int(math.Ceil(shards))
 }

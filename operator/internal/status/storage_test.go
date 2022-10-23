@@ -27,7 +27,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsError_ReturnError(t *test
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -45,7 +45,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *tes
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -96,18 +96,16 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-
 			Version:       lokiv1.ObjectStorageSchemaV11,
 			EffectiveDate: "2020-10-11",
 		},
 		{
-
 			Version:       lokiv1.ObjectStorageSchemaV12,
 			EffectiveDate: "2021-10-11",
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil

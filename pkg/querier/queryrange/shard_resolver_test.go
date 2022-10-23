@@ -11,50 +11,41 @@ import (
 
 func TestGuessShardFactor(t *testing.T) {
 	for _, tc := range []struct {
-		stats          stats.Stats
-		maxParallelism int
-		exp            int
+		stats stats.Stats
+		exp   int
 	}{
 		{
 			// no data == no sharding
-			exp:            0,
-			maxParallelism: 10,
+			exp: 0,
 		},
 		{
-			exp:            4,
-			maxParallelism: 10,
+			exp: 4,
 			stats: stats.Stats{
-				Bytes: 1200 << 20, // 1200MB
+				Bytes: maxBytesPerShard * 4,
 			},
 		},
 		{
-			exp:            8,
-			maxParallelism: 10,
-			// 1500MB moves us to the next
-			// power of 2 parallelism factor
+			// round up shard factor
+			exp: 16,
 			stats: stats.Stats{
-				Bytes: 1500 << 20,
+				Bytes: maxBytesPerShard * 15,
 			},
 		},
 		{
-			// Two fully packed parallelism cycles
-			exp:            16,
-			maxParallelism: 8,
+			exp: 2,
 			stats: stats.Stats{
-				Bytes: maxSchedulableBytes * 16,
+				Bytes: maxBytesPerShard + 1,
 			},
 		},
 		{
-			// increase to next factor of two
-			exp:            32,
-			maxParallelism: 8,
+			exp: 0,
 			stats: stats.Stats{
-				Bytes: maxSchedulableBytes * 17,
+				Bytes: maxBytesPerShard,
 			},
 		},
 	} {
 		t.Run(fmt.Sprintf("%+v", tc.stats), func(t *testing.T) {
-			require.Equal(t, tc.exp, guessShardFactor(tc.stats, tc.maxParallelism))
+			require.Equal(t, tc.exp, guessShardFactor(tc.stats))
 		})
 	}
 }

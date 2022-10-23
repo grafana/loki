@@ -24,13 +24,13 @@ import (
 func main() {
 	var config loki.ConfigWrapper
 
+	if loki.PrintVersion(os.Args[1:]) {
+		fmt.Println(version.Print("loki"))
+		os.Exit(0)
+	}
 	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
-	}
-	if config.PrintVersion {
-		fmt.Println(version.Print("loki"))
-		os.Exit(0)
 	}
 
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
@@ -43,7 +43,7 @@ func main() {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.

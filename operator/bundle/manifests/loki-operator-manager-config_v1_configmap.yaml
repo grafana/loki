@@ -32,6 +32,7 @@ data:
       lokiStackGateway: true
       grafanaLabsUsageReport: false
       runtimeSeccompProfile: false
+      defaultNodeAffinity: true
       #
       # Webhook feature gates
       #
@@ -44,6 +45,8 @@ data:
       openshift:
         servingCertsService: true
         gatewayRoute: true
+        ruleExtendedValidation: true
+        clusterTLSPolicy: true
 kind: ConfigMap
 metadata:
   labels:

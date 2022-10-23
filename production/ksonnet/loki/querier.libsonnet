@@ -36,8 +36,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
-    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1) +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge('15%') +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable('15%') +
     if $._config.querier.use_topology_spread then
       deployment.spec.template.spec.withTopologySpreadConstraints(
         // Evenly spread queriers among available nodes.

@@ -63,21 +63,27 @@ var (
 // TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
 // Both Start and End are inclusive.
 type TableRange struct {
-	Start, End int64
+	Start, End   int64
+	PeriodConfig *PeriodConfig
 }
 
 // TableRanges represents a list of table ranges for multiple schemas.
 type TableRanges []TableRange
 
-// TableNumberInRange tells whether given table number falls in any of the ranges.
-func (t TableRanges) TableNumberInRange(tableNumber int64) bool {
+// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
+func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+}
+
+func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	for _, r := range t {
 		if r.Start <= tableNumber && tableNumber <= r.End {
-			return true
+			return r.PeriodConfig
 		}
 	}
 
-	return false
+	return nil
 }
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -111,8 +117,9 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // the configured schema start date, index table period and the given schemaEndDate
 func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
 	return TableRange{
-		Start: cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
-		End:   schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		PeriodConfig: cfg,
 	}
 }
 
@@ -241,23 +248,6 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 		default:
 			return false
 		}
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == BoltDBShipperType
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
-func UsingTSDB(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == TSDBType
 	}
 
 	return usingForPeriodConfigs(configs, fn)

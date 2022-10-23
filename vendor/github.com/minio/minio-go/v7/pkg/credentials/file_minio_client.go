@@ -24,7 +24,6 @@ import (
 	"runtime"
 
 	jsoniter "github.com/json-iterator/go"
-	homedir "github.com/mitchellh/go-homedir"
 )
 
 // A FileMinioClient retrieves credentials from the current user's home
@@ -65,7 +64,7 @@ func (p *FileMinioClient) Retrieve() (Value, error) {
 		if value, ok := os.LookupEnv("MINIO_SHARED_CREDENTIALS_FILE"); ok {
 			p.Filename = value
 		} else {
-			homeDir, err := homedir.Dir()
+			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				return Value{}, err
 			}

@@ -4,7 +4,6 @@
 package positions
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -24,7 +23,7 @@ func writePositionFile(filename string, positions map[string]string) error {
 	target := filepath.Clean(filename)
 	temp := target + "-new"
 
-	err = ioutil.WriteFile(temp, buf, os.FileMode(positionFileMode))
+	err = os.WriteFile(temp, buf, os.FileMode(positionFileMode))
 	if err != nil {
 		return err
 	}

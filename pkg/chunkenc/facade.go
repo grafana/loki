@@ -84,6 +84,13 @@ func (f Facade) Size() int {
 	return f.c.CompressedSize()
 }
 
+func (f Facade) UncompressedSize() int {
+	if f.c == nil {
+		return 0
+	}
+	return f.c.UncompressedSize()
+}
+
 func (f Facade) Entries() int {
 	if f.c == nil {
 		return 0

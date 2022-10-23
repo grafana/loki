@@ -3,7 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -28,7 +28,7 @@ const (
 
 type Table interface {
 	Close()
-	ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -76,7 +76,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	filesInfo, err := ioutil.ReadDir(cacheLocation)
+	dirEntries, err := os.ReadDir(cacheLocation)
 	if err != nil {
 		return nil, err
 	}
@@ -93,15 +93,15 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		metrics:            metrics,
 	}
 
-	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
+	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(dirEntries))
 
 	// common index files are outside the directories and user index files are in the directories
-	for _, fileInfo := range filesInfo {
-		if !fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		userID := fileInfo.Name()
+		userID := entry.Name()
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
 			table.baseUserIndexSet, openIndexFileFunc, loggerWithUserID(table.logger, userID))
 		if err != nil {
@@ -144,7 +144,7 @@ func (t *table) Close() {
 	t.indexSets = map[string]IndexSet{}
 }
 
-func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	// iterate through both user and common index
 	for _, uid := range []string{userID, ""} {
 		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
@@ -157,7 +157,7 @@ func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEa
 			return indexSet.Err()
 		}
 
-		err = indexSet.ForEach(ctx, callback)
+		err = indexSet.ForEach(ctx, doneChan, callback)
 		if err != nil {
 			return err
 		}

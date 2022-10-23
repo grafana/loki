@@ -13,12 +13,12 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -59,7 +59,7 @@ type dynamicShardResolver struct {
 }
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
-	sp, _ := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
+	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
 	defer sp.Finish()
 	// We try to shard subtrees in the AST independently if possible, although
 	// nested binary expressions can make this difficult. In this case,
@@ -74,7 +74,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	results := make([]*stats.Stats, 0, len(grps))
 
 	start := time.Now()
-	if err := concurrency.ForEachJob(r.ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
+	if err := concurrency.ForEachJob(ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
 		matchers := syntax.MatchersString(grps[i].Matchers)
 		diff := grps[i].Interval + grps[i].Offset
 		adjustedFrom := r.from.Add(-diff)
@@ -85,7 +85,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		adjustedThrough := r.through.Add(-grps[i].Offset)
 
 		start := time.Now()
-		resp, err := r.handler.Do(r.ctx, &indexgatewaypb.IndexStatsRequest{
+		resp, err := r.handler.Do(r.ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
 			Through:  adjustedThrough,
 			Matchers: matchers,
@@ -119,7 +119,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	}
 
 	combined := stats.MergeStats(results...)
-	factor := guessShardFactor(combined, r.maxParallelism)
+	factor := guessShardFactor(combined)
 	var bytesPerShard = combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
@@ -142,22 +142,25 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 const (
 	// Just some observed values to get us started on better query planning.
-	p90BytesPerSecond = 300 << 20 // 300MB/s/core
-	// At max, schedule a query for 10s of execution before
-	// splitting it into more requests. This is a lot of guesswork.
-	maxSeconds          = 10
-	maxSchedulableBytes = maxSeconds * p90BytesPerSecond
+	maxBytesPerShard = 600 << 20
 )
 
-func guessShardFactor(stats stats.Stats, maxParallelism int) int {
-	expectedSeconds := float64(stats.Bytes / p90BytesPerSecond)
-	if expectedSeconds <= float64(maxParallelism) {
-		power := math.Ceil(math.Log2(expectedSeconds)) // round up to nearest power of 2
-		// Ideally, parallelize down to 1s queries
-		return int(math.Pow(2, power))
-	}
+// Since we shard by powers of two and we increase shard factor
+// once each shard surpasses maxBytesPerShard, if the shard factor
+// is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
+// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards of 500MB.
+// If there are 1004MB, we split into four shards of 251MB.
+func guessShardFactor(stats stats.Stats) int {
+	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
 
-	n := stats.Bytes / maxSchedulableBytes
-	power := math.Ceil(math.Log2(float64(n)))
-	return int(math.Pow(2, power))
+	// round up to nearest power of 2
+	power := math.Ceil(math.Log2(minShards))
+
+	// Since x^0 == 1 and we only support factors of 2
+	// reset this edge case manually
+	factor := int(math.Pow(2, power))
+	if factor == 1 {
+		factor = 0
+	}
+	return factor
 }

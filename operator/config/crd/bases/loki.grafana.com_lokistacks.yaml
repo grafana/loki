@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.0
+    controller-gen.kubebuilder.io/version: v0.10.0
   creationTimestamp: null
   name: lokistacks.loki.grafana.com
 spec:
@@ -106,6 +106,48 @@ spec:
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
+                          queryTimeout:
+                            default: 1m
+                            description: Timeout when querying ingesters or storage
+                              during the execution of a query request.
+                            type: string
+                        type: object
+                      retention:
+                        description: Retention defines how long logs are kept in storage.
+                        properties:
+                          days:
+                            description: Days contains the number of days logs are
+                              kept.
+                            minimum: 1
+                            type: integer
+                          streams:
+                            description: Stream defines the log stream.
+                            items:
+                              description: RetentionStreamSpec defines a log stream
+                                with separate retention time.
+                              properties:
+                                days:
+                                  description: Days contains the number of days logs
+                                    are kept.
+                                  minimum: 1
+                                  type: integer
+                                priority:
+                                  default: 1
+                                  description: Priority defines the priority of this
+                                    selector compared to other retention rules.
+                                  format: int32
+                                  type: integer
+                                selector:
+                                  description: Selector contains the LogQL query used
+                                    to define the log stream.
+                                  type: string
+                              required:
+                              - days
+                              - selector
+                              type: object
+                            type: array
+                        required:
+                        - days
                         type: object
                     type: object
                   tenants:
@@ -177,6 +219,49 @@ spec:
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
+                            queryTimeout:
+                              default: 1m
+                              description: Timeout when querying ingesters or storage
+                                during the execution of a query request.
+                              type: string
+                          type: object
+                        retention:
+                          description: Retention defines how long logs are kept in
+                            storage.
+                          properties:
+                            days:
+                              description: Days contains the number of days logs are
+                                kept.
+                              minimum: 1
+                              type: integer
+                            streams:
+                              description: Stream defines the log stream.
+                              items:
+                                description: RetentionStreamSpec defines a log stream
+                                  with separate retention time.
+                                properties:
+                                  days:
+                                    description: Days contains the number of days
+                                      logs are kept.
+                                    minimum: 1
+                                    type: integer
+                                  priority:
+                                    default: 1
+                                    description: Priority defines the priority of
+                                      this selector compared to other retention rules.
+                                    format: int32
+                                    type: integer
+                                  selector:
+                                    description: Selector contains the LogQL query
+                                      used to define the log stream.
+                                    type: string
+                                required:
+                                - days
+                                - selector
+                                type: object
+                              type: array
+                          required:
+                          - days
                           type: object
                       type: object
                     description: Tenants defines the limits applied per tenant.
@@ -249,6 +334,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                   selector:
                     description: A selector to select which LokiRules to mount for
                       loading alerting/recording rules from.
@@ -294,6 +380,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                 required:
                 - enabled
                 type: object
@@ -360,6 +447,12 @@ spec:
                     description: TLS configuration for reaching the object storage
                       endpoint.
                     properties:
+                      caKey:
+                        default: service-ca.crt
+                        description: Key is the data key of a ConfigMap containing
+                          a CA certificate. It needs to be in the same namespace as
+                          the LokiStack custom resource.
+                        type: string
                       caName:
                         description: CA is the name of a ConfigMap containing a CA
                           certificate. It needs to be in the same namespace as the
@@ -993,6 +1086,7 @@ spec:
                     - static
                     - dynamic
                     - openshift-logging
+                    - openshift-network
                     type: string
                 required:
                 - mode
@@ -1080,8 +1174,8 @@ spec:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
                     use as an array at the field path .status.conditions.  For example,
-                    type FooStatus struct{ // Represents the observations of a foo's
-                    current state. // Known .status.conditions.type are: \"Available\",
+                    \n type FooStatus struct{ // Represents the observations of a
+                    foo's current state. // Known .status.conditions.type are: \"Available\",
                     \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
                     // +listType=map // +listMapKey=type Conditions []metav1.Condition
                     `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
@@ -1410,6 +1504,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                   selector:
                     description: A selector to select which LokiRules to mount for
                       loading alerting/recording rules from.
@@ -1455,6 +1550,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                 required:
                 - enabled
                 type: object
@@ -2241,8 +2337,8 @@ spec:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
                     use as an array at the field path .status.conditions.  For example,
-                    type FooStatus struct{ // Represents the observations of a foo's
-                    current state. // Known .status.conditions.type are: \"Available\",
+                    \n type FooStatus struct{ // Represents the observations of a
+                    foo's current state. // Known .status.conditions.type are: \"Available\",
                     \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
                     // +listType=map // +listMapKey=type Conditions []metav1.Condition
                     `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"

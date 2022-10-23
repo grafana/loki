@@ -179,14 +179,18 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 	var v float64
 	stringValue, _ := l.builder.Get(l.labelName)
 	if stringValue == "" {
-		l.builder.SetErr(errSampleExtraction)
-	} else {
-		var err error
-		v, err = l.conversionFn(stringValue)
-		if err != nil {
-			l.builder.SetErr(errSampleExtraction)
-		}
+		// NOTE: It's totally fine for log line to not have this particular label.
+		// See Issue: https://github.com/grafana/loki/issues/6713
+		return 0, nil, false
 	}
+
+	var err error
+	v, err = l.conversionFn(stringValue)
+	if err != nil {
+		l.builder.SetErr(errSampleExtraction)
+		l.builder.SetErrorDetails(err.Error())
+	}
+
 	// post filters
 	if _, ok = l.postFilter.Process(ts, line, l.builder); !ok {
 		return 0, nil, false

@@ -16,6 +16,14 @@ common:
     kvstore:
       store: inmemory
 
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        distributed: false
+        max_size_mb: 100
+
 schema_config:
   configs:
     - from: 2020-10-24

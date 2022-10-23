@@ -11,9 +11,12 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
+	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
+	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
+	manifests_openshift "github.com/grafana/loki/operator/internal/manifests/openshift"
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
@@ -110,15 +113,15 @@ func CreateOrUpdateLokiStack(
 			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
 		}
 
-		if !storage.IsValidCAConfigMap(&cm) {
+		if !storage.IsValidCAConfigMap(&cm, stack.Spec.Storage.TLS.CAKey) {
 			return &status.DegradedError{
-				Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+				Message: "Invalid object storage CA configmap contents: missing key or no contents",
 				Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 				Requeue: false,
 			}
 		}
 
-		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name}
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: stack.Spec.Storage.TLS.CAKey}
 	}
 
 	var (
@@ -141,15 +144,14 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		if stack.Spec.Tenants.Mode != lokiv1.OpenshiftLogging {
-			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
+		switch stack.Spec.Tenants.Mode {
+		case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
 			if err != nil {
 				return err
 			}
-		}
-
-		if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging {
-			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
+		default:
+			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
 			if err != nil {
 				return err
 			}
@@ -167,16 +169,17 @@ func CreateOrUpdateLokiStack(
 		recordingRules []lokiv1beta1.RecordingRule
 		rulerConfig    *lokiv1beta1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
+		ocpAmEnabled   bool
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
 		if err != nil {
-			log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
+			ll.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
 		}
 
 		rulerConfig, err = rules.GetRulerConfig(ctx, k, req)
 		if err != nil {
-			log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
+			ll.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
 		}
 
 		if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
@@ -202,6 +205,13 @@ func CreateOrUpdateLokiStack(
 				}
 			}
 		}
+
+		ocpAmEnabled, err = openshift.AlertManagerSVCExists(ctx, stack.Spec, k)
+		if err != nil {
+			ll.Error(err, "failed to check OCP AlertManager")
+			return err
+		}
+
 	}
 
 	// Here we will translate the lokiv1.LokiStack options into manifest options
@@ -224,6 +234,11 @@ func CreateOrUpdateLokiStack(
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
+		OpenShiftOptions: manifests_openshift.Options{
+			BuildOpts: manifests_openshift.BuildOptions{
+				AlertManagerEnabled: ocpAmEnabled,
+			},
+		},
 	}
 
 	ll.Info("begin building manifests")
@@ -235,9 +250,26 @@ func CreateOrUpdateLokiStack(
 
 	if fg.LokiStackGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
-			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
+			ll.Error(optErr, "failed to apply defaults options to gateway settings")
 			return optErr
 		}
+	}
+
+	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
+	// Overwrite the profile from the flags and use the profile from the apiserver instead
+	if fg.OpenShift.ClusterTLSPolicy {
+		tlsProfileType = configv1.TLSProfileType("")
+	}
+
+	tlsProfile, err := tlsprofile.GetTLSSecurityProfile(ctx, k, tlsProfileType)
+	if err != nil {
+		// The API server is not guaranteed to be there nor have a result.
+		ll.Error(err, "failed to get security profile. will use default tls profile.")
+	}
+
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsProfile); optErr != nil {
+		ll.Error(optErr, "failed to conform options to tls profile settings")
+		return optErr
 	}
 
 	objects, err := manifests.BuildAll(opts)

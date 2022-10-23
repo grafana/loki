@@ -22,6 +22,7 @@ import (
 
 	"cloud.google.com/go/internal/trace"
 	raw "google.golang.org/api/storage/v1"
+	storagepb "google.golang.org/genproto/googleapis/storage/v2"
 )
 
 // A Notification describes how to send Cloud PubSub messages when certain
@@ -91,6 +92,30 @@ func toNotification(rn *raw.Notification) *Notification {
 	return n
 }
 
+func toNotificationFromProto(pbn *storagepb.Notification) *Notification {
+	n := &Notification{
+		ID:               pbn.GetName(),
+		EventTypes:       pbn.GetEventTypes(),
+		ObjectNamePrefix: pbn.GetObjectNamePrefix(),
+		CustomAttributes: pbn.GetCustomAttributes(),
+		PayloadFormat:    pbn.GetPayloadFormat(),
+	}
+	n.TopicProjectID, n.TopicID = parseNotificationTopic(pbn.Topic)
+	return n
+}
+
+func toProtoNotification(n *Notification) *storagepb.Notification {
+	return &storagepb.Notification{
+		Name: n.ID,
+		Topic: fmt.Sprintf("//pubsub.googleapis.com/projects/%s/topics/%s",
+			n.TopicProjectID, n.TopicID),
+		EventTypes:       n.EventTypes,
+		ObjectNamePrefix: n.ObjectNamePrefix,
+		CustomAttributes: n.CustomAttributes,
+		PayloadFormat:    n.PayloadFormat,
+	}
+}
+
 var topicRE = regexp.MustCompile("^//pubsub.googleapis.com/projects/([^/]+)/topics/([^/]+)")
 
 // parseNotificationTopic extracts the project and topic IDs from from the full
@@ -137,7 +162,12 @@ func (b *BucketHandle) AddNotification(ctx context.Context, n *Notification) (re
 	if b.userProject != "" {
 		call.UserProject(b.userProject)
 	}
-	rn, err := call.Context(ctx).Do()
+
+	var rn *raw.Notification
+	err = run(ctx, func() error {
+		rn, err = call.Context(ctx).Do()
+		return err
+	}, b.retry, false, setRetryHeaderHTTP(call))
 	if err != nil {
 		return nil, err
 	}
@@ -156,10 +186,10 @@ func (b *BucketHandle) Notifications(ctx context.Context) (n map[string]*Notific
 		call.UserProject(b.userProject)
 	}
 	var res *raw.Notifications
-	err = runWithRetry(ctx, func() error {
+	err = run(ctx, func() error {
 		res, err = call.Context(ctx).Do()
 		return err
-	})
+	}, b.retry, true, setRetryHeaderHTTP(call))
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +204,14 @@ func notificationsToMap(rns []*raw.Notification) map[string]*Notification {
 	return m
 }
 
+func notificationsToMapFromProto(ns []*storagepb.Notification) map[string]*Notification {
+	m := map[string]*Notification{}
+	for _, n := range ns {
+		m[n.Name] = toNotificationFromProto(n)
+	}
+	return m
+}
+
 // DeleteNotification deletes the notification with the given ID.
 func (b *BucketHandle) DeleteNotification(ctx context.Context, id string) (err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.DeleteNotification")
@@ -184,5 +222,7 @@ func (b *BucketHandle) DeleteNotification(ctx context.Context, id string) (err e
 	if b.userProject != "" {
 		call.UserProject(b.userProject)
 	}
-	return call.Context(ctx).Do()
+	return run(ctx, func() error {
+		return call.Context(ctx).Do()
+	}, b.retry, true, setRetryHeaderHTTP(call))
 }

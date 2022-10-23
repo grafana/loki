@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -591,7 +592,7 @@ store: boltdb-shipper
 	require.Equal(t, expected, cfg)
 }
 
-func TestUsingBoltdbShipper(t *testing.T) {
+func TestUsingObjectStorageIndex(t *testing.T) {
 	var cfg SchemaConfig
 
 	// just one PeriodConfig in the past using boltdb-shipper
@@ -599,18 +600,18 @@ func TestUsingBoltdbShipper(t *testing.T) {
 		From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
 		IndexType: "boltdb-shipper",
 	}}
-	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
+	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
 
-	// just one PeriodConfig in the past not using boltdb-shipper
+	// just one PeriodConfig in the past not using object storge index
 	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, UsingBoltdbShipper(cfg.Configs))
+	assert.Equal(t, false, UsingObjectStorageIndex(cfg.Configs))
 
-	// add a newer PeriodConfig in the future using boltdb-shipper
+	// add a newer PeriodConfig in the future using tsdb
 	cfg.Configs = append(cfg.Configs, PeriodConfig{
 		From:      DayTime{Time: model.Now().Add(time.Hour)},
-		IndexType: "boltdb-shipper",
+		IndexType: "tsdb",
 	})
-	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
+	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
 }
 
 func TestActiveIndexType(t *testing.T) {
@@ -749,6 +750,54 @@ func TestSchemaConfig_ValidateBoltdb(t *testing.T) {
 			} else {
 				require.EqualError(t, err, tc.err.Error())
 			}
+		})
+	}
+}
+
+func TestTableRanges_TableInRange(t *testing.T) {
+	tableRanges := TableRanges{
+		TableRange{
+			Start: 1,
+			End:   10,
+			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+			}},
+		},
+		TableRange{
+			Start: 11,
+			End:   20,
+			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+				Prefix: "index_foo_",
+			}},
+		},
+	}
+
+	for i, tc := range []struct {
+		tableNumber int64
+		tableName   string
+		expResp     bool
+	}{
+		{
+			tableNumber: 1,
+			tableName:   "index_1",
+			expResp:     true,
+		},
+		{
+			tableNumber: 15,
+			tableName:   "index_foo_15",
+			expResp:     true,
+		},
+		{
+			tableNumber: 25,
+			tableName:   "index_15",
+		},
+		{
+			tableNumber: 15,
+			tableName:   "index_15",
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			require.Equal(t, tc.expResp, tableRanges.TableInRange(tc.tableNumber, tc.tableName))
 		})
 	}
 }

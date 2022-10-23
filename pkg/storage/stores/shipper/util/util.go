@@ -1,127 +1,20 @@
 package util
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
+	"runtime"
 	"runtime/debug"
-	"strings"
-	"sync"
-	"time"
 	"unsafe"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-const (
-	delimiter = "/"
-	sep       = "\xff"
-)
-
-var (
-	gzipReader = sync.Pool{}
-	gzipWriter = sync.Pool{}
-)
-
-// getGzipReader gets or creates a new CompressionReader and reset it to read from src
-func getGzipReader(src io.Reader) (io.Reader, error) {
-	if r := gzipReader.Get(); r != nil {
-		reader := r.(*gzip.Reader)
-		err := reader.Reset(src)
-		if err != nil {
-			return nil, err
-		}
-		return reader, nil
-	}
-	reader, err := gzip.NewReader(src)
-	if err != nil {
-		return nil, err
-	}
-	return reader, nil
-}
-
-// putGzipReader places back in the pool a CompressionReader
-func putGzipReader(reader io.Reader) {
-	gzipReader.Put(reader)
-}
-
-// getGzipWriter gets or creates a new CompressionWriter and reset it to write to dst
-func getGzipWriter(dst io.Writer) io.WriteCloser {
-	if w := gzipWriter.Get(); w != nil {
-		writer := w.(*gzip.Writer)
-		writer.Reset(dst)
-		return writer
-	}
-	return gzip.NewWriter(dst)
-}
-
-// PutWriter places back in the pool a CompressionWriter
-func putGzipWriter(writer io.WriteCloser) {
-	gzipWriter.Put(writer)
-}
-
-type IndexStorageClient interface {
-	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
-	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
-}
-
-type GetFileFunc func() (io.ReadCloser, error)
-
-// DownloadFileFromStorage downloads a file from storage to given location.
-func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) error {
-	start := time.Now()
-	readCloser, err := getFileFunc()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := f.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
-		}
-	}()
-	var objectReader io.Reader = readCloser
-	if decompressFile {
-		decompressedReader, err := getGzipReader(readCloser)
-		if err != nil {
-			return err
-		}
-		defer putGzipReader(decompressedReader)
-
-		objectReader = decompressedReader
-	}
-
-	_, err = io.Copy(f, objectReader)
-	if err != nil {
-		return err
-	}
-
-	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
-	if sync {
-		return f.Sync()
-	}
-	return nil
-}
+const maxStackSize = 8 * 1024
+const sep = "\xff"
 
 func BuildIndexFileName(tableName, uploader, dbName string) string {
 	// Files are stored with <uploader>-<db-name>
@@ -133,48 +26,6 @@ func BuildIndexFileName(tableName, uploader, dbName string) string {
 	}
 
 	return objectKey
-}
-
-func CompressFile(src, dest string, sync bool) error {
-	level.Info(util_log.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
-	uncompressedFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := uncompressedFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
-		}
-	}()
-
-	compressedFile, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := compressedFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
-		}
-	}()
-
-	compressedWriter := getGzipWriter(compressedFile)
-	defer putGzipWriter(compressedWriter)
-
-	_, err = io.Copy(compressedWriter, uncompressedFile)
-	if err != nil {
-		return err
-	}
-
-	err = compressedWriter.Close()
-	if err == nil {
-		return err
-	}
-	if sync {
-		return compressedFile.Sync()
-	}
-	return nil
 }
 
 type result struct {
@@ -200,6 +51,7 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			logPanic(r)
 			res.err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
 		}
 
@@ -210,22 +62,6 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 	b, err := local.OpenBoltdbFile(path)
 	res.boltdb = b
 	res.err = err
-}
-
-func ValidateSharedStoreKeyPrefix(prefix string) error {
-	if prefix == "" {
-		return errors.New("shared store key prefix must be set")
-	} else if strings.Contains(prefix, "\\") {
-		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
-		// We just need to always use `/` as a path separator.
-		return fmt.Errorf("shared store key prefix should only have '%s' as a path separator", delimiter)
-	} else if strings.HasPrefix(prefix, delimiter) {
-		return errors.New("shared store key prefix should never start with a path separator i.e '/'")
-	} else if !strings.HasSuffix(prefix, delimiter) {
-		return errors.New("shared store key prefix should end with a path separator i.e '/'")
-	}
-
-	return nil
 }
 
 func QueryKey(q index.Query) string {
@@ -246,18 +82,17 @@ func QueryKey(q index.Query) string {
 	return ret
 }
 
-func IsCompressedFile(filename string) bool {
-	return strings.HasSuffix(filename, ".gz")
-}
-
-func LoggerWithFilename(logger log.Logger, filename string) log.Logger {
-	return log.With(logger, "file-name", filename)
-}
-
 func GetUnsafeBytes(s string) []byte {
 	return *((*[]byte)(unsafe.Pointer(&s)))
 }
 
 func GetUnsafeString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
+}
+
+func logPanic(p interface{}) {
+	stack := make([]byte, maxStackSize)
+	stack = stack[:runtime.Stack(stack, true)]
+	// keep a multiline stack
+	fmt.Fprintf(os.Stderr, "panic: %v\n%s", p, stack)
 }

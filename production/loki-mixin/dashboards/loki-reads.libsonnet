@@ -24,6 +24,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
                            querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'querier'))],
                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                           ingesterZoneAware: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
                            querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
                          },
 
@@ -37,6 +38,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          queryFrontendSelector:: selector('queryFrontend'),
                          querierSelector:: selector('querier'),
                          ingesterSelector:: selector('ingester'),
+                         ingesterZoneSelector:: selector('ingesterZoneAware'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
                        } +
                        $.dashboard('Loki / Reads', uid='reads')
@@ -108,6 +110,36 @@ local utils = import 'mixin-utils/utils.libsonnet';
                              extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
                              sum_by=['route']
                            )
+                         )
+                       )
+                       // todo: add row iff multi zone ingesters are enabled
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('Ingester - Zone Aware')
+                         .addPanel(
+                           $.panel('QPS') +
+                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterZoneSelector, grpc_routes])
+                         )
+                         .addPanel(
+                           $.panel('Latency') +
+                           utils.latencyRecordingRulePanel(
+                             'loki_request_duration_seconds',
+                             dashboards['loki-reads.json'].matchers.ingesterZoneAware + [utils.selector.re('route', grpc_routes)],
+                             extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+                             sum_by=['route']
+                           )
+                         )
+                       )
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('Index')
+                         .addPanel(
+                           $.panel('QPS') +
+                           $.qpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                         )
+                         .addPanel(
+                           $.panel('Latency') +
+                           $.latencyPanel('loki_index_request_duration_seconds', '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
                          )
                        )
                        .addRowIf(

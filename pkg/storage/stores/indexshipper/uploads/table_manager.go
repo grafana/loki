@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -21,7 +21,7 @@ type Config struct {
 type TableManager interface {
 	Stop()
 	AddIndex(tableName, userID string, index index.Index) error
-	ForEach(tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 }
 
 type tableManager struct {
@@ -118,13 +118,13 @@ func (tm *tableManager) getOrCreateTable(tableName string) Table {
 	return table
 }
 
-func (tm *tableManager) ForEach(tableName, userID string, callback index.ForEachIndexCallback) error {
+func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	table, ok := tm.getTable(tableName)
 	if !ok {
 		return nil
 	}
 
-	return table.ForEach(userID, callback)
+	return table.ForEach(ctx, userID, doneChan, callback)
 }
 
 func (tm *tableManager) uploadTables(ctx context.Context) {

@@ -25,8 +25,8 @@ Do not use this in any production environment.**
 
 #### Sending Logs Directly to the Distributor Component
 
-* The [forwarding logs to LokiStack without LokiStack Gateway](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_without_gateway.md) is used to send application, infrastructure, and audit logs to the Loki Distributor as different tenants using Fluentd or Vector.
-* The guide has a step-by-step guide to connect with OpenShift Logging for forwarding logs to LokiStack.
+* The [forwarding logs to LokiStack without LokiStack Gateway](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_without_gateway.md) is used to send application, infrastructure, audit and network logs to the Loki Distributor as different tenants using Fluentd or Vector.
+* The guide has a step-by-step guide to connect with OpenShift Logging or OpenShift Network for forwarding logs to LokiStack.
 
 ### Installation of Storage Size Calculator on OpenShift
 

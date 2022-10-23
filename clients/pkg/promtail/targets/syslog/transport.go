@@ -6,8 +6,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -17,10 +17,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog/syslogparser"
 	"github.com/influxdata/go-syslog/v3"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog/syslogparser"
 )
 
 var (
@@ -84,7 +85,7 @@ func (t *baseTransport) connectionLabels(ip string) labels.Labels {
 	lb.Set("__syslog_connection_ip_address", ip)
 	lb.Set("__syslog_connection_hostname", lookupAddr(ip))
 
-	return lb.Labels()
+	return lb.Labels(nil)
 }
 
 func ipFromConn(c net.Conn) net.IP {
@@ -207,7 +208,7 @@ func newTLSConfig(certFile string, keyFile string, caFile string) (*tls.Config, 
 	}
 
 	if caFile != "" {
-		caCert, err := ioutil.ReadFile(caFile)
+		caCert, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to load client CA certificate: %w", err)
 		}
@@ -242,7 +243,7 @@ func (t *TCPTransport) acceptConnections() {
 				return
 			}
 
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+			if _, ok := err.(net.Error); ok {
 				level.Warn(l).Log("msg", "failed to accept syslog connection", "err", err, "num_retries", backoff.NumRetries())
 				backoff.Wait()
 				continue

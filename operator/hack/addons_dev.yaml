@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: logcli
-          image: docker.io/grafana/logcli:2.5.0-amd64
+          image: docker.io/grafana/logcli:2.6.1-amd64
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -42,7 +42,7 @@ spec:
               value: /var/run/secrets/kubernetes.io/serviceaccount/token
           args:
             - -c
-            - while true; do logcli query '{job="systemd-journal"}'; sleep 30; done
+            - while true; do logcli query '{namespace="default"}'; sleep 30; done
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -50,6 +50,7 @@ spec:
               - ALL
       serviceAccountName: lokistack-dev-addons-logcli
       securityContext:
+        runAsUser: 10002
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
@@ -72,16 +73,21 @@ spec:
     spec:
       containers:
         - name: promtail
-          image: docker.io/grafana/promtail:2.5.0
+          image: docker.io/grafana/promtail:2.6.1
           args:
             - -config.file=/etc/promtail/promtail.yaml
             - -log.level=info
+          env:
+            - name: 'HOSTNAME'
+              valueFrom:
+                fieldRef:
+                  fieldPath: 'spec.nodeName'
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
           volumeMounts:
             - mountPath: /etc/promtail
               name: config
-            - mountPath: /run/promtail
+            - mountPath: /tmp/promtail
               name: run
             - mountPath: /var/lib/docker/containers
               name: docker
@@ -93,34 +99,39 @@ spec:
               name: journal
               readOnly: true
           securityContext:
-            allowPrivilegeEscalation: false
+            privileged: true
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
               - ALL
       serviceAccountName: lokistack-dev-addons-promtail
       securityContext:
+        runAsUser: 10002
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
-        - configMap:
+        - name: config
+          configMap:
             defaultMode: 420
             name: lokistack-dev-addons-promtail
-          name: config
-        - emptyDir:
+        - name: run
+          emptyDir:
             medium: ""
-            sizeLimit: 10G
-          name: run
-        - emptyDir:
-            medium: ""
-            sizeLimit: 10G
-          name: docker
-        - emptyDir:
-            medium: ""
-            sizeLimit: 10G
-          name: pods
-        - emptyDir:
-            medium: ""
-            sizeLimit: 10G
-          name: journal
+            sizeLimit: 5Gi
+        - name: docker
+          hostPath:
+            path: /var/lib/docker/containers
+            type: ""
+        - name: pods
+          hostPath:
+            path: /var/log/pods
+            type: ""
+        - name: journal
+          hostPath:
+            path: /var/log/journal
+            type: ""
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -140,7 +151,7 @@ data:
         batchwait: 10s
         timeout: 10s
     positions:
-      filename: /run/promtail/positions.yaml
+      filename: /tmp/promtail/positions.yaml
     server:
       http_listen_port: 3100
       grpc_listen_port: 9095
@@ -407,21 +418,6 @@ data:
               - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
               - __meta_kubernetes_pod_container_name
             target_label: __path__
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: lokistack-dev-addons-writer
-  labels:
-    app.kubernetes.io/name: promtail
-    app.kubernetes.io/instance: developer-addons
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: lokistack-dev-addons-writer
-subjects:
-- kind: ServiceAccount
-  name: lokistack-dev-addons-promtail
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

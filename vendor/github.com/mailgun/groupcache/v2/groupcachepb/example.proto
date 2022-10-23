@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option go_package = "groupcache_test";
+
+package groupcachepb;
+
+message User {
+    string id  = 1;
+    string name = 2;
+    int64 age = 3;
+    bool is_super = 4;
+}

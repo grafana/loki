@@ -3,10 +3,11 @@ package client
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -212,6 +213,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	attempts := c.Retries + 1
 	success := false
 
+	respErrorMsg := ""
 	for attempts > 0 {
 		attempts--
 
@@ -221,18 +223,23 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 			continue
 		}
 		if resp.StatusCode/100 != 2 {
-			buf, _ := ioutil.ReadAll(resp.Body) // nolint
+			buf, _ := io.ReadAll(resp.Body) // nolint
 			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
+			respErrorMsg = string(buf)
 			continue
 		}
 		success = true
 		break
 	}
 	if !success {
-		return fmt.Errorf("Run out of attempts while querying the server")
+		msg := "Run out of attempts while querying the server"
+		if respErrorMsg != "" {
+			msg = fmt.Sprintf("%s; response: %s", msg, respErrorMsg)
+		}
+		return fmt.Errorf(msg)
 	}
 
 	defer func() {
@@ -283,7 +290,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	}
 
 	if c.BearerTokenFile != "" {
-		b, err := ioutil.ReadFile(c.BearerTokenFile)
+		b, err := os.ReadFile(c.BearerTokenFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
 		}
@@ -335,7 +342,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		if resp == nil {
 			return nil, err
 		}
-		buf, _ := ioutil.ReadAll(resp.Body) // nolint
+		buf, _ := io.ReadAll(resp.Body) // nolint
 		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
 	}
 

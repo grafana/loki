@@ -1,6 +1,8 @@
 package manifests
 
 import (
+	"strings"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
@@ -32,6 +34,8 @@ type Options struct {
 	OpenShiftOptions openshift.Options
 
 	Tenants Tenants
+
+	TLSProfile TLSProfileSpec
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -83,4 +87,20 @@ type RulerSecret struct {
 	Password string
 	// BearerToken contains the token used for bearer authentication.
 	BearerToken string
+}
+
+// TLSProfileSpec is the desired behavior of a TLSProfileType.
+type TLSProfileSpec struct {
+	// Ciphers is used to specify the cipher algorithms that are negotiated
+	// during the TLS handshake.
+	Ciphers []string
+	// MinTLSVersion is used to specify the minimal version of the TLS protocol
+	// that is negotiated during the TLS handshake.
+	MinTLSVersion string
+}
+
+// TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
+// to a string of elements joined with a comma.
+func (o Options) TLSCipherSuites() string {
+	return strings.Join(o.TLSProfile.Ciphers, ",")
 }

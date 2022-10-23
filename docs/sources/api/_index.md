@@ -1,5 +1,7 @@
 ---
 title: HTTP API
+menuTitle: "HTTP API"
+description: "Loki exposes REST endpoints for operating on a Loki cluster. This section details the endpoints."
 weight: 900
 ---
 
@@ -72,10 +74,10 @@ These endpoints are exposed by the ruler:
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
 
 These endpoints are exposed by the compactor:
-- [`GET /compactor/ring`](#get-compactorring)
-- [`POST /loki/api/v1/delete`](#post-lokiapiv1delete)
-- [`GET /loki/api/v1/delete`](#get-lokiapiv1delete)
-- [`DELETE /loki/api/v1/delete`](#delete-lokiapiv1delete)
+- [`GET /compactor/ring`](#compactor-ring-status)
+- [`POST /loki/api/v1/delete`](#request-log-deletion)
+- [`GET /loki/api/v1/delete`](#list-log-deletion-requests)
+- [`DELETE /loki/api/v1/delete`](#request-cancellation-of-a-delete-request)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -1024,17 +1026,23 @@ POST /loki/api/v1/delete
 PUT /loki/api/v1/delete
 ```
 
-Create a new delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
+Create a new delete request for the authenticated tenant.
+The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
 Query parameters:
 
 * `query=<series_selector>`: query argument that identifies the streams from which to delete with optional line filters.
-* `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
-* `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
+* `start=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. This parameter is required.
+* `end=<rfc3339 | unix_seconds_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
+* `max_interval=<duration>`: The maximum time period the delete request can span. If the request is larger than this value, it is split into several requests of <= `max_interval`. Valid time units are `s`, `m`, and `h`.
 
 A 204 response indicates success.
+
+The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+
+#### Examples
 
 URL encode the `query` parameter. This sample form of a cURL command URL encodes `query={foo="bar"}`:
 
@@ -1044,7 +1052,13 @@ curl -g -X POST \
   -H 'X-Scope-OrgID: 1'
 ```
 
-The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
+The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field:
+
+```bash
+curl -u "Tenant1:$API_TOKEN" \
+  -g -X POST \
+  'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692'
+```
 
 ### List log deletion requests
 
@@ -1052,7 +1066,8 @@ The query parameter can also include filter operations. For example `query={foo=
 GET /loki/api/v1/delete
 ```
 
-List the existing delete requests for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
+List the existing delete requests for the authenticated tenant.
+The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1062,7 +1077,11 @@ List the existing delete requests using the following API:
 GET /loki/api/v1/delete
 ```
 
-Sample form of a cURL command:
+This endpoint returns both processed and unprocessed deletion requests. It does not list canceled requests, as those requests will have been removed from storage.
+
+#### Examples
+
+Example cURL command:
 
 ```
 curl -X GET \
@@ -1070,7 +1089,13 @@ curl -X GET \
   -H 'X-Scope-OrgID: <orgid>'
 ```
 
-This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
+The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
+
+```bash
+curl -u "Tenant1:$API_TOKEN" \
+  -X GET \
+  <compactor_addr>/loki/api/v1/delete
+```
 
 ### Request cancellation of a delete request
 
@@ -1078,9 +1103,10 @@ This endpoint returns both processed and unprocessed requests. It does not list 
 DELETE /loki/api/v1/delete
 ```
 
-Remove a delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).
+Remove a delete request for the authenticated tenant.
+The [log entry deletion](../operations/storage/logs-deletion/) documentation has configuration details.
 
-Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
+Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1093,15 +1119,26 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 * `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
+* `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted and the deleted request will be listed as 'processed'
 
 A 204 response indicates success.
 
-Sample form of a cURL command:
+#### Examples
+
+Example cURL command:
 
 ```
 curl -X DELETE \
   '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
   -H 'X-Scope-OrgID: <tenant-id>'
+```
+
+The same example deletion cancellation request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
+
+```bash
+curl -u "Tenant1:$API_TOKEN" \
+  -X DELETE \
+  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>'
 ```
 
 ## Deprecated endpoints

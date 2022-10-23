@@ -30,8 +30,7 @@ import (
 // RuleStoreConfig configures a rule store.
 // TODO remove this legacy config in Cortex 1.11.
 type RuleStoreConfig struct {
-	Type     string              `yaml:"type"`
-	ConfigDB configClient.Config `yaml:"configdb"`
+	Type string `yaml:"type"`
 
 	// Object Storage Configs
 	Azure azure.BlobStorageConfig   `yaml:"azure"`
@@ -46,14 +45,13 @@ type RuleStoreConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ConfigDB.RegisterFlagsWithPrefix("ruler.", f)
 	cfg.Azure.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Swift.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Local.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.BOS.RegisterFlagsWithPrefix("ruler.storage.", f)
-	f.StringVar(&cfg.Type, "ruler.storage.type", "configdb", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local)")
+	f.StringVar(&cfg.Type, "ruler.storage.type", "", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local)")
 }
 
 // Validate config and returns error on failure
@@ -72,7 +70,7 @@ func (cfg *RuleStoreConfig) Validate() error {
 
 // IsDefaults returns true if the storage options have not been set
 func (cfg *RuleStoreConfig) IsDefaults() bool {
-	return cfg.Type == "configdb" && cfg.ConfigDB.ConfigsAPIURL.URL == nil
+	return cfg.Type == ""
 }
 
 // NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
@@ -91,12 +89,6 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 	var client client.ObjectClient
 
 	switch cfg.Type {
-	case "configdb":
-		c, err := configClient.New(cfg.ConfigDB)
-		if err != nil {
-			return nil, err
-		}
-		return configdb.NewConfigRuleStore(c), nil
 	case "azure":
 		client, err = azure.NewBlobStorage(&cfg.Azure, clientMetrics.AzureMetrics, hedgeCfg)
 	case "gcs":

@@ -204,7 +204,6 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 
 // StackSizeTable defines the default configurations for each size
 var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
-
 	lokiv1.SizeOneXExtraSmall: {
 		Size:              lokiv1.SizeOneXExtraSmall,
 		ReplicationFactor: 1,
@@ -224,6 +223,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
 					MaxQuerySeries:          500,
+					QueryTimeout:            "1m",
 				},
 			},
 		},
@@ -276,6 +276,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
 					MaxQuerySeries:          500,
+					QueryTimeout:            "1m",
 				},
 			},
 		},
@@ -328,6 +329,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
 					MaxQuerySeries:          500,
+					QueryTimeout:            "1m",
 				},
 			},
 		},
