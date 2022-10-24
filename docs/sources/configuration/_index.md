@@ -2308,6 +2308,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
+# Ruler alertmanager configuration per tenant.
+[ruler_alertmanager_config: <alertmanager_config>]
+
 # Retention to apply for the store, if the retention is enable on the compactor side.
 # CLI flag: -store.retention
 [retention_period: <duration> | default = 744h]
@@ -2503,6 +2506,56 @@ sign every remote write request.
 
 # AWS Role ARN, an alternative to using AWS API keys.
 [role_arn: <string>]
+```
+
+## alertmanager_config
+
+The `alertmanager_config` block configures the alertmanager for the ruler alerts.
+
+```yaml
+# Comma-separated list of Alertmanager URLs to send notifications to.
+# Each Alertmanager URL is treated as a separate group in the configuration.
+# Multiple Alertmanagers in HA per group can be supported by using DNS
+# resolution via -ruler.alertmanager-discovery.
+[alertmanager_url: <string> | default = ""]
+
+
+alertmanager_client:
+  # Sets the `Authorization` header on every remote write request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  [basic_auth_username: <string>]
+  [basic_auth_password: <secret>]
+
+  # Optional `Authorization` header configuration.
+  authorization:
+    # Sets the authentication type.
+    [type: <string> | default: Bearer]
+    # Sets the credentials. It is mutually exclusive with
+    # `credentials_file`.
+    [credentials: <secret>]
+    # Sets the credentials to the credentials read from the configured file.
+    # It is mutually exclusive with `credentials`.
+    [credentials_file: <filename>]
+
+# Use DNS SRV records to discover Alertmanager hosts.
+[enable_alertmanager_discovery: <boolean> | default = false]
+
+# How long to wait between refreshing DNS resolutions of Alertmanager hosts.
+[alertmanager_refresh_interval: <duration> | default = 1m]
+
+# If enabled, then requests to Alertmanager use the v2 API.
+[enable_alertmanager_v2: <boolean> | default = false]
+
+# List of alert relabel configs
+alert_relabel_configs:
+  [- <relabel_config> ...]
+
+# Capacity of the queue for notifications to be sent to the Alertmanager.
+[notification_queue_capacity: <int> | default = 10000]
+
+# HTTP timeout duration when sending notifications to the Alertmanager.
+[notification_timeout: <duration> | default = 10s]
 ```
 
 ## remote_write_client_config
