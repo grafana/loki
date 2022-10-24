@@ -113,7 +113,6 @@ require (
 )
 
 require (
-	github.com/gogo/googleapis v1.4.0
 	github.com/heroku/x v0.0.50
 	github.com/prometheus/alertmanager v0.24.0
 	github.com/prometheus/common/sigv4 v0.1.0
