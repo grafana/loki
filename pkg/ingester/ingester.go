@@ -627,15 +627,8 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 // GetStreamRates returns a response containing all streams and their current rate
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
-func (i *Ingester) GetStreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	instances := i.getInstances()
-
-	var rates []*logproto.StreamRate
-	for _, inst := range instances {
-		rates = append(rates, inst.GetStreamRates(ctx, req)...)
-	}
-
-	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
+func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	return &logproto.StreamRatesResponse{StreamRates: i.streamRateCalculator.Rates()}, nil
 }
 
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
