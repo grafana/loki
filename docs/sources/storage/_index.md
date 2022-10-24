@@ -39,7 +39,7 @@ S3 is AWS's hosted object store. It is a good candidate for a managed object sto
 ### Azure Blob Storage
 
 Blob Storage is Microsoft Azure's hosted object store. It is a good candidate for a managed object store, especially when you're already running on Azure, and is production safe.
-Authentication can be done using using a storage account name and key or using a Service Principal.
+You can use authentication by using a storage account name and key or by using a Service Principal.
 
 ### Notable Mentions
 
