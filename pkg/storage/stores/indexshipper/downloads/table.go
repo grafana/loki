@@ -382,14 +382,15 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
-	sets, err := t.getOrCreateIndexSets(ctx, userIDs, false)
-	if err != nil {
-		return err
-	}
-
 	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		indexSet := sets[idx]
-		return indexSet.AwaitReady(ctx)
+		// TODO: concurrency should be controlled globally
+		// Here, we call getOrCreateIndexSets one at a time in order to run with proper concurrency since
+		// we call `AwaitReady` afterwards.
+		indexSet, err := t.getOrCreateIndexSets(ctx, []string{userIDs[idx]}, false)
+		if err != nil {
+			return err
+		}
+		return indexSet[0].AwaitReady(ctx)
 	})
 }
 
