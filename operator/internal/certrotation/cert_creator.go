@@ -169,7 +169,7 @@ func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *cryp
 	if time.Now().After(refreshTime) {
 		// make sure the signer has been valid for more than 10% of the target's refresh time.
 		timeToWaitForTrustRotation := refresh / 10
-		if time.Now().After(signer.Config.Certs[0].NotBefore.Add(time.Duration(timeToWaitForTrustRotation))) {
+		if time.Now().After(signer.Config.Certs[0].NotBefore.Add(timeToWaitForTrustRotation)) {
 			return fmt.Sprintf("past its refresh time %v", refreshTime)
 		}
 	}

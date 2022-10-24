@@ -11,6 +11,7 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestBuildAll(t *testing.T) {
@@ -69,19 +70,49 @@ func TestApplyDefaultSettings(t *testing.T) {
 		CertRefresh:    "1m",
 	}
 
+	gws := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lokistack-dev-gateway-client-http",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				CertificateNotBeforeAnnotation: "not-before",
+				CertificateNotAfterAnnotation:  "not-after",
+			},
+		},
+	}
+
+	ings := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lokistack-dev-ingester-http",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				CertificateNotBeforeAnnotation: "not-before",
+				CertificateNotAfterAnnotation:  "not-after",
+			},
+		},
+	}
+
 	opts := Options{
 		StackName:      "lokistack-dev",
 		StackNamespace: "ns",
+		GatewayClientCertificate: SelfSignedCertKey{
+			Secret: gws.DeepCopy(),
+		},
+		Certificates: map[string]SelfSignedCertKey{
+			"lokistack-dev-ingester-http": {Secret: ings.DeepCopy()},
+		},
 	}
 
 	err := ApplyDefaultSettings(&opts, cfg)
 	require.NoError(t, err)
+	require.Equal(t, gws, opts.GatewayClientCertificate.Secret)
 
 	cs := ComponentCertSecretNames(opts.StackName)
 
 	for _, name := range cs {
 		cert, ok := opts.Certificates[name]
 		require.True(t, ok)
+		require.NotEmpty(t, cert.Creator)
 
 		hostnames := []string{
 			fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
@@ -89,7 +120,12 @@ func TestApplyDefaultSettings(t *testing.T) {
 		}
 
 		c := cert.Creator.(*servingCertCreator)
-		require.ElementsMatch(t, c.Hostnames, hostnames)
-		require.Equal(t, c.UserInfo, defaultUserInfo)
+		require.ElementsMatch(t, hostnames, c.Hostnames)
+		require.Equal(t, defaultUserInfo, c.UserInfo)
+
+		if name == ings.Name {
+			require.NotNil(t, cert.Secret)
+			require.Equal(t, ings, cert.Secret)
+		}
 	}
 }

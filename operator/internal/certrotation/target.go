@@ -41,11 +41,15 @@ func CertificatesExpired(opts Options) error {
 
 	annotations := opts.GatewayClientCertificate.Secret.Annotations
 	reason := opts.GatewayClientCertificate.Creator.NeedNewTargetCertKeyPair(annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
-	reasons = append(reasons, reason)
+	if reason != "" {
+		reasons = append(reasons, reason)
+	}
 
 	for _, cert := range opts.Certificates {
 		reason = cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
-		reasons = append(reasons, reason)
+		if reason != "" {
+			reasons = append(reasons, reason)
+		}
 	}
 
 	if len(reasons) == 0 {

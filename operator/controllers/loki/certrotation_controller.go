@@ -61,7 +61,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err = handlers.CheckCertExpiry(ctx, r.Log, req, r.Client, r.FeatureGates)
 	switch {
 	case errors.As(err, &expired):
-		r.Log.Info("Certificate expired: %s", expired)
+		r.Log.Info("Certificate expired", "msg", expired.Error())
 	case err != nil:
 		return ctrl.Result{
 			Requeue: true,
