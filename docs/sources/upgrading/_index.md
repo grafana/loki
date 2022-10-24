@@ -45,7 +45,7 @@ we're deprecating it in favor of relying on `engine.query-timeout` only.
 
 #### Fifocache is deprecated
 
-We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). Use `embedded-cache` instead of `fifocache` which is depricated an will be removed in future versions.
+`fifocache` is now called `embedded-cache`. It has better simplied configs. Use `embedded-cache` instead of `fifocache` which is now depricated and may be removed in the future versions.
 
 #### Evenly spread Memcached pods for chunks across kubernetes nodes
 

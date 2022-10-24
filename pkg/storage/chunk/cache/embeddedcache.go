@@ -10,8 +10,6 @@ const (
 )
 
 // EmbeddedCacheConfig represents in-process embedded cache config.
-// It can also be distributed, sharding keys across peers when run with microservices
-// or SSD mode.
 type EmbeddedCacheConfig struct {
 	Enabled   bool          `yaml:"enabled,omitempty"`
 	MaxSizeMB int64         `yaml:"max_size_mb"`
