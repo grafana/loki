@@ -824,20 +824,17 @@ ingester:
 		// ensure they are all false by default
 		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
 		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 
 		configFileString := `---
 query_range:
   results_cache:
     cache:
       embedded_cache:
-        enabled: true
-        distributed: true`
+        enabled: true`
 
 		config, _ = testContext(configFileString, nil)
 
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 	})
 }
 
@@ -865,20 +862,6 @@ chunk_store_config:
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
 			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
-		})
-
-		t.Run("if distributed cache is set for results cache, FIFO cache should be disabled.", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      embedded_cache:
-        enabled: true
-        distributed: true`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.True(t, config.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed())
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
