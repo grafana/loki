@@ -22,6 +22,7 @@ import (
 
 	"cloud.google.com/go/internal/trace"
 	raw "google.golang.org/api/storage/v1"
+	storagepb "google.golang.org/genproto/googleapis/storage/v2"
 )
 
 // A Notification describes how to send Cloud PubSub messages when certain
@@ -89,6 +90,30 @@ func toNotification(rn *raw.Notification) *Notification {
 	}
 	n.TopicProjectID, n.TopicID = parseNotificationTopic(rn.Topic)
 	return n
+}
+
+func toNotificationFromProto(pbn *storagepb.Notification) *Notification {
+	n := &Notification{
+		ID:               pbn.GetName(),
+		EventTypes:       pbn.GetEventTypes(),
+		ObjectNamePrefix: pbn.GetObjectNamePrefix(),
+		CustomAttributes: pbn.GetCustomAttributes(),
+		PayloadFormat:    pbn.GetPayloadFormat(),
+	}
+	n.TopicProjectID, n.TopicID = parseNotificationTopic(pbn.Topic)
+	return n
+}
+
+func toProtoNotification(n *Notification) *storagepb.Notification {
+	return &storagepb.Notification{
+		Name: n.ID,
+		Topic: fmt.Sprintf("//pubsub.googleapis.com/projects/%s/topics/%s",
+			n.TopicProjectID, n.TopicID),
+		EventTypes:       n.EventTypes,
+		ObjectNamePrefix: n.ObjectNamePrefix,
+		CustomAttributes: n.CustomAttributes,
+		PayloadFormat:    n.PayloadFormat,
+	}
 }
 
 var topicRE = regexp.MustCompile("^//pubsub.googleapis.com/projects/([^/]+)/topics/([^/]+)")
@@ -175,6 +200,14 @@ func notificationsToMap(rns []*raw.Notification) map[string]*Notification {
 	m := map[string]*Notification{}
 	for _, rn := range rns {
 		m[rn.Id] = toNotification(rn)
+	}
+	return m
+}
+
+func notificationsToMapFromProto(ns []*storagepb.Notification) map[string]*Notification {
+	m := map[string]*Notification{}
+	for _, n := range ns {
+		m[n.Name] = toNotificationFromProto(n)
 	}
 	return m
 }

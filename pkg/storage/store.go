@@ -206,7 +206,13 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 
 func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
-		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
+		prometheus.Labels{
+			"component": fmt.Sprintf(
+				"index-store-%s-%s",
+				p.IndexType,
+				p.From.String(),
+			),
+		}, s.registerer)
 
 	if p.IndexType == config.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
@@ -217,7 +223,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			}
 			idx := series.NewIndexGatewayClientStore(gw, nil)
 
-			return failingChunkWriter{}, idx, func() {
+			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 				f.Stop()
 				gw.Stop()
 			}, nil

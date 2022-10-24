@@ -35,5 +35,19 @@ overrides:
     {{ if $spec.QueryLimits.MaxQuerySeries }}
     max_query_series: {{ $spec.QueryLimits.MaxQuerySeries }}
     {{- end -}}
+    {{ if $spec.QueryLimits.QueryTimeout }}
+    query_timeout: {{ $spec.QueryLimits.QueryTimeout }}
+    {{- end -}}
   {{- end -}}
+  {{- with $spec.Retention }}
+    retention_period: {{ .Days }}d
+    {{- with .Streams }}
+    retention_stream:
+    {{- range . }}
+    - selector: '{{ .Selector }}'
+      priority: {{ .Priority }}
+      period: {{ .Days }}d
+    {{- end }}
+    {{- end }}
+  {{- end }}
   {{- end -}}

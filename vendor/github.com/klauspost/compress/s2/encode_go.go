@@ -12,6 +12,7 @@ import (
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src))
 func encodeBlock(dst, src []byte) (d int) {
 	if len(src) < minNonLiteralBlockSize {
@@ -25,6 +26,7 @@ func encodeBlock(dst, src []byte) (d int) {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src))
 func encodeBlockBetter(dst, src []byte) (d int) {
 	return encodeBlockBetterGo(dst, src)
@@ -35,6 +37,7 @@ func encodeBlockBetter(dst, src []byte) (d int) {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src))
 func encodeBlockBetterSnappy(dst, src []byte) (d int) {
 	return encodeBlockBetterSnappyGo(dst, src)
@@ -45,6 +48,7 @@ func encodeBlockBetterSnappy(dst, src []byte) (d int) {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src))
 func encodeBlockSnappy(dst, src []byte) (d int) {
 	if len(src) < minNonLiteralBlockSize {
@@ -56,6 +60,7 @@ func encodeBlockSnappy(dst, src []byte) (d int) {
 // emitLiteral writes a literal chunk and returns the number of bytes written.
 //
 // It assumes that:
+//
 //	dst is long enough to hold the encoded bytes
 //	0 <= len(lit) && len(lit) <= math.MaxUint32
 func emitLiteral(dst, lit []byte) int {
@@ -146,6 +151,7 @@ func emitRepeat(dst []byte, offset, length int) int {
 // emitCopy writes a copy chunk and returns the number of bytes written.
 //
 // It assumes that:
+//
 //	dst is long enough to hold the encoded bytes
 //	1 <= offset && offset <= math.MaxUint32
 //	4 <= length && length <= 1 << 24
@@ -180,14 +186,23 @@ func emitCopy(dst []byte, offset, length int) int {
 
 	// Offset no more than 2 bytes.
 	if length > 64 {
-		// Emit a length 60 copy, encoded as 3 bytes.
-		// Emit remaining as repeat value (minimum 4 bytes).
-		dst[2] = uint8(offset >> 8)
-		dst[1] = uint8(offset)
-		dst[0] = 59<<2 | tagCopy2
-		length -= 60
+		off := 3
+		if offset < 2048 {
+			// emit 8 bytes as tagCopy1, rest as repeats.
+			dst[1] = uint8(offset)
+			dst[0] = uint8(offset>>8)<<5 | uint8(8-4)<<2 | tagCopy1
+			length -= 8
+			off = 2
+		} else {
+			// Emit a length 60 copy, encoded as 3 bytes.
+			// Emit remaining as repeat value (minimum 4 bytes).
+			dst[2] = uint8(offset >> 8)
+			dst[1] = uint8(offset)
+			dst[0] = 59<<2 | tagCopy2
+			length -= 60
+		}
 		// Emit remaining as repeats, at least 4 bytes remain.
-		return 3 + emitRepeat(dst[3:], offset, length)
+		return off + emitRepeat(dst[off:], offset, length)
 	}
 	if length >= 12 || offset >= 2048 {
 		// Emit the remaining copy, encoded as 3 bytes.
@@ -205,6 +220,7 @@ func emitCopy(dst []byte, offset, length int) int {
 // emitCopyNoRepeat writes a copy chunk and returns the number of bytes written.
 //
 // It assumes that:
+//
 //	dst is long enough to hold the encoded bytes
 //	1 <= offset && offset <= math.MaxUint32
 //	4 <= length && length <= 1 << 24
@@ -264,8 +280,8 @@ func emitCopyNoRepeat(dst []byte, offset, length int) int {
 // matchLen returns how many bytes match in a and b
 //
 // It assumes that:
-//   len(a) <= len(b)
 //
+//	len(a) <= len(b)
 func matchLen(a []byte, b []byte) int {
 	b = b[:len(a)]
 	var checked int

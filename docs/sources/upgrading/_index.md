@@ -45,7 +45,16 @@ we're deprecating it in favor of relying on `engine.query-timeout` only.
 
 #### Fifocache is deprecated
 
-We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
+We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). Use `embedded-cache` instead of `fifocache` which is depricated an will be removed in future versions.
+
+#### Evenly spread Memcached pods for chunks across kubernetes nodes
+
+We now evenly spread memcached_chunks pods across the available kubernetes nodes, but allowing more than one pod to be scheduled into the same node.
+If you want to run at most a single pod per node, set `$.memcached.memcached_chunks.use_topology_spread` to false.
+
+While we attempt to schedule at most 1 memcached_chunks pod per Kubernetes node with the `topology_spread_max_skew: 1` field,
+if no more nodes are available then multiple pods will be scheduled on the same node.
+This can potentially impact your service's reliability so consider tuning these values according to your risk tolerance.
 
 #### Evenly spread distributors across kubernetes nodes
 
@@ -86,6 +95,10 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 - The `deletion_mode` option needs to be removed from your compactor configuration
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
 - Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
+
+#### Metric name for `loki_log_messages_total` changed
+
+The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
 
 ### Promtail
 
@@ -191,6 +204,11 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
 While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+
+#### `added Docker target` log message has been demoted from level=error to level=info
+
+If you have dashboards that depended on the log level, change them to search for the `msg="added
+Docker target"` property.
 
 ### Jsonnet
 

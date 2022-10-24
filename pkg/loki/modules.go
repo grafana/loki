@@ -8,7 +8,11 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -78,6 +82,7 @@ const (
 	Distributor              string = "distributor"
 	Ingester                 string = "ingester"
 	Querier                  string = "querier"
+	CacheGenerationLoader    string = "cache-generation-loader"
 	IngesterQuerier          string = "ingester-querier"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
@@ -142,7 +147,25 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
+	if t.Cfg.Server.HTTPListenPort == 0 {
+		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
+	}
+
+	if t.Cfg.Server.GRPCListenPort == 0 {
+		t.Cfg.Server.GRPCListenPort = portFromAddr(t.Server.GRPCListenAddr().String())
+	}
+
 	return s, nil
+}
+
+func portFromAddr(addr string) int {
+	parts := strings.Split(addr, ":")
+	port := parts[len(parts)-1]
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
+		return 0
+	}
+	return portNumber
 }
 
 func (t *Loki) initInternalServer() (services.Service, error) {
@@ -177,6 +200,10 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		return
 	}
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
+	}
 	return t.ring, nil
 }
 
@@ -276,6 +303,10 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+	}
+
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
 	return t.distributor, nil
@@ -316,9 +347,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
-	httpMiddleware := middleware.Merge(
+	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
-	)
+	}
+	if t.supportIndexDeleteRequest() {
+		toMerge = append(
+			toMerge,
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+		)
+	}
+	httpMiddleware := middleware.Merge(toMerge...)
 
 	logger := log.With(util_log.Logger, "component", "querier")
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
@@ -385,7 +423,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ingester.RateLimitWholeStream = t.Cfg.Distributor.ShardStreams.Enabled
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -399,6 +436,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
@@ -618,20 +656,11 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	var genLoader *generationnumber.GenNumberLoader
-	if t.supportIndexDeleteRequest() {
-		cacheGenClient, err := t.cacheGenClient()
-		if err != nil {
-			return nil, err
-		}
-		genLoader = generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer)
-	}
-
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig, genLoader,
+		t.Cfg.SchemaConfig, t.cacheGenerationLoader,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -643,20 +672,25 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) supportIndexDeleteRequest() bool {
-	// TODO(owen-d): enable delete request storage in tsdb
-	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
-		return false
+func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
+	var client generationnumber.CacheGenClient
+	if t.supportIndexDeleteRequest() {
+		compactorAddress, err := t.compactorAddress()
+		if err != nil {
+			return nil, err
+		}
+		client, err = generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+		if err != nil {
+			return nil, err
+		}
 	}
-	return config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs)
+
+	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
+	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	compactorAddress, err := t.compactorAddress()
-	if err != nil {
-		return nil, err
-	}
-	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+func (t *Loki) supportIndexDeleteRequest() bool {
+	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
 func (t *Loki) compactorAddress() (string, error) {
@@ -859,8 +893,12 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
-
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
+
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET").Handler(t.ruler)
+		}
+
 		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
@@ -918,6 +956,10 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/memberlist").Methods("GET").Handler(t.MemberlistKV)
+	}
+
 	return t.MemberlistKV, nil
 }
 
@@ -948,6 +990,10 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET").Handler(t.compactor)
+	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler))
@@ -1007,6 +1053,11 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.indexGatewayRingManager = rm
 
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET").Handler(t.indexGatewayRingManager)
+	}
+
 	return t.indexGatewayRingManager, nil
 }
 
@@ -1022,6 +1073,11 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
 	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
 	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(s)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET").Handler(s)
+	}
+
 	t.queryScheduler = s
 	return s, nil
 }
@@ -1065,10 +1121,12 @@ func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overri
 		return nil, err
 	}
 
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConns = 250
-	transport.MaxIdleConnsPerHost = 250
-	client, err := deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second, Transport: transport}, t.deleteClientMetrics, clientType)
+	httpClient, err := deletion.NewDeleteHTTPClient(t.Cfg.DeleteClient)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := deletion.NewDeleteRequestsClient(compactorAddress, httpClient, t.deleteClientMetrics, clientType)
 	if err != nil {
 		return nil, err
 	}

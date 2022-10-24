@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
@@ -337,7 +338,7 @@ func (w *Storage) Truncate(mint int64) error {
 
 	// Start a new segment, so low ingestion volume instance don't have more WAL
 	// than needed.
-	err = w.wal.NextSegment()
+	_, err = w.wal.NextSegment()
 	if err != nil {
 		return errors.Wrap(err, "next segment")
 	}
@@ -536,6 +537,8 @@ type appender struct {
 	exemplars []record.RefExemplar
 }
 
+var _ storage.Appender = (*appender)(nil)
+
 func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
 	series := a.w.series.getByID(chunks.HeadSeriesRef(ref))
 	if series == nil {
@@ -626,6 +629,10 @@ func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exem
 	})
 
 	return storage.SeriesRef(s.ref), nil
+}
+
+func (a *appender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
+	return 0, nil
 }
 
 // Commit submits the collected samples and purges the batch.

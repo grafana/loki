@@ -143,7 +143,7 @@ func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 		if mint >= lt && lt != 0 {
 			break
 		}
-		if mintSrc.CAS(lt, mint) {
+		if mintSrc.CompareAndSwap(lt, mint) {
 			break
 		}
 	}
@@ -152,19 +152,19 @@ func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 		if maxt <= ht {
 			break
 		}
-		if maxtSrc.CAS(ht, maxt) {
+		if maxtSrc.CompareAndSwap(ht, maxt) {
 			break
 		}
 	}
 }
 
 // Note: chks must not be nil or zero-length
-func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) (created bool, refID uint64) {
+func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (created bool, refID uint64) {
 	from, through := chks.Bounds()
 	var id uint64
 	created, refID = h.series.Append(ls, chks, func() *memSeries {
 		id = h.lastSeriesID.Inc()
-		return newMemSeries(id, ls)
+		return newMemSeries(id, ls, fprint)
 	})
 	updateMintMaxt(int64(from), int64(through), &h.minTime, &h.maxTime)
 
@@ -292,10 +292,10 @@ type memSeries struct {
 	chks index.ChunkMetas
 }
 
-func newMemSeries(ref uint64, ls labels.Labels) *memSeries {
+func newMemSeries(ref uint64, ls labels.Labels, fp uint64) *memSeries {
 	return &memSeries{
 		ref: ref,
 		ls:  ls,
-		fp:  ls.Hash(),
+		fp:  fp,
 	}
 }

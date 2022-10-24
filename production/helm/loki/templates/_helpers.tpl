@@ -128,7 +128,6 @@ Docker image name for enterprise logs
 {{- define "loki.enterpriseImage" -}}
 {{- $dict := dict "service" .Values.enterprise.image "global" .Values.global.image "defaultVersion" .Values.enterprise.version -}}
 {{- include "loki.baseImage" $dict -}}
-{{/* {{- printf "foo" -}} */}}
 {{- end -}}
 
 {{/*
@@ -139,6 +138,14 @@ Docker image name
 {{- end -}}
 
 {{/*
+Docker image name for kubectl container
+*/}}
+{{- define "loki.kubectlImage" -}}
+{{- $dict := dict "service" .Values.kubectlImage "global" .Values.global.image "defaultVersion" "latest" -}}
+{{- include "loki.baseImage" $dict -}}
+{{- end -}}
+
+{{/*
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
@@ -146,8 +153,8 @@ Generated storage config for loki common config
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
-  secret_access_key: {{ $.Values.minio.secretKey }}
-  access_key_id: {{ $.Values.minio.accessKey }}
+  secret_access_key: {{ $.Values.minio.rootPassword }}
+  access_key_id: {{ $.Values.minio.rootUser }}
   s3forcepathstyle: true
   insecure: true
 {{- else if eq .Values.loki.storage.type "s3" -}}
@@ -171,6 +178,21 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .http_config}}
+  http_config:
+    {{- with .idle_conn_timeout }}
+    idle_conn_timeout: {{ . }}
+    {{- end}}
+    {{- with .response_header_timeout }}
+    response_header_timeout: {{ . }}
+    {{- end}}
+    {{- with .insecure_skip_verify }}
+    insecure_skip_verify: {{ . }}
+    {{- end}}
+    {{- with .ca_file}}
+    ca_file: {{ . }}
+    {{- end}}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
@@ -299,7 +321,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
@@ -307,3 +329,33 @@ Create the service endpoint including port for MinIO.
 {{ include "loki.name" . }}-memberlist
 {{- end -}}
 
+{{/* Determine the public host for the Loki cluster */}}
+{{- define "loki.host" -}}
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- $url := printf "%s.%s.svc.%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
+  {{- $url = printf "%s.%s.svc.%s:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- end }}
+{{- printf "%s" $url -}}
+{{- end -}}
+
+{{/* Determine the public endpoint for the Loki cluster */}}
+{{- define "loki.address" -}}
+{{- printf "http://%s" (include "loki.host" . ) -}}
+{{- end -}}
+
+{{/* Name of the cluster */}}
+{{- define "loki.clusterName" -}}
+{{- $name := .Values.enterprise.cluster_name | default .Release.Name }}
+{{- printf "%s" $name -}}
+{{- end -}}
+
+{{/* Name of kubernetes secret to persist GEL admin token to */}}
+{{- define "enterprise-logs.adminTokenSecret" }}
+{{- .Values.enterprise.adminTokenSecret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
+
+{{/* Name of kubernetes secret to persist canary credentials in */}}
+{{- define "enterprise-logs.canarySecret" }}
+{{- .Values.enterprise.canarySecret | default (printf "%s-canary-secret" (include "loki.name" . )) -}}
+{{- end -}}

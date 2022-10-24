@@ -34,7 +34,7 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 		if opts.TLS == nil {
 			return nil
 		}
-		return configureDeploymentCA(d, opts.TLS.CA)
+		return configureDeploymentCA(d, opts.TLS)
 	default:
 		return nil
 	}
@@ -52,7 +52,7 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 		if opts.TLS == nil {
 			return nil
 		}
-		return configureStatefulSetCA(d, opts.TLS.CA)
+		return configureStatefulSetCA(d, opts.TLS)
 	default:
 		return nil
 	}
@@ -71,8 +71,8 @@ func configureDeployment(d *appsv1.Deployment, secretName string) error {
 }
 
 // ConfigureDeploymentCA merges a S3 CA ConfigMap volume into the deployment spec.
-func configureDeploymentCA(d *appsv1.Deployment, cmName string) error {
-	p := ensureCAForS3(&d.Spec.Template.Spec, cmName)
+func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
+	p := ensureCAForS3(&d.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge s3 object storage ca options ")
@@ -94,8 +94,8 @@ func configureStatefulSet(s *appsv1.StatefulSet, secretName string) error {
 }
 
 // ConfigureStatefulSetCA merges a S3 CA ConfigMap volume into the statefulset spec.
-func configureStatefulSetCA(s *appsv1.StatefulSet, cmName string) error {
-	p := ensureCAForS3(&s.Spec.Template.Spec, cmName)
+func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
+	p := ensureCAForS3(&s.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge s3 object storage ca options ")
@@ -136,29 +136,29 @@ func ensureCredentialsForGCS(p *corev1.PodSpec, secretName string) corev1.PodSpe
 	}
 }
 
-func ensureCAForS3(p *corev1.PodSpec, cmName string) corev1.PodSpec {
+func ensureCAForS3(p *corev1.PodSpec, tls *TLSConfig) corev1.PodSpec {
 	container := p.Containers[0].DeepCopy()
 	volumes := p.Volumes
 
 	volumes = append(volumes, corev1.Volume{
-		Name: cmName,
+		Name: tls.CA,
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{
-					Name: cmName,
+					Name: tls.CA,
 				},
 			},
 		},
 	})
 
 	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-		Name:      cmName,
+		Name:      tls.CA,
 		ReadOnly:  false,
 		MountPath: caDirectory,
 	})
 
 	container.Args = append(container.Args,
-		fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, "service-ca.crt")),
+		fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, tls.Key)),
 	)
 
 	return corev1.PodSpec{

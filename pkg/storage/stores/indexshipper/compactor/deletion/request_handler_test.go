@@ -38,6 +38,18 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		require.Equal(t, toTime("0000000001"), store.addReqs[0].EndTime)
 	})
 
+	t.Run("an error is returned if adding delete request group returned zero", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{returnZeroDeleteRequests: true}
+		h := NewDeleteRequestHandler(store, 0, nil)
+
+		req := buildRequest("org-id", `{foo="bar"}`, "0000000000", "0000000001")
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusInternalServerError)
+	})
+
 	t.Run("it shards deletes based on a query param", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, 0, nil)

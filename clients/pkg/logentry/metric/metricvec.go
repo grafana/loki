@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -52,10 +53,24 @@ func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 	var ok bool
 	var metric prometheus.Metric
 	if metric, ok = c.metrics[fp]; !ok {
-		metric = c.factory(util.ModelLabelSetToMap(labels))
+		metric = c.factory(util.ModelLabelSetToMap(cleanLabels(labels)))
 		c.metrics[fp] = metric
 	}
 	return metric
+}
+
+// cleanLabels removes labels whose label name is not a valid prometheus one, or has the reserved `__` prefix.
+func cleanLabels(set model.LabelSet) model.LabelSet {
+	out := make(model.LabelSet, len(set))
+	for k, v := range set {
+		// Performing the same label validity check the prometheus go client library does.
+		// https://github.com/prometheus/client_golang/blob/618194de6ad3db637313666104533639011b470d/prometheus/labels.go#L85
+		if !k.IsValid() || strings.HasPrefix(string(k), "__") {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 func (c *metricVec) Delete(labels model.LabelSet) bool {

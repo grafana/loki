@@ -33,6 +33,20 @@ Optionally, move the binary into a directory that is part of your `$PATH`.
 cp cmd/logcli/logcli /usr/local/bin/logcli
 ```
 
+## Set up command completion
+
+You can set up tab-completion for `logcli` with one of the two options, depending on your shell:
+
+- For bash, add this to your `~/.bashrc` file:
+  ```
+  eval "$(logcli --completion-script-bash)"
+  ```
+
+- For zsh, add this to your `~/.zshrc` file:
+  ```
+  eval "$(logcli --completion-script-zsh)"
+  ```
+
 ## LogCLI usage
 
 ### Grafana Cloud example
@@ -327,6 +341,9 @@ Flags:
       --labels-length=0    Set a fixed padding to labels
       --store-config=""    Execute the current query using a configured storage
                            from a given Loki configuration file.
+      --remote-schema      Execute the current query using a remote schema
+                           retrieved using the configured storage in the given
+                           Loki configuration file.
       --colored-output     Show output with colored labels
   -t, --tail               Tail the logs
   -f, --follow             Alias for --tail

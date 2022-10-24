@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -184,7 +184,7 @@ func (GroupLoader) Parse(query string) (parser.Expr, error) {
 }
 
 func (g GroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
-	b, err := ioutil.ReadFile(identifier)
+	b, err := os.ReadFile(identifier)
 	if err != nil {
 		return nil, []error{errors.Wrap(err, identifier)}
 	}
@@ -348,3 +348,4 @@ type exprAdapter struct {
 func (exprAdapter) PositionRange() parser.PositionRange { return parser.PositionRange{} }
 func (exprAdapter) PromQLExpr()                         {}
 func (exprAdapter) Type() parser.ValueType              { return parser.ValueType("unimplemented") }
+func (exprAdapter) Pretty(level int) string             { return "" }

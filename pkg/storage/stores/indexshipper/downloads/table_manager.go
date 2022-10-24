@@ -3,7 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -42,7 +42,7 @@ type IndexGatewayOwnsTenant func(tenant string) bool
 
 type TableManager interface {
 	Stop()
-	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
 }
 
 type Config struct {
@@ -155,12 +155,12 @@ func (tm *tableManager) Stop() {
 	}
 }
 
-func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
 	table, err := tm.getOrCreateTable(tableName)
 	if err != nil {
 		return err
 	}
-	return table.ForEach(ctx, userID, callback)
+	return table.ForEach(ctx, userID, doneChan, callback)
 }
 
 func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
@@ -373,33 +373,33 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 
 // loadLocalTables loads tables present locally.
 func (tm *tableManager) loadLocalTables() error {
-	filesInfo, err := ioutil.ReadDir(tm.cfg.CacheDir)
+	dirEntries, err := os.ReadDir(tm.cfg.CacheDir)
 	if err != nil {
 		return err
 	}
 
-	for _, fileInfo := range filesInfo {
-		if !fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		tableNumber, err := extractTableNumberFromName(fileInfo.Name())
+		tableNumber, err := extractTableNumberFromName(entry.Name())
 		if err != nil {
 			return err
 		}
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, fileInfo.Name()) {
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, entry.Name()) {
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
-		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()),
+		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
 			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 		if err != nil {
 			return err
 		}
 
-		tm.tables[fileInfo.Name()] = table
+		tm.tables[entry.Name()] = table
 	}
 
 	return nil
