@@ -28,4 +28,4 @@ monitoring:
     labels:
       release: "prometheus"
 test:
-  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local:9090"
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local.:9090"

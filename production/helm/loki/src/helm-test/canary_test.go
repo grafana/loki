@@ -21,7 +21,11 @@ func TestCanary(t *testing.T) {
 	totalEntriesQuery := "sum(loki_canary_entries_total)"
 	totalEntriesMissingQuery := "sum(loki_canary_missing_entries_total)"
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	timeout := getEnv("CANARY_TEST_TIMEOUT", "1m")
+	timeoutDuration, err := time.ParseDuration(timeout)
+	require.NoError(t, err, "Failed to parse timeout. Please set CANARY_TEST_TIMEOUT to a valid duration.")
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 
 	t.Cleanup(func() {
 		cancel()
@@ -31,28 +35,28 @@ func TestCanary(t *testing.T) {
 		client := newClient(t)
 
 		eventually(t, func() error {
-			result, _, err := client.Query(ctx, totalEntriesQuery, time.Now(), v1.WithTimeout(5*time.Second))
+			result, _, err := client.Query(ctx, totalEntriesQuery, time.Now(), v1.WithTimeout(timeoutDuration))
 			if err != nil {
 				return err
 			}
 			return testResult(t, result, totalEntriesQuery, func(v model.SampleValue) bool {
 				return v > 0
 			}, fmt.Sprintf("Expected %s to be greater than 0", totalEntriesQuery))
-		}, "Expected Loki Canary to have entries")
+		}, timeoutDuration, "Expected Loki Canary to have entries")
 	})
 
 	t.Run("Canary should not have missed any entries", func(t *testing.T) {
 		client := newClient(t)
 
 		eventually(t, func() error {
-			result, _, err := client.Query(ctx, totalEntriesMissingQuery, time.Now(), v1.WithTimeout(5*time.Second))
+			result, _, err := client.Query(ctx, totalEntriesMissingQuery, time.Now(), v1.WithTimeout(timeoutDuration))
 			if err != nil {
 				return err
 			}
 			return testResult(t, result, totalEntriesMissingQuery, func(v model.SampleValue) bool {
 				return v == 0
 			}, fmt.Sprintf("Expected %s to equal 0", totalEntriesMissingQuery))
-		}, "Expected Loki Canary to not have any missing entries")
+		}, timeoutDuration, "Expected Loki Canary to not have any missing entries")
 	})
 }
 
@@ -90,16 +94,12 @@ func newClient(t *testing.T) v1.API {
 	return v1.NewAPI(client)
 }
 
-func eventually(t *testing.T, test func() error, msg string) {
-	timeout := getEnv("CANARY_TEST_TIMEOUT", "1m")
-	timeoutDuration, err := time.ParseDuration(timeout)
-	require.NoError(t, err, "Failed to parse timeout. Please set CANARY_TEST_TIMEOUT to a valid duration.")
-
+func eventually(t *testing.T, test func() error, timeoutDuration time.Duration , msg string) {
 	require.Eventually(t, func() bool {
 		queryError := test()
 		if queryError != nil {
 			t.Logf("Query failed\n%+v\n", queryError)
 		}
 		return queryError == nil
-	}, timeoutDuration, 5*time.Second, msg)
+	}, timeoutDuration, 1*time.Second, msg)
 }
