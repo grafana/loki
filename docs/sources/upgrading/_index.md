@@ -43,9 +43,9 @@ Previously, we had two configurations to define a query timeout: `engine.timeout
 As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
 we're deprecating it in favor of relying on `engine.query-timeout` only.
 
-#### Fifocache is deprecated
+#### `fifocache` has been renamed
 
-`fifocache` is now called `embedded-cache`. It has better simplied configs. Use `embedded-cache` instead of `fifocache` which is now depricated and may be removed in the future versions.
+The in-memory `fifocache` has been renamed to `embedded-cache`. This allows us to replace the implementation (currently a simple FIFO datastructure) with something else in the future without causing confusion
 
 #### Evenly spread Memcached pods for chunks across kubernetes nodes
 
