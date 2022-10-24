@@ -63,7 +63,7 @@ func (c *StreamRateCalculator) updateLoop() {
 }
 
 func (c *StreamRateCalculator) updateRates() {
-	rates := make([]logproto.StreamRate, 0, defaultStripeSize)
+	rates := make([]logproto.StreamRate, 0, c.size)
 
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
