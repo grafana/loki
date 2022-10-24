@@ -422,9 +422,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels()
+		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels(nil)
 	} else {
-		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
+		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels(nil)
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res

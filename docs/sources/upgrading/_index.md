@@ -43,11 +43,9 @@ Previously, we had two configurations to define a query timeout: `engine.timeout
 As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
 we're deprecating it in favor of relying on `engine.query-timeout` only.
 
-#### Fifocache is deprecated
+#### `fifocache` has been renamed
 
-We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
-
-Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
+The in-memory `fifocache` has been renamed to `embedded-cache`. This allows us to replace the implementation (currently a simple FIFO datastructure) with something else in the future without causing confusion
 
 #### Evenly spread Memcached pods for chunks across kubernetes nodes
 
@@ -98,7 +96,7 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
 - Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
-#### Metric name for `loki_log_messages_total` changed 
+#### Metric name for `loki_log_messages_total` changed
 
 The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
 

@@ -645,6 +645,13 @@ const (
 	// SetStorageClassAction changes the storage class of live and/or archived
 	// objects.
 	SetStorageClassAction = "SetStorageClass"
+
+	// AbortIncompleteMPUAction is a lifecycle action that aborts an incomplete
+	// multipart upload when the multipart upload meets the conditions specified
+	// in the lifecycle rule. The AgeInDays condition is the only allowed
+	// condition for this action. AgeInDays is measured from the time the
+	// multipart upload was created.
+	AbortIncompleteMPUAction = "AbortIncompleteMultipartUpload"
 )
 
 // LifecycleRule is a lifecycle configuration rule.
@@ -665,9 +672,8 @@ type LifecycleRule struct {
 type LifecycleAction struct {
 	// Type is the type of action to take on matching objects.
 	//
-	// Acceptable values are "Delete" to delete matching objects and
-	// "SetStorageClass" to set the storage class defined in StorageClass on
-	// matching objects.
+	// Acceptable values are storage.DeleteAction, storage.SetStorageClassAction,
+	// and storage.AbortIncompleteMPUAction.
 	Type string
 
 	// StorageClass is the storage class to set on matching objects if the Action
@@ -719,11 +725,19 @@ type LifecycleCondition struct {
 	// Liveness specifies the object's liveness. Relevant only for versioned objects
 	Liveness Liveness
 
+	// MatchesPrefix is the condition matching an object if any of the
+	// matches_prefix strings are an exact prefix of the object's name.
+	MatchesPrefix []string
+
 	// MatchesStorageClasses is the condition matching the object's storage
 	// class.
 	//
 	// Values include "STANDARD", "NEARLINE", "COLDLINE" and "ARCHIVE".
 	MatchesStorageClasses []string
+
+	// MatchesSuffix is the condition matching an object if any of the
+	// matches_suffix strings are an exact suffix of the object's name.
+	MatchesSuffix []string
 
 	// NoncurrentTimeBefore is the noncurrent timestamp of the object. This
 	// condition is satisfied when an object's noncurrent timestamp is before
@@ -1489,6 +1503,19 @@ func toCORSFromProto(rc []*storagepb.Bucket_Cors) []CORS {
 	return out
 }
 
+// Used to handle breaking change in Autogen Storage client OLM Age field
+// from int64 to *int64 gracefully in the manual client
+// TODO(#6240): Method should be removed once breaking change is made and introduced to this client
+func setAgeCondition(age int64, ageField interface{}) {
+	c := reflect.ValueOf(ageField).Elem()
+	switch c.Kind() {
+	case reflect.Int64:
+		c.SetInt(age)
+	case reflect.Ptr:
+		c.Set(reflect.ValueOf(&age))
+	}
+}
+
 func toRawLifecycle(l Lifecycle) *raw.BucketLifecycle {
 	var rl raw.BucketLifecycle
 	if len(l.Rules) == 0 {
@@ -1501,13 +1528,16 @@ func toRawLifecycle(l Lifecycle) *raw.BucketLifecycle {
 				StorageClass: r.Action.StorageClass,
 			},
 			Condition: &raw.BucketLifecycleRuleCondition{
-				Age:                     r.Condition.AgeInDays,
 				DaysSinceCustomTime:     r.Condition.DaysSinceCustomTime,
 				DaysSinceNoncurrentTime: r.Condition.DaysSinceNoncurrentTime,
+				MatchesPrefix:           r.Condition.MatchesPrefix,
 				MatchesStorageClass:     r.Condition.MatchesStorageClasses,
+				MatchesSuffix:           r.Condition.MatchesSuffix,
 				NumNewerVersions:        r.Condition.NumNewerVersions,
 			},
 		}
+
+		setAgeCondition(r.Condition.AgeInDays, &rr.Condition.Age)
 
 		switch r.Condition.Liveness {
 		case LiveAndArchived:
@@ -1549,7 +1579,9 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 				AgeDays:                 proto.Int32(int32(r.Condition.AgeInDays)),
 				DaysSinceCustomTime:     proto.Int32(int32(r.Condition.DaysSinceCustomTime)),
 				DaysSinceNoncurrentTime: proto.Int32(int32(r.Condition.DaysSinceNoncurrentTime)),
+				MatchesPrefix:           r.Condition.MatchesPrefix,
 				MatchesStorageClass:     r.Condition.MatchesStorageClasses,
+				MatchesSuffix:           r.Condition.MatchesSuffix,
 				NumNewerVersions:        proto.Int32(int32(r.Condition.NumNewerVersions)),
 			},
 		}
@@ -1577,6 +1609,21 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 	return &rl
 }
 
+// Used to handle breaking change in Autogen Storage client OLM Age field
+// from int64 to *int64 gracefully in the manual client
+// TODO(#6240): Method should be removed once breaking change is made and introduced to this client
+func getAgeCondition(ageField interface{}) int64 {
+	v := reflect.ValueOf(ageField)
+	if v.Kind() == reflect.Int64 {
+		return v.Interface().(int64)
+	} else if v.Kind() == reflect.Ptr {
+		if val, ok := v.Interface().(*int64); ok {
+			return *val
+		}
+	}
+	return 0
+}
+
 func toLifecycle(rl *raw.BucketLifecycle) Lifecycle {
 	var l Lifecycle
 	if rl == nil {
@@ -1589,13 +1636,15 @@ func toLifecycle(rl *raw.BucketLifecycle) Lifecycle {
 				StorageClass: rr.Action.StorageClass,
 			},
 			Condition: LifecycleCondition{
-				AgeInDays:               rr.Condition.Age,
 				DaysSinceCustomTime:     rr.Condition.DaysSinceCustomTime,
 				DaysSinceNoncurrentTime: rr.Condition.DaysSinceNoncurrentTime,
+				MatchesPrefix:           rr.Condition.MatchesPrefix,
 				MatchesStorageClasses:   rr.Condition.MatchesStorageClass,
+				MatchesSuffix:           rr.Condition.MatchesSuffix,
 				NumNewerVersions:        rr.Condition.NumNewerVersions,
 			},
 		}
+		r.Condition.AgeInDays = getAgeCondition(rr.Condition.Age)
 
 		if rr.Condition.IsLive == nil {
 			r.Condition.Liveness = LiveAndArchived
@@ -1634,7 +1683,9 @@ func toLifecycleFromProto(rl *storagepb.Bucket_Lifecycle) Lifecycle {
 				AgeInDays:               int64(rr.GetCondition().GetAgeDays()),
 				DaysSinceCustomTime:     int64(rr.GetCondition().GetDaysSinceCustomTime()),
 				DaysSinceNoncurrentTime: int64(rr.GetCondition().GetDaysSinceNoncurrentTime()),
+				MatchesPrefix:           rr.GetCondition().GetMatchesPrefix(),
 				MatchesStorageClasses:   rr.GetCondition().GetMatchesStorageClass(),
+				MatchesSuffix:           rr.GetCondition().GetMatchesSuffix(),
 				NumNewerVersions:        int64(rr.GetCondition().GetNumNewerVersions()),
 			},
 		}
@@ -1708,7 +1759,7 @@ func (b *BucketLogging) toProtoBucketLogging() *storagepb.Bucket_Logging {
 		return nil
 	}
 	return &storagepb.Bucket_Logging{
-		LogBucket:       b.LogBucket,
+		LogBucket:       bucketResourceName(globalProjectAlias, b.LogBucket),
 		LogObjectPrefix: b.LogObjectPrefix,
 	}
 }
@@ -1727,8 +1778,9 @@ func toBucketLoggingFromProto(b *storagepb.Bucket_Logging) *BucketLogging {
 	if b == nil {
 		return nil
 	}
+	lb := parseBucketName(b.GetLogBucket())
 	return &BucketLogging{
-		LogBucket:       b.GetLogBucket(),
+		LogBucket:       lb,
 		LogObjectPrefix: b.GetLogObjectPrefix(),
 	}
 }
