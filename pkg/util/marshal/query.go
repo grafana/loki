@@ -153,6 +153,8 @@ func writeMatrix(v promql.Matrix, w *jwriter.Writer) error {
 }
 
 func writeStats(s stats.Result, w *jwriter.Writer) error {
+	obj := w.Object()
+	defer obj.End()
 	return nil
 }
 
