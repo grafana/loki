@@ -167,7 +167,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
   containerCPUUsagePanel(title, containerName)::
-    self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
+    self.CPUUsagePanel(title, 'container="%s"' % containerName),
 
   memoryWorkingSetPanel(title, matcher)::
     $.panel(title) +
