@@ -149,6 +149,16 @@ loki-canary: cmd/loki-canary/loki-canary
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
+###############
+# Helm-Test #
+###############
+.PHONY: production/helm/loki/src/helm-test/helm-test
+helm-test: production/helm/loki/src/helm-test/helm-test
+
+# Package Helm tests but do not run them.
+production/helm/loki/src/helm-test/helm-test:
+	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
+
 #################
 # Loki-QueryTee #
 #################
@@ -485,7 +495,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
+images: promtail-image loki-image loki-canary-image helm-test-image docker-driver fluent-bit-image fluentd-image
 
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
@@ -534,6 +544,10 @@ loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+helm-test-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+helm-test-push: helm-test-image
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
