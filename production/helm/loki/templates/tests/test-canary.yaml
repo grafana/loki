@@ -26,7 +26,7 @@ spec:
         - name: CANARY_TEST_TIMEOUT
           value: "{{ . }}"
         {{- end }}
-       args:
+      args:
         - -test.v
   restartPolicy: Never
 {{- end }}
