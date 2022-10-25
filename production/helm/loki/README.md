@@ -308,6 +308,7 @@ monitoring:
 | monitoring.selfMonitoring.grafanaAgent.labels | object | `{}` | Additional Grafana Agent labels |
 | monitoring.selfMonitoring.grafanaAgent.namespace | string | `nil` | Alternative namespace for Grafana Agent resources |
 | monitoring.selfMonitoring.logsInstance.annotations | object | `{}` | LogsInstance annotations |
+| monitoring.selfMonitoring.logsInstance.clients | string | `nil` | Additional clients for remote write |
 | monitoring.selfMonitoring.logsInstance.labels | object | `{}` | Additional LogsInstance labels |
 | monitoring.selfMonitoring.logsInstance.namespace | string | `nil` | Alternative namespace for LogsInstance resources |
 | monitoring.selfMonitoring.lokiCanary.annotations | object | `{}` | Additional annotations for the `loki-canary` Daemonset |
@@ -332,6 +333,10 @@ monitoring:
 | monitoring.serviceMonitor.enabled | bool | `true` | If enabled, ServiceMonitor resources for Prometheus Operator are created |
 | monitoring.serviceMonitor.interval | string | `nil` | ServiceMonitor scrape interval |
 | monitoring.serviceMonitor.labels | object | `{}` | Additional ServiceMonitor labels |
+| monitoring.serviceMonitor.metricsInstance | object | `{"annotations":{},"labels":{},"remoteWrite":null}` | If defined, will create a MetricsInstance for the Grafana Agent Operator. |
+| monitoring.serviceMonitor.metricsInstance.annotations | object | `{}` | MerticsInstance annotations |
+| monitoring.serviceMonitor.metricsInstance.labels | object | `{}` | Additional MatricsInstance labels |
+| monitoring.serviceMonitor.metricsInstance.remoteWrite | string | `nil` | If defined a MetricsInstance will be created to remote write metrics. |
 | monitoring.serviceMonitor.namespace | string | `nil` | Alternative namespace for ServiceMonitor resources |
 | monitoring.serviceMonitor.namespaceSelector | object | `{}` | Namespace selector for ServiceMonitor resources |
 | monitoring.serviceMonitor.relabelings | list | `[]` | ServiceMonitor relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig |
