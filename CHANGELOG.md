@@ -2,6 +2,8 @@
 
 ### All Changes
 
+## 2.7.0
+
 #### Loki
 
 ##### Enhancements
