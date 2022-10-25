@@ -117,8 +117,8 @@ func TestGetOptions(t *testing.T) {
 				require.NotNil(t, opts.CABundle)
 
 				// Check client certificates populated into options
-				for _, cert := range opts.Certificates {
-					require.NotNil(t, cert.Secret)
+				for name, cert := range opts.Certificates {
+					require.NotNil(t, cert.Secret, "missing name %s", name)
 				}
 			}
 		})

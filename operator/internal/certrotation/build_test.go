@@ -69,18 +69,6 @@ func TestApplyDefaultSettings(t *testing.T) {
 		CertValidity:   "2m",
 		CertRefresh:    "1m",
 	}
-
-	gws := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "lokistack-dev-gateway-client-http",
-			Namespace: "ns",
-			Annotations: map[string]string{
-				CertificateNotBeforeAnnotation: "not-before",
-				CertificateNotAfterAnnotation:  "not-after",
-			},
-		},
-	}
-
 	ings := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "lokistack-dev-ingester-http",
@@ -95,9 +83,6 @@ func TestApplyDefaultSettings(t *testing.T) {
 	opts := Options{
 		StackName:      "lokistack-dev",
 		StackNamespace: "ns",
-		GatewayClientCertificate: SelfSignedCertKey{
-			Secret: gws.DeepCopy(),
-		},
 		Certificates: map[string]SelfSignedCertKey{
 			"lokistack-dev-ingester-http": {Secret: ings.DeepCopy()},
 		},
@@ -105,7 +90,6 @@ func TestApplyDefaultSettings(t *testing.T) {
 
 	err := ApplyDefaultSettings(&opts, cfg)
 	require.NoError(t, err)
-	require.Equal(t, gws, opts.GatewayClientCertificate.Secret)
 
 	cs := ComponentCertSecretNames(opts.StackName)
 
@@ -119,9 +103,8 @@ func TestApplyDefaultSettings(t *testing.T) {
 			fmt.Sprintf("%s.%s.svc.cluster.local", name, opts.StackNamespace),
 		}
 
-		c := cert.Creator.(*servingCertCreator)
-		require.ElementsMatch(t, hostnames, c.Hostnames)
-		require.Equal(t, defaultUserInfo, c.UserInfo)
+		require.ElementsMatch(t, hostnames, cert.Creator.Hostnames)
+		require.Equal(t, defaultUserInfo, cert.Creator.UserInfo)
 
 		if name == ings.Name {
 			require.NotNil(t, cert.Secret)

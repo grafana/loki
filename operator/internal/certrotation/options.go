@@ -8,6 +8,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// ComponentCertificates is a map of lokistack component names to TLS certificates
+type ComponentCertificates map[string]SelfSignedCertKey
+
 // Options is a set of configuration values to use when
 // building manifests for LokiStack certificates.
 type Options struct {
@@ -20,11 +23,10 @@ type Options struct {
 	TargetCertRefresh      time.Duration
 	RefreshOnlyWhenExpired bool
 
-	Signer                   SigningCA
-	CABundle                 *corev1.ConfigMap
-	RawCACerts               []*x509.Certificate
-	GatewayClientCertificate SelfSignedCertKey
-	Certificates             map[string]SelfSignedCertKey
+	Signer       SigningCA
+	CABundle     *corev1.ConfigMap
+	RawCACerts   []*x509.Certificate
+	Certificates ComponentCertificates
 }
 
 // SigningCA rotates a self-signed signing CA stored in a secret. It creates a new one when
@@ -45,5 +47,5 @@ type SigningCA struct {
 // - or the signing CA changes.
 type SelfSignedCertKey struct {
 	Secret  *corev1.Secret
-	Creator TargetCertCreator
+	Creator CertCreator
 }

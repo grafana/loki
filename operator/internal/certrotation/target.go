@@ -1,6 +1,7 @@
 package certrotation
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -13,10 +14,6 @@ import (
 // CertificatesExpired returns an error if any certificates expired and the list of expiry reasons.
 func CertificatesExpired(opts Options) error {
 	if opts.Signer.Secret == nil || opts.CABundle == nil {
-		return nil
-	}
-
-	if opts.GatewayClientCertificate.Secret == nil {
 		return nil
 	}
 
@@ -38,17 +35,10 @@ func CertificatesExpired(opts Options) error {
 	}
 
 	var reasons []string
-
-	annotations := opts.GatewayClientCertificate.Secret.Annotations
-	reason := opts.GatewayClientCertificate.Creator.NeedNewTargetCertKeyPair(annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
-	if reason != "" {
-		reasons = append(reasons, reason)
-	}
-
-	for _, cert := range opts.Certificates {
-		reason = cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
+	for name, cert := range opts.Certificates {
+		reason := cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
 		if reason != "" {
-			reasons = append(reasons, reason)
+			reasons = append(reasons, fmt.Sprintf("%s: %s", name, reason))
 		}
 	}
 
@@ -66,22 +56,10 @@ func buildTargetCertKeyPairSecrets(opts Options) ([]client.Object, error) {
 		ns                     = opts.StackNamespace
 		rawCA                  = opts.Signer.RawCA
 		caBundle               = opts.RawCACerts
-		stackName              = opts.StackName
 		validity               = opts.TargetCertValidity
 		refresh                = opts.TargetCertRefresh
 		refreshOnlyWhenExpired = opts.RefreshOnlyWhenExpired
 	)
-
-	// Build Index Gateway Client Secret
-	gwSecret := newTargetCertificateSecret(GatewayClientSecretName(stackName), ns, opts.GatewayClientCertificate.Secret)
-	reason := opts.GatewayClientCertificate.Creator.NeedNewTargetCertKeyPair(gwSecret.Annotations, rawCA, caBundle, refresh, refreshOnlyWhenExpired)
-	if len(reason) > 0 {
-		if err := setTargetCertKeyPairSecret(gwSecret, validity, rawCA, opts.GatewayClientCertificate.Creator); err != nil {
-			return nil, err
-		}
-	}
-
-	res = append(res, gwSecret)
 
 	for name, cert := range opts.Certificates {
 		secret := newTargetCertificateSecret(name, ns, cert.Secret)
@@ -119,7 +97,7 @@ func newTargetCertificateSecret(name, ns string, s *corev1.Secret) *corev1.Secre
 }
 
 // setTargetCertKeyPairSecret creates a new cert/key pair and sets them in the secret.  Only one of client, serving, or signer rotation may be specified.
-func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator TargetCertCreator) error {
+func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator CertCreator) error {
 	if targetCertKeyPairSecret.Annotations == nil {
 		targetCertKeyPairSecret.Annotations = map[string]string{}
 	}

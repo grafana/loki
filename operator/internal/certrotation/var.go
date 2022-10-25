@@ -30,16 +30,10 @@ func CABundleName(stackName string) string {
 	return fmt.Sprintf("%s-ca-bundle", stackName)
 }
 
-// Client Certificates
-
-// GatewayClientSecretName returns the lokistack HTTP gateway client secret name
-func GatewayClientSecretName(stackName string) string {
-	return fmt.Sprintf("%s-gateway-client-http", stackName)
-}
-
 // ComponentCertSecretNames retruns a list of all loki component certificate secret names.
 func ComponentCertSecretNames(stackName string) []string {
 	return []string{
+		fmt.Sprintf("%s-gateway-client-http", stackName),
 		fmt.Sprintf("%s-compactor-http", stackName),
 		fmt.Sprintf("%s-compactor-grpc", stackName),
 		fmt.Sprintf("%s-distributor-http", stackName),

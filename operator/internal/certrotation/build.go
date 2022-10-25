@@ -85,11 +85,6 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 		TargetCertValidity:     certValidity,
 		TargetCertRefresh:      certRefresh,
 		RefreshOnlyWhenExpired: cfg.RefreshOnlyWhenExpired,
-		GatewayClientCertificate: SelfSignedCertKey{
-			Creator: &clientCertCreator{
-				UserInfo: defaultUserInfo,
-			},
-		},
 	}
 
 	if err := mergo.Merge(opts, certOpts, mergo.WithAppendSlice); err != nil {
@@ -99,8 +94,8 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	return nil
 }
 
-func newCreator(name, namespace string) TargetCertCreator {
-	return &servingCertCreator{
+func newCreator(name, namespace string) CertCreator {
+	return CertCreator{
 		UserInfo: defaultUserInfo,
 		Hostnames: []string{
 			fmt.Sprintf("%s.%s.svc", name, namespace),

@@ -16,38 +16,12 @@ import (
 
 var errMissingHostnames = errors.New("no hostnames set")
 
-// TargetCertCreator defines the interface of cert creating facilities.
-type TargetCertCreator interface {
-	// NewCertificate creates a new key-cert pair with the given signer.
-	NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error)
-	// NeedNewTargetCertKeyPair decides whether a new cert-key pair is needed. It returns a non-empty reason if it is the case.
-	NeedNewTargetCertKeyPair(currentSecretAnnotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string
-	// SetAnnotations gives an option to override or set additional annotations
-	SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string
-}
-
-type clientCertCreator struct {
-	UserInfo user.Info
-}
-
-func (r *clientCertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
-	return signer.MakeClientCertificateForDuration(r.UserInfo, validity)
-}
-
-func (r *clientCertCreator) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
-	return needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
-}
-
-func (r *clientCertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string {
-	return annotations
-}
-
-type servingCertCreator struct {
+type CertCreator struct {
 	UserInfo  user.Info
 	Hostnames []string
 }
 
-func (r *servingCertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
+func (r *CertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
 	if len(r.Hostnames) == 0 {
 		return nil, errMissingHostnames
 	}
@@ -69,7 +43,7 @@ func (r *servingCertCreator) NewCertificate(signer *crypto.CA, validity time.Dur
 	return signer.MakeServerCertForDuration(sets.NewString(r.Hostnames...), validity, addClientAuthUsage, addSubject)
 }
 
-func (r *servingCertCreator) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
+func (r *CertCreator) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
 	reason := needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
 	if len(reason) > 0 {
 		return reason
@@ -78,7 +52,7 @@ func (r *servingCertCreator) NeedNewTargetCertKeyPair(annotations map[string]str
 	return r.missingHostnames(annotations)
 }
 
-func (r *servingCertCreator) missingHostnames(annotations map[string]string) string {
+func (r *CertCreator) missingHostnames(annotations map[string]string) string {
 	existingHostnames := sets.NewString(strings.Split(annotations[CertificateHostnames], ",")...)
 	requiredHostnames := sets.NewString(r.Hostnames...)
 	if !existingHostnames.Equal(requiredHostnames) {
@@ -90,7 +64,7 @@ func (r *servingCertCreator) missingHostnames(annotations map[string]string) str
 	return ""
 }
 
-func (r *servingCertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string {
+func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string {
 	hostnames := sets.String{}
 	for _, ip := range cert.Certs[0].IPAddresses {
 		hostnames.Insert(ip.String())

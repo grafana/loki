@@ -6,7 +6,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/imdario/mergo"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -33,53 +32,38 @@ func GetOptions(ctx context.Context, k k8s.Client, req ctrl.Request) (certrotati
 		}
 	}
 
-	opts := &certrotation.Options{
+	certs, err := getCertificateOptions(ctx, k, req)
+	if err != nil {
+		return certrotation.Options{}, err
+	}
+
+	return certrotation.Options{
 		StackName:      req.Name,
 		StackNamespace: req.Namespace,
 		Signer: certrotation.SigningCA{
 			Secret: ca,
 		},
-		CABundle: bundle,
-	}
-
-	certOpts, err := getCertificateOptions(ctx, k, req)
-	if err != nil {
-		return certrotation.Options{}, err
-	}
-
-	if err := mergo.Merge(opts, certOpts); err != nil {
-		return *opts, kverrors.Wrap(err, "failed to merge certificate options")
-	}
-
-	return *opts, nil
+		CABundle:     bundle,
+		Certificates: certs,
+	}, nil
 }
 
-func getCertificateOptions(ctx context.Context, k k8s.Client, req ctrl.Request) (certrotation.Options, error) {
-	name := certrotation.GatewayClientSecretName(req.Name)
-	gws, err := getSecret(ctx, k, name, req.Namespace)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return certrotation.Options{}, kverrors.Wrap(err, "failed to get client secret", "name", name)
-		}
-	}
-
-	certs := map[string]certrotation.SelfSignedCertKey{}
+func getCertificateOptions(ctx context.Context, k k8s.Client, req ctrl.Request) (certrotation.ComponentCertificates, error) {
 	cs := certrotation.ComponentCertSecretNames(req.Name)
+	certs := make(certrotation.ComponentCertificates, len(cs))
+
 	for _, name := range cs {
 		s, err := getSecret(ctx, k, name, req.Namespace)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
-				return certrotation.Options{}, kverrors.Wrap(err, "failed to get secret", "name", name)
+				return nil, kverrors.Wrap(err, "failed to get secret", "name", name)
 			}
 		}
 
 		certs[name] = certrotation.SelfSignedCertKey{Secret: s}
 	}
 
-	return certrotation.Options{
-		GatewayClientCertificate: certrotation.SelfSignedCertKey{Secret: gws},
-		Certificates:             certs,
-	}, nil
+	return certs, nil
 }
 
 func getSecret(ctx context.Context, k k8s.Client, name, ns string) (*corev1.Secret, error) {

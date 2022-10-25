@@ -3,7 +3,6 @@ package certrotation
 import (
 	"bytes"
 	"crypto/x509"
-	"fmt"
 	"testing"
 	"time"
 
@@ -65,18 +64,6 @@ func TestCertificatesExpired(t *testing.T) {
 
 	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
 	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
-
-	opts.GatewayClientCertificate.Secret = &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-gateway-client-http", stackName),
-			Namespace: stackNamespce,
-			Annotations: map[string]string{
-				CertificateIssuer:              "dev_ns@signing-ca@10000",
-				CertificateNotAfterAnnotation:  invalidNotAfter.Format(time.RFC3339),
-				CertificateNotBeforeAnnotation: invalidNotBefore.Format(time.RFC3339),
-			},
-		},
-	}
 
 	for _, name := range ComponentCertSecretNames(stackName) {
 		cert := opts.Certificates[name]
