@@ -43,13 +43,11 @@ func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k
 		return optErr
 	}
 
-	err = certrotation.SigningCAExpired(opts)
-	if err != nil {
+	if err := certrotation.SigningCAExpired(opts); err != nil {
 		return err
 	}
 
-	err = certrotation.CertificatesExpired(opts)
-	if err != nil {
+	if err := certrotation.CertificatesExpired(opts); err != nil {
 		return err
 	}
 
