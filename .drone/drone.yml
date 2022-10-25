@@ -46,6 +46,46 @@ workspace:
   path: loki
 ---
 kind: pipeline
+name: helm-test-image
+steps:
+- image: plugins/docker
+  name: test-image
+  settings:
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
+    dry_run: true
+    repo: grafana/loki-helm-test
+  when:
+    event:
+    - pull_request
+    paths:
+    - production/helm/loki/src/helm-test/**
+- image: plugins/docker
+  name: push-image
+  settings:
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-helm-test
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - production/helm/loki/src/helm-test/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: check
 steps:
 - commands:
@@ -1535,8 +1575,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: 8738700b68f651859a25c2c9bd9f70efb8092aa1eca2ad35238a85ec19f9fe31
-
-...

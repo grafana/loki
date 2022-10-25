@@ -480,6 +480,36 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
+  pipeline('helm-test-image') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      {
+        name: 'test-image',
+        image: 'plugins/docker',
+        when: onPRs + onPath('production/helm/loki/src/helm-test/**'),
+        settings: {
+          repo: 'grafana/loki-helm-test',
+          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
+          dry_run: true,
+        },
+      },
+      {
+        name: 'push-image',
+        image: 'plugins/docker',
+        when: onTagOrMain + onPath('production/helm/loki/src/helm-test/**'),
+        settings: {
+          repo: 'grafana/loki-helm-test',
+          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+          dry_run: false,
+        },
+      },
+    ],
+  },
   pipeline('check') {
     workspace: {
       base: '/src',
