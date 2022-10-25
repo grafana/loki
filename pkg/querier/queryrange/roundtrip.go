@@ -139,16 +139,13 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		case syntax.SampleExpr:
 			return r.metric.RoundTrip(req)
 		case syntax.LogSelectorExpr:
-			expr, err := transformRegexQuery(req, e)
+			// Note, this function can mutate the request
+			_, err := transformRegexQuery(req, e)
 			if err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
-			}
-			// Only filter expressions are query sharded
-			if !expr.HasFilter() {
-				return r.next.RoundTrip(req)
 			}
 			return r.log.RoundTrip(req)
 
@@ -246,7 +243,7 @@ func getOperation(path string) string {
 	}
 }
 
-// NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.
+// NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
 func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
