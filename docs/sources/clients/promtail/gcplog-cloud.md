@@ -123,7 +123,7 @@ gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
  --role='roles/iam.serviceAccountTokenCreator'
 ```
 
-Having configured Promtail with the [GCP Logs Push target](./scraping.md#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
+Having configured Promtail with the [GCP Logs Push target](./#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
 the push subscription.
 
 ```bash
