@@ -279,10 +279,6 @@ monitoring:
 | loki.rulerConfig | object | `{}` | Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler |
 | loki.schemaConfig | object | `{}` | Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas |
 | loki.server | object | `{"grpc_listen_port":9095,"http_listen_port":3100}` | Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration. |
-| loki.startupProbe.httpGet.path | string | `"/ready"` |  |
-| loki.startupProbe.httpGet.port | string | `"http-metrics"` |  |
-| loki.startupProbe.initialDelaySeconds | int | `60` |  |
-| loki.startupProbe.timeoutSeconds | int | `1` |  |
 | loki.storage | object | `{"bucketNames":{"admin":"admin","chunks":"chunks","ruler":"ruler"},"filesystem":{"chunks_directory":"/var/loki/chunks","rules_directory":"/var/loki/rules"},"gcs":{"chunkBufferSize":0,"enableHttp2":true,"requestTimeout":"0s"},"s3":{"accessKeyId":null,"endpoint":null,"http_config":{},"insecure":false,"region":null,"s3":null,"s3ForcePathStyle":false,"secretAccessKey":null},"type":"s3"}` | Storage config. Providing this will automatically populate all necessary storage configs in the templated config. |
 | loki.storage_config | object | `{"hedging":{"at":"250ms","max_per_second":20,"up_to":3}}` | Additional storage config |
 | loki.structuredConfig | object | `{}` | Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig` |
@@ -327,15 +323,6 @@ monitoring:
 | monitoring.selfMonitoring.lokiCanary.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
 | monitoring.selfMonitoring.lokiCanary.nodeSelector | object | `{}` | Node selector for canary pods |
 | monitoring.selfMonitoring.lokiCanary.resources | object | `{}` | Resource requests and limits for the canary |
-| monitoring.selfMonitoring.lokiCanary.test | object | `{"annotations":{},"enabled":true,"image":{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null},"labels":{},"prometheusAddress":"http://prometheus:9090"}` | Sub section for configuring the loki canary helm test |
-| monitoring.selfMonitoring.lokiCanary.test.annotations | object | `{}` | Additional annotations for test pods |
-| monitoring.selfMonitoring.lokiCanary.test.image | object | `{"pullPolicy":"IfNotPresent","registry":"docker.io","repository":"grafana/loki-canary-test","tag":null}` | Image to use for loki canary |
-| monitoring.selfMonitoring.lokiCanary.test.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
-| monitoring.selfMonitoring.lokiCanary.test.image.registry | string | `"docker.io"` | The Docker registry |
-| monitoring.selfMonitoring.lokiCanary.test.image.repository | string | `"grafana/loki-canary-test"` | Docker image repository |
-| monitoring.selfMonitoring.lokiCanary.test.image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
-| monitoring.selfMonitoring.lokiCanary.test.labels | object | `{}` | Additional labels for the test pods |
-| monitoring.selfMonitoring.lokiCanary.test.prometheusAddress | string | `"http://prometheus:9090"` | Address of the prometheus server to query for the test |
 | monitoring.selfMonitoring.lokiCanary.tolerations | list | `[]` | Tolerations for canary pods |
 | monitoring.selfMonitoring.podLogs.annotations | object | `{}` | PodLogs annotations |
 | monitoring.selfMonitoring.podLogs.labels | object | `{}` | Additional PodLogs labels |

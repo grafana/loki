@@ -39,12 +39,6 @@ loki:
       port: http-metrics
     initialDelaySeconds: 30
     timeoutSeconds: 1
-  startupProbe:
-    httpGet:
-      path: /ready
-      port: http-metrics
-    initialDelaySeconds: 60
-    timeoutSeconds: 1
   image:
     # -- The Docker registry
     registry: docker.io
@@ -730,26 +724,6 @@ monitoring:
         tag: null
         # -- Docker image pull policy
         pullPolicy: IfNotPresent
-      # -- Sub section for configuring the loki canary helm test
-      test:
-        enabled: true
-        # -- Address of the prometheus server to query for the test
-        prometheusAddress: "http://prometheus:9090"
-        # -- Additional labels for the test pods
-        labels: {}
-        # -- Additional annotations for test pods
-        annotations: {}
-        # -- Image to use for loki canary
-        image:
-          # -- The Docker registry
-          registry: docker.io
-          # -- Docker image repository
-          repository: grafana/loki-canary-test
-          # -- Overrides the image tag whose default is the chart's appVersion
-          tag: null
-          # -- Docker image pull policy
-          pullPolicy: IfNotPresent
-
 
 # Configuration for the write
 write:

@@ -1,5 +1,5 @@
 {{- with .Values.monitoring.rules }}
-{{- if and .enabled .alerting }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") .enabled .alerting }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
