@@ -57,6 +57,8 @@ type Config struct {
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
 
+	ExtendWrites bool `yaml:"extend_writes"`
+
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 
@@ -67,6 +69,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+	fs.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.ring.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
@@ -366,10 +369,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
+	op := ring.WriteNoExtend
+	if d.cfg.ExtendWrites {
+		op = ring.Write
+	}
+
 	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
+		replicationSet, err := d.ingestersRing.Get(key, op, descs[:0], nil, nil)
 		if err != nil {
 			return nil, err
 		}
