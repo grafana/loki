@@ -170,6 +170,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	bld = bld.
 		For(&lokiv1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
+		Owns(&corev1.Secret{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.ServiceAccount{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Service{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
