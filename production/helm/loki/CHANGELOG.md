@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.3.0
+
+- [CHANGE] Remove ServiceMonitor and PrometheusRule CRD
+
 ## 3.2.2
 
 - [CHANGE] Add envFrom section to the tokengen job
