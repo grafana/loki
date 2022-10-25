@@ -32,6 +32,12 @@ import (
 	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
+
+	loki_validation "github.com/grafana/loki/pkg/validation"
+)
+
+const (
+	defaultEngineTimeout = time.Minute * 5
 )
 
 var (
@@ -110,7 +116,7 @@ type EngineOpts struct {
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// TODO: remove this configuration after next release.
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", defaultEngineTimeout, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
@@ -238,18 +244,24 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	queryTimeout := q.timeout
-	if q.timeout == 0 {
-		queryTimeout = time.Minute * 5
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
-			return nil, err
-		}
-		queryTimeout = q.limits.QueryTimeout(userID) + time.Second
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout"), "err", err)
+		return nil, err
+	}
+	perTenantQueryTimeout := q.limits.QueryTimeout(userID)
+
+	perTenantTimeoutIsConfigured := perTenantQueryTimeout.String() != loki_validation.DefaultQueryTimeout
+	engineTimeoutIsConfigured := q.timeout != defaultEngineTimeout
+
+	finalTimeout := perTenantQueryTimeout + time.Second
+
+	if engineTimeoutIsConfigured && !perTenantTimeoutIsConfigured {
+		finalTimeout = q.timeout
+		level.Warn(q.logger).Log("msg", fmt.Sprintf("deprecated engine timeout being used instead of the per-tenant query timeout, will timeout in %s", finalTimeout.String()))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	ctx, cancel := context.WithTimeout(ctx, finalTimeout)
 	defer cancel()
 
 	expr, err := q.parse(ctx, q.params.Query())
