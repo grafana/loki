@@ -616,6 +616,14 @@ monitoring:
     scheme: http
     # -- ServiceMonitor will use these tlsConfig settings to make the health check requests
     tlsConfig: null
+    # -- If defined, will create a MetricsInstance for the Grafana Agent Operator.
+    metricsInstance:
+      # -- MerticsInstance annotations
+      annotations: {}
+      # -- Additional MatricsInstance labels
+      labels: {}
+      # -- If defined a MetricsInstance will be created to remote write metrics.
+      remoteWrite: null
 
   # Self monitoring determines whether Loki should scrape it's own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
@@ -663,6 +671,8 @@ monitoring:
       annotations: {}
       # -- Additional LogsInstance labels
       labels: {}
+      # -- Additional clients for remote write
+      clients: null
 
     # The Loki canary pushes logs to and queries from this loki installation to test
     # that it's working correctly
