@@ -17,11 +17,10 @@ type Options struct {
 	StackName      string
 	StackNamespace string
 
-	CACertValidity         time.Duration
-	CACertRefresh          time.Duration
-	TargetCertValidity     time.Duration
-	TargetCertRefresh      time.Duration
-	RefreshOnlyWhenExpired bool
+	CACertValidity     time.Duration
+	CACertRefresh      time.Duration
+	TargetCertValidity time.Duration
+	TargetCertRefresh  time.Duration
 
 	Signer       SigningCA
 	CABundle     *corev1.ConfigMap

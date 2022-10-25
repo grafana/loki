@@ -19,7 +19,7 @@ func SigningCAExpired(opts Options) error {
 		return nil
 	}
 
-	expired, reason := needNewSigningCertKeyPair(opts.Signer.Secret.Annotations, opts.CACertRefresh, opts.RefreshOnlyWhenExpired)
+	expired, reason := needNewSigningCertKeyPair(opts.Signer.Secret.Annotations, opts.CACertRefresh)
 	if !expired {
 		return nil
 	}
@@ -31,7 +31,7 @@ func SigningCAExpired(opts Options) error {
 func buildSigningCASecret(opts *Options) (client.Object, error) {
 	signingCertKeyPairSecret := newSigningCASecret(*opts)
 
-	if needed, _ := needNewSigningCertKeyPair(signingCertKeyPairSecret.Annotations, opts.CACertRefresh, opts.RefreshOnlyWhenExpired); needed {
+	if needed, _ := needNewSigningCertKeyPair(signingCertKeyPairSecret.Annotations, opts.CACertRefresh); needed {
 		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.CACertValidity); err != nil {
 			return nil, err
 		}
@@ -72,7 +72,7 @@ func newSigningCASecret(opts Options) *corev1.Secret {
 	return s
 }
 
-func needNewSigningCertKeyPair(annotations map[string]string, refresh time.Duration, refreshOnlyWhenExpired bool) (bool, string) {
+func needNewSigningCertKeyPair(annotations map[string]string, refresh time.Duration) (bool, string) {
 	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
 	if len(reason) > 0 {
 		return true, reason
@@ -82,11 +82,12 @@ func needNewSigningCertKeyPair(annotations map[string]string, refresh time.Durat
 		return true, "already expired"
 	}
 
-	if refreshOnlyWhenExpired {
+	// Refresh only when expired
+	validity := notAfter.Sub(notBefore)
+	if validity == refresh {
 		return false, ""
 	}
 
-	validity := notAfter.Sub(notBefore)
 	at80Percent := notAfter.Add(-validity / 5)
 	if time.Now().After(at80Percent) {
 		return true, fmt.Sprintf("past its latest possible time %v", at80Percent)

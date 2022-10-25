@@ -43,8 +43,8 @@ func (r *CertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) 
 	return signer.MakeServerCertForDuration(sets.NewString(r.Hostnames...), validity, addClientAuthUsage, addSubject)
 }
 
-func (r *CertCreator) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
-	reason := needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
+func (r *CertCreator) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
+	reason := needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh)
 	if len(reason) > 0 {
 		return reason
 	}
@@ -78,8 +78,8 @@ func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotati
 	return annotations
 }
 
-func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
-	if reason := needNewTargetCertKeyPairForTime(annotations, signer, refresh, refreshOnlyWhenExpired); len(reason) > 0 {
+func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
+	if reason := needNewTargetCertKeyPairForTime(annotations, signer, refresh); len(reason) > 0 {
 		return reason
 	}
 
@@ -116,7 +116,7 @@ func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, 
 // Hence, if the CAs are rotated too fast (like CA percentage around 10% or smaller), we will not hit the time to make use of the CA. Or if the cert renewal percentage is at 90%, there is not much time either.
 //
 // So with a cert percentage of 75% and equally long CA and cert validities at the worst case we start at 85% of the cert to renew, trying again every minute.
-func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *crypto.CA, refresh time.Duration, refreshOnlyWhenExpired bool) string {
+func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *crypto.CA, refresh time.Duration) string {
 	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
 	if len(reason) > 0 {
 		return reason
@@ -127,12 +127,13 @@ func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *cryp
 		return "already expired"
 	}
 
-	if refreshOnlyWhenExpired {
+	// Refresh only when expired
+	validity := notAfter.Sub(notBefore)
+	if validity == refresh {
 		return ""
 	}
 
 	// Are we at 80% of validity?
-	validity := notAfter.Sub(notBefore)
 	at80Percent := notAfter.Add(-validity / 5)
 	if time.Now().After(at80Percent) {
 		return fmt.Sprintf("past its latest possible time %v", at80Percent)

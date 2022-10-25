@@ -36,7 +36,7 @@ func CertificatesExpired(opts Options) error {
 
 	var reasons []string
 	for name, cert := range opts.Certificates {
-		reason := cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh, opts.RefreshOnlyWhenExpired)
+		reason := cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh)
 		if reason != "" {
 			reasons = append(reasons, fmt.Sprintf("%s: %s", name, reason))
 		}
@@ -52,18 +52,17 @@ func CertificatesExpired(opts Options) error {
 // buildTargetCertKeyPairSecrets returns a slice of all rotated client and serving lokistack certificates.
 func buildTargetCertKeyPairSecrets(opts Options) ([]client.Object, error) {
 	var (
-		res                    = make([]client.Object, 0)
-		ns                     = opts.StackNamespace
-		rawCA                  = opts.Signer.RawCA
-		caBundle               = opts.RawCACerts
-		validity               = opts.TargetCertValidity
-		refresh                = opts.TargetCertRefresh
-		refreshOnlyWhenExpired = opts.RefreshOnlyWhenExpired
+		res      = make([]client.Object, 0)
+		ns       = opts.StackNamespace
+		rawCA    = opts.Signer.RawCA
+		caBundle = opts.RawCACerts
+		validity = opts.TargetCertValidity
+		refresh  = opts.TargetCertRefresh
 	)
 
 	for name, cert := range opts.Certificates {
 		secret := newTargetCertificateSecret(name, ns, cert.Secret)
-		reason := cert.Creator.NeedNewTargetCertKeyPair(secret.Annotations, rawCA, caBundle, refresh, refreshOnlyWhenExpired)
+		reason := cert.Creator.NeedNewTargetCertKeyPair(secret.Annotations, rawCA, caBundle, refresh)
 		if len(reason) > 0 {
 			if err := setTargetCertKeyPairSecret(secret, validity, rawCA, cert.Creator); err != nil {
 				return nil, err

@@ -9,12 +9,21 @@ import (
 // TLS client and serving certificates for all LokiStack services and internal clients except
 // for the lokistack-gateway.
 type BuiltInCertManagement struct {
-	Enabled                bool   `json:"enabled,omitempty"`
-	CACertValidity         string `json:"caValidity,omitempty"`
-	CACertRefresh          string `json:"caRefresh,omitempty"`
-	CertValidity           string `json:"certValidity,omitempty"`
-	CertRefresh            string `json:"certRefresh,omitempty"`
-	RefreshOnlyWhenExpired bool   `json:"refreshOnlyWhenExpired,omitempty"`
+	// Enabled defines to flag to enable/disable built-in certificate management feature gate.
+	Enabled bool `json:"enabled,omitempty"`
+	// CACertValidity defines the total duration of the CA certificate validity.
+	CACertValidity string `json:"caValidity,omitempty"`
+	// CACertRefresh defines the duration of the CA certificate validity until a rotation
+	// should happen. It can be set up to 80% of CA certificate validity or equal to the
+	// CA certificate validity. Latter should be used only for rotating only when expired.
+	CACertRefresh string `json:"caRefresh,omitempty"`
+	// CertValidity defines the total duration of the validity for all LokiStack certificates.
+	CertValidity string `json:"certValidity,omitempty"`
+	// CertRefresh defines the duration of the certificate validity until a rotation
+	// should happen. It can be set up to 80% of certificate validity or equal to the
+	// certificate validity. Latter should be used only for rotating only when expired.
+	// The refresh is applied to all LokiStack certificates at once.
+	CertRefresh string `json:"certRefresh,omitempty"`
 }
 
 // OpenShiftFeatureGates is the supported set of all operator features gates on OpenShift.

@@ -80,11 +80,10 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	}
 
 	certOpts := Options{
-		CACertValidity:         caValidity,
-		CACertRefresh:          caRefresh,
-		TargetCertValidity:     certValidity,
-		TargetCertRefresh:      certRefresh,
-		RefreshOnlyWhenExpired: cfg.RefreshOnlyWhenExpired,
+		CACertValidity:     caValidity,
+		CACertRefresh:      caRefresh,
+		TargetCertValidity: certValidity,
+		TargetCertRefresh:  certRefresh,
 	}
 
 	if err := mergo.Merge(opts, certOpts, mergo.WithAppendSlice); err != nil {

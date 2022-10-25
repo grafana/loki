@@ -40,12 +40,11 @@ var (
 		ServiceMonitors:            false,
 		ServiceMonitorTLSEndpoints: false,
 		BuiltInCertManagement: configv1.BuiltInCertManagement{
-			Enabled:                true,
-			CACertValidity:         "10m",
-			CACertRefresh:          "5m",
-			CertValidity:           "2m",
-			CertRefresh:            "1m",
-			RefreshOnlyWhenExpired: false,
+			Enabled:        true,
+			CACertValidity: "10m",
+			CACertRefresh:  "5m",
+			CertValidity:   "2m",
+			CertRefresh:    "1m",
 		},
 	}
 

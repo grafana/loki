@@ -36,7 +36,6 @@ data:
         certValidity: 2160h
         # Target certificate refresh at 80% of validity
         certRefresh: 1728h
-        refreshOnlyWhenExpired: false
       #
       # Component feature gates
       #

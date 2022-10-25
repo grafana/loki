@@ -32,12 +32,11 @@ func TestNeedNewTargetCertKeyPairForTime(t *testing.T) {
 	require.NoError(t, err)
 
 	tt := []struct {
-		desc            string
-		annotations     map[string]string
-		signerFn        func() (*crypto.CA, error)
-		refresh         time.Duration
-		onlyWhenExpired bool
-		wantReason      string
+		desc        string
+		annotations map[string]string
+		signerFn    func() (*crypto.CA, error)
+		refresh     time.Duration
+		wantReason  string
 	}{
 		{
 			desc: "already expired",
@@ -51,6 +50,18 @@ func TestNeedNewTargetCertKeyPairForTime(t *testing.T) {
 			},
 			refresh:    2 * time.Minute,
 			wantReason: "already expired",
+		},
+		{
+			desc: "refresh only when expired",
+			annotations: map[string]string{
+				CertificateIssuer:              "dev_ns@signing-ca@10000",
+				CertificateNotAfterAnnotation:  now.Add(45 * time.Minute).Format(time.RFC3339),
+				CertificateNotBeforeAnnotation: now.Add(-45 * time.Minute).Format(time.RFC3339),
+			},
+			signerFn: func() (*crypto.CA, error) {
+				return nowCA, nil
+			},
+			refresh: 90 * time.Minute,
 		},
 		{
 			desc: "at 80 percent validity",
@@ -86,7 +97,7 @@ func TestNeedNewTargetCertKeyPairForTime(t *testing.T) {
 			rawCA, err := tc.signerFn()
 			require.NoError(t, err)
 
-			reason := needNewTargetCertKeyPairForTime(tc.annotations, rawCA, tc.refresh, tc.onlyWhenExpired)
+			reason := needNewTargetCertKeyPairForTime(tc.annotations, rawCA, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)
 		})
 	}

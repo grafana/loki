@@ -44,7 +44,6 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.featureFlags.BuiltInCertManagement.CACertRefresh, "ca-cert-refresh", "7008h", "CA Certificate refresh time.")
 	f.StringVar(&c.featureFlags.BuiltInCertManagement.CertValidity, "target-cert-validity", "2160h", "Target Certificate validity duration.")
 	f.StringVar(&c.featureFlags.BuiltInCertManagement.CertRefresh, "target-cert-refresh", "1728h", "Target Certificate refresh time.")
-	f.BoolVar(&c.featureFlags.BuiltInCertManagement.RefreshOnlyWhenExpired, "cert-refresh-only-when-expired", false, "Refresh certificates only when expired.")
 	f.BoolVar(&c.featureFlags.HTTPEncryption, "with-http-tls-services", false, "Enables TLS for all LokiStack GRPC services.")
 	f.BoolVar(&c.featureFlags.GRPCEncryption, "with-grpc-tls-services", false, "Enables TLS for all LokiStack HTTP services.")
 	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
