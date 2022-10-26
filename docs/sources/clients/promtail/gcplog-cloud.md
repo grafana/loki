@@ -132,6 +132,95 @@ gcloud pubsub subscriptions create cloud-logs \
 --push-endpoint=$HTTPS_PUSH_ENDPOINT_URI
 ```
 
+## Setup using Terraform
+
+You can configure all resources created in the steps above with the `gcloud` CLI, but with terraform. First, the following snippet will add the resources needed for both `pull` and `push` flavours.
+
+```terraform
+provider "google" {
+  project = "$GCP_PROJECT_ID"
+}
+
+// PubSub topic to route logs to
+resource "google_pubsub_topic" "main" {
+  name = "cloud-logs"
+}
+
+variable "inclusion_filter" {
+  type        = string
+  description = "GCP Logs query filtering down which logs should be sent to Promtail."
+}
+
+// Log sink, including the filter of what logs to consume, and ship to the topic created above
+resource "google_logging_project_sink" "main" {
+  name                   = "cloud-logs"
+  destination            = "pubsub.googleapis.com/${google_pubsub_topic.main.id}"
+  filter                 = var.inclusion_filter
+  unique_writer_identity = true
+}
+
+// IAM binding granting publisher permissions to the log sink
+resource "google_pubsub_topic_iam_binding" "log-writer" {
+  topic = google_pubsub_topic.main.name
+  role  = "roles/pubsub.publisher"
+  members = [
+    google_logging_project_sink.main.writer_identity,
+  ]
+}
+```
+
+Then, another snippet needs to be added depending on wether the `pull` or `push` flavour is chosen.
+
+### Pull
+
+The following snippet configures the pull subscription, for Promtail to subscribe to.
+
+```terraform
+// PubSub subscription
+resource "google_pubsub_subscription" "main" {
+  name  = "cloud-logs"
+  topic = google_pubsub_topic.main.name
+}
+```
+
+Then, the new resources can be applied by running, filling the required variables.
+
+```bash
+terraform apply \
+    -var="inclusion_filter=<GCP Logs query of what logs to include>"
+```
+
+### Push
+
+The following snippet configures the push subscription, for GCP to send logs to Promtail.
+
+```terraform
+variable "push_endpoint_url" {
+  type        = string
+  description = "Public URL where Promtail is hosted."
+}
+
+// PubSub subscription
+resource "google_pubsub_subscription" "main" {
+  name  = "cloud-logs"
+  topic = google_pubsub_topic.main.name
+  push_config {
+    push_endpoint = var.push_endpoint_url
+    attributes = {
+      x-goog-version = "v1"
+    }
+  }
+}
+```
+
+Then, the new resources can be applied by running, filling the required variables.
+
+```bash
+terraform apply \
+    -var="push_endpoint_url=<Promtail public URL>" \
+    -var="inclusion_filter=<GCP Logs query of what logs to include>"
+```
+
 ## ServiceAccount for Promtail
 
 We need a service account with following permissions.
