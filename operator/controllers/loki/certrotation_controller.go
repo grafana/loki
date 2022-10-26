@@ -55,7 +55,6 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.FeatureGates.BuiltInCertManagement.CACertRefresh,
 		r.FeatureGates.BuiltInCertManagement.CertRefresh,
 	)
-
 	if err != nil {
 		return ctrl.Result{Requeue: false}, err
 	}
