@@ -11,16 +11,13 @@ import (
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/certrotation"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-const (
-	checkCertExpiryAfter = 12 * time.Hour
 )
 
 // CertRotationReconciler reconciles the `loki.grafana.com/certRotationRequiredAt` annotation on
@@ -54,7 +51,16 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	r.Log.Info("Checking if LokiStack certificates expired", "name", req.String())
+	checkExpiryAfter, err := expiryRetryAfter(
+		r.FeatureGates.BuiltInCertManagement.CACertRefresh,
+		r.FeatureGates.BuiltInCertManagement.CertRefresh,
+	)
+
+	if err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+
+	r.Log.Info("Checking if LokiStack certificates expired", "name", req.String(), "interval", checkExpiryAfter.String())
 
 	var expired *certrotation.CertExpiredError
 
@@ -69,7 +75,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	default:
 		r.Log.Info("Skipping cert rotation, all LokiStack certificates still valid", "name", req.String())
 		return ctrl.Result{
-			RequeueAfter: checkCertExpiryAfter,
+			RequeueAfter: checkExpiryAfter,
 		}, nil
 	}
 
@@ -83,14 +89,43 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return ctrl.Result{
-		RequeueAfter: checkCertExpiryAfter,
+		RequeueAfter: checkExpiryAfter,
 	}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CertRotationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr)
+	return r.buildController(k8s.NewCtrlBuilder(b))
+}
+
+func (r *CertRotationReconciler) buildController(bld k8s.Builder) error {
+	return bld.
 		For(&lokiv1.LokiStack{}).
 		Owns(&corev1.Secret{}).
 		Complete(r)
+}
+
+func expiryRetryAfter(caRefresh, certRefresh string) (time.Duration, error) {
+	car, err := time.ParseDuration(caRefresh)
+	if err != nil {
+		return -1, err
+	}
+
+	cer, err := time.ParseDuration(certRefresh)
+	if err != nil {
+		return -1, err
+	}
+
+	ref := cer
+	if car.Seconds() < cer.Seconds() {
+		ref = car
+	}
+
+	day := 24 * time.Hour
+	if ref.Seconds() > day.Seconds() {
+		return 12 * time.Hour, nil
+	}
+
+	return ref / 4, nil
 }
