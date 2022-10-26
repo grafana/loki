@@ -4,11 +4,6 @@ import (
 	"testing"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	// <<<<<<< HEAD
-	//	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
-	// =======
-	// >>>>>>> d87a57a8a (operator: Add support for built-in-cert-rotation for all internal lokistack encryption)
 	"github.com/stretchr/testify/require"
 )
 

@@ -67,7 +67,13 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	}
 
 	for _, name := range ComponentCertSecretNames(opts.StackName) {
-		c := newCreator(name, opts.StackNamespace)
+		c := certificateRotation{
+			UserInfo: defaultUserInfo,
+			Hostnames: []string{
+				fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
+				fmt.Sprintf("%s.%s.svc.cluster.local", name, opts.StackNamespace),
+			},
+		}
 
 		cert, ok := opts.Certificates[name]
 		if !ok {
@@ -91,14 +97,4 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	}
 
 	return nil
-}
-
-func newCreator(name, namespace string) certificateRotation {
-	return certificateRotation{
-		UserInfo: defaultUserInfo,
-		Hostnames: []string{
-			fmt.Sprintf("%s.%s.svc", name, namespace),
-			fmt.Sprintf("%s.%s.svc.cluster.local", name, namespace),
-		},
-	}
 }

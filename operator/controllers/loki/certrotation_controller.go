@@ -117,12 +117,12 @@ func expiryRetryAfter(caRefresh, certRefresh string) (time.Duration, error) {
 	}
 
 	ref := cer
-	if car.Seconds() < cer.Seconds() {
+	if car < cer {
 		ref = car
 	}
 
 	day := 24 * time.Hour
-	if ref.Seconds() > day.Seconds() {
+	if ref > day {
 		return 12 * time.Hour, nil
 	}
 
