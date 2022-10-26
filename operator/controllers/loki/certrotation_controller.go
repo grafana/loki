@@ -51,14 +51,12 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	checkExpiryAfter, err := expiryRetryAfter(
-		r.FeatureGates.BuiltInCertManagement.CACertRefresh,
-		r.FeatureGates.BuiltInCertManagement.CertRefresh,
-	)
+	opts, err := certrotation.NewRotationOptions(r.FeatureGates.BuiltInCertManagement)
 	if err != nil {
 		return ctrl.Result{Requeue: false}, err
 	}
 
+	checkExpiryAfter := expiryRetryAfter(opts.TargetCertRefresh)
 	r.Log.Info("Checking if LokiStack certificates expired", "name", req.String(), "interval", checkExpiryAfter.String())
 
 	var expired *certrotation.CertExpiredError
@@ -105,26 +103,11 @@ func (r *CertRotationReconciler) buildController(bld k8s.Builder) error {
 		Complete(r)
 }
 
-func expiryRetryAfter(caRefresh, certRefresh string) (time.Duration, error) {
-	car, err := time.ParseDuration(caRefresh)
-	if err != nil {
-		return -1, err
-	}
-
-	cer, err := time.ParseDuration(certRefresh)
-	if err != nil {
-		return -1, err
-	}
-
-	ref := cer
-	if car < cer {
-		ref = car
-	}
-
+func expiryRetryAfter(certRefresh time.Duration) time.Duration {
 	day := 24 * time.Hour
-	if ref > day {
-		return 12 * time.Hour, nil
+	if certRefresh > day {
+		return 12 * time.Hour
 	}
 
-	return ref / 4, nil
+	return certRefresh / 4
 }

@@ -49,42 +49,18 @@ func TestCertRotationController_RegisterOwnedResources_WithDefaultPredicates(t *
 func TestCertRotationController_ExpiryRetryAfter(t *testing.T) {
 	tt := []struct {
 		desc         string
-		caRefresh    string
-		certRefesh   string
+		certRefesh   time.Duration
 		wantDuration time.Duration
 		wantError    bool
 	}{
 		{
-			desc:      "ca refresh parse error",
-			wantError: true,
-		},
-		{
-			desc:      "cert refresh parse error",
-			caRefresh: "1h",
-			wantError: true,
-		},
-		{
-			desc:         "ca refresh is reference",
-			caRefresh:    "240h",
-			certRefesh:   "120h",
-			wantDuration: 12 * time.Hour,
-		},
-		{
-			desc:         "cert refresh is reference",
-			caRefresh:    "120h",
-			certRefesh:   "240h",
-			wantDuration: 12 * time.Hour,
-		},
-		{
 			desc:         "multi-day reference refresh durarion",
-			caRefresh:    "240h",
-			certRefesh:   "120h",
+			certRefesh:   120 * time.Hour,
 			wantDuration: 12 * time.Hour,
 		},
 		{
 			desc:         "less than a day refresh duration",
-			caRefresh:    "120h",
-			certRefesh:   "10h",
+			certRefesh:   10 * time.Hour,
 			wantDuration: 2*time.Hour + 30*time.Minute,
 		},
 	}
@@ -92,16 +68,7 @@ func TestCertRotationController_ExpiryRetryAfter(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-
-			d, err := expiryRetryAfter(tc.caRefresh, tc.certRefesh)
-
-			switch {
-			case tc.wantError:
-				require.Error(t, err)
-			default:
-				require.NoError(t, err)
-				require.Equal(t, tc.wantDuration, d)
-			}
+			require.Equal(t, tc.wantDuration, expiryRetryAfter(tc.certRefesh))
 		})
 	}
 }
