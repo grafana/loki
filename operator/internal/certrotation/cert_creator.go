@@ -14,7 +14,49 @@ import (
 	"k8s.io/apiserver/pkg/authentication/user"
 )
 
-var errMissingHostnames = errors.New("no hostnames set")
+var (
+	errMissingIssuer    = errors.New("no issuer set")
+	errMissingHostnames = errors.New("no hostnames set")
+	errMissingUserInfo  = errors.New("no user info")
+)
+
+type CACreator struct {
+	Issuer string
+}
+
+func (r *CACreator) NewCertificate(validity time.Duration) (*crypto.TLSCertificateConfig, error) {
+	if r.Issuer == "" {
+		return nil, errMissingIssuer
+	}
+
+	signerName := fmt.Sprintf("%s@%d", r.Issuer, time.Now().Unix())
+	return crypto.MakeSelfSignedCAConfigForDuration(signerName, validity)
+}
+
+func (r *CACreator) NeedNewCertificate(annotations map[string]string, refresh time.Duration) string {
+	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
+	if len(reason) > 0 {
+		return reason
+	}
+
+	reason = needNewCertificate(annotations, notBefore, notAfter, refresh, nil)
+	if len(reason) > 0 {
+		return reason
+	}
+
+	developerSpecifiedRefresh := notBefore.Add(refresh)
+	if time.Now().After(developerSpecifiedRefresh) {
+		return fmt.Sprintf("past its refresh time %v", developerSpecifiedRefresh)
+	}
+
+	return ""
+}
+
+func (r *CACreator) SetAnnotations(ca *crypto.TLSCertificateConfig, annotations map[string]string) {
+	annotations[CertificateNotAfterAnnotation] = ca.Certs[0].NotAfter.Format(time.RFC3339)
+	annotations[CertificateNotBeforeAnnotation] = ca.Certs[0].NotBefore.Format(time.RFC3339)
+	annotations[CertificateIssuer] = ca.Certs[0].Issuer.CommonName
+}
 
 type CertCreator struct {
 	UserInfo  user.Info
@@ -22,6 +64,9 @@ type CertCreator struct {
 }
 
 func (r *CertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
+	if r.UserInfo == nil {
+		return nil, errMissingUserInfo
+	}
 	if len(r.Hostnames) == 0 {
 		return nil, errMissingHostnames
 	}
@@ -43,16 +88,35 @@ func (r *CertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) 
 	return signer.MakeServerCertForDuration(sets.NewString(r.Hostnames...), validity, addClientAuthUsage, addSubject)
 }
 
-func (r *CertCreator) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
-	reason := needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh)
+func (r *CertCreator) NeedNewCertificate(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
+	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
 	if len(reason) > 0 {
 		return reason
 	}
 
-	return r.missingHostnames(annotations)
-}
+	reason = needNewCertificate(annotations, notBefore, notAfter, refresh, signer)
+	if len(reason) > 0 {
+		return reason
+	}
 
-func (r *CertCreator) missingHostnames(annotations map[string]string) string {
+	// check the signer common name against all the common names in our ca bundle so we don't refresh early
+	signerCommonName := annotations[CertificateIssuer]
+	if len(signerCommonName) == 0 {
+		return "missing issuer name"
+	}
+
+	var found bool
+	for _, caCert := range caBundleCerts {
+		if signerCommonName == caCert.Subject.CommonName {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Sprintf("issuer %q, not in ca bundle:\n%s", signerCommonName, certs.CertificateBundleToString(caBundleCerts))
+	}
+
 	existingHostnames := sets.NewString(strings.Split(annotations[CertificateHostnames], ",")...)
 	requiredHostnames := sets.NewString(r.Hostnames...)
 	if !existingHostnames.Equal(requiredHostnames) {
@@ -64,7 +128,7 @@ func (r *CertCreator) missingHostnames(annotations map[string]string) string {
 	return ""
 }
 
-func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string {
+func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) {
 	hostnames := sets.String{}
 	for _, ip := range cert.Certs[0].IPAddresses {
 		hostnames.Insert(ip.String())
@@ -74,54 +138,13 @@ func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotati
 	}
 
 	// List does a sort so that we have a consistent representation
+	annotations[CertificateNotAfterAnnotation] = cert.Certs[0].NotAfter.Format(time.RFC3339)
+	annotations[CertificateNotBeforeAnnotation] = cert.Certs[0].NotBefore.Format(time.RFC3339)
+	annotations[CertificateIssuer] = cert.Certs[0].Issuer.CommonName
 	annotations[CertificateHostnames] = strings.Join(hostnames.List(), ",")
-	return annotations
 }
 
-func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
-	if reason := needNewTargetCertKeyPairForTime(annotations, signer, refresh); len(reason) > 0 {
-		return reason
-	}
-
-	// check the signer common name against all the common names in our ca bundle so we don't refresh early
-	signerCommonName := annotations[CertificateIssuer]
-	if len(signerCommonName) == 0 {
-		return "missing issuer name"
-	}
-	for _, caCert := range caBundleCerts {
-		if signerCommonName == caCert.Subject.CommonName {
-			return ""
-		}
-	}
-
-	return fmt.Sprintf("issuer %q, not in ca bundle:\n%s", signerCommonName, certs.CertificateBundleToString(caBundleCerts))
-}
-
-// needNewTargetCertKeyPairForTime returns true when
-//  1. when notAfter or notBefore is missing in the annotation
-//  2. when notAfter or notBefore is malformed
-//  3. when now is after the notAfter
-//  4. when now is after notAfter+refresh AND the signer has been valid
-//     for more than 5% of the "extra" time we renew the target
-//
-// in other words, we rotate if
-//
-// our old CA is gone from the bundle (then we are pretty late to the renewal party)
-// or the cert expired (then we are also pretty late)
-// or we are over the renewal percentage of the validity, but only if the new CA at least 10% into its age.
-// Maybe worth a go doc.
-//
-// So in general we need to see a signing CA at least aged 10% within 1-percentage of the cert validity.
-//
-// Hence, if the CAs are rotated too fast (like CA percentage around 10% or smaller), we will not hit the time to make use of the CA. Or if the cert renewal percentage is at 90%, there is not much time either.
-//
-// So with a cert percentage of 75% and equally long CA and cert validities at the worst case we start at 85% of the cert to renew, trying again every minute.
-func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *crypto.CA, refresh time.Duration) string {
-	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
-	if len(reason) > 0 {
-		return reason
-	}
-
+func needNewCertificate(annotations map[string]string, notBefore, notAfter time.Time, refresh time.Duration, signer *crypto.CA) string {
 	// Is cert expired?
 	if time.Now().After(notAfter) {
 		return "already expired"
@@ -140,14 +163,39 @@ func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *cryp
 	}
 
 	// If Certificate is past its refresh time, we may have action to take. We only do this if the signer is old enough.
-	refreshTime := notBefore.Add(refresh)
-	if time.Now().After(refreshTime) {
+	developerSpecifiedRefresh := notBefore.Add(refresh)
+	if time.Now().After(developerSpecifiedRefresh) {
+		if signer == nil {
+			return fmt.Sprintf("past its refresh time %v", developerSpecifiedRefresh)
+		}
+
 		// make sure the signer has been valid for more than 10% of the target's refresh time.
 		timeToWaitForTrustRotation := refresh / 10
 		if time.Now().After(signer.Config.Certs[0].NotBefore.Add(timeToWaitForTrustRotation)) {
-			return fmt.Sprintf("past its refresh time %v", refreshTime)
+			return fmt.Sprintf("past its refresh time %v", developerSpecifiedRefresh)
 		}
 	}
 
 	return ""
+}
+
+func getValidityFromAnnotations(annotations map[string]string) (notBefore time.Time, notAfter time.Time, reason string) {
+	notAfterString := annotations[CertificateNotAfterAnnotation]
+	if len(notAfterString) == 0 {
+		return notBefore, notAfter, "missing notAfter"
+	}
+	notAfter, err := time.Parse(time.RFC3339, notAfterString)
+	if err != nil {
+		return notBefore, notAfter, fmt.Sprintf("bad expiry: %q", notAfterString)
+	}
+	notBeforeString := annotations[CertificateNotBeforeAnnotation]
+	if len(notAfterString) == 0 {
+		return notBefore, notAfter, "missing notBefore"
+	}
+	notBefore, err = time.Parse(time.RFC3339, notBeforeString)
+	if err != nil {
+		return notBefore, notAfter, fmt.Sprintf("bad expiry: %q", notBeforeString)
+	}
+
+	return notBefore, notAfter, ""
 }

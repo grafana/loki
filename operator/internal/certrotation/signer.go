@@ -19,20 +19,21 @@ func SigningCAExpired(opts Options) error {
 		return nil
 	}
 
-	expired, reason := needNewSigningCertKeyPair(opts.Signer.Secret.Annotations, opts.CACertRefresh)
-	if !expired {
-		return nil
+	reason := opts.Signer.Creator.NeedNewCertificate(opts.Signer.Secret.Annotations, opts.CACertRefresh)
+	if reason != "" {
+		return &CertExpiredError{Message: "signing CA certificate expired", Reasons: []string{reason}}
 	}
 
-	return &CertExpiredError{Message: "signing CA certificate expired", Reasons: []string{reason}}
+	return nil
 }
 
 // buildSigningCASecret returns a k8s Secret holding the signing CA certificate
 func buildSigningCASecret(opts *Options) (client.Object, error) {
 	signingCertKeyPairSecret := newSigningCASecret(*opts)
+	opts.Signer.Creator.Issuer = fmt.Sprintf("%s_%s", signingCertKeyPairSecret.Namespace, signingCertKeyPairSecret.Name)
 
-	if needed, _ := needNewSigningCertKeyPair(signingCertKeyPairSecret.Annotations, opts.CACertRefresh); needed {
-		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.CACertValidity); err != nil {
+	if reason := opts.Signer.Creator.NeedNewCertificate(signingCertKeyPairSecret.Annotations, opts.CACertRefresh); reason != "" {
+		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.CACertValidity, opts.Signer.Creator); err != nil {
 			return nil, err
 		}
 	}
@@ -72,60 +73,16 @@ func newSigningCASecret(opts Options) *corev1.Secret {
 	return s
 }
 
-func needNewSigningCertKeyPair(annotations map[string]string, refresh time.Duration) (bool, string) {
-	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
-	if len(reason) > 0 {
-		return true, reason
-	}
-
-	if time.Now().After(notAfter) {
-		return true, "already expired"
-	}
-
-	// Refresh only when expired
-	validity := notAfter.Sub(notBefore)
-	if validity == refresh {
-		return false, ""
-	}
-
-	at80Percent := notAfter.Add(-validity / 5)
-	if time.Now().After(at80Percent) {
-		return true, fmt.Sprintf("past its latest possible time %v", at80Percent)
-	}
-
-	developerSpecifiedRefresh := notBefore.Add(refresh)
-	if time.Now().After(developerSpecifiedRefresh) {
-		return true, fmt.Sprintf("past its refresh time %v", developerSpecifiedRefresh)
-	}
-
-	return false, ""
-}
-
-func getValidityFromAnnotations(annotations map[string]string) (notBefore time.Time, notAfter time.Time, reason string) {
-	notAfterString := annotations[CertificateNotAfterAnnotation]
-	if len(notAfterString) == 0 {
-		return notBefore, notAfter, "missing notAfter"
-	}
-	notAfter, err := time.Parse(time.RFC3339, notAfterString)
-	if err != nil {
-		return notBefore, notAfter, fmt.Sprintf("bad expiry: %q", notAfterString)
-	}
-	notBeforeString := annotations[CertificateNotBeforeAnnotation]
-	if len(notAfterString) == 0 {
-		return notBefore, notAfter, "missing notBefore"
-	}
-	notBefore, err = time.Parse(time.RFC3339, notBeforeString)
-	if err != nil {
-		return notBefore, notAfter, fmt.Sprintf("bad expiry: %q", notBeforeString)
-	}
-
-	return notBefore, notAfter, ""
-}
-
 // setSigningCertKeyPairSecret creates a new signing cert/key pair and sets them in the secret
-func setSigningCertKeyPairSecret(signingCertKeyPairSecret *corev1.Secret, validity time.Duration) error {
-	signerName := fmt.Sprintf("%s_%s@%d", signingCertKeyPairSecret.Namespace, signingCertKeyPairSecret.Name, time.Now().Unix())
-	ca, err := crypto.MakeSelfSignedCAConfigForDuration(signerName, validity)
+func setSigningCertKeyPairSecret(s *corev1.Secret, validity time.Duration, caCreator CACreator) error {
+	if s.Annotations == nil {
+		s.Annotations = map[string]string{}
+	}
+	if s.Data == nil {
+		s.Data = map[string][]byte{}
+	}
+
+	ca, err := caCreator.NewCertificate(validity)
 	if err != nil {
 		return err
 	}
@@ -135,18 +92,9 @@ func setSigningCertKeyPairSecret(signingCertKeyPairSecret *corev1.Secret, validi
 	if err := ca.WriteCertConfig(certBytes, keyBytes); err != nil {
 		return err
 	}
-
-	if signingCertKeyPairSecret.Annotations == nil {
-		signingCertKeyPairSecret.Annotations = map[string]string{}
-	}
-	if signingCertKeyPairSecret.Data == nil {
-		signingCertKeyPairSecret.Data = map[string][]byte{}
-	}
-	signingCertKeyPairSecret.Data[corev1.TLSCertKey] = certBytes.Bytes()
-	signingCertKeyPairSecret.Data[corev1.TLSPrivateKeyKey] = keyBytes.Bytes()
-	signingCertKeyPairSecret.Annotations[CertificateNotAfterAnnotation] = ca.Certs[0].NotAfter.Format(time.RFC3339)
-	signingCertKeyPairSecret.Annotations[CertificateNotBeforeAnnotation] = ca.Certs[0].NotBefore.Format(time.RFC3339)
-	signingCertKeyPairSecret.Annotations[CertificateIssuer] = ca.Certs[0].Issuer.CommonName
+	s.Data[corev1.TLSCertKey] = certBytes.Bytes()
+	s.Data[corev1.TLSPrivateKeyKey] = keyBytes.Bytes()
+	caCreator.SetAnnotations(ca, s.Annotations)
 
 	return nil
 }

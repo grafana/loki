@@ -36,7 +36,7 @@ func CertificatesExpired(opts Options) error {
 
 	var reasons []string
 	for name, cert := range opts.Certificates {
-		reason := cert.Creator.NeedNewTargetCertKeyPair(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh)
+		reason := cert.Creator.NeedNewCertificate(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh)
 		if reason != "" {
 			reasons = append(reasons, fmt.Sprintf("%s: %s", name, reason))
 		}
@@ -62,7 +62,7 @@ func buildTargetCertKeyPairSecrets(opts Options) ([]client.Object, error) {
 
 	for name, cert := range opts.Certificates {
 		secret := newTargetCertificateSecret(name, ns, cert.Secret)
-		reason := cert.Creator.NeedNewTargetCertKeyPair(secret.Annotations, rawCA, caBundle, refresh)
+		reason := cert.Creator.NeedNewCertificate(secret.Annotations, rawCA, caBundle, refresh)
 		if len(reason) > 0 {
 			if err := setTargetCertKeyPairSecret(secret, validity, rawCA, cert.Creator); err != nil {
 				return nil, err
@@ -96,12 +96,12 @@ func newTargetCertificateSecret(name, ns string, s *corev1.Secret) *corev1.Secre
 }
 
 // setTargetCertKeyPairSecret creates a new cert/key pair and sets them in the secret.  Only one of client, serving, or signer rotation may be specified.
-func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator CertCreator) error {
-	if targetCertKeyPairSecret.Annotations == nil {
-		targetCertKeyPairSecret.Annotations = map[string]string{}
+func setTargetCertKeyPairSecret(s *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator CertCreator) error {
+	if s.Annotations == nil {
+		s.Annotations = map[string]string{}
 	}
-	if targetCertKeyPairSecret.Data == nil {
-		targetCertKeyPairSecret.Data = map[string][]byte{}
+	if s.Data == nil {
+		s.Data = map[string][]byte{}
 	}
 
 	// our annotation is based on our cert validity, so we want to make sure that we don't specify something past our signer
@@ -116,14 +116,11 @@ func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity
 		return err
 	}
 
-	targetCertKeyPairSecret.Data[corev1.TLSCertKey], targetCertKeyPairSecret.Data[corev1.TLSPrivateKeyKey], err = certKeyPair.GetPEMBytes()
+	s.Data[corev1.TLSCertKey], s.Data[corev1.TLSPrivateKeyKey], err = certKeyPair.GetPEMBytes()
 	if err != nil {
 		return err
 	}
-	targetCertKeyPairSecret.Annotations[CertificateNotAfterAnnotation] = certKeyPair.Certs[0].NotAfter.Format(time.RFC3339)
-	targetCertKeyPairSecret.Annotations[CertificateNotBeforeAnnotation] = certKeyPair.Certs[0].NotBefore.Format(time.RFC3339)
-	targetCertKeyPairSecret.Annotations[CertificateIssuer] = certKeyPair.Certs[0].Issuer.CommonName
-	certCreator.SetAnnotations(certKeyPair, targetCertKeyPairSecret.Annotations)
+	certCreator.SetAnnotations(certKeyPair, s.Annotations)
 
 	return nil
 }
