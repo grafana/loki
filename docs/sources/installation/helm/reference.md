@@ -1968,6 +1968,7 @@ null
 			<td><pre lang="json">
 {
   "annotations": {},
+  "enabled": true,
   "labels": {},
   "remoteWrite": null
 }
@@ -1980,6 +1981,15 @@ null
 			<td>MerticsInstance annotations</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.metricsInstance.enabled</td>
+			<td>bool</td>
+			<td>If enabled, MetricsInstance resources for Grafana Agent Operator are created</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
