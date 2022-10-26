@@ -19,7 +19,7 @@ func SigningCAExpired(opts Options) error {
 		return nil
 	}
 
-	reason := opts.Signer.creator.NeedNewCertificate(opts.Signer.Secret.Annotations, opts.RotateOptions.CACertRefresh)
+	reason := opts.Signer.creator.NeedNewCertificate(opts.Signer.Secret.Annotations, opts.Rotation.CACertRefresh)
 	if reason != "" {
 		return &CertExpiredError{Message: "signing CA certificate expired", Reasons: []string{reason}}
 	}
@@ -32,8 +32,8 @@ func buildSigningCASecret(opts *Options) (client.Object, error) {
 	signingCertKeyPairSecret := newSigningCASecret(*opts)
 	opts.Signer.creator.Issuer = fmt.Sprintf("%s_%s", signingCertKeyPairSecret.Namespace, signingCertKeyPairSecret.Name)
 
-	if reason := opts.Signer.creator.NeedNewCertificate(signingCertKeyPairSecret.Annotations, opts.RotateOptions.CACertRefresh); reason != "" {
-		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.RotateOptions.CACertValidity, opts.Signer.creator); err != nil {
+	if reason := opts.Signer.creator.NeedNewCertificate(signingCertKeyPairSecret.Annotations, opts.Rotation.CACertRefresh); reason != "" {
+		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.Rotation.CACertValidity, opts.Signer.creator); err != nil {
 			return nil, err
 		}
 	}

@@ -39,15 +39,15 @@ func BuildAll(opts Options) ([]client.Object, error) {
 
 // ApplyDefaultSettings merges the default options with the ones we give.
 func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) error {
-	certOpts, err := NewRotationOptions(cfg)
+	rotation, err := ParseRotation(cfg)
 	if err != nil {
 		return err
 	}
+	opts.Rotation = rotation
 
 	if opts.Certificates == nil {
 		opts.Certificates = make(map[string]SelfSignedCertKey)
 	}
-
 	for _, name := range ComponentCertSecretNames(opts.StackName) {
 		c := certificateRotation{
 			UserInfo: defaultUserInfo,
@@ -66,8 +66,6 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 
 		opts.Certificates[name] = cert
 	}
-
-	opts.RotateOptions = certOpts
 
 	return nil
 }

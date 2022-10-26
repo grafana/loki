@@ -36,7 +36,7 @@ func CertificatesExpired(opts Options) error {
 
 	var reasons []string
 	for name, cert := range opts.Certificates {
-		reason := cert.creator.NeedNewCertificate(cert.Secret.Annotations, rawCA, caCerts, opts.RotateOptions.TargetCertRefresh)
+		reason := cert.creator.NeedNewCertificate(cert.Secret.Annotations, rawCA, caCerts, opts.Rotation.TargetCertRefresh)
 		if reason != "" {
 			reasons = append(reasons, fmt.Sprintf("%s: %s", name, reason))
 		}
@@ -56,8 +56,8 @@ func buildTargetCertKeyPairSecrets(opts Options) ([]client.Object, error) {
 		ns       = opts.StackNamespace
 		rawCA    = opts.Signer.RawCA
 		caBundle = opts.RawCACerts
-		validity = opts.RotateOptions.TargetCertValidity
-		refresh  = opts.RotateOptions.TargetCertRefresh
+		validity = opts.Rotation.TargetCertValidity
+		refresh  = opts.Rotation.TargetCertRefresh
 	)
 
 	for name, cert := range opts.Certificates {

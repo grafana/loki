@@ -51,12 +51,12 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	opts, err := certrotation.NewRotationOptions(r.FeatureGates.BuiltInCertManagement)
+	rt, err := certrotation.ParseRotation(r.FeatureGates.BuiltInCertManagement)
 	if err != nil {
 		return ctrl.Result{Requeue: false}, err
 	}
 
-	checkExpiryAfter := expiryRetryAfter(opts.TargetCertRefresh)
+	checkExpiryAfter := expiryRetryAfter(rt.TargetCertRefresh)
 	r.Log.Info("Checking if LokiStack certificates expired", "name", req.String(), "interval", checkExpiryAfter.String())
 
 	var expired *certrotation.CertExpiredError
