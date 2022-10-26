@@ -49,7 +49,7 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 		opts.Certificates = make(map[string]SelfSignedCertKey)
 	}
 	for _, name := range ComponentCertSecretNames(opts.StackName) {
-		c := certificateRotation{
+		r := certificateRotation{
 			UserInfo: defaultUserInfo,
 			Hostnames: []string{
 				fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
@@ -59,11 +59,9 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 
 		cert, ok := opts.Certificates[name]
 		if !ok {
-			cert = SelfSignedCertKey{creator: c}
-		} else {
-			cert.creator = c
+			cert = SelfSignedCertKey{}
 		}
-
+		cert.Rotation = r
 		opts.Certificates[name] = cert
 	}
 

@@ -30,9 +30,9 @@ type Options struct {
 // - or 80% of validity is over
 // - or the CA is expired.
 type SigningCA struct {
-	RawCA   *crypto.CA
-	Secret  *corev1.Secret
-	creator signerRotation
+	RawCA    *crypto.CA
+	Secret   *corev1.Secret
+	Rotation signerRotation
 }
 
 // SelfSignedCertKey rotates a key and cert signed by a signing CA and stores it in a secret.
@@ -43,8 +43,8 @@ type SigningCA struct {
 // - or the cert is expired.
 // - or the signing CA changes.
 type SelfSignedCertKey struct {
-	Secret  *corev1.Secret
-	creator certificateRotation
+	Secret   *corev1.Secret
+	Rotation certificateRotation
 }
 
 // Rotation define the validity/refresh pairs for certificates

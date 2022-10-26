@@ -64,15 +64,15 @@ func TestApplyDefaultSettings_EmptySecrets(t *testing.T) {
 	for _, name := range cs {
 		cert, ok := opts.Certificates[name]
 		require.True(t, ok)
-		require.NotEmpty(t, cert.creator)
+		require.NotEmpty(t, cert.Rotation)
 
 		hostnames := []string{
 			fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
 			fmt.Sprintf("%s.%s.svc.cluster.local", name, opts.StackNamespace),
 		}
 
-		require.ElementsMatch(t, hostnames, cert.creator.Hostnames)
-		require.Equal(t, defaultUserInfo, cert.creator.UserInfo)
+		require.ElementsMatch(t, hostnames, cert.Rotation.Hostnames)
+		require.Equal(t, defaultUserInfo, cert.Rotation.UserInfo)
 		require.Nil(t, cert.Secret)
 	}
 }
@@ -119,15 +119,15 @@ func TestApplyDefaultSettings_ExistingSecrets(t *testing.T) {
 	for _, name := range cs {
 		cert, ok := opts.Certificates[name]
 		require.True(t, ok)
-		require.NotEmpty(t, cert.creator)
+		require.NotEmpty(t, cert.Rotation)
 
 		hostnames := []string{
 			fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
 			fmt.Sprintf("%s.%s.svc.cluster.local", name, opts.StackNamespace),
 		}
 
-		require.ElementsMatch(t, hostnames, cert.creator.Hostnames)
-		require.Equal(t, defaultUserInfo, cert.creator.UserInfo)
+		require.ElementsMatch(t, hostnames, cert.Rotation.Hostnames)
+		require.Equal(t, defaultUserInfo, cert.Rotation.UserInfo)
 
 		require.NotNil(t, cert.Secret)
 	}
