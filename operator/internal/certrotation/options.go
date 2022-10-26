@@ -4,6 +4,8 @@ import (
 	"crypto/x509"
 	"time"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -16,16 +18,11 @@ type ComponentCertificates map[string]SelfSignedCertKey
 type Options struct {
 	StackName      string
 	StackNamespace string
-
-	CACertValidity     time.Duration
-	CACertRefresh      time.Duration
-	TargetCertValidity time.Duration
-	TargetCertRefresh  time.Duration
-
-	Signer       SigningCA
-	CABundle     *corev1.ConfigMap
-	RawCACerts   []*x509.Certificate
-	Certificates ComponentCertificates
+	RotateOptions  RotationOptions
+	Signer         SigningCA
+	CABundle       *corev1.ConfigMap
+	RawCACerts     []*x509.Certificate
+	Certificates   ComponentCertificates
 }
 
 // SigningCA rotates a self-signed signing CA stored in a secret. It creates a new one when
@@ -48,4 +45,42 @@ type SigningCA struct {
 type SelfSignedCertKey struct {
 	Secret  *corev1.Secret
 	creator certificateRotation
+}
+
+// RotationOptions define the validity/refresh pairs for certificates
+type RotationOptions struct {
+	CACertValidity     time.Duration
+	CACertRefresh      time.Duration
+	TargetCertValidity time.Duration
+	TargetCertRefresh  time.Duration
+}
+
+// NewRotationOptions builds a new RotationOptions struct from the feature gate string values.
+func NewRotationOptions(cfg configv1.BuiltInCertManagement) (RotationOptions, error) {
+	caValidity, err := time.ParseDuration(cfg.CACertValidity)
+	if err != nil {
+		return RotationOptions{}, kverrors.Wrap(err, "failed to parse CA validity duration", "value", cfg.CACertValidity)
+	}
+
+	caRefresh, err := time.ParseDuration(cfg.CACertRefresh)
+	if err != nil {
+		return RotationOptions{}, kverrors.Wrap(err, "failed to parse CA refresh duration", "value", cfg.CACertRefresh)
+	}
+
+	certValidity, err := time.ParseDuration(cfg.CertValidity)
+	if err != nil {
+		return RotationOptions{}, kverrors.Wrap(err, "failed to parse target certificate validity duration", "value", cfg.CertValidity)
+	}
+
+	certRefresh, err := time.ParseDuration(cfg.CertRefresh)
+	if err != nil {
+		return RotationOptions{}, kverrors.Wrap(err, "failed to parse target certificate refresh duration", "value", cfg.CertRefresh)
+	}
+
+	return RotationOptions{
+		CACertValidity:     caValidity,
+		CACertRefresh:      caRefresh,
+		TargetCertValidity: certValidity,
+		TargetCertRefresh:  certRefresh,
+	}, nil
 }
