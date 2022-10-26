@@ -115,7 +115,7 @@ projectId: $GCP_PROJECT_ID
 projectNumber: '$GCP_PROJECT_NUMBER'
 ```
 
-If the `createTime` is later than **April 8, 2021**, skip the following step. Otherwise, you need to grant the `iam.serviceAccountTokenCreator` role to a Google-managed service account:
+If the `createTime` is later than **April 8, 2021**, skip the following step. Otherwise, you [need to grant](https://cloud.google.com/pubsub/docs/push#configure_for_push_authentication) the `iam.serviceAccountTokenCreator` role to a Google-managed service account:
 ```bash
 PUBSUB_SERVICE_ACCOUNT="service-${GCP_PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
 gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
