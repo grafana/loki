@@ -14,6 +14,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.2.3
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
+## 3.3.0
+
+- [CHANGE] Remove ServiceMonitor and PrometheusRule CRD
 
 ## 3.2.2
 

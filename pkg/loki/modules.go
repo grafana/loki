@@ -37,7 +37,6 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -74,7 +73,6 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
-	Embededcache             string = "embedded-cache"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -207,49 +205,6 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
 	}
 	return t.ring, nil
-}
-
-func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
-	if !t.Cfg.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
-		return nil, nil
-	}
-
-	groupCacheConfig := cache.GroupCacheConfig{
-		Enabled:           true,
-		Ring:              t.Cfg.Common.EmbeddedCacheConfig.Ring,
-		MaxSizeMB:         t.Cfg.Common.EmbeddedCacheConfig.MaxSizeMB,
-		ListenPort:        t.Cfg.Common.EmbeddedCacheConfig.ListenPort,
-		HeartbeatInterval: t.Cfg.Common.EmbeddedCacheConfig.HeartbeatInterval,
-		HeartbeatTimeout:  t.Cfg.Common.EmbeddedCacheConfig.HeartbeatTimeout,
-		WriteByteTimeout:  t.Cfg.Common.EmbeddedCacheConfig.WriteByteTimeout,
-	}
-
-	groupCacheConfig.Ring.ListenPort = groupCacheConfig.ListenPort
-
-	rm, err := cache.NewGroupcacheRingManager(groupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, gerrors.Wrap(err, "new embedded-cache ring manager")
-	}
-
-	t.embeddedcacheRingManager = rm
-	t.Server.HTTP.Path("/embedded-cache/ring").Methods("GET", "POST").Handler(t.embeddedcacheRingManager)
-
-	gc, err := cache.NewGroupCache(rm, groupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
-
-	groupConfig := cache.GroupConfig{
-		MaxSizeMB: t.Cfg.QueryRange.CacheConfig.EmbeddedCache.MaxSizeMB,
-	}
-
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Cache = gc.NewGroup(
-		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
-		&groupConfig,
-		stats.ResultCache,
-	)
-
-	return t.embeddedcacheRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
@@ -998,9 +953,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	if t.Cfg.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
-		t.Cfg.Common.EmbeddedCacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	}
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

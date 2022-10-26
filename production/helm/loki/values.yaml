@@ -84,6 +84,11 @@ loki:
     memberlist:
       join_members:
         - {{ include "loki.memberlist" . }}
+        {{- with .Values.migrate.fromDistributed }}
+        {{- if .enabled }}
+        - {{ .memberlistService }}
+        {{- end }}
+        {{- end }}
 
     {{- if .Values.loki.commonConfig}}
     common:
@@ -422,7 +427,7 @@ enterprise:
 
         sendfile     on;
         tcp_nopush   on;
-        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }};
+        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
         {{- with .Values.gateway.nginxConfig.httpSnippet }}
         {{ . | nindent 2 }}
@@ -511,6 +516,16 @@ enterprise:
         }
       }
 
+# -- Options that may be necessary when performing a migration from another helm chart
+migrate:
+  # -- When migrating from a distributed chart like loki-distributed or enterprise-logs
+  fromDistributed:
+    # -- Set to true if migrating from a distributed helm chart
+    enabled: false
+    # -- If migrating from a distributed service, provide the distributed deployment's
+    # memberlist service DNS so the new deployment can join it's ring.
+    memberlistService: ""
+
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
   create: true
@@ -530,6 +545,28 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+
+# -- Section for configuring optional Helm test
+test:
+  enabled: true
+  # -- Address of the prometheus server to query for the test
+  prometheusAddress: "http://prometheus:9090"
+  # -- Number of times to retry the test before failing
+  timeout: 1m
+  # -- Additional labels for the test pods
+  labels: {}
+  # -- Additional annotations for test pods
+  annotations: {}
+  # -- Image to use for loki canary
+  image:
+    # -- The Docker registry
+    registry: docker.io
+    # -- Docker image repository
+    repository: grafana/loki-helm-test
+    # -- Overrides the image tag whose default is the chart's appVersion
+    tag: null
+    # -- Docker image pull policy
+    pullPolicy: IfNotPresent
 
 # Monitoring section determines which monitoring features to enable
 monitoring:
@@ -601,6 +638,14 @@ monitoring:
     scheme: http
     # -- ServiceMonitor will use these tlsConfig settings to make the health check requests
     tlsConfig: null
+    # -- If defined, will create a MetricsInstance for the Grafana Agent Operator.
+    metricsInstance:
+      # -- MerticsInstance annotations
+      annotations: {}
+      # -- Additional MatricsInstance labels
+      labels: {}
+      # -- If defined a MetricsInstance will be created to remote write metrics.
+      remoteWrite: null
 
   # Self monitoring determines whether Loki should scrape it's own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
@@ -648,6 +693,8 @@ monitoring:
       annotations: {}
       # -- Additional LogsInstance labels
       labels: {}
+      # -- Additional clients for remote write
+      clients: null
 
     # The Loki canary pushes logs to and queries from this loki installation to test
     # that it's working correctly
@@ -1082,7 +1129,7 @@ gateway:
 
         sendfile     on;
         tcp_nopush   on;
-        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }};
+        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
         {{- with .Values.gateway.nginxConfig.httpSnippet }}
         {{ . | nindent 2 }}

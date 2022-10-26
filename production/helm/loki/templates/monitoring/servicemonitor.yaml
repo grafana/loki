@@ -1,5 +1,5 @@
 {{- with .Values.monitoring.serviceMonitor }}
-{{- if .enabled }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") .enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
