@@ -94,7 +94,7 @@ func newClient(t *testing.T) v1.API {
 	return v1.NewAPI(client)
 }
 
-func eventually(t *testing.T, test func() error, timeoutDuration time.Duration , msg string) {
+func eventually(t *testing.T, test func() error, timeoutDuration time.Duration, msg string) {
 	require.Eventually(t, func() bool {
 		queryError := test()
 		if queryError != nil {
