@@ -600,18 +600,18 @@ func TestUsingObjectStorageIndex(t *testing.T) {
 		From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
 		IndexType: "boltdb-shipper",
 	}}
-	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
+	assert.Equal(t, true, ContainsObjectStorageIndex(cfg.Configs))
 
 	// just one PeriodConfig in the past not using object storge index
 	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, UsingObjectStorageIndex(cfg.Configs))
+	assert.Equal(t, false, ContainsObjectStorageIndex(cfg.Configs))
 
 	// add a newer PeriodConfig in the future using tsdb
 	cfg.Configs = append(cfg.Configs, PeriodConfig{
 		From:      DayTime{Time: model.Now().Add(time.Hour)},
 		IndexType: "tsdb",
 	})
-	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
+	assert.Equal(t, true, ContainsObjectStorageIndex(cfg.Configs))
 }
 
 func TestActiveIndexType(t *testing.T) {

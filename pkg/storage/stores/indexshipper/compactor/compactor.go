@@ -177,22 +177,13 @@ type storeContainer struct {
 	indexStorageClient shipper_storage.Client
 }
 
-func NewCompactor(cfg Config, objectClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, storeClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
 	}
 	if limits != nil {
 		defaultRetentionStats.Set(limits.DefaultLimits().RetentionPeriod.String())
-	}
-	if cfg.SharedStoreType == "" {
-		objectTypes := make([]string, len(objectClients))
-		i := 0
-		for key := range objectClients {
-			objectTypes[i] = key
-			i++
-		}
-		level.Info(util_log.Logger).Log("msg", "compactor shared_store_type not specified. Initializing compactor to operator on the following object stores", "stores", objectTypes)
 	}
 
 	compactor := &Compactor{
@@ -241,7 +232,7 @@ func NewCompactor(cfg Config, objectClients map[string]client.ObjectClient, sche
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectClients, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(storeClients, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
 
@@ -261,11 +252,11 @@ func (c *Compactor) init(objectClients map[string]client.ObjectClient, schemaCon
 		}
 
 		if err := retention.MoveMarkersToSharedStoreDir(filepath.Join(c.cfg.WorkingDirectory, "retention"), c.cfg.SharedStoreType); err != nil {
-			return err
+			return fmt.Errorf("failed to move markers to shared store dir: %w", err)
 		}
 	}
 
-	c.containers = make(map[string]storeContainer)
+	c.containers = make(map[string]storeContainer, len(objectClients))
 	for objectType, objectClient := range objectClients {
 		var sc storeContainer
 		sc.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
@@ -300,20 +291,20 @@ func (c *Compactor) init(objectClients map[string]client.ObjectClient, schemaCon
 func (c *Compactor) initDeletes(objectClients map[string]client.ObjectClient, r prometheus.Registerer, limits *validation.Overrides) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
-	var objectType string
-	switch true {
+	var deleteRequestStore string
+	switch {
 	case c.cfg.DeleteRequestStore != "":
-		objectType = c.cfg.DeleteRequestStore
+		deleteRequestStore = c.cfg.DeleteRequestStore
 	case c.cfg.SharedStoreType != "":
-		level.Info(util_log.Logger).Log("msg", "compactor delete_request_store not specified. Using shared_store_type as fallback for storing delete requests")
-		objectType = c.cfg.SharedStoreType
+		level.Info(util_log.Logger).Log("msg", "-boltdb.shipper.compactor.delete-request-store not specified. Using -boltdb.shipper.compactor.shared-store as fallback for storing delete requests")
+		deleteRequestStore = c.cfg.SharedStoreType
 	default:
 		return errors.New("failed to init delete store. Ensure boltdb.shipper.compactor.delete-request-store is configured")
 	}
 
-	objectClient, ok := objectClients[objectType]
+	objectClient, ok := objectClients[deleteRequestStore]
 	if !ok {
-		return fmt.Errorf("failed to init delete store. ObjectClient not found for %s", objectType)
+		return fmt.Errorf("failed to init delete store. ObjectClient not found for %s", deleteRequestStore)
 	}
 
 	store, err := deletion.NewDeleteStore(deletionWorkDir, shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix))

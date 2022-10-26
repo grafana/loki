@@ -2077,7 +2077,7 @@ compacts index shards to more performant forms.
 
 # The shared store used for storing boltdb files.
 # Supported types: gcs, s3, azure, swift, filesystem, bos.
-# If not set, compactor will be initialized to operate on all the object store
+# If not set, compaction will be performed on all the object store
 # indexes (tsdb, boltdb) defined in the schema config.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]

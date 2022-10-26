@@ -240,32 +240,15 @@ func usingForPeriodConfigs(configs []PeriodConfig, fn func(PeriodConfig) bool) b
 	return false
 }
 
-func usingObjectStoreIndex(cfg PeriodConfig) bool {
-	switch cfg.IndexType {
-	case BoltDBShipperType, TSDBType:
-		return true
-	default:
-		return false
-	}
+// UsingObjectStoreIndex returns true if the period config uses object store index.
+func UsingObjectStoreIndex(cfg PeriodConfig) bool {
+	return cfg.IndexType == BoltDBShipperType || cfg.IndexType == TSDBType
 }
 
-// UsingObjectStorageIndex returns true if the current or upcoming period
+// ContainsObjectStorageIndex returns true if the current or upcoming period
 // uses object store index.
-func UsingObjectStorageIndex(configs []PeriodConfig) bool {
-	return usingForPeriodConfigs(configs, usingObjectStoreIndex)
-}
-
-// FilterObjectStoreIndex returns a new slice retaining only the periodConfigs
-// that use object store index.
-func FilterObjectStoreIndex(in []PeriodConfig) []PeriodConfig {
-	var out []PeriodConfig
-	for _, cfg := range in {
-		if usingObjectStoreIndex(cfg) {
-			out = append(out, cfg)
-		}
-	}
-
-	return out
+func ContainsObjectStorageIndex(configs []PeriodConfig) bool {
+	return usingForPeriodConfigs(configs, UsingObjectStoreIndex)
 }
 
 func defaultRowShards(schema string) uint32 {

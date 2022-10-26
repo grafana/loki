@@ -542,13 +542,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
-	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.ChunkStoreConfig.DisableIndexDeduplication = true
 		t.Cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
 	// Set configs pertaining to object storage based indices
-	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 
@@ -592,7 +592,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		var asyncStore bool
 
 		shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
@@ -728,7 +728,7 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 }
 
 func (t *Loki) supportIndexDeleteRequest() bool {
-	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
+	return config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
 func (t *Loki) compactorAddress() (string, error) {
@@ -1005,27 +1005,24 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
+	if !config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
+		return nil, nil
+	}
+
 	objectClients := make(map[string]client.ObjectClient)
 	if sharedStoreType := t.Cfg.CompactorConfig.SharedStoreType; sharedStoreType != "" {
-		if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-			level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
-			return nil, nil
-		}
-
 		objectClient, err := storage.NewObjectClient(sharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
 		if err != nil {
 			return nil, err
-
 		}
 		objectClients[sharedStoreType] = objectClient
 	} else {
-		periodConfigs := config.FilterObjectStoreIndex(t.Cfg.SchemaConfig.Configs)
-		if len(periodConfigs) == 0 {
-			level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
-			return nil, nil
-		}
+		for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
+			if !config.UsingObjectStoreIndex(periodConfig) {
+				continue
+			}
 
-		for _, periodConfig := range periodConfigs {
 			if objectClients[periodConfig.ObjectType] != nil {
 				continue
 			}
@@ -1037,6 +1034,12 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 			objectClients[periodConfig.ObjectType] = objectClient
 		}
+
+		objectTypes := make([]string, 0, len(objectClients))
+		for objectType, _ := range objectClients {
+			objectTypes = append(objectTypes, objectType)
+		}
+		level.Info(util_log.Logger).Log("msg", "-boltdb.shipper.compactor.shared-store not specified. Initializing compactor to operator on the following object stores", "stores", strings.Join(objectTypes, ", "))
 	}
 
 	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)

@@ -88,10 +88,10 @@ type Marker struct {
 	markTimeout      time.Duration
 }
 
-func NewMarker(workingDirectory, objectType string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
-	metrics := newMarkerMetrics(objectType, r)
+func NewMarker(workingDirectory, objectStoreType string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+	metrics := newMarkerMetrics(prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r))
 	return &Marker{
-		workingDirectory: filepath.Join(workingDirectory, objectType),
+		workingDirectory: filepath.Join(workingDirectory, objectStoreType),
 		expiration:       expiration,
 		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
@@ -268,10 +268,10 @@ type Sweeper struct {
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir, objectType string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
-	m := newSweeperMetrics(objectType, r)
+func NewSweeper(workingDir, objectStoreType string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+	m := newSweeperMetrics(prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r))
 
-	p, err := newMarkerStorageReader(filepath.Join(workingDir, objectType), deleteWorkerCount, minAgeDelete, m)
+	p, err := newMarkerStorageReader(filepath.Join(workingDir, objectStoreType), deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -414,22 +414,32 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) error {
 	markersDir := filepath.Join(workingDir, markersFolder)
 	info, err := os.Stat(markersDir)
-	if os.IsNotExist(err) {
-		return nil
-	} else if err == nil && info.IsDir() {
-		if sharedStoreType != "" {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s/markers", sharedStoreType))
-			if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, sharedStoreType)); err != nil {
-				return err
-			}
-
-			err := os.Rename(markersDir, filepath.Join(workingDir, sharedStoreType, markersFolder))
-			if err != nil {
-				return err
-			}
-		} else {
-			level.Warn(util_log.Logger).Log("msg", "found markers in retention dir. Not moving it since SharedStoreType is not configured")
+	if err != nil {
+		if os.IsNotExist(err) {
+			// nothing to migrate
+			return nil
 		}
+
+		return err
+	}
+
+	if !info.IsDir() {
+		return nil
+	}
+
+	targetDir := filepath.Join(workingDir, sharedStoreType, markersFolder)
+	if sharedStoreType != "" {
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s", targetDir))
+		if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, sharedStoreType)); err != nil {
+			return err
+		}
+
+		err := os.Rename(markersDir, filepath.Join(workingDir, sharedStoreType, markersFolder))
+		if err != nil {
+			return err
+		}
+	} else {
+		level.Warn(util_log.Logger).Log("msg", "found markers in retention dir, not moving it since SharedStoreType is not configured")
 	}
 
 	return err
