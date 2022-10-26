@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -570,8 +571,15 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
+type internedStringSet map[string]struct {
+	s  string
+	ok bool
+}
+
 type LogfmtExpressionParser struct {
 	Expressions []log.LogfmtExpression
+	dec         *logfmt.Decoder
+	keys        internedStringSet
 
 	implicit
 }

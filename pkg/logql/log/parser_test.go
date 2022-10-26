@@ -830,8 +830,20 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"label override",
 			testLine,
+			[]LogfmtExpression{},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "app_extracted", Value: "foo"},
+			},
+		},
+		{
+			"label override 2",
+			testLine,
 			[]LogfmtExpression{
-				NewLogfmtExpr("app", "app"),
+				NewLogfmtExpr("lvl", "level"),
 			},
 			labels.Labels{
 				{Name: "app", Value: "bar"},
@@ -839,6 +851,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			labels.Labels{
 				{Name: "app", Value: "bar"},
 				{Name: "app_extracted", Value: "foo"},
+				{Name: "lvl", Value: "error"},
 			},
 		},
 	}

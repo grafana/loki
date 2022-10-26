@@ -343,6 +343,7 @@ func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtExpressionParser struct {
 	expressions map[string][]interface{}
+	dec         *logfmt.Decoder
 	keys        internedStringSet
 }
 
@@ -362,6 +363,7 @@ func NewLogfmtExpressionParser(expressions []LogfmtExpression) (*LogfmtExpressio
 	}
 	return &LogfmtExpressionParser{
 		expressions: paths,
+		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 	}, nil
 }
@@ -371,16 +373,19 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-	// Convert LogfmtExpression to Logfmt type to parse the key value pairs
-	j := NewLogfmtParser()
-	originalLabels := NewBaseLabelsBuilder().ForLabels(lbs.labels(), lbs.labels().Hash())
-	originalLabels.Reset()
 
-	j.dec.Reset(line)
+	// Create a map of every renamed label and its original name
+	// in order to retrieve it later in the extraction phase
+	keys := make(map[string]string, len(l.expressions))
+	for id, paths := range l.expressions {
+		keys[id] = fmt.Sprintf("%v", paths...)
+		lbs.Set(id, "")
+	}
 
-	for j.dec.ScanKeyval() {
-		key, ok := j.keys.Get(j.dec.Key(), func() (string, bool) {
-			sanitized := sanitizeLabelKey(string(j.dec.Key()), true)
+	l.dec.Reset(line)
+	for l.dec.ScanKeyval() {
+		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
+			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
 			if len(sanitized) == 0 {
 				return "", false
 			}
@@ -389,30 +394,32 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 			if lbs.BaseHas(sanitized) {
 				sanitized = sanitized + duplicateSuffix
-				lbs.Set(sanitized, string(j.dec.Value()))
+				lbs.Set(sanitized, string(l.dec.Value()))
 			}
 			return sanitized, true
 		})
 		if !ok {
 			continue
 		}
+		val := l.dec.Value()
 
-		val := j.dec.Value()
+		for id, originalLabelName := range keys {
+			if key == originalLabelName {
+				key = id
+			}
+		}
 
 		if bytes.ContainsRune(val, utf8.RuneError) {
 			val = nil
 		}
-		originalLabels.Set(key, string(val))
+		if l.expressions[key] != nil {
+			lbs.Set(key, string(val))
+		}
 	}
-	if j.dec.Err() != nil {
+	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
-		lbs.SetErrorDetails(j.dec.Err().Error())
+		lbs.SetErrorDetails(l.dec.Err().Error())
 		return line, true
-	}
-
-	for identifier, paths := range l.expressions {
-		result, _ := originalLabels.Get(paths[0].(string))
-		lbs.Set(identifier, result)
 	}
 
 	return line, true
