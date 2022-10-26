@@ -30,22 +30,22 @@ type Options struct {
 
 // SigningCA rotates a self-signed signing CA stored in a secret. It creates a new one when
 // - refresh duration is over
-// - or 80% of validity is over (if RefreshOnlyWhenExpired is false)
+// - or 80% of validity is over
 // - or the CA is expired.
 type SigningCA struct {
 	RawCA   *crypto.CA
 	Secret  *corev1.Secret
-	Creator CACreator
+	creator signerRotation
 }
 
 // SelfSignedCertKey rotates a key and cert signed by a signing CA and stores it in a secret.
 //
 // It creates a new one when
 // - refresh duration is over
-// - or 80% of validity is over (if RefreshOnlyWhenExpired is false)
+// - or 80% of validity is over
 // - or the cert is expired.
 // - or the signing CA changes.
 type SelfSignedCertKey struct {
 	Secret  *corev1.Secret
-	Creator CertCreator
+	creator certificateRotation
 }

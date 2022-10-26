@@ -71,9 +71,9 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 
 		cert, ok := opts.Certificates[name]
 		if !ok {
-			cert = SelfSignedCertKey{Creator: c}
+			cert = SelfSignedCertKey{creator: c}
 		} else {
-			cert.Creator = c
+			cert.creator = c
 		}
 
 		opts.Certificates[name] = cert
@@ -93,8 +93,8 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	return nil
 }
 
-func newCreator(name, namespace string) CertCreator {
-	return CertCreator{
+func newCreator(name, namespace string) certificateRotation {
+	return certificateRotation{
 		UserInfo: defaultUserInfo,
 		Hostnames: []string{
 			fmt.Sprintf("%s.%s.svc", name, namespace),

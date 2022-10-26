@@ -11,9 +11,52 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestBuildCABundle(t *testing.T) {
-	// A default test CA
-	testCA, err := crypto.MakeSelfSignedCAConfigForDuration("test-build-ca-bundle", 30*24*time.Hour)
+func TestBuildCABundle_Create(t *testing.T) {
+	rawCA, _ := newTestCABundle(t, "test-ca")
+
+	opts := &Options{
+		StackName:      "dev",
+		StackNamespace: "ns",
+		Signer: SigningCA{
+			RawCA: rawCA,
+		},
+	}
+
+	obj, err := buildCABundle(opts)
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+	require.Len(t, opts.RawCACerts, 1)
+}
+
+func TestBuildCABundle_Append(t *testing.T) {
+	_, rawCABytes := newTestCABundle(t, "test-ca")
+	newRawCA, _ := newTestCABundle(t, "test-ca-other")
+
+	opts := &Options{
+		StackName:      "dev",
+		StackNamespace: "ns",
+		Signer: SigningCA{
+			RawCA: newRawCA,
+		},
+		CABundle: &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "dev-ca-bundle",
+				Namespace: "ns",
+			},
+			Data: map[string]string{
+				CAFile: string(rawCABytes),
+			},
+		},
+	}
+
+	obj, err := buildCABundle(opts)
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+	require.Len(t, opts.RawCACerts, 2)
+}
+
+func newTestCABundle(t *testing.T, name string) (*crypto.CA, []byte) {
+	testCA, err := crypto.MakeSelfSignedCAConfigForDuration(name, 1*time.Hour)
 	require.NoError(t, err)
 
 	certBytes := &bytes.Buffer{}
@@ -27,65 +70,5 @@ func TestBuildCABundle(t *testing.T) {
 	rawCABytes, err := crypto.EncodeCertificates(rawCA.Config.Certs...)
 	require.NoError(t, err)
 
-	// A new test CA for append test
-	newCA, err := crypto.MakeSelfSignedCAConfigForDuration("test-build-ca-bundle-1", 30*24*time.Hour)
-	require.NoError(t, err)
-
-	newCertBytes := &bytes.Buffer{}
-	newKeyBytes := &bytes.Buffer{}
-	err = newCA.WriteCertConfig(newCertBytes, newKeyBytes)
-	require.NoError(t, err)
-
-	newRawCA, err := crypto.GetCAFromBytes(newCertBytes.Bytes(), newKeyBytes.Bytes())
-	require.NoError(t, err)
-
-	tt := []struct {
-		desc    string
-		opts    *Options
-		wantLen int
-	}{
-		{
-			desc: "create",
-			opts: &Options{
-				StackName:      "dev",
-				StackNamespace: "ns",
-				Signer: SigningCA{
-					RawCA: rawCA,
-				},
-			},
-			wantLen: 1,
-		},
-		{
-			desc: "append",
-			opts: &Options{
-				StackName:      "dev",
-				StackNamespace: "ns",
-				Signer: SigningCA{
-					RawCA: newRawCA,
-				},
-				CABundle: &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "dev-ca-bundle",
-						Namespace: "ns",
-					},
-					Data: map[string]string{
-						CAFile: string(rawCABytes),
-					},
-				},
-			},
-			wantLen: 2,
-		},
-	}
-
-	for _, test := range tt {
-		test := test
-		t.Run(test.desc, func(t *testing.T) {
-			t.Parallel()
-
-			obj, err := buildCABundle(test.opts)
-			require.NoError(t, err)
-			require.NotNil(t, obj)
-			require.Len(t, test.opts.RawCACerts, test.wantLen)
-		})
-	}
+	return rawCA, rawCABytes
 }

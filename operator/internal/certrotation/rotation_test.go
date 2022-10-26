@@ -14,20 +14,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCACreator_ReturnErrorOnMissingIssuer(t *testing.T) {
-	c := CACreator{}
+func TestSignerRotation_ReturnErrorOnMissingIssuer(t *testing.T) {
+	c := signerRotation{}
 	_, err := c.NewCertificate(1 * time.Hour)
 	require.ErrorIs(t, err, errMissingIssuer)
 }
 
-func TestCACreator_SetAnnotations(t *testing.T) {
-	now := time.Now()
-	nowFn := func() time.Time { return now }
-
-	nowCA, err := newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
+func TestSignerRotation_SetAnnotations(t *testing.T) {
+	var (
+		now        = time.Now()
+		nowFn      = func() time.Time { return now }
+		nowCA, err = newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
+	)
 	require.NoError(t, err)
 
-	c := CACreator{}
+	c := signerRotation{}
 
 	annotations := map[string]string{}
 	c.SetAnnotations(nowCA.Config, annotations)
@@ -38,10 +39,12 @@ func TestCACreator_SetAnnotations(t *testing.T) {
 	require.Contains(t, annotations, CertificateNotAfterAnnotation)
 }
 
-func TestCACreator_NeedNewCertificate(t *testing.T) {
-	now := time.Now()
-	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
-	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
+func TestSignerRotation_NeedNewCertificate(t *testing.T) {
+	var (
+		now                 = time.Now()
+		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
+		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
+	)
 
 	tt := []struct {
 		desc        string
@@ -93,33 +96,34 @@ func TestCACreator_NeedNewCertificate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c := CACreator{}
+			c := signerRotation{}
 			reason := c.NeedNewCertificate(tc.annotations, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)
 		})
 	}
 }
 
-func TestCertCreator_ReturnErrorOnMissingUserInfo(t *testing.T) {
-	c := CertCreator{}
+func TestCertificateRotation_ReturnErrorOnMissingUserInfo(t *testing.T) {
+	c := certificateRotation{}
 	_, err := c.NewCertificate(nil, 1*time.Hour)
 	require.ErrorIs(t, err, errMissingUserInfo)
 }
 
-func TestCertCreator_ReturnErrorOnMissingHostnames(t *testing.T) {
-	c := CertCreator{UserInfo: defaultUserInfo}
+func TestCertificateRotation_ReturnErrorOnMissingHostnames(t *testing.T) {
+	c := certificateRotation{UserInfo: defaultUserInfo}
 	_, err := c.NewCertificate(nil, 1*time.Hour)
 	require.ErrorIs(t, err, errMissingHostnames)
 }
 
-func TestCertCreator_CertHasRequiredExtensions(t *testing.T) {
-	now := time.Now()
-	nowFn := func() time.Time { return now }
-
-	nowCA, err := newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
+func TestCertificateRotation_CertHasRequiredExtensions(t *testing.T) {
+	var (
+		now        = time.Now()
+		nowFn      = func() time.Time { return now }
+		nowCA, err = newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
+	)
 	require.NoError(t, err)
 
-	c := CertCreator{
+	c := certificateRotation{
 		UserInfo:  defaultUserInfo,
 		Hostnames: []string{"example.org"},
 	}
@@ -133,14 +137,15 @@ func TestCertCreator_CertHasRequiredExtensions(t *testing.T) {
 	require.Equal(t, defaultUserInfo.GetGroups(), cert.Certs[0].Subject.Organization)
 }
 
-func TestCertCreator_SetAnnotations(t *testing.T) {
-	now := time.Now()
-	nowFn := func() time.Time { return now }
-
-	nowCA, err := newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
+func TestCertificateRotation_SetAnnotations(t *testing.T) {
+	var (
+		now        = time.Now()
+		nowFn      = func() time.Time { return now }
+		nowCA, err = newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
+	)
 	require.NoError(t, err)
 
-	c := CertCreator{Hostnames: []string{"example.org"}}
+	c := certificateRotation{Hostnames: []string{"example.org"}}
 
 	annotations := map[string]string{}
 	c.SetAnnotations(nowCA.Config, annotations)
@@ -152,22 +157,18 @@ func TestCertCreator_SetAnnotations(t *testing.T) {
 	require.Contains(t, annotations, CertificateHostnames)
 }
 
-func TestCertCreator_NeedNewCertificate(t *testing.T) {
-	now := time.Now()
-	nowFn := func() time.Time { return now }
+func TestCertificateRotation_NeedNewCertificate(t *testing.T) {
+	var (
+		now                 = time.Now()
+		nowFn               = func() time.Time { return now }
+		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
+		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
+		nowCA, _            = newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
 
-	twentyMinutesBeforeNow := time.Now().Add(-20 * time.Minute)
-	twentyMinutesBeforeNowFn := func() time.Time { return twentyMinutesBeforeNow }
-
-	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
-	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
-
-	// A default test CA
-	nowCA, err := newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, nowFn)
-	require.NoError(t, err)
-
-	twentyMinutesBeforeCA, err := newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, twentyMinutesBeforeNowFn)
-	require.NoError(t, err)
+		twentyMinutesBeforeNow   = time.Now().Add(-20 * time.Minute)
+		twentyMinutesBeforeNowFn = func() time.Time { return twentyMinutesBeforeNow }
+		twentyMinutesBeforeCA, _ = newTestCACertificate(pkix.Name{CommonName: "creator-tests"}, int64(1), 200*time.Minute, twentyMinutesBeforeNowFn)
+	)
 
 	tt := []struct {
 		desc        string
@@ -273,7 +274,7 @@ func TestCertCreator_NeedNewCertificate(t *testing.T) {
 			rawCA, err := tc.signerFn()
 			require.NoError(t, err)
 
-			c := CertCreator{Hostnames: []string{"a.b.c.d", "e.d.f.g"}}
+			c := certificateRotation{Hostnames: []string{"a.b.c.d", "e.d.f.g"}}
 			reason := c.NeedNewCertificate(tc.annotations, rawCA, rawCA.Config.Certs, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)
 		})

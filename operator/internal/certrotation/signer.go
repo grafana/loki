@@ -19,7 +19,7 @@ func SigningCAExpired(opts Options) error {
 		return nil
 	}
 
-	reason := opts.Signer.Creator.NeedNewCertificate(opts.Signer.Secret.Annotations, opts.CACertRefresh)
+	reason := opts.Signer.creator.NeedNewCertificate(opts.Signer.Secret.Annotations, opts.CACertRefresh)
 	if reason != "" {
 		return &CertExpiredError{Message: "signing CA certificate expired", Reasons: []string{reason}}
 	}
@@ -30,10 +30,10 @@ func SigningCAExpired(opts Options) error {
 // buildSigningCASecret returns a k8s Secret holding the signing CA certificate
 func buildSigningCASecret(opts *Options) (client.Object, error) {
 	signingCertKeyPairSecret := newSigningCASecret(*opts)
-	opts.Signer.Creator.Issuer = fmt.Sprintf("%s_%s", signingCertKeyPairSecret.Namespace, signingCertKeyPairSecret.Name)
+	opts.Signer.creator.Issuer = fmt.Sprintf("%s_%s", signingCertKeyPairSecret.Namespace, signingCertKeyPairSecret.Name)
 
-	if reason := opts.Signer.Creator.NeedNewCertificate(signingCertKeyPairSecret.Annotations, opts.CACertRefresh); reason != "" {
-		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.CACertValidity, opts.Signer.Creator); err != nil {
+	if reason := opts.Signer.creator.NeedNewCertificate(signingCertKeyPairSecret.Annotations, opts.CACertRefresh); reason != "" {
+		if err := setSigningCertKeyPairSecret(signingCertKeyPairSecret, opts.CACertValidity, opts.Signer.creator); err != nil {
 			return nil, err
 		}
 	}
@@ -74,7 +74,7 @@ func newSigningCASecret(opts Options) *corev1.Secret {
 }
 
 // setSigningCertKeyPairSecret creates a new signing cert/key pair and sets them in the secret
-func setSigningCertKeyPairSecret(s *corev1.Secret, validity time.Duration, caCreator CACreator) error {
+func setSigningCertKeyPairSecret(s *corev1.Secret, validity time.Duration, caCreator signerRotation) error {
 	if s.Annotations == nil {
 		s.Annotations = map[string]string{}
 	}

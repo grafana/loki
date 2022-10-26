@@ -20,11 +20,11 @@ var (
 	errMissingUserInfo  = errors.New("no user info")
 )
 
-type CACreator struct {
+type signerRotation struct {
 	Issuer string
 }
 
-func (r *CACreator) NewCertificate(validity time.Duration) (*crypto.TLSCertificateConfig, error) {
+func (r *signerRotation) NewCertificate(validity time.Duration) (*crypto.TLSCertificateConfig, error) {
 	if r.Issuer == "" {
 		return nil, errMissingIssuer
 	}
@@ -33,37 +33,22 @@ func (r *CACreator) NewCertificate(validity time.Duration) (*crypto.TLSCertifica
 	return crypto.MakeSelfSignedCAConfigForDuration(signerName, validity)
 }
 
-func (r *CACreator) NeedNewCertificate(annotations map[string]string, refresh time.Duration) string {
-	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
-	if len(reason) > 0 {
-		return reason
-	}
-
-	reason = needNewCertificate(annotations, notBefore, notAfter, refresh, nil)
-	if len(reason) > 0 {
-		return reason
-	}
-
-	developerSpecifiedRefresh := notBefore.Add(refresh)
-	if time.Now().After(developerSpecifiedRefresh) {
-		return fmt.Sprintf("past its refresh time %v", developerSpecifiedRefresh)
-	}
-
-	return ""
+func (r *signerRotation) NeedNewCertificate(annotations map[string]string, refresh time.Duration) string {
+	return needNewCertificate(annotations, refresh, nil)
 }
 
-func (r *CACreator) SetAnnotations(ca *crypto.TLSCertificateConfig, annotations map[string]string) {
+func (r *signerRotation) SetAnnotations(ca *crypto.TLSCertificateConfig, annotations map[string]string) {
 	annotations[CertificateNotAfterAnnotation] = ca.Certs[0].NotAfter.Format(time.RFC3339)
 	annotations[CertificateNotBeforeAnnotation] = ca.Certs[0].NotBefore.Format(time.RFC3339)
 	annotations[CertificateIssuer] = ca.Certs[0].Issuer.CommonName
 }
 
-type CertCreator struct {
+type certificateRotation struct {
 	UserInfo  user.Info
 	Hostnames []string
 }
 
-func (r *CertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
+func (r *certificateRotation) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
 	if r.UserInfo == nil {
 		return nil, errMissingUserInfo
 	}
@@ -88,13 +73,8 @@ func (r *CertCreator) NewCertificate(signer *crypto.CA, validity time.Duration) 
 	return signer.MakeServerCertForDuration(sets.NewString(r.Hostnames...), validity, addClientAuthUsage, addSubject)
 }
 
-func (r *CertCreator) NeedNewCertificate(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
-	notBefore, notAfter, reason := getValidityFromAnnotations(annotations)
-	if len(reason) > 0 {
-		return reason
-	}
-
-	reason = needNewCertificate(annotations, notBefore, notAfter, refresh, signer)
+func (r *certificateRotation) NeedNewCertificate(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
+	reason := needNewCertificate(annotations, refresh, signer)
 	if len(reason) > 0 {
 		return reason
 	}
@@ -128,7 +108,7 @@ func (r *CertCreator) NeedNewCertificate(annotations map[string]string, signer *
 	return ""
 }
 
-func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) {
+func (r *certificateRotation) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) {
 	hostnames := sets.String{}
 	for _, ip := range cert.Certs[0].IPAddresses {
 		hostnames.Insert(ip.String())
@@ -144,7 +124,25 @@ func (r *CertCreator) SetAnnotations(cert *crypto.TLSCertificateConfig, annotati
 	annotations[CertificateHostnames] = strings.Join(hostnames.List(), ",")
 }
 
-func needNewCertificate(annotations map[string]string, notBefore, notAfter time.Time, refresh time.Duration, signer *crypto.CA) string {
+func needNewCertificate(annotations map[string]string, refresh time.Duration, signer *crypto.CA) string {
+	notAfterString := annotations[CertificateNotAfterAnnotation]
+	if len(notAfterString) == 0 {
+		return "missing notAfter"
+	}
+	notAfter, err := time.Parse(time.RFC3339, notAfterString)
+	if err != nil {
+		return fmt.Sprintf("bad expiry: %q", notAfterString)
+	}
+
+	notBeforeString := annotations[CertificateNotBeforeAnnotation]
+	if len(notAfterString) == 0 {
+		return "missing notBefore"
+	}
+	notBefore, err := time.Parse(time.RFC3339, notBeforeString)
+	if err != nil {
+		return fmt.Sprintf("bad expiry: %q", notBeforeString)
+	}
+
 	// Is cert expired?
 	if time.Now().After(notAfter) {
 		return "already expired"
@@ -177,25 +175,4 @@ func needNewCertificate(annotations map[string]string, notBefore, notAfter time.
 	}
 
 	return ""
-}
-
-func getValidityFromAnnotations(annotations map[string]string) (notBefore time.Time, notAfter time.Time, reason string) {
-	notAfterString := annotations[CertificateNotAfterAnnotation]
-	if len(notAfterString) == 0 {
-		return notBefore, notAfter, "missing notAfter"
-	}
-	notAfter, err := time.Parse(time.RFC3339, notAfterString)
-	if err != nil {
-		return notBefore, notAfter, fmt.Sprintf("bad expiry: %q", notAfterString)
-	}
-	notBeforeString := annotations[CertificateNotBeforeAnnotation]
-	if len(notAfterString) == 0 {
-		return notBefore, notAfter, "missing notBefore"
-	}
-	notBefore, err = time.Parse(time.RFC3339, notBeforeString)
-	if err != nil {
-		return notBefore, notAfter, fmt.Sprintf("bad expiry: %q", notBeforeString)
-	}
-
-	return notBefore, notAfter, ""
 }

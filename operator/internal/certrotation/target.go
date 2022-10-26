@@ -36,7 +36,7 @@ func CertificatesExpired(opts Options) error {
 
 	var reasons []string
 	for name, cert := range opts.Certificates {
-		reason := cert.Creator.NeedNewCertificate(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh)
+		reason := cert.creator.NeedNewCertificate(cert.Secret.Annotations, rawCA, caCerts, opts.TargetCertRefresh)
 		if reason != "" {
 			reasons = append(reasons, fmt.Sprintf("%s: %s", name, reason))
 		}
@@ -62,9 +62,9 @@ func buildTargetCertKeyPairSecrets(opts Options) ([]client.Object, error) {
 
 	for name, cert := range opts.Certificates {
 		secret := newTargetCertificateSecret(name, ns, cert.Secret)
-		reason := cert.Creator.NeedNewCertificate(secret.Annotations, rawCA, caBundle, refresh)
+		reason := cert.creator.NeedNewCertificate(secret.Annotations, rawCA, caBundle, refresh)
 		if len(reason) > 0 {
-			if err := setTargetCertKeyPairSecret(secret, validity, rawCA, cert.Creator); err != nil {
+			if err := setTargetCertKeyPairSecret(secret, validity, rawCA, cert.creator); err != nil {
 				return nil, err
 			}
 		}
@@ -96,7 +96,7 @@ func newTargetCertificateSecret(name, ns string, s *corev1.Secret) *corev1.Secre
 }
 
 // setTargetCertKeyPairSecret creates a new cert/key pair and sets them in the secret.  Only one of client, serving, or signer rotation may be specified.
-func setTargetCertKeyPairSecret(s *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator CertCreator) error {
+func setTargetCertKeyPairSecret(s *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator certificateRotation) error {
 	if s.Annotations == nil {
 		s.Annotations = map[string]string{}
 	}

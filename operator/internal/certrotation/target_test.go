@@ -1,13 +1,11 @@
 package certrotation
 
 import (
-	"bytes"
 	"crypto/x509"
 	"testing"
 	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,30 +13,22 @@ import (
 )
 
 func TestCertificatesExpired(t *testing.T) {
-	stackName := "dev"
-	stackNamespce := "ns"
+	var (
+		stackName           = "dev"
+		stackNamespce       = "ns"
+		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
+		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
+		rawCA, caBytes      = newTestCABundle(t, "dev-ca")
+		cfg                 = configv1.BuiltInCertManagement{
+			CACertValidity: "10m",
+			CACertRefresh:  "5m",
+			CertValidity:   "2m",
+			CertRefresh:    "1m",
+		}
+	)
 
-	// A default test CA
-	testCA, err := crypto.MakeSelfSignedCAConfigForDuration("dev-ca-bundle", 1*time.Hour)
+	certBytes, keyBytes, err := rawCA.Config.GetPEMBytes()
 	require.NoError(t, err)
-
-	certBytes := &bytes.Buffer{}
-	keyBytes := &bytes.Buffer{}
-	err = testCA.WriteCertConfig(certBytes, keyBytes)
-	require.NoError(t, err)
-
-	rawCA, err := crypto.GetCAFromBytes(certBytes.Bytes(), keyBytes.Bytes())
-	require.NoError(t, err)
-
-	caBytes, err := crypto.EncodeCertificates(rawCA.Config.Certs...)
-	require.NoError(t, err)
-
-	cfg := configv1.BuiltInCertManagement{
-		CACertValidity: "10m",
-		CACertRefresh:  "5m",
-		CertValidity:   "2m",
-		CertRefresh:    "1m",
-	}
 
 	opts := Options{
 		StackName:      stackName,
@@ -47,8 +37,8 @@ func TestCertificatesExpired(t *testing.T) {
 			RawCA: rawCA,
 			Secret: &corev1.Secret{
 				Data: map[string][]byte{
-					corev1.TLSCertKey:       certBytes.Bytes(),
-					corev1.TLSPrivateKeyKey: keyBytes.Bytes(),
+					corev1.TLSCertKey:       certBytes,
+					corev1.TLSPrivateKeyKey: keyBytes,
 				},
 			},
 		},
@@ -61,9 +51,6 @@ func TestCertificatesExpired(t *testing.T) {
 	}
 	err = ApplyDefaultSettings(&opts, cfg)
 	require.NoError(t, err)
-
-	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
-	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
 
 	for _, name := range ComponentCertSecretNames(stackName) {
 		cert := opts.Certificates[name]
@@ -89,27 +76,18 @@ func TestCertificatesExpired(t *testing.T) {
 	require.Len(t, err.(*CertExpiredError).Reasons, 15)
 }
 
-func TestBuildTargetCertKeyPairSecrets(t *testing.T) {
-	// A default test CA
-	testCA, err := crypto.MakeSelfSignedCAConfigForDuration("lokistack-dev-ca-bundle", 30*24*time.Hour)
-	require.NoError(t, err)
+func TestBuildTargetCertKeyPairSecrets_Create(t *testing.T) {
+	var (
+		rawCA, _ = newTestCABundle(t, "test-ca")
+		cfg      = configv1.BuiltInCertManagement{
+			CACertValidity: "10m",
+			CACertRefresh:  "5m",
+			CertValidity:   "2m",
+			CertRefresh:    "1m",
+		}
+	)
 
-	certBytes := &bytes.Buffer{}
-	keyBytes := &bytes.Buffer{}
-	err = testCA.WriteCertConfig(certBytes, keyBytes)
-	require.NoError(t, err)
-
-	rawCA, err := crypto.GetCAFromBytes(certBytes.Bytes(), keyBytes.Bytes())
-	require.NoError(t, err)
-
-	cfg := configv1.BuiltInCertManagement{
-		CACertValidity: "10m",
-		CACertRefresh:  "5m",
-		CertValidity:   "2m",
-		CertRefresh:    "1m",
-	}
-
-	createOpts := Options{
+	opts := Options{
 		StackName:      "dev",
 		StackNamespace: "ns",
 		Signer: SigningCA{
@@ -117,13 +95,29 @@ func TestBuildTargetCertKeyPairSecrets(t *testing.T) {
 		},
 		RawCACerts: rawCA.Config.Certs,
 	}
-	err = ApplyDefaultSettings(&createOpts, cfg)
+
+	err := ApplyDefaultSettings(&opts, cfg)
 	require.NoError(t, err)
 
-	invalidNotAfter, _ := time.Parse(time.RFC3339, "")
-	invalidNotBefore, _ := time.Parse(time.RFC3339, "")
+	objs, err := buildTargetCertKeyPairSecrets(opts)
+	require.NoError(t, err)
+	require.Len(t, objs, 15)
+}
 
-	rotateOpts := Options{
+func TestBuildTargetCertKeyPairSecrets_Rotate(t *testing.T) {
+	var (
+		rawCA, _            = newTestCABundle(t, "test-ca")
+		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
+		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
+		cfg                 = configv1.BuiltInCertManagement{
+			CACertValidity: "10m",
+			CACertRefresh:  "5m",
+			CertValidity:   "2m",
+			CertRefresh:    "1m",
+		}
+	)
+
+	opts := Options{
 		StackName:      "dev",
 		StackNamespace: "ns",
 		Signer: SigningCA{
@@ -146,48 +140,26 @@ func TestBuildTargetCertKeyPairSecrets(t *testing.T) {
 			},
 		},
 	}
-	err = ApplyDefaultSettings(&rotateOpts, cfg)
+	err := ApplyDefaultSettings(&opts, cfg)
 	require.NoError(t, err)
 
-	tt := []struct {
-		desc string
-		opts Options
-	}{
-		{
-			desc: "create",
-			opts: createOpts,
-		},
-		{
-			desc: "rotate",
-			opts: rotateOpts,
-		},
-	}
+	objs, err := buildTargetCertKeyPairSecrets(opts)
+	require.NoError(t, err)
+	require.Len(t, objs, 15)
 
-	for _, test := range tt {
-		test := test
-		t.Run(test.desc, func(t *testing.T) {
-			t.Parallel()
+	// Check serving certificate rotation
+	s := objs[7].(*corev1.Secret)
+	ss := opts.Certificates["dev-ingester-grpc"]
 
-			objs, err := buildTargetCertKeyPairSecrets(test.opts)
-			require.NoError(t, err)
-			require.Len(t, objs, 15)
+	require.NotEqual(t, s.Annotations[CertificateIssuer], ss.Secret.Annotations[CertificateIssuer])
+	require.NotEqual(t, s.Annotations[CertificateNotAfterAnnotation], ss.Secret.Annotations[CertificateNotAfterAnnotation])
+	require.NotEqual(t, s.Annotations[CertificateNotBeforeAnnotation], ss.Secret.Annotations[CertificateNotBeforeAnnotation])
+	require.NotEqual(t, s.Annotations[CertificateHostnames], ss.Secret.Annotations[CertificateHostnames])
+	require.NotEqual(t, string(s.Data[corev1.TLSCertKey]), string(ss.Secret.Data[corev1.TLSCertKey]))
+	require.NotEqual(t, string(s.Data[corev1.TLSPrivateKeyKey]), string(ss.Secret.Data[corev1.TLSPrivateKeyKey]))
 
-			// Check serving certificate rotation
-			s := objs[7].(*corev1.Secret)
-			ss := test.opts.Certificates["dev-ingester-grpc"]
-			if ss.Secret != nil {
-				require.NotEqual(t, s.Annotations[CertificateIssuer], ss.Secret.Annotations[CertificateIssuer])
-				require.NotEqual(t, s.Annotations[CertificateNotAfterAnnotation], ss.Secret.Annotations[CertificateNotAfterAnnotation])
-				require.NotEqual(t, s.Annotations[CertificateNotBeforeAnnotation], ss.Secret.Annotations[CertificateNotBeforeAnnotation])
-				require.NotEqual(t, s.Annotations[CertificateHostnames], ss.Secret.Annotations[CertificateHostnames])
-				require.NotEqual(t, string(s.Data[corev1.TLSCertKey]), string(ss.Secret.Data[corev1.TLSCertKey]))
-				require.NotEqual(t, string(s.Data[corev1.TLSPrivateKeyKey]), string(ss.Secret.Data[corev1.TLSPrivateKeyKey]))
-
-				certs, err := cert.ParseCertsPEM(s.Data[corev1.TLSCertKey])
-				require.NoError(t, err)
-				require.Contains(t, certs[0].ExtKeyUsage, x509.ExtKeyUsageClientAuth)
-				require.Contains(t, certs[0].ExtKeyUsage, x509.ExtKeyUsageServerAuth)
-			}
-		})
-	}
+	certs, err := cert.ParseCertsPEM(s.Data[corev1.TLSCertKey])
+	require.NoError(t, err)
+	require.Contains(t, certs[0].ExtKeyUsage, x509.ExtKeyUsageClientAuth)
+	require.Contains(t, certs[0].ExtKeyUsage, x509.ExtKeyUsageServerAuth)
 }
