@@ -8,11 +8,11 @@ Unlike other logging systems, %% product %% is built around the idea of only ind
 metadata about your logs: labels (just like Prometheus labels). Log data itself
 is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
-simplifies the operation and significantly lowers the cost of %% product %%.
+simplifies the operation and significantly lowers the cost of %% product-short %%.
 
-Until %% product %% 2.0, index data was stored in a separate index.
+Until Grafana Loki 2.0, index data was stored in a separate index.
 
-%% product %% 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call Single Store %% product %%.
+Grafana Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call Single Store.
 This index type only requires one store, the object store, for both the index and chunks.
 More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
 
