@@ -97,7 +97,7 @@ func TestSignerRotation_NeedNewCertificate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c := signerRotation{NowFunc: nowFn}
+			c := signerRotation{Clock: nowFn}
 			reason := c.NeedNewCertificate(tc.annotations, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)
 		})
@@ -276,7 +276,7 @@ func TestCertificateRotation_NeedNewCertificate(t *testing.T) {
 			require.NoError(t, err)
 
 			c := certificateRotation{
-				NowFunc:   nowFn,
+				Clock:     nowFn,
 				Hostnames: []string{"a.b.c.d", "e.d.f.g"},
 			}
 			reason := c.NeedNewCertificate(tc.annotations, rawCA, rawCA.Config.Certs, tc.refresh)

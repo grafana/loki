@@ -23,8 +23,8 @@ var (
 type clockFunc func() time.Time
 
 type signerRotation struct {
-	Issuer  string
-	NowFunc clockFunc
+	Issuer string
+	Clock  clockFunc
 }
 
 func (r *signerRotation) NewCertificate(validity time.Duration) (*crypto.TLSCertificateConfig, error) {
@@ -37,7 +37,7 @@ func (r *signerRotation) NewCertificate(validity time.Duration) (*crypto.TLSCert
 }
 
 func (r *signerRotation) NeedNewCertificate(annotations map[string]string, refresh time.Duration) string {
-	return needNewCertificate(annotations, r.NowFunc, refresh, nil)
+	return needNewCertificate(annotations, r.Clock, refresh, nil)
 }
 
 func (r *signerRotation) SetAnnotations(ca *crypto.TLSCertificateConfig, annotations map[string]string) {
@@ -49,7 +49,7 @@ func (r *signerRotation) SetAnnotations(ca *crypto.TLSCertificateConfig, annotat
 type certificateRotation struct {
 	UserInfo  user.Info
 	Hostnames []string
-	NowFunc   clockFunc
+	Clock     clockFunc
 }
 
 func (r *certificateRotation) NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error) {
@@ -78,7 +78,7 @@ func (r *certificateRotation) NewCertificate(signer *crypto.CA, validity time.Du
 }
 
 func (r *certificateRotation) NeedNewCertificate(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
-	reason := needNewCertificate(annotations, r.NowFunc, refresh, signer)
+	reason := needNewCertificate(annotations, r.Clock, refresh, signer)
 	if len(reason) > 0 {
 		return reason
 	}
@@ -128,7 +128,7 @@ func (r *certificateRotation) SetAnnotations(cert *crypto.TLSCertificateConfig, 
 	annotations[CertificateHostnames] = strings.Join(hostnames.List(), ",")
 }
 
-func needNewCertificate(annotations map[string]string, nowFunc clockFunc, refresh time.Duration, signer *crypto.CA) string {
+func needNewCertificate(annotations map[string]string, clock clockFunc, refresh time.Duration, signer *crypto.CA) string {
 	notAfterString := annotations[CertificateNotAfterAnnotation]
 	if len(notAfterString) == 0 {
 		return "missing notAfter"
@@ -147,7 +147,7 @@ func needNewCertificate(annotations map[string]string, nowFunc clockFunc, refres
 		return fmt.Sprintf("bad expiry: %q", notBeforeString)
 	}
 
-	now := nowFunc()
+	now := clock()
 
 	// Is cert expired?
 	if now.After(notAfter) {
