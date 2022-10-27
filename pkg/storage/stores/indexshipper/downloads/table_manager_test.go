@@ -87,10 +87,7 @@ func TestTableManager_ForEach(t *testing.T) {
 				expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 			}
 			verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-
-				return tableManager.ForEach(ctx, tableName, userID, callbackFunc)
+				return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
 			})
 		}
 	}
@@ -379,10 +376,7 @@ func TestTableManager_loadTables(t *testing.T) {
 					expectedIndexes = append(expectedIndexes, buildListOfExpectedIndexes(userID, 1, 5)...)
 				}
 				verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					return tableManager.ForEach(ctx, tableName, userID, callbackFunc)
+					return tableManager.ForEach(context.Background(), tableName, userID, callbackFunc)
 				})
 			}
 		}

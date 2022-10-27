@@ -178,11 +178,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	if err := t.indexMtx.rLock(ctx); err != nil {
 		return err
 	}
-
-	go func() {
-		<-ctx.Done()
-		t.indexMtx.rUnlock()
-	}()
+	defer t.indexMtx.rUnlock()
 
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
