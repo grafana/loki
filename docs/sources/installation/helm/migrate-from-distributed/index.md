@@ -28,7 +28,7 @@ Start by updating your existing Grafana Agent or Promtail config (whatever is sc
   action: "drop"
 ```
 
-This leverages the fact the the new deployment adds a `app.kubernetes.io/component` label of either `read` for the Read pods, `write` for the Write pods, and `canary` for the Loki Canary pods. These annotations are not present in the `loki-distributed` deployment, so this should only match logs from the new deployment.
+This leverages the fact that the new deployment adds a `app.kubernetes.io/component` label of either `read` for the Read pods, `write` for the Write pods, and `canary` for the Loki Canary pods. These annotations are not present in the `loki-distributed` deployment, so this should only match logs from the new deployment.
 
 ### Deploy new Loki Cluster
 
