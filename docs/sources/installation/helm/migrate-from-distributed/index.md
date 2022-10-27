@@ -55,7 +55,7 @@ One the new cluster is up, add the appropriate data source in Grafana for the ne
 
 Assuming everything is working as expected, you can now modify the `clients` section of your Grafana Agent or Promtail configuration to push logs to the new deployment. After this change is made, the `loki-distributed` cluster will no longer recieve new logs and can be carefully scaled down.
 
-Once this has deployed, query the new `loki` cluster's Loki datasource for new logs to make sure they're still being ingested.
+Once this has deployed, query the new `loki` cluster's Loki data source for new logs to make sure they're still being ingested.
 
 ### Tear Down the Old Loki Canary
 
