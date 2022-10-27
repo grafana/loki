@@ -40,8 +40,8 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 		return err
 	}
 
-	doneChan := make(chan struct{})
-	defer close(doneChan)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	userIDBytes := util.GetUnsafeBytes(userID)
 	queriesByTable := util.QueriesByTable(queries)
@@ -57,7 +57,7 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 				}
 			}
 
-			return q.indexShipper.ForEach(ctx, table, userID, doneChan, func(_ bool, idx shipper_index.Index) error {
+			return q.indexShipper.ForEach(ctx, table, userID, func(_ bool, idx shipper_index.Index) error {
 				boltdbIndexFile, ok := idx.(*indexfile.IndexFile)
 				if !ok {
 					return fmt.Errorf("unexpected index type %T", idx)

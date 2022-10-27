@@ -28,7 +28,7 @@ const (
 
 type Table interface {
 	Close()
-	ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -144,7 +144,7 @@ func (t *table) Close() {
 	t.indexSets = map[string]IndexSet{}
 }
 
-func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
+func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	// iterate through both user and common index
 	for _, uid := range []string{userID, ""} {
 		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
@@ -157,7 +157,7 @@ func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan stru
 			return indexSet.Err()
 		}
 
-		err = indexSet.ForEach(ctx, doneChan, callback)
+		err = indexSet.ForEach(ctx, callback)
 		if err != nil {
 			return err
 		}

@@ -18,7 +18,7 @@ type mockIndexShipperIndexIterator struct {
 	tables map[string][]*TSDBFile
 }
 
-func (m mockIndexShipperIndexIterator) ForEach(ctx context.Context, tableName, userID string, _ <-chan struct{}, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEach(ctx context.Context, tableName, userID string, callback index_shipper.ForEachIndexCallback) error {
 	indexes := m.tables[tableName]
 	for _, idx := range indexes {
 		if err := callback(false, idx); err != nil {
