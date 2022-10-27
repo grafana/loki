@@ -193,8 +193,10 @@ func main() {
 
 		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
-		} else {
+		} else if rangeQuery.ParallelMaxWorkers == 1 {
 			rangeQuery.DoQuery(queryClient, out, *statistics)
+		} else {
+			rangeQuery.DoQueryParallel(queryClient, out, *statistics)
 		}
 	case instantQueryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -374,7 +376,8 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
-
+		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order.").Default("1h").DurationVar(&q.ParallelDuration)
+		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.").Default("1").IntVar(&q.ParallelMaxWorkers)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)

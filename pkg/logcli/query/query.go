@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -62,6 +63,8 @@ type Query struct {
 	ColoredOutput          bool
 	LocalConfig            string
 	FetchSchemaFromStorage bool
+	ParallelDuration       time.Duration
+	ParallelMaxWorkers     int
 }
 
 // DoQuery executes the query and prints out the results
@@ -160,9 +163,54 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 				// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
 				end = lastEntry[0].Timestamp.Add(1 * time.Nanosecond)
 			}
-
 		}
 	}
+}
+
+func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) {
+	wg := sync.WaitGroup{}
+	jobs := make(chan Query)
+
+	// Start workers
+	for w := 0; w < q.ParallelMaxWorkers; w++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for rq := range jobs {
+				rq.DoQuery(c, out, statistics)
+			}
+		}()
+	}
+
+	start := q.Start
+	end := minTime(start.Add(q.ParallelDuration), q.End)
+
+	// Queue up jobs
+	for {
+		rq := *q
+		rq.Start = start
+		rq.End = end
+
+		jobs <- rq
+
+		if end.Equal(q.End) {
+			break
+		}
+
+		start = end
+		end = minTime(start.Add(q.ParallelDuration), q.End)
+	}
+	close(jobs)
+
+	wg.Wait()
+}
+
+func minTime(t1, t2 time.Time) time.Time {
+	if t1.Before(t2) {
+		return t1
+	}
+	return t2
 }
 
 func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
