@@ -563,6 +563,17 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
+  pipeline('documentation-checks') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      make('documentation-helm-reference-check', container=false) {
+        depends_on: ['clone'],
+      },
+    ],
+  },
 ] + [
   multiarch_image(arch)
   for arch in archs
