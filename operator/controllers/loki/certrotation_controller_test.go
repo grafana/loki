@@ -49,18 +49,18 @@ func TestCertRotationController_RegisterOwnedResources_WithDefaultPredicates(t *
 func TestCertRotationController_ExpiryRetryAfter(t *testing.T) {
 	tt := []struct {
 		desc         string
-		certRefesh   time.Duration
+		refresh      time.Duration
 		wantDuration time.Duration
 		wantError    bool
 	}{
 		{
-			desc:         "multi-day reference refresh durarion",
-			certRefesh:   120 * time.Hour,
+			desc:         "multi-day refresh durarion",
+			refresh:      120 * time.Hour,
 			wantDuration: 12 * time.Hour,
 		},
 		{
 			desc:         "less than a day refresh duration",
-			certRefesh:   10 * time.Hour,
+			refresh:      10 * time.Hour,
 			wantDuration: 2*time.Hour + 30*time.Minute,
 		},
 	}
@@ -68,7 +68,7 @@ func TestCertRotationController_ExpiryRetryAfter(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.wantDuration, expiryRetryAfter(tc.certRefesh))
+			require.Equal(t, tc.wantDuration, expiryRetryAfter(tc.refresh))
 		})
 	}
 }

@@ -23,6 +23,7 @@ func TestSigningCAExpired_ExpiredSecret(t *testing.T) {
 	var (
 		stackName           = "dev"
 		stackNamespace      = "ns"
+		nowFn               = func() time.Time { return time.Now() }
 		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
 		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
 	)
@@ -31,6 +32,9 @@ func TestSigningCAExpired_ExpiredSecret(t *testing.T) {
 		StackName:      stackName,
 		StackNamespace: stackNamespace,
 		Signer: SigningCA{
+			Rotation: signerRotation{
+				NowFunc: nowFn,
+			},
 			Secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      SigningCASecretName(stackName),
@@ -77,6 +81,7 @@ func TestBuildSigningCASecret_Create(t *testing.T) {
 
 func TestBuildSigningCASecret_Rotate(t *testing.T) {
 	var (
+		nowFn               = func() time.Time { return time.Now() }
 		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
 		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
 	)
@@ -85,6 +90,9 @@ func TestBuildSigningCASecret_Rotate(t *testing.T) {
 		StackName:      "dev",
 		StackNamespace: "ns",
 		Signer: SigningCA{
+			Rotation: signerRotation{
+				NowFunc: nowFn,
+			},
 			Secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "dev-signing-ca",

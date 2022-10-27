@@ -42,6 +42,7 @@ func TestSignerRotation_SetAnnotations(t *testing.T) {
 func TestSignerRotation_NeedNewCertificate(t *testing.T) {
 	var (
 		now                 = time.Now()
+		nowFn               = func() time.Time { return now }
 		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
 		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
 	)
@@ -96,7 +97,7 @@ func TestSignerRotation_NeedNewCertificate(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c := signerRotation{}
+			c := signerRotation{NowFunc: nowFn}
 			reason := c.NeedNewCertificate(tc.annotations, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)
 		})
@@ -274,7 +275,10 @@ func TestCertificateRotation_NeedNewCertificate(t *testing.T) {
 			rawCA, err := tc.signerFn()
 			require.NoError(t, err)
 
-			c := certificateRotation{Hostnames: []string{"a.b.c.d", "e.d.f.g"}}
+			c := certificateRotation{
+				NowFunc:   nowFn,
+				Hostnames: []string{"a.b.c.d", "e.d.f.g"},
+			}
 			reason := c.NeedNewCertificate(tc.annotations, rawCA, rawCA.Config.Certs, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)
 		})

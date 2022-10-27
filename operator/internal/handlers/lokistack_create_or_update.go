@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
@@ -330,7 +331,13 @@ func CreateOrUpdateLokiStack(
 			continue
 		}
 
-		l.Info(fmt.Sprintf("Resource has been %s", op))
+		msg := fmt.Sprintf("Resource has been %s", op)
+		switch op {
+		case ctrlutil.OperationResultNone:
+			l.V(1).Info(msg)
+		default:
+			l.Info(msg)
+		}
 	}
 
 	if errCount > 0 {

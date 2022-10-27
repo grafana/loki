@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// SigningCAExpired returns true if the singer certificate expired and the reason of expiry.
+// SigningCAExpired returns true if the signer certificate expired and the reason of expiry.
 func SigningCAExpired(opts Options) error {
 	// Skip as secret not created or loaded
 	if opts.Signer.Secret == nil {

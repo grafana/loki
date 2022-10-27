@@ -2,6 +2,7 @@ package certrotation
 
 import (
 	"fmt"
+	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -45,11 +46,18 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	}
 	opts.Rotation = rotation
 
+	nowFunc := func() time.Time { return time.Now() }
+
+	opts.Signer.Rotation = signerRotation{
+		NowFunc: nowFunc,
+	}
+
 	if opts.Certificates == nil {
 		opts.Certificates = make(map[string]SelfSignedCertKey)
 	}
 	for _, name := range ComponentCertSecretNames(opts.StackName) {
 		r := certificateRotation{
+			NowFunc:  nowFunc,
 			UserInfo: defaultUserInfo,
 			Hostnames: []string{
 				fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),

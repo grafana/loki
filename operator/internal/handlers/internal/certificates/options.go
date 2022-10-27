@@ -58,6 +58,7 @@ func getCertificateOptions(ctx context.Context, k k8s.Client, req ctrl.Request) 
 			if !apierrors.IsNotFound(err) {
 				return nil, kverrors.Wrap(err, "failed to get secret", "name", name)
 			}
+			continue
 		}
 
 		certs[name] = certrotation.SelfSignedCertKey{Secret: s}
