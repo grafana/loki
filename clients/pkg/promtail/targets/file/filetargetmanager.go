@@ -127,6 +127,7 @@ func NewFileTargetManager(
 			targetConfig:      targetConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
 			encoding:          cfg.Encoding,
+			dedup:             cfg.Dedup,
 		}
 		tm.syncers[cfg.JobName] = s
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
@@ -277,6 +278,7 @@ type targetSyncer struct {
 	targetConfig  *Config
 
 	encoding string
+	dedup    bool
 }
 
 // sync synchronize target based on received target groups received by service discovery
@@ -434,7 +436,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 }
 
 func (s *targetSyncer) newTarget(path, pathExclude string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding)
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding, s.dedup)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

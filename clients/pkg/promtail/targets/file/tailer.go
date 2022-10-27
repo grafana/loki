@@ -1,7 +1,9 @@
 package file
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -35,31 +37,52 @@ type tailer struct {
 	posAndSizeMtx sync.Mutex
 	stopOnce      sync.Once
 
-	running *atomic.Bool
-	posquit chan struct{}
-	posdone chan struct{}
-	done    chan struct{}
+	running  *atomic.Bool
+	posquit  chan struct{}
+	posdone  chan struct{}
+	done     chan struct{}
+	encoding string
 
 	decoder *encoding.Decoder
+	summary *Summary
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string, summary *Summary) *tailer {
+	return &tailer{
+		metrics:   metrics,
+		logger:    log.With(logger, "component", "tailer"),
+		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
+		positions: positions,
+		path:      path,
+		running:   atomic.NewBool(false),
+		posquit:   make(chan struct{}),
+		posdone:   make(chan struct{}),
+		done:      make(chan struct{}),
+		encoding:  encoding,
+		summary:   summary,
+	}
+
+}
+
+func (t *tailer) Start() error {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
-	fi, err := os.Stat(path)
+	level.Info(t.logger).Log("msg", "tailer start tailing file ", "path", t.path)
+
+	fi, err := os.Stat(t.path)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	pos, err := positions.Get(path)
+	pos, err := t.positions.Get(t.path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if fi.Size() < pos {
-		positions.Remove(path)
+		t.positions.Remove(t.path)
 	}
 
-	tail, err := tail.TailFile(path, tail.Config{
+	tail, err := tail.TailFile(t.path, tail.Config{
 		Follow:    true,
 		Poll:      true,
 		ReOpen:    true,
@@ -68,40 +91,26 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 			Offset: pos,
 			Whence: 0,
 		},
-		Logger: util.NewLogAdapter(logger),
+		Logger: util.NewLogAdapter(t.logger),
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	logger = log.With(logger, "component", "tailer")
-	tailer := &tailer{
-		metrics:   metrics,
-		logger:    logger,
-		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
-		positions: positions,
-		path:      path,
-		tail:      tail,
-		running:   atomic.NewBool(false),
-		posquit:   make(chan struct{}),
-		posdone:   make(chan struct{}),
-		done:      make(chan struct{}),
-	}
-
-	if encoding != "" {
-		level.Info(tailer.logger).Log("msg", "Will decode messages", "from", encoding, "to", "UTF8")
-		encoder, err := ianaindex.IANA.Encoding(encoding)
+	if t.encoding != "" {
+		level.Info(t.logger).Log("msg", "Will decode messages", "from", t.encoding, "to", "UTF8")
+		encoder, err := ianaindex.IANA.Encoding(t.encoding)
 		if err != nil {
-			return nil, errors.Wrap(err, "error doing IANA encoding")
+			return errors.Wrap(err, "error doing IANA encoding")
 		}
 		decoder := encoder.NewDecoder()
-		tailer.decoder = decoder
+		t.decoder = decoder
 	}
+	t.tail = tail
 
-	go tailer.readLines()
-	go tailer.updatePosition()
-	metrics.filesActive.Add(1.)
-	return tailer, nil
+	go t.readLines()
+	go t.updatePosition()
+	t.metrics.filesActive.Add(1.)
+	return nil
 }
 
 // updatePosition is run in a goroutine and checks the current size of the file and saves it to the positions file
@@ -166,6 +175,10 @@ func (t *tailer) readLines() {
 			continue
 		}
 
+		if t.summary != nil {
+			t.summary.readLine(line.Text)
+		}
+
 		var text string
 		if t.decoder != nil {
 			var err error
@@ -188,6 +201,26 @@ func (t *tailer) readLines() {
 			},
 		}
 	}
+}
+
+func (t *tailer) SummaryFile(path string) (string, error) {
+	file, err := os.Open(path)
+	defer file.Close()
+	summary := NewSummary(nil)
+	if nil == err {
+		buff := bufio.NewReader(file)
+		for {
+			line, err := buff.ReadString('\n')
+			if err == io.EOF {
+				break
+			}
+			isEnd := summary.readLine(line)
+			if isEnd {
+				break
+			}
+		}
+	}
+	return summary.Summary(), nil
 }
 
 func (t *tailer) MarkPositionAndSize() error {

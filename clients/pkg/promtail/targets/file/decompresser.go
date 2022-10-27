@@ -57,46 +57,55 @@ type decompressor struct {
 
 	decoder *encoding.Decoder
 
-	position int64
-	size     int64
+	encodingFormat string
+	position       int64
+	size           int64
+	summary        *Summary
 }
 
-func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string) (*decompressor, error) {
-	logger = log.With(logger, "component", "decompressor")
+func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string, summary *Summary) *decompressor {
 
-	pos, err := positions.Get(path)
+	return &decompressor{
+		metrics:        metrics,
+		logger:         log.With(logger, "component", "decompressor"),
+		handler:        api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
+		positions:      positions,
+		path:           path,
+		running:        atomic.NewBool(false),
+		posquit:        make(chan struct{}),
+		posdone:        make(chan struct{}),
+		done:           make(chan struct{}),
+		encodingFormat: encodingFormat,
+		summary:        summary,
+	}
+
+}
+
+func (t *decompressor) Start() error {
+
+	level.Info(t.logger).Log("msg", "decompressor tailer start tailing file ", "path", t.path)
+
+	pos, err := t.positions.Get(t.path)
 	if err != nil {
-		return nil, errors.Wrap(err, "get positions")
+		return errors.Wrap(err, "get positions")
 	}
 
 	var decoder *encoding.Decoder
-	if encodingFormat != "" {
-		level.Info(logger).Log("msg", "decompressor will decode messages", "from", encodingFormat, "to", "UTF8")
-		encoder, err := ianaindex.IANA.Encoding(encodingFormat)
+	if t.encodingFormat != "" {
+		level.Info(t.logger).Log("msg", "decompressor will decode messages", "from", t.encodingFormat, "to", "UTF8")
+		encoder, err := ianaindex.IANA.Encoding(t.encodingFormat)
 		if err != nil {
-			return nil, errors.Wrap(err, "error doing IANA encoding")
+			return errors.Wrap(err, "error doing IANA encoding")
 		}
 		decoder = encoder.NewDecoder()
 	}
+	t.position = pos
+	t.decoder = decoder
 
-	decompressor := &decompressor{
-		metrics:   metrics,
-		logger:    logger,
-		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
-		positions: positions,
-		path:      path,
-		running:   atomic.NewBool(false),
-		posquit:   make(chan struct{}),
-		posdone:   make(chan struct{}),
-		done:      make(chan struct{}),
-		position:  pos,
-		decoder:   decoder,
-	}
-
-	go decompressor.readLines()
-	go decompressor.updatePosition()
-	metrics.filesActive.Add(1.)
-	return decompressor, nil
+	go t.readLines()
+	go t.updatePosition()
+	t.metrics.filesActive.Add(1.)
+	return nil
 }
 
 // mountReader instantiate a reader ready to be used by the decompressor.
@@ -213,6 +222,9 @@ func (t *decompressor) readLines() {
 		}
 
 		text := scanner.Text()
+		if t.summary != nil {
+			t.summary.readLine(text)
+		}
 		var finalText string
 		if t.decoder != nil {
 			var err error

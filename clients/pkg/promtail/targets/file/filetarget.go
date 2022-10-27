@@ -9,6 +9,7 @@ import (
 	"github.com/bmatcuk/doublestar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -21,7 +22,8 @@ import (
 )
 
 const (
-	FilenameLabel = "filename"
+	FilenameLabel       = "filename"
+	maxSummaryCacheSize = 1000
 )
 
 // Config describes behavior for Target
@@ -73,11 +75,12 @@ type FileTarget struct {
 	quit               chan struct{}
 	done               chan struct{}
 
-	readers map[string]Reader
-
+	readers      map[string]Reader
+	summarys     *lru.Cache
 	targetConfig *Config
 
 	encoding string
+	dedup    bool
 }
 
 // NewFileTarget create a new FileTarget.
@@ -94,7 +97,12 @@ func NewFileTarget(
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 	encoding string,
+	dedup bool,
 ) (*FileTarget, error) {
+	cache, err := lru.New(maxSummaryCacheSize)
+	if err != nil {
+		return nil, err
+	}
 	t := &FileTarget{
 		logger:             logger,
 		metrics:            metrics,
@@ -107,10 +115,12 @@ func NewFileTarget(
 		quit:               make(chan struct{}),
 		done:               make(chan struct{}),
 		readers:            map[string]Reader{},
+		summarys:           cache,
 		targetConfig:       targetConfig,
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
 		encoding:           encoding,
+		dedup:              dedup,
 	}
 
 	go t.run()
@@ -320,25 +330,50 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		var reader Reader
-		if isCompressed(p) {
+		isCompressed := isCompressed(p)
+		var summary *Summary
+		if t.dedup {
+			summary = NewSummary(t)
+		}
+		if isCompressed {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
-			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
-			if err != nil {
-				level.Error(t.logger).Log("msg", "failed to start decompressor", "error", err, "filename", p)
-				continue
-			}
+			decompressor := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding, summary)
 			reader = decompressor
 		} else {
 			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
-			if err != nil {
-				level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
-				continue
-			}
+			tailer := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding, summary)
 			reader = tailer
+		}
+
+		if t.dedup && !t.checkFileDedup(p) {
+			return
+		}
+
+		err = reader.Start()
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p, "isCompressed", isCompressed)
+			continue
 		}
 		t.readers[p] = reader
 	}
+}
+
+func (t *FileTarget) checkFileDedup(p string) bool {
+	summary, err := summaryFile(p)
+	if err != nil {
+		level.Error(t.logger).Log("msg", "failed to summary file", "error", err, "filename", p, "isCompressed", isCompressed)
+		return false
+	}
+	if summary == "" {
+		return false
+
+	}
+	_, ok := t.summarys.Get(summary)
+	if ok {
+		level.Warn(t.logger).Log("msg", "failed to start tailer", "reason", " dedup file content", "filename", p, "isCompressed", isCompressed)
+		return false
+	}
+	return true
 }
 
 func isCompressed(p string) bool {

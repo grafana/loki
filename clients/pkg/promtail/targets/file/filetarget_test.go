@@ -69,7 +69,7 @@ func TestFileTargetSync(t *testing.T) {
 	path := logDir1 + "/*.log"
 	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
-	}, nil, fakeHandler, "")
+	}, nil, fakeHandler, "", false)
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
@@ -221,7 +221,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	pathExclude := filepath.Join(dirName, "log3", "*.log")
 	target, err := NewFileTarget(metrics, logger, client, ps, path, pathExclude, nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
-	}, nil, fakeHandler, "")
+	}, nil, fakeHandler, "", false)
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
@@ -350,7 +350,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
-	}, fakeFileHandler, fakeTargetHandler, "")
+	}, fakeFileHandler, fakeTargetHandler, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,6 +386,170 @@ func TestToStopTailing(t *testing.T) {
 		}
 	}
 
+}
+
+func TestFileTargetDedup(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	dirName := newTestLogDirectories(t)
+	positionsFileName := filepath.Join(dirName, "positions.yml")
+	logDir1 := filepath.Join(dirName, "log1")
+	logDir1File1 := filepath.Join(logDir1, "testDedup1.log")
+	logDir1File2 := filepath.Join(logDir1, "testDedup1.log")
+
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Minute,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	metrics := NewMetrics(nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fakeHandler := make(chan fileTargetEvent)
+	receivedStartWatch := atomic.NewInt32(0)
+	receivedStopWatch := atomic.NewInt32(0)
+	go func() {
+		for {
+			select {
+			case event := <-fakeHandler:
+				switch event.eventType {
+				case fileTargetEventWatchStart:
+					receivedStartWatch.Add(1)
+				case fileTargetEventWatchStop:
+					receivedStopWatch.Add(1)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	path := logDir1 + "/*.log"
+	dedup := true
+	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
+		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
+	}, nil, fakeHandler, "", dedup)
+	assert.NoError(t, err)
+
+	// Start with nothing watched.
+	if len(target.watches) != 0 {
+		t.Fatal("Expected watches to be 0 at this point in the test...")
+	}
+	if len(target.readers) != 0 {
+		t.Fatal("Expected tails to be 0 at this point in the test...")
+	}
+
+	// Create the base dir, still nothing watched.
+	err = os.MkdirAll(logDir1, 0750)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	if len(target.watches) != 0 {
+		t.Fatal("Expected watches to be 0 at this point in the test...")
+	}
+	if len(target.readers) != 0 {
+		t.Fatal("Expected tails to be 0 at this point in the test...")
+	}
+
+	// Add a file, which should create a watcher and a tailer.
+	file, err := os.Create(logDir1File1)
+	assert.NoError(t, err)
+	context := `
+a1
+a2
+a3
+a4
+a5
+a6
+a7
+a8
+a9
+a10
+a11
+a12
+a13`
+	_, err = file.WriteString(context)
+	assert.NoError(t, err, "WriteString logDir1File1 fail:", logDir1File1)
+
+	// Delay sync() call to make sure the filesystem watch event does not fire during sync()
+	time.Sleep(10 * time.Millisecond)
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	assert.Equal(t, 1, len(target.readers),
+		"Expected tails to be 1 at this point in the test...",
+	)
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
+
+	// Add another file, should get another tailer.
+	file2, err := os.Create(logDir1File2)
+	assert.NoError(t, err)
+	_, err = file2.WriteString(context)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	//dedup here
+	assert.Equal(t, 1, len(target.readers),
+		"Expected tails to be 2 at this point in the test...",
+	)
+
+	// Remove one of the files, tailer should stop.
+	err = os.Remove(logDir1File1)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 0, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	assert.Equal(t, 0, len(target.readers),
+		"Expected tails to be 1 at this point in the test...",
+	)
+
+	// Remove the entire directory, other tailer should stop and watcher should go away.
+	err = os.RemoveAll(logDir1)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 0, len(target.watches),
+		"Expected watches to be 0 at this point in the test...",
+	)
+	assert.Equal(t, 0, len(target.readers),
+		"Expected tails to be 0 at this point in the test...",
+	)
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
+
+	target.Stop()
+	ps.Stop()
 }
 
 func BenchmarkToStopTailing(b *testing.B) {
