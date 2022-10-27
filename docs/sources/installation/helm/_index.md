@@ -1,9 +1,9 @@
 ---
 title: Install Grafana Loki with Helm
 menuTitle: Deploy on Kubernetes
-description: Use this template when you write a concept topic.
+description: Learn how to install Grafana Loki on Kubernetes with Helm.
 aliases:
-  - /docs/writers-toolkit/latest/templates/concept-template
+  - /docs/installation/helm
 weight: 100
 keywords:
   - helm 
