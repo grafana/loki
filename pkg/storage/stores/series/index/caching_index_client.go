@@ -304,9 +304,6 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 	hashed := make([]string, 0, len(keys))
 	bufs := make([][]byte, 0, len(batches))
 	for i := range keys {
-		if len(batches[i].Entries) != 0 {
-			level.Debug(logger).Log("msg", "caching index entries", "key", keys[i], "count", len(batches[i].Entries))
-		}
 		hashed = append(hashed, cache.HashKey(keys[i]))
 		out, err := proto.Marshal(&batches[i])
 		if err != nil {
