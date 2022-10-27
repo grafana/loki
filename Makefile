@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.24.1
+BUILD_IMAGE_VERSION := 0.24.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -587,6 +587,15 @@ loki-operator-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+
+#################
+# Documentation #
+#################
+
+documentation-helm-reference-check:
+	@echo "Checking diff"
+	$(MAKE) -BC docs sources/installation/helm/reference.md
+	@git diff --exit-code -- docs || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
 
 ########
 # Misc #
