@@ -41,7 +41,7 @@ migrate:
     memberlistService: loki-loki-distributed-memberlist
 ```
 
-The value of `memberlistService` must be the kubernetes service created for the purpose of Memberlist DNS in the `loki-distributed` deployment. It should match the value of `memberlist.join_members` in the config of the `loki-distributed` deployment. This is what will make the new cluster join the existing clusters ring. It is important to join all existing rings, if you are using different memberlist DNS for different rings, you must manually set the value of each applicable `join_members` configuration for each ring. If using the same memberlist DNS for all rings, as is the default in the `loki-distributed` chart, setting `migrate.memberlistService` should be enough.
+The value of `memberlistService` must be the Kubernetes service created for the purpose of Memberlist DNS in the `loki-distributed` deployment. It should match the value of `memberlist.join_members` in the config of the `loki-distributed` deployment. This is what will make the new cluster join the existing clusters ring. It is important to join all existing rings, if you are using different memberlist DNS for different rings, you must manually set the value of each applicable `join_members` configuration for each ring. If using the same memberlist DNS for all rings, as is the default in the `loki-distributed` chart, setting `migrate.memberlistService` should be enough.
 
 One the new cluster is up, add the appropriate data source in Grafana for the new cluster. Check that the following queries return results:
 
