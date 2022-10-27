@@ -13,7 +13,7 @@ keywords:
 
 ## Migrating from `loki-distributed`
 
-This guide will walk you through migrating to the `loki` helm chart, v3.0 or higher, from the `loki-distributed` helm chart (v0.63.2 at time of writing). The process consists of deploying the new `loki` helm chart alongside the existing `loki-distributed` installation. By joining the new cluster to the exsiting cluster's ring, you will create one large cluster. This will allow you to manually bring down the `loki-distributed` components in a safe way to avoid any data loss.
+This guide will walk you through migrating to the `loki` helm chart, v3.0 or higher, from the `loki-distributed` Helm Chart (v0.63.2 at time of writing). The process consists of deploying the new `loki` Helm Chart alongside the existing `loki-distributed` installation. By joining the new cluster to the exsiting cluster's ring, you will create one large cluster. This will allow you to manually bring down the `loki-distributed` components in a safe way to avoid any data loss.
 
 ### Prepare The Existing Cluster
 
