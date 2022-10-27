@@ -59,7 +59,7 @@ Once this has deployed, query the new `loki` cluster's Loki data source for new 
 
 ### Tear Down the Old Loki Canary
 
-If you had previously deployed the canary via the `loki-canary` helm chart, you can now tear it down. The new chart ships the canary by default and is automatically configured to scrape it.
+If you had previously deployed the canary via the `loki-canary` Helm Chart, you can now tear it down. The new chart ships the canary by default and is automatically configured to scrape it.
 
 ### Update Flush Config On `loki-distributed` Deployment
 
