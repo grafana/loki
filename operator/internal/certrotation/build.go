@@ -46,10 +46,9 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	}
 	opts.Rotation = rotation
 
-	nowFunc := func() time.Time { return time.Now() }
-
+	clock := time.Now
 	opts.Signer.Rotation = signerRotation{
-		Clock: nowFunc,
+		Clock: clock,
 	}
 
 	if opts.Certificates == nil {
@@ -57,7 +56,7 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 	}
 	for _, name := range ComponentCertSecretNames(opts.StackName) {
 		r := certificateRotation{
-			Clock:    nowFunc,
+			Clock:    clock,
 			UserInfo: defaultUserInfo,
 			Hostnames: []string{
 				fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
