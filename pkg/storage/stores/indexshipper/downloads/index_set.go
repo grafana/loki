@@ -278,7 +278,14 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 		return err
 	}
 
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.tableName, toDownload, toDelete))
+	toDownloadBuilder := strings.Builder{}
+	for i, f := range toDownload {
+		if i != 0 {
+			toDownloadBuilder.WriteString(",")
+		}
+		toDownloadBuilder.WriteString(f.Name)
+	}
+	level.Debug(t.logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.tableName, toDownloadBuilder.String(), toDelete))
 
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
@@ -288,15 +295,8 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 	// if we did not bypass list cache and skipped downloading all the new files due to them being removed by compaction,
 	// it means the cache is not valid anymore since compaction would have happened after last index list cache refresh.
 	// Let us return error to ask the caller to re-run the sync after the list cache refresh.
-	toDownloadStr := strings.Builder{}
-	for i, f := range toDownload {
-		if i != 0 {
-			toDownloadStr.WriteString(",")
-		}
-		toDownloadStr.WriteString(f.Name)
-	}
 	if !bypassListCache && len(downloadedFiles) == 0 && len(toDownload) > 0 {
-		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownloadStr.String())
+		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownloadBuilder.String())
 		return errIndexListCacheTooStale
 	}
 
