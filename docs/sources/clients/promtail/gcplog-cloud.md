@@ -169,7 +169,7 @@ resource "google_pubsub_topic_iam_binding" "log-writer" {
 }
 ```
 
-Then, another snippet needs to be added depending on wether the `pull` or `push` flavour is chosen.
+Then, another snippet needs to be added depending on whether the `pull` or `push` flavour is chosen.
 
 ### Pull
 
