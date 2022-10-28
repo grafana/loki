@@ -58,12 +58,12 @@ func WithSplitByLimits(l Limits, splitBy time.Duration) Limits {
 	}
 }
 
-type IdTransformer func(context.Context, string) string
+type UserIDTransformer func(context.Context, string) string
 
 // cacheKeyLimits intersects Limits and CacheSplitter
 type cacheKeyLimits struct {
 	Limits
-	transformer IdTransformer
+	transformer UserIDTransformer
 }
 
 func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
