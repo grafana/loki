@@ -1855,6 +1855,17 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `max_over_time({app="foo"} | unwrap bar [5m] offset -5m) without (foo,bar)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", ""),
+					newOffsetExpr(-5*time.Minute)),
+				OpRangeTypeMax, &Grouping{Without: true, Groups: []string{"foo", "bar"}}, nil,
+			),
+		},
+		{
 			in: `max_over_time(({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo )[5m])`,
 			exp: newRangeAggregationExpr(

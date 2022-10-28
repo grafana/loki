@@ -157,6 +157,12 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 		lval.str = numberText
 		return NUMBER
+	case '-': // handle negative durations
+		tokenText := l.TokenText()
+		if duration, ok := tryScanDuration(tokenText, &l.Scanner); ok {
+			lval.duration = duration
+			return DURATION
+		}
 
 	case scanner.String, scanner.RawString:
 		var err error
