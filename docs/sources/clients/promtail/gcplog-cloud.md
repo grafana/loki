@@ -192,7 +192,7 @@ terraform apply \
 
 ### Push
 
-The following snippet configures the push subscription, for GCP to send logs to Promtail.
+The following snippet configures a push subscription to the pub/sub topic which will forward logs to Promtail.
 
 ```terraform
 // Subscription
