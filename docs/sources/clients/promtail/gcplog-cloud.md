@@ -173,7 +173,7 @@ Then, another snippet needs to be added depending on wether the `pull` or `push`
 
 ### Pull
 
-The following snippet configures the pull subscription, for Promtail to subscribe to.
+The following snippet configures a subscription to the pub/sub topic which Promtail will subscribe to.
 
 ```terraform
 // Subscription
