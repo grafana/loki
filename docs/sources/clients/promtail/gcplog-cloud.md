@@ -150,7 +150,7 @@ resource "google_pubsub_topic" "main" {
 // Log sink
 variable "inclusion_filter" {
   type        = string
-  description = "GCP Logs query filtering down which logs should be sent to Promtail."
+  description = "Optional GCP Logs query which can filter logs being routed to the pub/sub topic and promtail"
 }
 
 resource "google_logging_project_sink" "main" {
