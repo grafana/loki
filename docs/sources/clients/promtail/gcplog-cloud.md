@@ -183,7 +183,7 @@ resource "google_pubsub_subscription" "main" {
 }
 ```
 
-Then, the new resources can be applied by running, filling the required variables.
+Then, to create the new resources run the snippet below after filling in the required variables.
 
 ```bash
 terraform apply \
