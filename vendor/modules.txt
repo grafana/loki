@@ -1068,6 +1068,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
+github.com/stretchr/testify/suite
 # github.com/thanos-io/objstore v0.0.0-20220715165016-ce338803bc1e
 ## explicit; go 1.17
 github.com/thanos-io/objstore

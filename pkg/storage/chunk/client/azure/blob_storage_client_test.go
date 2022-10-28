@@ -5,12 +5,16 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -22,6 +26,58 @@ type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
+}
+
+type FederatedTokenTestSuite struct {
+	suite.Suite
+	config                      *BlobStorage
+	mockOAuthConfig             *adal.OAuthConfig
+	mockedServicePrincipalToken *adal.ServicePrincipalToken
+}
+
+func (suite *FederatedTokenTestSuite) SetupTest() {
+	suite.mockOAuthConfig, _ = adal.NewOAuthConfig("foo", "bar")
+	suite.mockedServicePrincipalToken = new(adal.ServicePrincipalToken)
+	suite.config = &BlobStorage{
+		cfg: &BlobStorageConfig{
+			ContainerName:      "foo",
+			StorageAccountName: "bar",
+			Environment:        azureGlobal,
+			UseFederatedToken:  true,
+		},
+	}
+
+	suite.T().Setenv("AZURE_CLIENT_ID", "myClientId")
+	suite.T().Setenv("AZURE_TENANT_ID", "myTenantId")
+
+	tmpDir := suite.T().TempDir()
+	_ = os.WriteFile(tmpDir+"/jwtToken", []byte("myJwtToken"), 0666)
+	suite.T().Setenv("AZURE_FEDERATED_TOKEN_FILE", tmpDir+"/jwtToken")
+}
+
+func (suite *FederatedTokenTestSuite) TestGetServicePrincipalToken() {
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error) {
+		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
+		require.Equal(suite.T(), "myTenantId", tenantID)
+
+		_, err := adal.NewOAuthConfig(activeDirectoryEndpoint, tenantID)
+		require.NoError(suite.T(), err)
+
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		require.True(suite.T(), *suite.mockOAuthConfig == oauthConfig, "should return the mocked object")
+		require.Equal(suite.T(), "myClientId", clientID)
+		require.Equal(suite.T(), "myJwtToken", jwt)
+		require.Equal(suite.T(), "https://bar.blob.core.windows.net", resource)
+		return suite.mockedServicePrincipalToken, nil
+	}
+
+	token, err := suite.config.getServicePrincipalToken(authFunctions{newOAuthConfigFunc, servicePrincipalTokenFromFederatedTokenFunc})
+
+	require.NoError(suite.T(), err)
+	require.True(suite.T(), suite.mockedServicePrincipalToken == token, "should return the mocked object")
 }
 
 func Test_Hedging(t *testing.T) {
@@ -129,6 +185,10 @@ func Test_DefaultBlobURL(t *testing.T) {
 	bloburl, err := c.getBlobURL("blob", false)
 	require.NoError(t, err)
 	require.Equal(t, *expect, bloburl.URL())
+}
+
+func Test_UseFederatedToken(t *testing.T) {
+	suite.Run(t, new(FederatedTokenTestSuite))
 }
 
 func Test_EndpointSuffixWithBlob(t *testing.T) {
