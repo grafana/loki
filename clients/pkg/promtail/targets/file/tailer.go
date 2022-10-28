@@ -205,6 +205,9 @@ func (t *tailer) readLines() {
 
 func (t *tailer) SummaryFile(path string) (string, error) {
 	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
 	defer file.Close()
 	summary := NewSummary(nil)
 	if nil == err {
