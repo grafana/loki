@@ -111,7 +111,7 @@ func TestLoadTables(t *testing.T) {
 		// see if index shipper has the index files
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
 			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
-				return tm.indexShipper.ForEach(ctx, table, userID, nil, func(_ bool, index index_shipper.Index) error {
+				return tm.indexShipper.ForEach(ctx, table, userID, func(_ bool, index index_shipper.Index) error {
 					return callback(index.(*indexfile.IndexFile).GetBoltDB())
 				})
 			},
