@@ -136,14 +136,7 @@ loki:
             period: 24h
     {{- end }}
 
-    ruler:
-      storage:
-      {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
-      {{- include "loki.rulerStorageConfig" . | nindent 4}}
-      {{- end }}
-    {{- with .Values.loki.rulerConfig}}
-    {{- toYaml . | nindent 2}}
-    {{- end }}
+    {{ include "loki.rulerConfig" . }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
