@@ -470,7 +470,7 @@ func Test_TruncateLogLines(t *testing.T) {
 func TestStreamShard(t *testing.T) {
 	// setup base stream.
 	baseStream := logproto.Stream{}
-	baseLabels := "{app='myapp', job='fizzbuzz'}"
+	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
 	baseStream.Hash = lbs.Hash()
@@ -585,6 +585,15 @@ func TestStreamShard(t *testing.T) {
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
+
+			for _, s := range derivedStreams {
+				// Generate sorted labels
+				lbls, err := syntax.ParseLabels(s.stream.Labels)
+				require.NoError(t, err)
+
+				require.Equal(t, lbls.Hash(), s.stream.Hash)
+				require.Equal(t, lbls.String(), s.stream.Labels)
+			}
 		})
 	}
 }
