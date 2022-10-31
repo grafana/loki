@@ -189,7 +189,6 @@ type client struct {
 	cfg             Config
 	client          *http.Client
 	entries         chan api.Entry
-	wal             clientWAL
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -201,7 +200,7 @@ type client struct {
 	cancel     context.CancelFunc
 	maxStreams int
 
-	wal WAL
+	wal clientWAL
 }
 
 // Tripperware can wrap a roundtripper.
@@ -235,8 +234,6 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 		ctx:            ctx,
 		cancel:         cancel,
 		maxStreams:     maxStreams,
-
-		wal: wal,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -313,7 +310,8 @@ func (c *client) replayWAL() error {
 		defer closer.Close()
 
 		// todo, reduce allocations
-		b := newBatch(NoopWAL)
+		// todo: thepalbi, use correct maxStreams here
+		b := newBatch(NoopWAL, 0)
 		seriesRecs := make(map[uint64]model.LabelSet)
 		for r.Next() {
 			rec := recordPool.GetRecord()
@@ -447,7 +445,8 @@ func (c *client) run() {
 func (c *client) newBatch(tenantID string) *batch {
 	// todo: callum, how to handle this error
 	w, _ := c.wal.getWAL(tenantID)
-	return newBatch(w)
+	// todo: thepalbi, fix maxStreams here
+	return newBatch(w, 0)
 }
 
 func (c *client) Chan() chan<- api.Entry {
