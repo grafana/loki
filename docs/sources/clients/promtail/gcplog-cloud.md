@@ -136,6 +136,8 @@ gcloud pubsub subscriptions create cloud-logs \
 
 You also have the option of creating the required resources for GCP Log collection with terraform. First, the following snippet will add the resources needed for both `pull` and `push` flavours.
 
+How to use Terraform is outside the scope of this guide. You can find [this tutorial](https://developer.hashicorp.com/terraform/tutorials/gcp-get-started/google-cloud-platform-build) on how to work with Terraform and GCP useful.
+
 ```terraform
 // Provider module
 provider "google" {
