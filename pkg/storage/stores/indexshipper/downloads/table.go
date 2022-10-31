@@ -152,7 +152,7 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 	// iterate through both user and common index
 	users := []string{userID, ""}
 
-	for i := range []string{userID, ""} {
+	for i := range users {
 		// bind locally within iteration before
 		// sending to goroutine
 		uid := users[i]
