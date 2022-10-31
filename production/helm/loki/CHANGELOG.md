@@ -11,9 +11,13 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-## 3.2.3
+## 3.3.1
 
 - [BUGFIX] Add missing label `prometheus.io/service-monitor: "false"` to single-binary headless service
+
+## 3.3.0
+
+- [CHANGE] Remove ServiceMonitor and PrometheusRule CRD
 
 ## 3.2.2
 
