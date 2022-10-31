@@ -46,7 +46,7 @@ var (
 				},
 			},
 		},
-	}}
+	}, nil}
 	matrix = promql.Matrix{
 		{
 			Points: []promql.Point{
