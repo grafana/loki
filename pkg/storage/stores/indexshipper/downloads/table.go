@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -24,12 +25,12 @@ import (
 const (
 	downloadTimeout        = 5 * time.Minute
 	maxDownloadConcurrency = 50
-	CommonTenantIdentifier = ""
 )
 
 type Table interface {
 	Close()
-	ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -117,7 +118,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		table.indexSets[userID] = userIndexSet
 	}
 
-	commonIndexSet, err := NewIndexSet(name, CommonTenantIdentifier, cacheLocation, table.baseCommonIndexSet,
+	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
 		openIndexFileFunc, table.logger)
 	if err != nil {
 		return nil, err
@@ -128,7 +129,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	table.indexSets[CommonTenantIdentifier] = commonIndexSet
+	table.indexSets[""] = commonIndexSet
 
 	return &table, nil
 }
@@ -145,24 +146,48 @@ func (t *table) Close() {
 	t.indexSets = map[string]IndexSet{}
 }
 
-func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
-	ids := []string{userID, CommonTenantIdentifier}
-	sets, err := t.getOrCreateIndexSets(ctx, ids, true)
-	if err != nil {
-		return err
-	}
+func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+	g, ctx := errgroup.WithContext(ctx)
 
 	// iterate through both user and common index
-	for i, indexSet := range sets {
+	users := []string{userID, ""}
+
+	for i := range users {
+		// bind locally within iteration before
+		// sending to goroutine
+		uid := users[i]
+
+		g.Go(func() error {
+			indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
+			if err != nil {
+				return err
+			}
+
+			if indexSet.Err() != nil {
+				t.cleanupBrokenIndexSet(ctx, uid)
+				return indexSet.Err()
+			}
+
+			return indexSet.ForEachConcurrent(ctx, callback)
+		})
+	}
+	return g.Wait()
+}
+
+func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+	// iterate through both user and common index
+	for _, uid := range []string{userID, ""} {
+		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
+		if err != nil {
+			return err
+		}
 
 		if indexSet.Err() != nil {
-			// since getOrCreateIndexSets preserves input->output positional mapping,
-			// we know this indexSet corresponds to the i'th ID.
-			t.cleanupBrokenIndexSet(ctx, ids[i])
+			t.cleanupBrokenIndexSet(ctx, uid)
 			return indexSet.Err()
 		}
 
-		err = indexSet.ForEach(ctx, doneChan, callback)
+		err = indexSet.ForEach(ctx, callback)
 		if err != nil {
 			return err
 		}
@@ -181,7 +206,7 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 	for userID, userIndexSet := range t.indexSets {
 		lastUsedAt := userIndexSet.LastUsedAt()
 		if lastUsedAt.Add(ttl).Before(now) {
-			if userID == CommonTenantIdentifier {
+			if userID == "" {
 				// add the userID for common index set at the end of the list to make sure it is the last one cleaned up
 				// because we remove directories containing the index sets which in case of common index is
 				// the parent directory of all the user index sets.
@@ -194,7 +219,7 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 
 	// common index set should expire only after all the user index sets have expired.
 	if commonIndexSetExpired && len(expiredIndexSets) == len(t.indexSets)-1 {
-		expiredIndexSets = append(expiredIndexSets, CommonTenantIdentifier)
+		expiredIndexSets = append(expiredIndexSets, "")
 	}
 
 	return expiredIndexSets
@@ -211,7 +236,7 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 		for _, userID := range indexSetsToCleanup {
 			// additional check for cleaning up the common index set when it is the only one left.
 			// This is just for safety because the index sets could change between findExpiredIndexSets and the actual cleanup.
-			if userID == CommonTenantIdentifier && len(t.indexSets) != 1 {
+			if userID == "" && len(t.indexSets) != 1 {
 				level.Info(t.logger).Log("msg", "skipping cleanup of common index set because we possibly have unexpired user index sets left")
 				continue
 			}
@@ -247,89 +272,61 @@ func (t *table) Sync(ctx context.Context) error {
 	return nil
 }
 
-// getOrCreateIndexSets gets or creates the index sets for the userIDs.
+// getOrCreateIndexSet gets or creates the index set for the userID.
 // If it does not exist, it creates a new one and initializes it in a goroutine.
 // Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
-// NOTE: order of inputs and outputs are preserved: if user "A" is the 0th position in the `ids`
-// argument, it will be the 0th position in the returned []IndexSet as well.
-func (t *table) getOrCreateIndexSets(ctx context.Context, ids []string, forQuerying bool) ([]IndexSet, error) {
-
-	// withLock keeps track of index sets which didn't exist and therefore need
-	// to be tried again under a Lock instead of RLock
-	var withLock []int
-	results := make([]IndexSet, len(ids))
-	var found int
-	var err error
-
+func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
-	for i, id := range ids {
-		set, ok := t.indexSets[id]
-		if ok {
-			results[i] = set
-			found++
-		} else {
-			withLock = append(withLock, i)
-		}
-	}
+	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
-
-	// happy path: all required index sets were found
-	if found == len(ids) {
-		return results, nil
+	if ok {
+		return indexSet, nil
 	}
 
 	t.indexSetsMtx.Lock()
 	defer t.indexSetsMtx.Unlock()
 
-	for i := range withLock {
+	indexSet, ok = t.indexSets[id]
+	if ok {
+		return indexSet, nil
+	}
 
-		// since we're starting goroutines with references to this item
-		// during iteration over the slice,
-		// we must bind it within the iteration
-		pos := withLock[i]
-		id := ids[pos]
+	var err error
+	baseIndexSet := t.baseUserIndexSet
+	if id == "" {
+		baseIndexSet = t.baseCommonIndexSet
+	}
 
-		set, ok := t.indexSets[id]
-		if !ok {
-			baseIndexSet := t.baseUserIndexSet
-			if id == CommonTenantIdentifier {
-				baseIndexSet = t.baseCommonIndexSet
-			}
+	// instantiate the index set, add it to the map
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc,
+		loggerWithUserID(t.logger, id))
+	if err != nil {
+		return nil, err
+	}
+	t.indexSets[id] = indexSet
 
-			// instantiate the index set, add it to the map
-			set, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc,
-				loggerWithUserID(t.logger, id))
-			if err != nil {
-				return nil, err
-			}
-			t.indexSets[id] = set
-
-			// initialize the index set in async mode, it would be upto the caller to wait for its readiness using IndexSet.AwaitReady()
-			go func() {
-				if forQuerying {
-					start := time.Now()
-					defer func() {
-						duration := time.Since(start)
-						t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
-						logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
-						level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
-					}()
-				}
-
-				err := set.Init(forQuerying)
-				if err != nil {
-					level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
-					t.cleanupBrokenIndexSet(ctx, id)
-				}
+	// initialize the index set in async mode, it would be upto the caller to wait for its readiness using IndexSet.AwaitReady()
+	go func() {
+		if forQuerying {
+			start := time.Now()
+			defer func() {
+				duration := time.Since(start)
+				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
+				logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
+				level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
 			}()
 		}
 
-		results[pos] = set
-	}
+		err := indexSet.Init(forQuerying)
+		if err != nil {
+			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
+			t.cleanupBrokenIndexSet(ctx, id)
+		}
+	}()
 
-	return results, err
+	return indexSet, nil
 }
 
 // cleanupBrokenIndexSet if an indexSet with given id exists and is really broken i.e Err() returns a non-nil error
@@ -353,12 +350,10 @@ func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
 // When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
 func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
-	res, err := t.getOrCreateIndexSets(ctx, []string{CommonTenantIdentifier}, false)
+	commonIndexSet, err := t.getOrCreateIndexSet(ctx, "", false)
 	if err != nil {
 		return err
 	}
-
-	commonIndexSet := res[0]
 	err = commonIndexSet.AwaitReady(ctx)
 	if err != nil {
 		return err
@@ -383,19 +378,17 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
 	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		// TODO: concurrency should be controlled globally
-		// Here, we call getOrCreateIndexSets one at a time in order to run with proper concurrency since
-		// we call `AwaitReady` afterwards.
-		indexSet, err := t.getOrCreateIndexSets(ctx, []string{userIDs[idx]}, false)
+		indexSet, err := t.getOrCreateIndexSet(ctx, userIDs[idx], false)
 		if err != nil {
 			return err
 		}
-		return indexSet[0].AwaitReady(ctx)
+
+		return indexSet.AwaitReady(ctx)
 	})
 }
 
 func loggerWithUserID(logger log.Logger, userID string) log.Logger {
-	if userID == CommonTenantIdentifier {
+	if userID == "" {
 		return logger
 	}
 
