@@ -135,15 +135,19 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Respons
 // CacheSplitter generates cache keys. This is a useful interface for downstream
 // consumers who wish to implement their own strategies.
 type CacheSplitter interface {
-	GenerateCacheKey(userID string, r Request) string
+	GenerateCacheKey(ctx context.Context, userID string, r Request, split time.Duration) string
 }
 
-// constSplitter is a utility for using a constant split interval when determining cache keys
-type constSplitter time.Duration
+// IntervalSplitter is a utility for using a split interval when determining cache keys
+type IntervalSplitter struct{}
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
-	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
+func (t IntervalSplitter) GenerateCacheKey(_ context.Context, userID string, r Request, split time.Duration) string {
+	var currentInterval int64
+	if denominator := int64(split / time.Millisecond); denominator > 0 {
+		currentInterval = r.GetStart() / denominator
+	}
+
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
@@ -219,7 +223,8 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
+		userIDs  = tenant.JoinTenantIDs(tenantIDs)
+		key      = s.splitter.GenerateCacheKey(ctx, userIDs, r, s.limits.QuerySplitDuration(userIDs))
 		extents  []Extent
 		response Response
 	)

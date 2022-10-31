@@ -413,10 +413,14 @@ func NewMetricTripperware(
 	)
 
 	if cfg.CacheResults {
+		if cfg.Splitter == nil {
+			cfg.Splitter = intervalAndSplitSplitter{}
+		}
+
 		queryCacheMiddleware, err := queryrangebase.NewResultsCacheMiddleware(
 			log,
 			c,
-			cacheKeyLimits{limits},
+			cfg.Splitter,
 			limits,
 			codec,
 			extractor,

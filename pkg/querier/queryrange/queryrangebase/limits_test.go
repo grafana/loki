@@ -8,6 +8,7 @@ type mockLimits struct {
 	maxQueryLookback  time.Duration
 	maxQueryLength    time.Duration
 	maxCacheFreshness time.Duration
+	splitBy           time.Duration
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {
@@ -24,4 +25,8 @@ func (mockLimits) MaxQueryParallelism(string) int {
 
 func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 	return m.maxCacheFreshness
+}
+
+func (m mockLimits) QuerySplitDuration(string) time.Duration {
+	return m.splitBy
 }

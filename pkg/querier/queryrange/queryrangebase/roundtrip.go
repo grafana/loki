@@ -48,6 +48,8 @@ type Config struct {
 	ShardedQueries       bool `yaml:"parallelise_shardable_queries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+
+	Splitter CacheSplitter `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

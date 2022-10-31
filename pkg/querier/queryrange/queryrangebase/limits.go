@@ -20,4 +20,8 @@ type Limits interface {
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
 	MaxCacheFreshness(string) time.Duration
+
+	// QuerySplitDuration returns the per-tenant configurable split by interface.
+	// This is needed in determining cache keys.
+	QuerySplitDuration(string) time.Duration
 }

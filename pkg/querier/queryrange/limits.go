@@ -35,7 +35,6 @@ var (
 type Limits interface {
 	queryrangebase.Limits
 	logql.Limits
-	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
 	MinShardingLookback(string) time.Duration
@@ -58,14 +57,10 @@ func WithSplitByLimits(l Limits, splitBy time.Duration) Limits {
 	}
 }
 
-// cacheKeyLimits intersects Limits and CacheSplitter
-type cacheKeyLimits struct {
-	Limits
-}
+// intervalAndSplitSplitter is a utility for using a split interval and split config when determining cache keys
+type intervalAndSplitSplitter struct{}
 
-func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrangebase.Request) string {
-	split := l.QuerySplitDuration(userID)
-
+func (l intervalAndSplitSplitter) GenerateCacheKey(_ context.Context, userID string, r queryrangebase.Request, split time.Duration) string {
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
 		currentInterval = r.GetStart() / denominator

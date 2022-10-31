@@ -759,7 +759,7 @@ func TestResultsCache(t *testing.T) {
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		c,
-		constSplitter(day),
+		IntervalSplitter{},
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -801,7 +801,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		c,
-		constSplitter(day),
+		IntervalSplitter{},
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -842,7 +842,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 		expectedResponse *PrometheusResponse
 	}{
 		{
-			fakeLimits:       mockLimits{maxCacheFreshness: 5 * time.Second},
+			fakeLimits:       mockLimits{maxCacheFreshness: 5 * time.Second, splitBy: day},
 			Handler:          nil,
 			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
@@ -865,7 +865,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				c,
-				constSplitter(day),
+				IntervalSplitter{},
 				fakeLimits,
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -883,7 +883,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
 
 			// fill cache
-			key := constSplitter(day).GenerateCacheKey("1", req)
+			key := IntervalSplitter{}.GenerateCacheKey(context.Background(), "1", req, day)
 			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
@@ -904,7 +904,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	rm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		c,
-		constSplitter(day),
+		IntervalSplitter{},
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -966,7 +966,8 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
+			splitter := IntervalSplitter{}
+			if got := splitter.GenerateCacheKey(context.Background(), "fake", tt.r, tt.interval); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1015,7 +1016,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				c,
-				constSplitter(day),
+				IntervalSplitter{},
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
