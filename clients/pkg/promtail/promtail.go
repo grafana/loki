@@ -82,6 +82,13 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
+	for _, o := range opts {
+		// todo (callum) I don't understand why I needed to add this check
+		if o == nil {
+			continue
+		}
+		o(promtail)
+	}
 	err := promtail.reg.Register(reloadSuccessTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadSuccessTotal :%w", err)
@@ -89,13 +96,6 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 	err = promtail.reg.Register(reloadFailTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadFailTotal :%w", err)
-	}
-	for _, o := range opts {
-		// todo (callum) I don't understand why I needed to add this check
-		if o == nil {
-			continue
-		}
-		o(promtail)
 	}
 	err = promtail.reloadConfig(&cfg)
 	if err != nil {
