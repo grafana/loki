@@ -21,7 +21,11 @@ type MultiIndex struct {
 type IndexIter interface {
 	// For may be executed concurrently,
 	// but all work must complete before
-	// it returns
+	// it returns.
+	// TODO(owen-d|sandeepsukhani):
+	// Lazy iteration may touch different index files within the same index query.
+	// `For` e.g, Bounds and GetChunkRefs might go through different index files
+	// if a sync happened between the calls.
 	For(context.Context, func(context.Context, Index) error) error
 }
 
