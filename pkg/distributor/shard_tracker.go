@@ -7,7 +7,7 @@ import (
 const (
 	// defaultStripeSize is the default number of entries to allocate in the
 	// stripeSeries list.
-	defaultStripeSize = 1 << 15
+	defaultStripeSize = 1 << 10
 )
 
 // stripeLock is taken from ruler/storage/wal/series.go
