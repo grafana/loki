@@ -71,7 +71,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
-	RateFor(streamHash uint64) int64
+	RateFor(tenantID string, streamHash uint64) int64
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -411,7 +411,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID string) ([]uint32, []streamTracker) {
 	shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
 	logger := log.With(util_log.WithUserID(userID, util_log.Logger), "stream", stream.Labels)
-	shardCount := d.shardCountFor(logger, &stream, streamSize, shardStreamsCfg)
+	shardCount := d.shardCountFor(logger, &stream, streamSize, userID, shardStreamsCfg)
 
 	if shardCount <= 1 {
 		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
@@ -447,7 +447,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, user
 		streamCount = streamCount(totalShards, stream)
 	)
 
-	startShard := d.shardTracker.LastShardNum(stream.Hash)
+	startShard := d.shardTracker.LastShardNum(userID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
 		shard := d.createShard(streamLabels, streamPattern, shardNum)
@@ -459,7 +459,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, user
 			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
-	d.shardTracker.SetLastShardNum(stream.Hash, startShard+streamCount)
+	d.shardTracker.SetLastShardNum(userID, stream.Hash, startShard+streamCount)
 
 	return derivedKeys, derivedStreams
 }
@@ -620,7 +620,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize int, streamShardcfg *shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize int, userID string, streamShardcfg *shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -628,7 +628,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		return 1
 	}
 
-	rate := d.rateStore.RateFor(stream.Hash)
+	rate := d.rateStore.RateFor(userID, stream.Hash)
 	shards := calculateShards(rate, streamSize, streamShardcfg.DesiredRate.Val())
 	if shards == 0 {
 		// 1 shard is enough for the given stream.

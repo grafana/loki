@@ -865,7 +865,7 @@ func TestShardCountFor(t *testing.T) {
 			d := &Distributor{
 				rateStore: &fakeRateStore{tc.rate},
 			}
-			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, limits.ShardStreams)
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
@@ -1136,6 +1136,6 @@ type fakeRateStore struct {
 	rate int64
 }
 
-func (s *fakeRateStore) RateFor(_ uint64) int64 {
+func (s *fakeRateStore) RateFor(_ string, _ uint64) int64 {
 	return s.rate
 }
