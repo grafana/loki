@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -498,6 +499,8 @@ func labelTemplate(lbls string) labels.Labels {
 	copy(streamLabels, baseLbls)
 	streamLabels[len(baseLbls)] = labels.Label{Name: ingester.ShardLbName, Value: ingester.ShardLbPlaceholder}
 
+	sort.Sort(labels.Labels(streamLabels))
+
 	return streamLabels
 }
 
@@ -508,7 +511,13 @@ func (d *Distributor) createShard(streamshardCfg *shardstreams.Config, stream lo
 	}
 
 	shardLabel := strconv.Itoa(shardNumber)
-	lbls[len(lbls)-1] = labels.Label{Name: ingester.ShardLbName, Value: shardLabel}
+	for i := 0; i < len(lbls); i++ {
+		if lbls[i].Name == ingester.ShardLbName {
+			lbls[i].Value = shardLabel
+			break
+		}
+	}
+
 	return logproto.Stream{
 		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
 		Hash:    lbls.Hash(),
@@ -631,7 +640,6 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return "", 0, httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	// ensure labels are correctly sorted.
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
 		return "", 0, err
 	}
