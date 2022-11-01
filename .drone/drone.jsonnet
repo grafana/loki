@@ -518,15 +518,20 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
-      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      run('clone-target-branch', commands=[
+        'cd ..',
+        'echo "cloning "$DRONE_TARGET_BRANCH ',
+        'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
+        'cd -',
+      ]) { depends_on: ['clone'], when: onPRs },
+      make('test', container=false) { depends_on: ['clone', 'clone-target-branch'] },
+      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
-        'old=../loki-main/test_results.txt',
+        'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
         'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
-      ]) { depends_on: ['test', 'test-main'] },
+      ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
       run('report-coverage', commands=[
         "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
         "body=$(jq -Rs '{body: . }' diff.txt)",
@@ -534,7 +539,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       ], env={
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
-      }) { depends_on: ['compare-coverage'] },
+      }) { depends_on: ['compare-coverage'], when: onPRs },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
