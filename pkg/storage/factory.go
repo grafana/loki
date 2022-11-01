@@ -32,21 +32,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-// BoltDB Shipper is supposed to be run as a singleton.
-// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
-// in tests for creating multiple instances of it at a time.
-var boltDBIndexClientWithShipper index.Client
-
-// ResetBoltDBIndexClientWithShipper allows to reset the singleton.
-// MUST ONLY BE USED IN TESTS
-func ResetBoltDBIndexClientWithShipper() {
-	if boltDBIndexClientWithShipper == nil {
-		return
-	}
-	boltDBIndexClientWithShipper.Stop()
-	boltDBIndexClientWithShipper = nil
-}
-
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	downloads.Limits
@@ -172,8 +157,8 @@ func (cfg *Config) validateNamedStores() error {
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (index.Client, error) {
-	switch name {
+func NewIndexClient(periodCfg config.PeriodConfig, getTableRange func() config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (index.Client, error) {
+	switch periodCfg.IndexType {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
 		return store, nil
@@ -200,33 +185,26 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 	case config.StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.BoltDBShipperType:
-		if boltDBIndexClientWithShipper != nil {
-			return boltDBIndexClientWithShipper, nil
-		}
-
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
 			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
 			}
 
-			boltDBIndexClientWithShipper = gateway
 			return gateway, nil
 		}
 
-		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
+		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
 
-		tableRanges := getIndexStoreTableRanges(config.BoltDBShipperType, schemaCfg.Configs)
-
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
-			ownsTenantFn, tableRanges, registerer)
-
-		return boltDBIndexClientWithShipper, err
+		tableRange := getTableRange()
+		prefix := fmt.Sprintf("%s_%d", periodCfg.ObjectType, tableRange.Start)
+		return shipper.NewShipper(prefix, cfg.BoltDBShipperConfig, objectClient, limits,
+			ownsTenantFn, tableRange, registerer)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", periodCfg.IndexType, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
 	}
 }
 

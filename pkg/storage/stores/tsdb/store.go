@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path"
 	"sync"
 
 	"github.com/go-kit/log/level"
@@ -47,12 +48,13 @@ func ResetStoreInstance() {
 }
 
 type newStoreFactoryFunc func(
+	name string,
 	indexShipperCfg indexshipper.Config,
 	p config.PeriodConfig,
 	f *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
-	tableRanges config.TableRanges,
+	tableRange config.TableRange,
 	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
 ) (
@@ -71,12 +73,13 @@ type newStoreFactoryFunc func(
 // running multiple head managers would be complicated and wasteful.
 var NewStore = func() newStoreFactoryFunc {
 	return func(
+		name string,
 		indexShipperCfg indexshipper.Config,
 		p config.PeriodConfig,
 		f *fetcher.Fetcher,
 		objectClient client.ObjectClient,
 		limits downloads.Limits,
-		tableRanges config.TableRanges,
+		tableRange config.TableRange,
 		backupIndexWriter index.Writer,
 		reg prometheus.Registerer,
 	) (
@@ -91,7 +94,7 @@ var NewStore = func() newStoreFactoryFunc {
 			storeInstance = &store{
 				backupIndexWriter: backupIndexWriter,
 			}
-			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
+			err := storeInstance.init(name, indexShipperCfg, objectClient, limits, tableRange, reg)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -101,17 +104,18 @@ var NewStore = func() newStoreFactoryFunc {
 	}
 }()
 
-func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
+func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
+	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
+		name,
 		indexShipperCfg,
 		objectClient,
 		limits,
 		nil,
 		OpenShippableTSDB,
-		tableRanges,
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 	)
 	if err != nil {
@@ -135,7 +139,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 
 		var (
 			nodeName = indexShipperCfg.IngesterName
-			dir      = indexShipperCfg.ActiveIndexDirectory
+			dir      = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
 		)
 
 		tsdbMetrics := NewMetrics(reg)
@@ -143,7 +147,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 			nodeName,
 			dir,
 			s.indexShipper,
-			tableRanges,
+			tableRange,
 			util_log.Logger,
 			tsdbMetrics,
 		)
@@ -164,7 +168,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRanges))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
 	s.Reader = NewIndexClient(multiIndex, opts)

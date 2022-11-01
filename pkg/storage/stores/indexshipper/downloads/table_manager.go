@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"sync"
 	"time"
 
@@ -26,9 +24,6 @@ const (
 	cacheCleanupInterval = time.Hour
 	daySeconds           = int64(24 * time.Hour / time.Second)
 )
-
-// regexp for finding the trailing index bucket number at the end of table name
-var extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
@@ -55,10 +50,10 @@ type Config struct {
 }
 
 type tableManager struct {
-	cfg                 Config
-	openIndexFileFunc   index.OpenIndexFileFunc
-	indexStorageClient  storage.Client
-	tableRangesToHandle config.TableRanges
+	cfg                Config
+	openIndexFileFunc  index.OpenIndexFileFunc
+	indexStorageClient storage.Client
+	tableRangeToHandle config.TableRange
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
@@ -72,22 +67,22 @@ type tableManager struct {
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
-	ownsTenantFn IndexGatewayOwnsTenant, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) (TableManager, error) {
+	ownsTenantFn IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &tableManager{
-		cfg:                 cfg,
-		openIndexFileFunc:   openIndexFileFunc,
-		indexStorageClient:  indexStorageClient,
-		tableRangesToHandle: tableRangesToHandle,
-		ownsTenant:          ownsTenantFn,
-		tables:              make(map[string]Table),
-		metrics:             newMetrics(reg),
-		ctx:                 ctx,
-		cancel:              cancel,
+		cfg:                cfg,
+		openIndexFileFunc:  openIndexFileFunc,
+		indexStorageClient: indexStorageClient,
+		tableRangeToHandle: tableRangeToHandle,
+		ownsTenant:         ownsTenantFn,
+		tables:             make(map[string]Table),
+		metrics:            newMetrics(reg),
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 
 	// load the existing tables first.
@@ -291,12 +286,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	}
 
 	for _, tableName := range tables {
-		tableNumber, err := extractTableNumberFromName(tableName)
+		tableNumber, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
 			return err
 		}
 
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, tableName) {
+		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, tableName) {
 			continue
 		}
 
@@ -393,11 +388,11 @@ func (tm *tableManager) loadLocalTables() error {
 			continue
 		}
 
-		tableNumber, err := extractTableNumberFromName(entry.Name())
+		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
 		if err != nil {
 			return err
 		}
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, entry.Name()) {
+		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, entry.Name()) {
 			continue
 		}
 
@@ -415,21 +410,6 @@ func (tm *tableManager) loadLocalTables() error {
 	return nil
 }
 
-// extractTableNumberFromName extract the table number from a given tableName.
-// if the tableName doesn't match the regex, it would return -1 as table number.
-func extractTableNumberFromName(tableName string) (int64, error) {
-	match := extractTableNumberRegex.Find([]byte(tableName))
-	if match == nil {
-		return -1, nil
-	}
-
-	tableNumber, err := strconv.ParseInt(string(match), 10, 64)
-	if err != nil {
-		return -1, err
-	}
-
-	return tableNumber, nil
-}
 func getActiveTableNumber() int64 {
 	return getTableNumberForTime(model.Now())
 }

@@ -42,11 +42,11 @@ tsdbManager is used for managing active index and is responsible for:
   - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
-	nodeName    string // node name
-	log         log.Logger
-	dir         string
-	metrics     *Metrics
-	tableRanges config.TableRanges
+	nodeName   string // node name
+	log        log.Logger
+	dir        string
+	metrics    *Metrics
+	tableRange config.TableRange
 
 	sync.RWMutex
 
@@ -57,17 +57,17 @@ func NewTSDBManager(
 	nodeName,
 	dir string,
 	shipper indexshipper.IndexShipper,
-	tableRanges config.TableRanges,
+	tableRange config.TableRange,
 	logger log.Logger,
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
-		nodeName:    nodeName,
-		log:         log.With(logger, "component", "tsdb-manager"),
-		dir:         dir,
-		metrics:     metrics,
-		tableRanges: tableRanges,
-		shipper:     shipper,
+		nodeName:   nodeName,
+		log:        log.With(logger, "component", "tsdb-manager"),
+		dir:        dir,
+		metrics:    metrics,
+		tableRange: tableRange,
+		shipper:    shipper,
 	}
 }
 
@@ -164,7 +164,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]index.ChunkMetas)
 		for _, chk := range chks {
-			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
+			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRange)
 
 			for _, bucket := range idxBuckets {
 				pds[bucket] = append(pds[bucket], chk)
@@ -281,11 +281,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
+func indexBuckets(from, through model.Time, tableRange config.TableRange) (res []string) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
-		cfg := tableRanges.ConfigForTableNumber(cur)
+		cfg := tableRange.ConfigForTableNumber(cur)
 		if cfg != nil {
 			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
 		}

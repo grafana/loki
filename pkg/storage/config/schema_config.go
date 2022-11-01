@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,7 +59,26 @@ var (
 	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
 	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
+
+	// regexp for finding the trailing index bucket number at the end of table name
+	extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 )
+
+// ExtractTableNumberFromName extract the table number from a given tableName.
+// if the tableName doesn't match the regex, it would return -1 as table number.
+func ExtractTableNumberFromName(tableName string) (int64, error) {
+	match := extractTableNumberRegex.Find([]byte(tableName))
+	if match == nil {
+		return -1, nil
+	}
+
+	tableNumber, err := strconv.ParseInt(string(match), 10, 64)
+	if err != nil {
+		return -1, err
+	}
+
+	return tableNumber, nil
+}
 
 // TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
 // Both Start and End are inclusive.
@@ -67,20 +87,15 @@ type TableRange struct {
 	PeriodConfig *PeriodConfig
 }
 
-// TableRanges represents a list of table ranges for multiple schemas.
-type TableRanges []TableRange
-
-// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
-func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
-	cfg := t.ConfigForTableNumber(tableNumber)
-	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+// TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
+func (t TableRange) TableInRange(tableNumber int64, tableName string) bool {
+	return t.Start <= tableNumber && tableNumber <= t.End &&
+		fmt.Sprintf("%s%s", t.PeriodConfig.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
 }
 
-func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
-	for _, r := range t {
-		if r.Start <= tableNumber && tableNumber <= r.End {
-			return r.PeriodConfig
-		}
+func (t TableRange) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
+	if t.Start <= tableNumber && tableNumber <= t.End {
+		return t.PeriodConfig
 	}
 
 	return nil

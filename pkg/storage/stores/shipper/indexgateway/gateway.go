@@ -2,6 +2,7 @@ package indexgateway
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -38,11 +40,16 @@ type IndexClient interface {
 	Stop()
 }
 
+type IndexClientWithRange struct {
+	IndexClient
+	TableRange config.TableRange
+}
+
 type Gateway struct {
 	services.Service
 
 	indexQuerier IndexQuerier
-	indexClient  IndexClient
+	indexClients []IndexClientWithRange
 
 	cfg Config
 	log log.Logger
@@ -54,17 +61,19 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClient IndexClient) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
 		log:          log,
-		indexClient:  indexClient,
+		indexClients: indexClients,
 	}
 
 	g.Service = services.NewIdleService(nil, func(failureCase error) error {
 		g.indexQuerier.Stop()
-		g.indexClient.Stop()
+		for _, indexClient := range g.indexClients {
+			indexClient.Stop()
+		}
 		return nil
 	})
 
@@ -86,28 +95,66 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 		})
 	}
 
-	sendBatchMtx := sync.Mutex{}
-	outerErr = g.indexClient.QueryPages(server.Context(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
-		innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
-			// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
-			sendBatchMtx.Lock()
-			defer sendBatchMtx.Unlock()
+	sort.Slice(queries, func(i, j int) bool {
+		return queries[i].TableName < queries[j].TableName
+	})
+	sort.Slice(g.indexClients, func(i, j int) bool {
+		return g.indexClients[i].TableRange.Start < g.indexClients[j].TableRange.Start
+	})
 
-			return server.Send(response)
+	sendBatchMtx := sync.Mutex{}
+
+	var start int
+	for _, indexClient := range g.indexClients {
+		offset := 0
+		for i, query := range queries[start:] {
+			tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
+			if err != nil {
+				return err
+			}
+
+			if tableNumber == -1 || tableNumber < indexClient.TableRange.Start {
+				continue
+			}
+
+			if !indexClient.TableRange.TableInRange(tableNumber, query.TableName) {
+				offset = i
+				break
+			}
+		}
+
+		if offset == 0 {
+			continue
+		}
+
+		outerErr = indexClient.QueryPages(server.Context(), queries[start:start+offset], func(query index.Query, batch index.ReadBatchResult) bool {
+			innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
+				// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
+				sendBatchMtx.Lock()
+				defer sendBatchMtx.Unlock()
+
+				return server.Send(response)
+			})
+
+			if innerErr != nil {
+				return false
+			}
+
+			return true
 		})
 
 		if innerErr != nil {
-			return false
+			return innerErr
 		}
 
-		return true
-	})
+		if outerErr != nil {
+			return outerErr
+		}
 
-	if innerErr != nil {
-		return innerErr
+		start += offset
 	}
 
-	return outerErr
+	return nil
 }
 
 func buildResponses(query index.Query, batch index.ReadBatchResult, callback func(*logproto.QueryIndexResponse) error) error {

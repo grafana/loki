@@ -63,14 +63,14 @@ type indexClient struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRanges config.TableRanges, registerer prometheus.Registerer) (series_index.Client, error) {
+func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer) (series_index.Client, error) {
 	i := indexClient{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
 	}
 
-	err := i.init(storageClient, limits, ownsTenantFn, tableRanges, registerer)
+	err := i.init(name, storageClient, limits, ownsTenantFn, tableRange, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -80,11 +80,11 @@ func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.
 	return &i, nil
 }
 
-func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRanges config.TableRanges, registerer prometheus.Registerer) error {
+func (i *indexClient) init(name string, storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
-	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn,
-		indexfile.OpenIndexFile, tableRanges, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
+	i.indexShipper, err = indexshipper.NewIndexShipper(name, i.cfg.Config, storageClient, limits, ownsTenantFn,
+		indexfile.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.L
 
 		cfg := index.Config{
 			Uploader:             uploader,
-			IndexDir:             i.cfg.ActiveIndexDirectory,
+			IndexDir:             path.Join(i.cfg.ActiveIndexDirectory, name),
 			DBRetainPeriod:       i.cfg.IngesterDBRetainPeriod,
 			MakePerTenantBuckets: i.cfg.BuildPerTenantIndex,
 		}
