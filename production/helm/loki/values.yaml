@@ -633,6 +633,8 @@ monitoring:
     tlsConfig: null
     # -- If defined, will create a MetricsInstance for the Grafana Agent Operator.
     metricsInstance:
+      # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
+      enabled: true
       # -- MerticsInstance annotations
       annotations: {}
       # -- Additional MatricsInstance labels
