@@ -71,7 +71,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
-	RateFor(streamHash uint64) int64
+	RateFor(tenantID string, streamHash uint64) int64
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -262,7 +262,7 @@ type pushTracker struct {
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedLineCount := 0
 
 	var validationErr error
-	validationContext := d.validator.getValidationContextForTime(time.Now(), userID)
+	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
 	for _, stream := range req.Streams {
 		// Return early if stream does not contain any entries
@@ -295,12 +295,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
-			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, userID).Add(float64(len(stream.Entries)))
+			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
 			bytes := 0
 			for _, e := range stream.Entries {
 				bytes += len(e.Line)
 			}
-			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, userID).Add(float64(bytes))
+			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
 			continue
 		}
 
@@ -333,13 +333,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 		stream.Entries = stream.Entries[:n]
 
-		shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
+		shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 		if shardStreamsCfg.Enabled {
-			derivedKeys, derivedStreams := d.shardStream(stream, streamSize, userID)
+			derivedKeys, derivedStreams := d.shardStream(stream, streamSize, tenantID)
 			keys = append(keys, derivedKeys...)
 			streams = append(streams, derivedStreams...)
 		} else {
-			keys = append(keys, util.TokenFor(userID, stream.Labels))
+			keys = append(keys, util.TokenFor(tenantID, stream.Labels))
 			streams = append(streams, streamTracker{stream: stream})
 		}
 	}
@@ -350,11 +350,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedLineSize) {
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
 		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedLineCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedLineSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedLineCount, validatedLineSize)
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
+		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -386,7 +386,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
 			defer cancel()
-			localCtx = user.InjectOrgID(localCtx, userID)
+			localCtx = user.InjectOrgID(localCtx, tenantID)
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
@@ -408,13 +408,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID string) ([]uint32, []streamTracker) {
-	shardStreamsCfg := d.validator.Limits.ShardStreams(userID)
-	logger := log.With(util_log.WithUserID(userID, util_log.Logger), "stream", stream.Labels)
-	shardCount := d.shardCountFor(logger, &stream, streamSize, shardStreamsCfg)
+func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, tenantID string) ([]uint32, []streamTracker) {
+	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+	logger := log.With(util_log.WithUserID(tenantID, util_log.Logger), "stream", stream.Labels)
+	shardCount := d.shardCountFor(logger, &stream, streamSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []uint32{util.TokenFor(userID, stream.Labels)}, []streamTracker{{stream: stream}}
+		return []uint32{util.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -422,11 +422,11 @@ func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, userID
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
-	return d.divideEntriesBetweenShards(userID, shardCount, shardStreamsCfg, stream)
+	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(userID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) ([]uint32, []streamTracker) {
-	derivedKeys, derivedStreams := d.createShards(stream, totalShards, userID, shardStreamsCfg)
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) ([]uint32, []streamTracker) {
+	derivedKeys, derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
 
 	for i := 0; i < len(stream.Entries); i++ {
 		streamIndex := i % len(derivedStreams)
@@ -437,7 +437,7 @@ func (d *Distributor) divideEntriesBetweenShards(userID string, totalShards int,
 	return derivedKeys, derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, userID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
 	var (
 		streamLabels   = labelTemplate(stream.Labels)
 		streamPattern  = streamLabels.String()
@@ -447,19 +447,19 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, user
 		streamCount = streamCount(totalShards, stream)
 	)
 
-	startShard := d.shardTracker.LastShardNum(stream.Hash)
+	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
 		shard := d.createShard(streamLabels, streamPattern, shardNum)
 
-		derivedKeys = append(derivedKeys, util.TokenFor(userID, shard.Labels))
+		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
 		if shardStreamsCfg.LoggingEnabled {
 			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
-	d.shardTracker.SetLastShardNum(stream.Hash, startShard+streamCount)
+	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)
 
 	return derivedKeys, derivedStreams
 }
@@ -620,7 +620,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize int, streamShardcfg *shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize int, tenantID string, streamShardcfg *shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -628,7 +628,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		return 1
 	}
 
-	rate := d.rateStore.RateFor(stream.Hash)
+	rate := d.rateStore.RateFor(tenantID, stream.Hash)
 	shards := calculateShards(rate, streamSize, streamShardcfg.DesiredRate.Val())
 	if shards == 0 {
 		// 1 shard is enough for the given stream.

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -12,12 +13,25 @@ func TestStreamRateCalculator(t *testing.T) {
 	defer calc.Stop()
 
 	for i := 0; i < 100; i++ {
-		calc.Record(1, 1, 100)
+		calc.Record("tenant 1", 1, 1, 100)
+	}
+
+	for i := 0; i < 100; i++ {
+		calc.Record("tenant 2", 1, 1, 100)
 	}
 
 	require.Eventually(t, func() bool {
 		rates := calc.Rates()
-		return len(rates) > 0 && rates[0].Rate == 10000
+		sort.Slice(rates, func(i, j int) bool {
+			return rates[i].Tenant < rates[j].Tenant
+		})
+
+		if len(rates) > 1 {
+			return rates[0].Tenant == "tenant 1" && rates[0].Rate == 10000 &&
+				rates[1].Tenant == "tenant 2" && rates[1].Rate == 10000
+		}
+
+		return false
 	}, 2*time.Second, 250*time.Millisecond)
 
 	require.Eventually(t, func() bool {

@@ -25,8 +25,8 @@ type stripeLock struct {
 
 type StreamRateCalculator struct {
 	size     int
-	samples  []logproto.StreamRate
-	rates    []logproto.StreamRate
+	samples  []map[string]logproto.StreamRate
+	rates    []map[string]logproto.StreamRate
 	locks    []stripeLock
 	stopchan chan struct{}
 
@@ -37,10 +37,15 @@ type StreamRateCalculator struct {
 func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
 		size:     defaultStripeSize,
-		samples:  make([]logproto.StreamRate, defaultStripeSize),
-		rates:    make([]logproto.StreamRate, defaultStripeSize),
+		samples:  make([]map[string]logproto.StreamRate, defaultStripeSize),
+		rates:    make([]map[string]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),
 		stopchan: make(chan struct{}),
+	}
+
+	for i := 0; i < defaultStripeSize; i++ {
+		calc.rates[i] = make(map[string]logproto.StreamRate)
+		calc.samples[i] = make(map[string]logproto.StreamRate)
 	}
 
 	go calc.updateLoop()
@@ -68,14 +73,15 @@ func (c *StreamRateCalculator) updateRates() {
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
 		c.rates[i] = c.samples[i]
-		c.samples[i] = logproto.StreamRate{}
+		c.samples[i] = make(map[string]logproto.StreamRate)
 
 		sr := c.rates[i]
-		if sr.StreamHash != 0 {
+		for _, v := range sr {
 			rates = append(rates, logproto.StreamRate{
-				StreamHash:        sr.StreamHash,
-				StreamHashNoShard: sr.StreamHashNoShard,
-				Rate:              sr.Rate,
+				Tenant:            v.Tenant,
+				StreamHash:        v.StreamHash,
+				StreamHashNoShard: v.StreamHashNoShard,
+				Rate:              v.Rate,
 			})
 		}
 		c.locks[i].Unlock()
@@ -87,33 +93,26 @@ func (c *StreamRateCalculator) updateRates() {
 	c.allRates = rates
 }
 
-func (c *StreamRateCalculator) Rates() []*logproto.StreamRate {
+func (c *StreamRateCalculator) Rates() []logproto.StreamRate {
 	c.rateLock.RLock()
 	defer c.rateLock.RUnlock()
 
-	rates := make([]*logproto.StreamRate, 0, len(c.allRates))
-	for _, r := range c.allRates {
-		rates = append(rates, &logproto.StreamRate{
-			StreamHash:        r.StreamHash,
-			StreamHashNoShard: r.StreamHashNoShard,
-			Rate:              r.Rate,
-		})
-	}
-
-	return rates
+	return c.allRates
 }
 
-func (c *StreamRateCalculator) Record(streamHash, streamHashNoShard uint64, bytes int64) {
+func (c *StreamRateCalculator) Record(tenant string, streamHash, streamHashNoShard uint64, bytes int) {
 	i := streamHash & uint64(c.size-1)
 
 	c.locks[i].Lock()
 	defer c.locks[i].Unlock()
 
-	streamRate := c.samples[i]
+	streamRate := c.samples[i][tenant]
 	streamRate.StreamHash = streamHash
 	streamRate.StreamHashNoShard = streamHashNoShard
-	streamRate.Rate += bytes
-	c.samples[i] = streamRate
+	streamRate.Tenant = tenant
+	streamRate.Rate += int64(bytes)
+
+	c.samples[i][tenant] = streamRate
 }
 
 func (c *StreamRateCalculator) Stop() {
