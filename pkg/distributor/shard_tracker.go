@@ -23,34 +23,38 @@ type stripeLock struct {
 // calculated number of shards
 type ShardTracker struct {
 	size         int
-	currentShard []int
+	currentShard []map[string]int
 	locks        []stripeLock
 }
 
 func NewShardTracker() *ShardTracker {
 	tracker := &ShardTracker{
 		size:         defaultStripeSize,
-		currentShard: make([]int, defaultStripeSize),
+		currentShard: make([]map[string]int, defaultStripeSize),
 		locks:        make([]stripeLock, defaultStripeSize),
+	}
+
+	for i := 0; i < defaultStripeSize; i++ {
+		tracker.currentShard[i] = make(map[string]int)
 	}
 
 	return tracker
 }
 
-func (t *ShardTracker) LastShardNum(streamHash uint64) int {
+func (t *ShardTracker) LastShardNum(tenant string, streamHash uint64) int {
 	i := streamHash & uint64(t.size-1)
 
 	t.locks[i].Lock()
 	defer t.locks[i].Unlock()
 
-	return t.currentShard[i]
+	return t.currentShard[i][tenant]
 }
 
-func (t *ShardTracker) SetLastShardNum(streamHash uint64, shardNum int) {
+func (t *ShardTracker) SetLastShardNum(tenant string, streamHash uint64, shardNum int) {
 	i := streamHash & uint64(t.size-1)
 
 	t.locks[i].Lock()
 	defer t.locks[i].Unlock()
 
-	t.currentShard[i] = shardNum
+	t.currentShard[i][tenant] = shardNum
 }
