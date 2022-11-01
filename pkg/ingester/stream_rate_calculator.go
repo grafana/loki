@@ -10,7 +10,7 @@ import (
 const (
 	// defaultStripeSize is the default number of entries to allocate in the
 	// stripeSeries list.
-	defaultStripeSize = 1 << 15
+	defaultStripeSize = 1 << 10
 
 	// The intent is for a per-second rate so this is hard coded
 	updateInterval = time.Second
@@ -26,7 +26,6 @@ type stripeLock struct {
 type StreamRateCalculator struct {
 	size     int
 	samples  []map[string]logproto.StreamRate
-	rates    []map[string]logproto.StreamRate
 	locks    []stripeLock
 	stopchan chan struct{}
 
@@ -38,13 +37,11 @@ func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
 		size:     defaultStripeSize,
 		samples:  make([]map[string]logproto.StreamRate, defaultStripeSize),
-		rates:    make([]map[string]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),
 		stopchan: make(chan struct{}),
 	}
 
 	for i := 0; i < defaultStripeSize; i++ {
-		calc.rates[i] = make(map[string]logproto.StreamRate)
 		calc.samples[i] = make(map[string]logproto.StreamRate)
 	}
 
@@ -72,10 +69,9 @@ func (c *StreamRateCalculator) updateRates() {
 
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
-		c.rates[i] = c.samples[i]
+		sr := c.samples[i]
 		c.samples[i] = make(map[string]logproto.StreamRate)
 
-		sr := c.rates[i]
 		for _, v := range sr {
 			rates = append(rates, logproto.StreamRate{
 				Tenant:            v.Tenant,
