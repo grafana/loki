@@ -24,6 +24,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+const keySeparator = ":"
+
 type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
 }
@@ -127,7 +129,7 @@ func (s *rateStore) aggregateByShard(streamRates map[string]*logproto.StreamRate
 	rates := make(map[string]int64)
 
 	for _, sr := range streamRates {
-		key := sr.Tenant + strconv.FormatUint(sr.StreamHashNoShard, 10)
+		key := key(sr.Tenant, sr.StreamHashNoShard)
 		shardCount[key]++
 
 		if _, ok := rates[key]; ok {
@@ -200,7 +202,7 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 
 		for j := 0; j < len(resp.StreamRates); j++ {
 			rate := resp.StreamRates[j]
-			key := rate.Tenant + strconv.FormatUint(rate.StreamHash, 10)
+			key := key(rate.Tenant, rate.StreamHash)
 
 			maxRate = max(maxRate, rate.Rate)
 
@@ -239,10 +241,12 @@ func (s *rateStore) getClients() ([]ingesterClient, error) {
 }
 
 func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
-	key := tenant + strconv.FormatUint(streamHash, 10)
-
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
-	return s.rates[key]
+	return s.rates[key(tenant, streamHash)]
+}
+
+func key(tenant string, hash uint64) string {
+	return tenant + keySeparator + strconv.FormatUint(hash, 10)
 }
