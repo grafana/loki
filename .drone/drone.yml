@@ -46,6 +46,46 @@ workspace:
   path: loki
 ---
 kind: pipeline
+name: helm-test-image
+steps:
+- image: plugins/docker
+  name: test-image
+  settings:
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
+    dry_run: true
+    repo: grafana/loki-helm-test
+  when:
+    event:
+    - pull_request
+    paths:
+    - production/helm/loki/src/helm-test/**
+- image: plugins/docker
+  name: push-image
+  settings:
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-helm-test
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - production/helm/loki/src/helm-test/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: check
 steps:
 - commands:
@@ -53,60 +93,50 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: check-generated-files
 - commands:
   - cd ..
-  - 'echo "cloning "$DRONE_TARGET_BRANCH '
-  - git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch
+  - git clone $CI_REPO_REMOTE loki-main
   - cd -
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
-  name: clone-target-branch
-  when:
-    event:
-    - pull_request
+  image: grafana/loki-build-image:0.24.2
+  name: clone-main
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
-  - clone-target-branch
+  - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: test
 - commands:
-  - cd ../loki-target-branch
+  - cd ../loki-main
   - BUILD_IN_CONTAINER=false make test
   depends_on:
-  - clone-target-branch
+  - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.24.1
-  name: test-target-branch
-  when:
-    event:
-    - pull_request
+  image: grafana/loki-build-image:0.24.2
+  name: test-main
 - commands:
-  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-target-branch/test_results.txt
+  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
     new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
     > diff.txt
   depends_on:
   - test
-  - test-target-branch
+  - test-main
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: compare-coverage
-  when:
-    event:
-    - pull_request
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
   - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
@@ -118,18 +148,15 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: report-coverage
-  when:
-    event:
-    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -138,7 +165,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -150,21 +177,21 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: check-example-config-doc
 trigger:
   ref:
@@ -191,8 +218,28 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: loki-mixin-check
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
+name: documentation-checks
+steps:
+- commands:
+  - make BUILD_IN_CONTAINER=false documentation-helm-reference-check
+  depends_on:
+  - clone
+  environment: {}
+  image: grafana/loki-build-image:0.24.2
+  name: documentation-helm-reference-check
 trigger:
   ref:
   - refs/heads/main
@@ -1277,7 +1324,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1285,7 +1332,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1311,7 +1358,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.24.2
   name: publish
   when:
     event:
@@ -1550,6 +1597,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 0a7573ad1bc0b627d6108d2df74d5d7a1594639fc6cb80e8205776e040626fcf
+hmac: 63a2da744f6d908e4588aba33231bbe438a6c2438bd1f288af60404b137d5df7
 
 ...

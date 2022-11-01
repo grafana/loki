@@ -1,5 +1,94 @@
 ## Changelog
 
+
+### v2.22.0
+
+- set miniredis.DumpMaxLineLen to get more Dump() info (thanks @afjoseph)
+- fix invalid resposne of COMMAND (thanks @zsh1995)
+- fix possibility to generate duplicate IDs in XADD (thanks @readams)
+- adds support for XAUTOCLAIM min-idle parameter (thanks @readams)
+
+
+### v2.21.0
+
+- support for GETEX (thanks @dntj)
+- support for GT and LT in ZADD (thanks @lsgndln)
+- support for XAUTOCLAIM (thanks @randall-fulton)
+
+
+### v2.20.0
+
+- back to support Go >= 1.14 (thanks @ajatprabha and @marcind)
+
+
+### v2.19.0
+
+- support for TYPE in SCAN (thanks @0xDiddi)
+- update BITPOS (thanks @dirkm)
+- fix a lua redis.call() return value (thanks @mpetronic)
+- update ZRANGE (thanks @valdemarpereira)
+
+
+### v2.18.0
+
+- support for ZUNION (thanks @propan)
+- support for COPY (thanks @matiasinsaurralde and @rockitbaby)
+- support for LMOVE (thanks @btwear)
+
+
+### v2.17.0
+
+- added miniredis.RunT(t)
+
+
+### v2.16.1
+
+- fix ZINTERSTORE with wets (thanks @lingjl2010 and @okhowang)
+- fix exclusive ranges in XRANGE (thanks @joseotoro)
+
+
+### v2.16.0
+
+- simplify some code (thanks @zonque)
+- support for EXAT/PXAT in SET
+- support for XTRIM (thanks @joseotoro)
+- support for ZRANDMEMBER
+- support for redis.log() in lua (thanks @dirkm)
+
+
+### v2.15.2
+
+- Fix race condition in blocking code (thanks @zonque and @robx)
+- XREAD accepts '$' as ID (thanks @bradengroom)
+
+
+### v2.15.1
+
+- EVAL should cache the script (thanks @guoshimin)
+
+
+### v2.15.0
+
+- target redis 6.2 and added new args to various commands
+- support for all hyperlog commands (thanks @ilbaktin)
+- support for GETDEL (thanks @wszaranski)
+
+
+### v2.14.5
+
+- added XPENDING
+- support for BLOCK option in XREAD and XREADGROUP
+
+
+### v2.14.4
+
+- fix BITPOS error (thanks @xiaoyuzdy)
+- small fixes for XREAD, XACK, and XDEL. Mostly error cases.
+- fix empty EXEC return type (thanks @ashanbrown)
+- fix XDEL (thanks @svakili and @yvesf)
+- fix FLUSHALL for streams (thanks @svakili)
+
+
 ### v2.14.3
 
 - fix problem where Lua code didn't set the selected DB

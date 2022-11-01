@@ -16,13 +16,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           $._config.internal_components,
           $.row('Gateway')
           .addPanel(
-            $.containerCPUUsagePanel('CPU', 'cortex-gw'),
+            $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
           )
           .addPanel(
-            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw'),
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
           )
         )
         .addRowIf(

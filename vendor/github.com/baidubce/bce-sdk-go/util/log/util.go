@@ -154,6 +154,10 @@ func Panicf(format string, msg ...interface{}) {
 	panic(record)
 }
 
+func Close() {
+	gDefaultLogger.Close()
+}
+
 // SetLogHandler - set the handler of the logger
 //
 // PARAMS:

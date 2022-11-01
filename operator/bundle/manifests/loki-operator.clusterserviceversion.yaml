@@ -337,6 +337,10 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Timeout when querying ingesters or storage during the execution
+          of a query request.
+        displayName: Query Timeout
+        path: limits.global.queries.queryTimeout
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
@@ -400,6 +404,10 @@ spec:
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Timeout when querying ingesters or storage during the execution
+          of a query request.
+        displayName: Query Timeout
+        path: limits.tenants.queries.queryTimeout
       - description: ManagementState defines if the CR should be managed by the operator
           or not. Default is managed.
         displayName: Management State

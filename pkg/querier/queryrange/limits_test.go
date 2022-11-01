@@ -43,7 +43,7 @@ func TestLimits(t *testing.T) {
 	require.Equal(
 		t,
 		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
-		cacheKeyLimits{wrapped}.GenerateCacheKey("a", r),
+		cacheKeyLimits{wrapped, nil}.GenerateCacheKey(context.Background(), "a", r),
 	)
 }
 
@@ -268,7 +268,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 }
 
 func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
-	l := cacheKeyLimits{WithSplitByLimits(nil, 0)}
+	l := cacheKeyLimits{WithSplitByLimits(nil, 0), nil}
 	start := time.Now()
 	r := &LokiRequest{
 		Query:   "qry",
@@ -279,6 +279,6 @@ func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
 	require.Equal(
 		t,
 		fmt.Sprintf("foo:qry:%d:0:0", r.GetStep()),
-		l.GenerateCacheKey("foo", r),
+		l.GenerateCacheKey(context.Background(), "foo", r),
 	)
 }

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/dskit/services"
@@ -34,7 +36,7 @@ type RateStoreConfig struct {
 func (cfg *RateStoreConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MaxParallelism, prefix+".max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
 	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
-	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", time.Second, "Timeout for communication between distributors and ingesters when updating rates")
+	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", 500*time.Millisecond, "Timeout for communication between distributors and any given ingester when updating rates")
 }
 
 type ingesterClient struct {
@@ -45,31 +47,30 @@ type ingesterClient struct {
 type rateStore struct {
 	services.Service
 
-	ring                   ring.ReadRing
-	clientPool             poolClientFactory
-	rates                  map[uint64]int64
-	rateLock               sync.RWMutex
-	rateCollectionInterval time.Duration
-	ingesterTimeout        time.Duration
-	maxParallelism         int
-	limits                 Limits
+	ring            ring.ReadRing
+	clientPool      poolClientFactory
+	rates           map[uint64]int64
+	rateLock        sync.RWMutex
+	ingesterTimeout time.Duration
+	maxParallelism  int
+	limits          Limits
 
 	metrics *ratestoreMetrics
 }
 
 func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
-		ring:                   r,
-		clientPool:             cf,
-		rateCollectionInterval: cfg.StreamRateUpdateInterval,
-		maxParallelism:         cfg.MaxParallelism,
-		ingesterTimeout:        cfg.IngesterReqTimeout,
-		limits:                 l,
-		metrics:                newRateStoreMetrics(registerer),
+		ring:            r,
+		clientPool:      cf,
+		maxParallelism:  cfg.MaxParallelism,
+		ingesterTimeout: cfg.IngesterReqTimeout,
+		limits:          l,
+		metrics:         newRateStoreMetrics(registerer),
 	}
 
+	rateCollectionInterval := util.DurationWithJitter(cfg.StreamRateUpdateInterval, 0.2)
 	s.Service = services.
-		NewTimerService(s.rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
+		NewTimerService(rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
 		WithName("rate store")
 
 	return s

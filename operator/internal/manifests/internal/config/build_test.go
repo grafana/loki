@@ -101,6 +101,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -116,7 +117,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -184,6 +184,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "1m",
 					},
 				},
 			},
@@ -337,6 +338,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -352,7 +354,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -425,6 +426,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "1m",
 					},
 				},
 				Tenants: map[string]lokiv1.LimitsTemplateSpec{
@@ -664,6 +666,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -679,7 +682,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -801,6 +803,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "1m",
 					},
 				},
 			},
@@ -1001,6 +1004,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -1016,7 +1020,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -1138,6 +1141,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "1m",
 					},
 				},
 			},
@@ -1339,6 +1343,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -1354,7 +1359,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -1489,6 +1493,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "1m",
 					},
 				},
 			},
@@ -1715,6 +1720,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -1730,7 +1736,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -1808,6 +1813,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "1m",
 					},
 					Retention: &lokiv1.RetentionLimitSpec{
 						Days: 15,
@@ -1996,6 +2002,7 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+  query_timeout: 2m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -2011,7 +2018,6 @@ querier:
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -2159,6 +2165,7 @@ overrides:
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
+						QueryTimeout:            "2m",
 					},
 				},
 			},

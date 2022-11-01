@@ -3,6 +3,8 @@ package ingester
 import (
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -23,17 +25,20 @@ type stripeLock struct {
 
 type StreamRateCalculator struct {
 	size     int
-	samples  []int64
-	rates    []int64
+	samples  []logproto.StreamRate
+	rates    []logproto.StreamRate
 	locks    []stripeLock
 	stopchan chan struct{}
+
+	rateLock sync.RWMutex
+	allRates []logproto.StreamRate
 }
 
 func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
 		size:     defaultStripeSize,
-		samples:  make([]int64, defaultStripeSize),
-		rates:    make([]int64, defaultStripeSize),
+		samples:  make([]logproto.StreamRate, defaultStripeSize),
+		rates:    make([]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),
 		stopchan: make(chan struct{}),
 	}
@@ -58,30 +63,57 @@ func (c *StreamRateCalculator) updateLoop() {
 }
 
 func (c *StreamRateCalculator) updateRates() {
+	rates := make([]logproto.StreamRate, 0, c.size)
+
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
 		c.rates[i] = c.samples[i]
-		c.samples[i] = 0
+		c.samples[i] = logproto.StreamRate{}
+
+		sr := c.rates[i]
+		if sr.StreamHash != 0 {
+			rates = append(rates, logproto.StreamRate{
+				StreamHash:        sr.StreamHash,
+				StreamHashNoShard: sr.StreamHashNoShard,
+				Rate:              sr.Rate,
+			})
+		}
 		c.locks[i].Unlock()
 	}
+
+	c.rateLock.Lock()
+	defer c.rateLock.Unlock()
+
+	c.allRates = rates
 }
 
-func (c *StreamRateCalculator) RateFor(streamHash uint64) int64 {
-	i := streamHash & uint64(c.size-1)
+func (c *StreamRateCalculator) Rates() []*logproto.StreamRate {
+	c.rateLock.RLock()
+	defer c.rateLock.RUnlock()
 
-	c.locks[i].RLock()
-	defer c.locks[i].RUnlock()
+	rates := make([]*logproto.StreamRate, 0, len(c.allRates))
+	for _, r := range c.allRates {
+		rates = append(rates, &logproto.StreamRate{
+			StreamHash:        r.StreamHash,
+			StreamHashNoShard: r.StreamHashNoShard,
+			Rate:              r.Rate,
+		})
+	}
 
-	return c.rates[i]
+	return rates
 }
 
-func (c *StreamRateCalculator) Record(streamHash uint64, bytes int64) {
+func (c *StreamRateCalculator) Record(streamHash, streamHashNoShard uint64, bytes int64) {
 	i := streamHash & uint64(c.size-1)
 
 	c.locks[i].Lock()
 	defer c.locks[i].Unlock()
 
-	c.samples[i] += bytes
+	streamRate := c.samples[i]
+	streamRate.StreamHash = streamHash
+	streamRate.StreamHashNoShard = streamHashNoShard
+	streamRate.Rate += bytes
+	c.samples[i] = streamRate
 }
 
 func (c *StreamRateCalculator) Stop() {

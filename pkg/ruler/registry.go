@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
@@ -366,6 +367,9 @@ func (n notReadyAppender) Append(ref storage.SeriesRef, l labels.Labels, t int64
 func (n notReadyAppender) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
+func (n notReadyAppender) UpdateMetadata(ref storage.SeriesRef, l labels.Labels, m metadata.Metadata) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
 func (n notReadyAppender) Commit() error   { return errNotReady }
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
@@ -375,6 +379,9 @@ func (n discardingAppender) Append(ref storage.SeriesRef, l labels.Labels, t int
 	return 0, nil
 }
 func (n discardingAppender) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) UpdateMetadata(ref storage.SeriesRef, l labels.Labels, m metadata.Metadata) (storage.SeriesRef, error) {
 	return 0, nil
 }
 func (n discardingAppender) Commit() error   { return nil }

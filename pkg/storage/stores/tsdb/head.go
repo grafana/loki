@@ -143,7 +143,7 @@ func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 		if mint >= lt && lt != 0 {
 			break
 		}
-		if mintSrc.CAS(lt, mint) {
+		if mintSrc.CompareAndSwap(lt, mint) {
 			break
 		}
 	}
@@ -152,7 +152,7 @@ func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 		if maxt <= ht {
 			break
 		}
-		if maxtSrc.CAS(ht, maxt) {
+		if maxtSrc.CompareAndSwap(ht, maxt) {
 			break
 		}
 	}
