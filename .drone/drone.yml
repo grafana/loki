@@ -104,39 +104,49 @@ steps:
   name: check-generated-files
 - commands:
   - cd ..
-  - git clone $CI_REPO_REMOTE loki-main
+  - 'echo "cloning "$DRONE_TARGET_BRANCH '
+  - git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch
   - cd -
   depends_on:
   - clone
   environment: {}
   image: grafana/loki-build-image:0.24.2
-  name: clone-main
+  name: clone-target-branch
+  when:
+    event:
+    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
-  - clone-main
+  - clone-target-branch
   environment: {}
   image: grafana/loki-build-image:0.24.2
   name: test
 - commands:
-  - cd ../loki-main
+  - cd ../loki-target-branch
   - BUILD_IN_CONTAINER=false make test
   depends_on:
-  - clone-main
+  - clone-target-branch
   environment: {}
   image: grafana/loki-build-image:0.24.2
-  name: test-main
+  name: test-target-branch
+  when:
+    event:
+    - pull_request
 - commands:
-  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
+  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-target-branch/test_results.txt
     new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
     > diff.txt
   depends_on:
   - test
-  - test-main
+  - test-target-branch
   environment: {}
   image: grafana/loki-build-image:0.24.2
   name: compare-coverage
+  when:
+    event:
+    - pull_request
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
   - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
@@ -150,6 +160,9 @@ steps:
     USER: grafanabot
   image: grafana/loki-build-image:0.24.2
   name: report-coverage
+  when:
+    event:
+    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
@@ -1597,6 +1610,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 63a2da744f6d908e4588aba33231bbe438a6c2438bd1f288af60404b137d5df7
+hmac: 7103f179cdc3517cf3ddb2d31c3ead90a400dd5416558ef4cccf5d54063cc923
 
 ...
