@@ -400,7 +400,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		}
 	}
 
-	s.streamRateCalculator.Record(s.labelHash, s.labelHashNoShard, int64(totalBytes))
+	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }
