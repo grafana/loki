@@ -258,7 +258,7 @@ func NewLogFilterTripperware(
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(limits, codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(limits, codec, splitByTime, metrics.SplitByMetrics, cfg.Transformer),
 	}
 
 	if cfg.CacheResults {
@@ -270,6 +270,7 @@ func NewLogFilterTripperware(
 				return !r.GetCachingOptions().Disabled
 			},
 			metrics.LogResultCacheMetrics,
+			cfg.Transformer,
 		)
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
@@ -321,7 +322,7 @@ func NewSeriesTripperware(
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
 		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
 		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics, cfg.Transformer),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -366,7 +367,7 @@ func NewLabelsTripperware(
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
 		// This is because the labels API is an index-only operation.
-		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics, cfg.Transformer),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -410,7 +411,7 @@ func NewMetricTripperware(
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, metrics.SplitByMetrics, cfg.Transformer),
 	)
 
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
@@ -486,7 +487,7 @@ func NewInstantMetricTripperware(
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewSplitByRangeMiddleware(log, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
+			NewSplitByRangeMiddleware(log, limits, metrics.MiddlewareMapperMetrics.rangeMapper, cfg.Transformer),
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,

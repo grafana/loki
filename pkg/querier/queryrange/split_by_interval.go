@@ -49,24 +49,26 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
-	next     queryrangebase.Handler
-	limits   Limits
-	merger   queryrangebase.Merger
-	metrics  *SplitByMetrics
-	splitter Splitter
+	next              queryrangebase.Handler
+	limits            Limits
+	merger            queryrangebase.Merger
+	metrics           *SplitByMetrics
+	splitter          Splitter
+	userIDTransformer UserIDTransformer
 }
 
 type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics, tr UserIDTransformer) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
-			next:     next,
-			limits:   limits,
-			merger:   merger,
-			metrics:  metrics,
-			splitter: splitter,
+			next:              next,
+			limits:            limits,
+			merger:            merger,
+			metrics:           metrics,
+			splitter:          splitter,
+			userIDTransformer: tr,
 		}
 	})
 }
@@ -168,6 +170,12 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if h.userIDTransformer != nil {
+		for i := range tenantIDs {
+			tenantIDs[i] = h.userIDTransformer(ctx, tenantIDs[i])
+		}
 	}
 
 	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)

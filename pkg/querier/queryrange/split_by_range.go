@@ -20,15 +20,16 @@ import (
 )
 
 type splitByRange struct {
-	logger  log.Logger
-	next    queryrangebase.Handler
-	limits  Limits
-	ng      *logql.DownstreamEngine
-	metrics *logql.MapperMetrics
+	logger            log.Logger
+	next              queryrangebase.Handler
+	limits            Limits
+	ng                *logql.DownstreamEngine
+	metrics           *logql.MapperMetrics
+	userIDTransformer UserIDTransformer
 }
 
 // NewSplitByRangeMiddleware creates a new Middleware that splits log requests by the range interval.
-func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
+func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.MapperMetrics, tr UserIDTransformer) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
 			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
@@ -38,7 +39,8 @@ func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.
 				limits: limits,
 				next:   next,
 			}, limits, logger),
-			metrics: metrics,
+			metrics:           metrics,
+			userIDTransformer: tr,
 		}
 	})
 }
@@ -49,6 +51,12 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if s.userIDTransformer != nil {
+		for i := range tenants {
+			tenants[i] = s.userIDTransformer(ctx, tenants[i])
+		}
 	}
 
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)

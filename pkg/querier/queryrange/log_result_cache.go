@@ -50,18 +50,19 @@ func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheM
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
 // In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
-func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
+func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn, metrics *LogResultCacheMetrics, tr UserIDTransformer) queryrangebase.Middleware {
 	if metrics == nil {
 		metrics = NewLogResultCacheMetrics(nil)
 	}
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &logResultCache{
-			next:        next,
-			limits:      limits,
-			cache:       cache,
-			logger:      logger,
-			shouldCache: shouldCache,
-			metrics:     metrics,
+			next:              next,
+			limits:            limits,
+			cache:             cache,
+			logger:            logger,
+			shouldCache:       shouldCache,
+			metrics:           metrics,
+			userIDTransformer: tr,
 		}
 	})
 }
@@ -72,8 +73,9 @@ type logResultCache struct {
 	cache       cache.Cache
 	shouldCache queryrangebase.ShouldCacheFn
 
-	metrics *LogResultCacheMetrics
-	logger  log.Logger
+	metrics           *LogResultCacheMetrics
+	logger            log.Logger
+	userIDTransformer UserIDTransformer
 }
 
 func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -82,11 +84,21 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
+	// The existing tenantIDs should be used in the cache key.
+	// If there is a userIDTransformer use that to create the IDs used to lookup the limits.
+	transformedIDs := tenantIDs
+	if l.userIDTransformer != nil {
+		transformedIDs = make([]string, len(tenantIDs))
+		for i := range tenantIDs {
+			transformedIDs[i] = l.userIDTransformer(ctx, tenantIDs[i])
+		}
+	}
+
 	if l.shouldCache != nil && !l.shouldCache(req) {
 		return l.next.Do(ctx, req)
 	}
 
-	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, l.limits.MaxCacheFreshness)
+	maxCacheFreshness := validation.MaxDurationPerTenant(transformedIDs, l.limits.MaxCacheFreshness)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if req.GetEnd() > maxCacheTime {
 		return l.next.Do(ctx, req)
@@ -97,7 +109,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request type %T", req)
 	}
 
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
+	interval := validation.SmallestPositiveNonZeroDurationPerTenant(transformedIDs, l.limits.QuerySplitDuration)
 	// skip caching by if interval is unset
 	if interval == 0 {
 		return l.next.Do(ctx, req)
