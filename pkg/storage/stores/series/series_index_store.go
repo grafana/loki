@@ -60,8 +60,8 @@ var (
 		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
 
-	maxLabelNamesSeriesLen = 250
-	maxLabelValuesEntryLen = 250
+	maxLabelNamesSeriesLen = 240
+	maxLabelValuesEntryLen = 260
 )
 
 type indexReaderWriter struct {
