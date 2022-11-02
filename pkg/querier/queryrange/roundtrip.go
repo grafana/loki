@@ -25,7 +25,6 @@ import (
 // Config is the configuration for the queryrange tripperware
 type Config struct {
 	queryrangebase.Config `yaml:",inline"`
-	Transformer           UserIDTransformer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -413,12 +412,11 @@ func NewMetricTripperware(
 		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, metrics.SplitByMetrics),
 	)
 
-	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := queryrangebase.NewResultsCacheMiddleware(
 			log,
 			c,
-			cacheKey,
+			cacheKeyLimits{limits},
 			limits,
 			codec,
 			extractor,
