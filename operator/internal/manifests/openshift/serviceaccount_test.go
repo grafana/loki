@@ -10,9 +10,9 @@ import (
 )
 
 func TestBuildServiceAccount_AnnotationsMatchLoggingTenants(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{})
+	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
 
-	sa := BuildServiceAccount(opts)
+	sa := BuildGatewayServiceAccount(opts)
 	require.Len(t, sa.GetAnnotations(), len(loggingTenants))
 
 	var keys []string
@@ -27,9 +27,9 @@ func TestBuildServiceAccount_AnnotationsMatchLoggingTenants(t *testing.T) {
 }
 
 func TestBuildServiceAccount_AnnotationsMatchNetworkTenants(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftNetwork, "def", "ns2", "def", "example2.com", "def", "def", map[string]string{}, map[string]TenantData{})
+	opts := NewOptions(lokiv1.OpenshiftNetwork, "def", "ns2", "def", "example2.com", "def", "def", map[string]string{}, map[string]TenantData{}, "abc")
 
-	sa := BuildServiceAccount(opts)
+	sa := BuildGatewayServiceAccount(opts)
 	require.Len(t, sa.GetAnnotations(), len(networkTenants))
 
 	var keys []string

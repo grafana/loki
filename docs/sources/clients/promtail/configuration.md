@@ -108,6 +108,9 @@ scrape_configs:
 
 # Configures additional promtail configurations.
 [options: <options_config>]
+
+# Configures tracing support
+[tracing: <tracing_config>]
 ```
 
 ## server
@@ -163,6 +166,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 # Target managers check flag for Promtail readiness, if set to false the check is ignored
 [health_check_target: <bool> | default = true]
+
+# Enable reload via HTTP request.
+[enable_runtime_reload: <bool> | default = false]
 ```
 
 ## clients
@@ -961,6 +967,11 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
+# than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
+# and respond with a 503 HTTP status code.
+[push_timeout: <duration>|  default = 0 (no timeout)]
+
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
@@ -1170,7 +1181,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1235,6 +1246,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
+  "RequestHeaders": [],
+  "ResponseHeaders": [
+    "x-foo": "bar"
+  ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",
@@ -1601,6 +1616,25 @@ tls_config:
 namespaces:
   names:
     [ - <string> ]
+
+# Optional label and field selectors to limit the discovery process to a subset of available
+#  resources. See
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/
+# and https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ to learn
+# more about the possible filters that can be used. The endpoints role supports pod,
+# service, and endpoint selectors. Roles only support selectors matching the role itself;
+# for example, the node role can only contain node selectors.
+# Note: When making decisions about using field/label selectors, make sure that this
+# is the best approach. It will prevent Promtail from reusing single list/watch
+# for all scrape configurations. This might result in a bigger load on the Kubernetes API,
+# because for each selector combination, there will be additional LIST/WATCH.
+# On the other hand, if you want to monitor a small subset of pods of a large cluster,
+# we recommend using selectors. The decision on the use of selectors or not depends
+# on the particular situation.
+[ selectors:
+          [ - role: <string>
+                  [ label: <string> ]
+                  [ field: <string> ] ]]
 ```
 
 Where `<role>` must be `endpoints`, `service`, `pod`, `node`, or
@@ -1884,6 +1918,12 @@ The optional `limits_config` block configures global limits for this instance of
 # log lines, rather than sending them to Loki. When false, exceeding the rate limit
 # causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
 [readline_rate_drop: <bool> | default = true]
+
+# Limits the max number of active streams.
+# Limiting the number of streams is useful as a mechanism to limit memory usage by Promtail, which helps
+# to avoid OOM scenarios.
+# 0 means it is disabled.
+[max_streams: <int> | default = 0]
 ```
 
 ## target_config
@@ -1906,6 +1946,15 @@ sync_period: "10s"
 # on writes to Loki; be mindful about using too many labels,
 # as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
+```
+
+## tracing_config
+
+The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# When true, 
+[enabled: <boolean> | default = false]
 ```
 
 ## Example Docker Config

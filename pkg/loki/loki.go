@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
@@ -42,7 +43,6 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
@@ -64,11 +64,17 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
+	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
+	//				 These are only here to allow us to test the new functionality.
+	UseBufferedLogger bool `yaml:"use_buffered_logger"`
+	UseSyncLogger     bool `yaml:"use_sync_logger"`
+
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
 	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
+	DeleteClient     deletion.Config          `yaml:"delete_client,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
@@ -102,11 +108,14 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
 		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
+	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
+	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
+	c.DeleteClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
@@ -243,6 +252,7 @@ type Loki struct {
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
 	Querier                  querier.Querier
+	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
 	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
@@ -259,7 +269,6 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
-	embeddedcacheRingManager *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -292,6 +301,7 @@ func (t *Loki) setupAuthMiddleware() {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/logproto.Ingester/TransferChunks",
+			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
@@ -491,7 +501,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
-	mm.RegisterModule(Embededcache, t.initEmbeddedCache, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -510,6 +519,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
+	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -518,17 +528,16 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		Embededcache:             {RuntimeConfig, Server, MemberlistKV},
 		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, Embededcache, IndexGatewayRing},
+		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
-		QueryFrontendTripperware: {Server, Embededcache, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
@@ -560,23 +569,24 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.InternalServer.Enable {
-		depsToUpdate := []string{Distributor, Ingester, Querier, QueryFrontend, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
-
-		for _, dep := range depsToUpdate {
-			var idx int
-			for i, v := range deps[dep] {
+		for key, ds := range deps {
+			idx := -1
+			for i, v := range ds {
 				if v == Server {
 					idx = i
 					break
 				}
 			}
 
-			lhs := deps[dep][0:idx]
-			rhs := deps[dep][idx+1:]
+			if idx == -1 {
+				continue
+			}
 
-			deps[dep] = append(lhs, InternalServer)
-			deps[dep] = append(deps[dep], rhs...)
+			a := append(ds[:idx+1], ds[idx:]...)
+			a[idx] = InternalServer
+			deps[key] = a
 		}
+
 	}
 
 	for mod, targets := range deps {

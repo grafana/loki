@@ -149,8 +149,6 @@ Signature:
 `{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
 ```
 
-You can combine multiple functions using pipe. For example, to strip out spaces and make the request method in capital, you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
-
 ## lower
 
 > Added in Loki 2.1
@@ -665,7 +663,7 @@ Example of a query to print a newline per queries stored as a json array in the 
 `date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants).
 
 ```template
-{ date "2006-01-02" now }}
+{{ date "2006-01-02" now }}
 ```
 
 ## unixEpoch
@@ -673,7 +671,7 @@ Example of a query to print a newline per queries stored as a json array in the 
 `unixEpoch` returns the number of seconds elapsed since January 1, 1970 UTC.
 
 ```template
-{ unixEpoch now }}
+{{ unixEpoch now }}
 ```
 
 Example of a query to filter Loki querier jobs which create time is 1 day before:

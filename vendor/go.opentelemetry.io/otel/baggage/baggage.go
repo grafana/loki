@@ -68,6 +68,9 @@ type Property struct {
 	hasData bool
 }
 
+// NewKeyProperty returns a new Property for key.
+//
+// If key is invalid, an error will be returned.
 func NewKeyProperty(key string) (Property, error) {
 	if !keyRe.MatchString(key) {
 		return newInvalidProperty(), fmt.Errorf("%w: %q", errInvalidKey, key)
@@ -77,6 +80,9 @@ func NewKeyProperty(key string) (Property, error) {
 	return p, nil
 }
 
+// NewKeyValueProperty returns a new Property for key with value.
+//
+// If key or value are invalid, an error will be returned.
 func NewKeyValueProperty(key, value string) (Property, error) {
 	if !keyRe.MatchString(key) {
 		return newInvalidProperty(), fmt.Errorf("%w: %q", errInvalidKey, key)
@@ -151,7 +157,7 @@ func (p Property) Key() string {
 	return p.key
 }
 
-// Value returns the Property value. Additionally a boolean value is returned
+// Value returns the Property value. Additionally, a boolean value is returned
 // indicating if the returned value is the empty if the Property has a value
 // that is empty or if the value is not set.
 func (p Property) Value() (string, bool) {
@@ -386,7 +392,7 @@ func New(members ...Member) (Baggage, error) {
 		}
 	}
 
-	// Check member numbers after deduplicating.
+	// Check member numbers after deduplication.
 	if len(b) > maxMembers {
 		return Baggage{}, errMemberNumber
 	}
@@ -448,7 +454,7 @@ func Parse(bStr string) (Baggage, error) {
 func (b Baggage) Member(key string) Member {
 	v, ok := b.list[key]
 	if !ok {
-		// We do not need to worry about distiguising between the situation
+		// We do not need to worry about distinguishing between the situation
 		// where a zero-valued Member is included in the Baggage because a
 		// zero-valued Member is invalid according to the W3C Baggage
 		// specification (it has an empty key).

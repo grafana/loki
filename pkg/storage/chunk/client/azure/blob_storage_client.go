@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
@@ -72,21 +73,25 @@ var (
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	Environment        string         `yaml:"environment"`
-	StorageAccountName string         `yaml:"account_name"`
-	StorageAccountKey  flagext.Secret `yaml:"account_key"`
-	ContainerName      string         `yaml:"container_name"`
-	Endpoint           string         `yaml:"endpoint_suffix"`
-	UseManagedIdentity bool           `yaml:"use_managed_identity"`
-	UserAssignedID     string         `yaml:"user_assigned_id"`
-	ChunkDelimiter     string         `yaml:"chunk_delimiter"`
-	DownloadBufferSize int            `yaml:"download_buffer_size"`
-	UploadBufferSize   int            `yaml:"upload_buffer_size"`
-	UploadBufferCount  int            `yaml:"upload_buffer_count"`
-	RequestTimeout     time.Duration  `yaml:"request_timeout"`
-	MaxRetries         int            `yaml:"max_retries"`
-	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
-	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
+	Environment         string         `yaml:"environment"`
+	StorageAccountName  string         `yaml:"account_name"`
+	StorageAccountKey   flagext.Secret `yaml:"account_key"`
+	ContainerName       string         `yaml:"container_name"`
+	Endpoint            string         `yaml:"endpoint_suffix"`
+	UseManagedIdentity  bool           `yaml:"use_managed_identity"`
+	UserAssignedID      string         `yaml:"user_assigned_id"`
+	UseServicePrincipal bool           `yaml:"use_service_principal"`
+	ClientID            string         `yaml:"client_id"`
+	ClientSecret        flagext.Secret `yaml:"client_secret"`
+	TenantID            string         `yaml:"tenant_id"`
+	ChunkDelimiter      string         `yaml:"chunk_delimiter"`
+	DownloadBufferSize  int            `yaml:"download_buffer_size"`
+	UploadBufferSize    int            `yaml:"upload_buffer_size"`
+	UploadBufferCount   int            `yaml:"upload_buffer_count"`
+	RequestTimeout      time.Duration  `yaml:"request_timeout"`
+	MaxRetries          int            `yaml:"max_retries"`
+	MinRetryDelay       time.Duration  `yaml:"min_retry_delay"`
+	MaxRetryDelay       time.Duration  `yaml:"max_retry_delay"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -111,6 +116,10 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
 	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
 	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
+	f.BoolVar(&c.UseServicePrincipal, prefix+"azure.use-service-principal", false, "Use Service Principal to authenticate through Azure OAuth.")
+	f.StringVar(&c.TenantID, prefix+"azure.tenant-id", "", "Azure Tenant ID is used to authenticate through Azure OAuth.")
+	f.StringVar(&c.ClientID, prefix+"azure.client-id", "", "Azure Service Principal ID(GUID).")
+	f.Var(&c.ClientSecret, prefix+"azure.client-secret", "Azure Service Principal secret key.")
 }
 
 type BlobStorageMetrics struct {
@@ -159,6 +168,8 @@ type BlobStorage struct {
 
 	pipeline        pipeline.Pipeline
 	hedgingPipeline pipeline.Pipeline
+	tc              azblob.TokenCredential
+	lock            sync.Mutex
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
@@ -305,7 +316,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		})
 	}
 
-	if !b.cfg.UseManagedIdentity && b.cfg.UserAssignedID == "" {
+	if !b.cfg.UseManagedIdentity && !b.cfg.UseServicePrincipal && b.cfg.UserAssignedID == "" {
 		credential, err := azblob.NewSharedKeyCredential(b.cfg.StorageAccountName, b.cfg.StorageAccountKey.String())
 		if err != nil {
 			return nil, err
@@ -319,10 +330,17 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		return nil, err
 	}
 
-	return azblob.NewPipeline(*tokenCredential, opts), nil
+	return azblob.NewPipeline(tokenCredential, opts), nil
 }
 
-func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
+func (b *BlobStorage) getOAuthToken() (azblob.TokenCredential, error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	// this method is called a few times when we create each Pipeline, so we need to re-use TokenCredentials.
+	if b.tc != nil {
+		return b.tc, nil
+	}
 	spt, err := b.getServicePrincipalToken()
 	if err != nil {
 		return nil, err
@@ -334,7 +352,7 @@ func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
 		return nil, err
 	}
 
-	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
+	b.tc = azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
 		err := spt.Refresh()
 		if err != nil {
 			// something went wrong, prevent the refresher from being triggered again
@@ -347,8 +365,7 @@ func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
 		// get the next token slightly before the current one expires
 		return time.Until(spt.Token().Expires()) - 10*time.Second
 	})
-
-	return &tc, nil
+	return b.tc, nil
 }
 
 func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, error) {
@@ -360,6 +377,12 @@ func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, e
 	}
 
 	resource := fmt.Sprintf("https://%s.%s", b.cfg.StorageAccountName, endpoint)
+
+	if b.cfg.UseServicePrincipal {
+		config := auth.NewClientCredentialsConfig(b.cfg.ClientID, b.cfg.ClientSecret.String(), b.cfg.TenantID)
+		config.Resource = resource
+		return config.ServicePrincipalToken()
+	}
 
 	msiConfig := auth.MSIConfig{
 		Resource: resource,
@@ -430,6 +453,17 @@ func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 func (c *BlobStorageConfig) Validate() error {
 	if !util.StringsContain(supportedEnvironments, c.Environment) {
 		return fmt.Errorf("unsupported Azure blob storage environment: %s, please select one of: %s ", c.Environment, strings.Join(supportedEnvironments, ", "))
+	}
+	if c.UseServicePrincipal {
+		if strings.TrimSpace(c.TenantID) == "" {
+			return fmt.Errorf("tenant_id is required if authentication using Service Principal is enabled")
+		}
+		if strings.TrimSpace(c.ClientID) == "" {
+			return fmt.Errorf("client_id is required if authentication using Service Principal is enabled")
+		}
+		if strings.TrimSpace(c.ClientSecret.String()) == "" {
+			return fmt.Errorf("client_secret is required if authentication using Service Principal is enabled")
+		}
 	}
 	return nil
 }

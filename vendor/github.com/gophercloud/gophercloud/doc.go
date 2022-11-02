@@ -3,7 +3,7 @@ Package gophercloud provides a multi-vendor interface to OpenStack-compatible
 clouds. The library has a three-level hierarchy: providers, services, and
 resources.
 
-Authenticating with Providers
+# Authenticating with Providers
 
 Provider structs represent the cloud providers that offer and manage a
 collection of services. You will generally want to create one Provider
@@ -49,7 +49,7 @@ instead of "project".
 	opts, err := openstack.AuthOptionsFromEnv()
 	provider, err := openstack.AuthenticatedClient(opts)
 
-Service Clients
+# Service Clients
 
 Service structs are specific to a provider and handle all of the logic and
 operations for a particular OpenStack service. Examples of services include:
@@ -60,7 +60,7 @@ pass in the parent provider, like so:
 
 	client, err := openstack.NewComputeV2(provider, opts)
 
-Resources
+# Resources
 
 Resource structs are the domain models that services make use of in order
 to work with and represent the state of API resources:
@@ -144,6 +144,5 @@ An example retry backoff function, which respects the 429 HTTP response code and
 
 		return nil
 	}
-
 */
 package gophercloud

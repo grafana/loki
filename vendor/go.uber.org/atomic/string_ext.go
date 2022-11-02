@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Uber Technologies, Inc.
+// Copyright (c) 2020-2022 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,9 +20,7 @@
 
 package atomic
 
-//go:generate bin/gen-atomicwrapper -name=String -type=string -wrapped=Value -file=string.go
-// Note: No Swap as String wraps Value, which wraps the stdlib sync/atomic.Value which
-// only supports Swap as of go1.17: https://github.com/golang/go/issues/39351
+//go:generate bin/gen-atomicwrapper -name=String -type=string -wrapped=Value -compareandswap -swap -file=string.go
 
 // String returns the wrapped value.
 func (s *String) String() string {

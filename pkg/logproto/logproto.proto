@@ -36,6 +36,23 @@ service Ingester {
   rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {}
 }
 
+service StreamData {
+  rpc GetStreamRates(StreamRatesRequest) returns (StreamRatesResponse) {}
+}
+
+message StreamRatesRequest {}
+
+message StreamRatesResponse {
+  repeated StreamRate streamRates = 1;
+}
+
+message StreamRate {
+  uint64 streamHash = 1;
+  uint64 streamHashNoShard = 2;
+  int64 rate = 3; // rate in plain bytes.
+  string tenant = 4;
+}
+
 message PushRequest {
   repeated StreamAdapter streams = 1 [
     (gogoproto.jsontag) = "streams",
@@ -114,10 +131,6 @@ message LabelRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = true
   ];
-}
-
-message RateLimitedStream {
-  string labels = 1;
 }
 
 message LabelResponse {

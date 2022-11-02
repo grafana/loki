@@ -6,6 +6,7 @@ memcached {
     name: 'memcached',
     max_item_size: '2m',
     memory_limit_mb: 4096,
+    use_topology_spread: true,
   },
 
   // Dedicated memcached instance used to temporarily cache index lookups.

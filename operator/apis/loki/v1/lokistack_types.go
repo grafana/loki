@@ -325,6 +325,14 @@ type LokiTemplateSpec struct {
 
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
 type ObjectStorageTLSSpec struct {
+	// Key is the data key of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +kubebuilder:default:=service-ca.crt
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Key"
+	CAKey string `json:"caKey,omitempty"`
 	// CA is the name of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
 	//
@@ -454,6 +462,14 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Query Series"
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
+
+	// Timeout when querying ingesters or storage during the execution of a query request.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:="1m"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
+	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
@@ -514,6 +530,45 @@ type IngestionLimitSpec struct {
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 }
 
+// RetentionStreamSpec defines a log stream with separate retention time.
+type RetentionStreamSpec struct {
+	// Days contains the number of days logs are kept.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum:=1
+	Days uint `json:"days"`
+
+	// Priority defines the priority of this selector compared to other retention rules.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=1
+	Priority uint32 `json:"priority,omitempty"`
+
+	// Selector contains the LogQL query used to define the log stream.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	Selector string `json:"selector"`
+}
+
+// RetentionLimitSpec controls how long logs will be kept in storage.
+type RetentionLimitSpec struct {
+	// Days contains the number of days logs are kept.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum:=1
+	Days uint `json:"days"`
+
+	// Stream defines the log stream.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Streams []*RetentionStreamSpec `json:"streams,omitempty"`
+}
+
 // LimitsTemplateSpec defines the limits  applied at ingestion or query path.
 type LimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
@@ -527,6 +582,12 @@ type LimitsTemplateSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
+
+	// Retention defines how long logs are kept in storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
 // LimitsSpec defines the spec for limits applied at ingestion or query
@@ -547,7 +608,7 @@ type LimitsSpec struct {
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
-// RulesSpec deifnes the spec for the ruler component.
+// RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
 	//

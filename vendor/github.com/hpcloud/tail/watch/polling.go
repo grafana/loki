@@ -4,22 +4,22 @@
 package watch
 
 import (
+	"github.com/hpcloud/tail/util"
+	"gopkg.in/tomb.v1"
 	"os"
 	"runtime"
 	"time"
-
-	"github.com/hpcloud/tail/util"
-	"gopkg.in/tomb.v1"
 )
 
 // PollingFileWatcher polls the file for changes.
 type PollingFileWatcher struct {
+	File     *os.File
 	Filename string
 	Size     int64
 }
 
 func NewPollingFileWatcher(filename string) *PollingFileWatcher {
-	fw := &PollingFileWatcher{filename, 0}
+	fw := &PollingFileWatcher{nil, filename, 0}
 	return fw
 }
 
@@ -66,6 +66,20 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			}
 
 			time.Sleep(POLL_DURATION)
+			deletePending, err := IsDeletePending(fw.File)
+			if err != nil {
+				util.Fatal("Failed to get file info %v: %v", fw.Filename, err)
+			}
+
+			// DeletePending is a windows state where the file has been queued
+			// for delete but won't actually get deleted until all handles are
+			// closed. It's a variation on line 87 below
+			if deletePending {
+				fw.closeFile()
+				changes.NotifyDeleted()
+				return
+			}
+
 			fi, err := os.Stat(fw.Filename)
 			if err != nil {
 				// Windows cannot delete a file if a handle is still open (tail keeps one open)
@@ -111,6 +125,16 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	}()
 
 	return changes, nil
+}
+
+func (fw *PollingFileWatcher) SetFile(f *os.File) {
+	fw.File = f
+}
+
+func (fw *PollingFileWatcher) closeFile() {
+	if fw.File != nil {
+		_ = fw.File.Close() // Best effort close
+	}
 }
 
 func init() {

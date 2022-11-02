@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -202,7 +202,7 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	if cfg.Auth {
 		password := cfg.Password.String()
 		if cfg.PasswordFile != "" {
-			passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
+			passwordBytes, err := os.ReadFile(cfg.PasswordFile)
 			if err != nil {
 				return errors.Errorf("Could not read Cassandra password file: %v", err)
 			}

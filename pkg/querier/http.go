@@ -44,7 +44,7 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
-//nolint // QurierAPI defines HTTP handler functions for the querier.
+// nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
@@ -502,10 +502,11 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				queryTimeout = q.cfg.QueryTimeout
 			}
 
-			_, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+			newCtx, cancel := context.WithTimeout(ctx, queryTimeout)
 			defer cancel()
 
-			next.ServeHTTP(w, req)
+			newReq := req.WithContext(newCtx)
+			next.ServeHTTP(w, newReq)
 		})
 	})
 }

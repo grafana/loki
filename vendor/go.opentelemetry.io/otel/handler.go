@@ -56,7 +56,6 @@ func defaultErrorHandler() *delegator {
 		lock: &sync.RWMutex{},
 		eh:   &errLogger{l: log.New(os.Stderr, "", log.LstdFlags)},
 	}
-
 }
 
 // errLogger logs errors if no delegate is set, otherwise they are delegated.

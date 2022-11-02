@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -34,6 +34,7 @@ type IndexSet interface {
 	Init(forQuerying bool) error
 	Close()
 	ForEach(ctx context.Context, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -113,18 +114,18 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 		t.indexMtx.markReady()
 	}()
 
-	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
+	dirEntries, err := os.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
 	}
 
 	// open all the locally present files first to avoid downloading them again during sync operation below.
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
 			continue
 		}
 
-		fullPath := filepath.Join(t.cacheLocation, fileInfo.Name())
+		fullPath := filepath.Join(t.cacheLocation, entry.Name())
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
@@ -138,7 +139,7 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 			continue
 		}
 
-		t.index[fileInfo.Name()] = idx
+		t.index[entry.Name()] = idx
 	}
 
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.index)))
@@ -191,6 +192,27 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 
 	return nil
+}
+
+func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error {
+
+	if err := t.indexMtx.rLock(ctx); err != nil {
+		return err
+	}
+	defer t.indexMtx.rUnlock()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	logger := util_log.WithContext(ctx, t.logger)
+	level.Debug(logger).Log("index-files-count", len(t.index))
+
+	for i := range t.index {
+		idx := t.index[i]
+		g.Go(func() error {
+			return callback(t.userID == "", idx)
+		})
+	}
+	return g.Wait()
 }
 
 // DropAllDBs closes reference to all the open index and removes the local files.
