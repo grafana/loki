@@ -105,9 +105,6 @@ type Config struct {
 	IndexShards int `yaml:"index_shards"`
 
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
-
-	// Whether nor not to ingest all at once or not. Comes from distributor StreamShards Enabled
-	RateLimitWholeStream bool `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -177,6 +174,8 @@ type Interface interface {
 	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
+	logproto.StreamDataServer
+
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
@@ -231,6 +230,8 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter chunk.RequestChunkFilterer
+
+	streamRateCalculator *StreamRateCalculator
 }
 
 // New makes a new Ingester.
@@ -259,6 +260,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
+		streamRateCalculator:  NewStreamRateCalculator(),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -520,6 +522,8 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	i.flushQueuesDone.Wait()
 
+	i.streamRateCalculator.Stop()
+
 	// In case the flag to terminate on shutdown is set we need to mark the
 	// ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
@@ -547,8 +551,9 @@ func (i *Ingester) loop() {
 }
 
 // LegacyShutdownHandler triggers the following set of operations in order:
-//     * Change the state of ring to stop accepting writes.
-//     * Flush all the chunks.
+//   - Change the state of ring to stop accepting writes.
+//   - Flush all the chunks.
+//
 // Note: This handler does not trigger a termination of the Loki process,
 // despite its name. Instead, the ingester service is stopped, so an external
 // source can trigger a safe termination through a signal to the process.
@@ -590,11 +595,11 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleShutdown triggers the following operations:
-//     * Change the state of ring to stop accepting writes.
-//     * optional: Flush all the chunks.
-//     * optional: Delete ring tokens file
-//     * Unregister from KV store
-//     * optional: Terminate process (handled by service manager in loki.go)
+//   - Change the state of ring to stop accepting writes.
+//   - optional: Flush all the chunks.
+//   - optional: Delete ring tokens file
+//   - Unregister from KV store
+//   - optional: Terminate process (handled by service manager in loki.go)
 func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	i.lifecycler.SetFlushOnShutdown(flush)
 	i.lifecycler.SetClearTokensOnShutdown(del)
@@ -620,6 +625,24 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
+// GetStreamRates returns a response containing all streams and their current rate
+// TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
+func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	allRates := i.streamRateCalculator.Rates()
+
+	rates := make([]*logproto.StreamRate, 0, len(allRates))
+	for _, r := range allRates {
+		rates = append(rates, &logproto.StreamRate{
+			Tenant:            r.Tenant,
+			StreamHash:        r.StreamHash,
+			StreamHashNoShard: r.StreamHashNoShard,
+			Rate:              r.Rate,
+		})
+	}
+
+	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
+}
+
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
@@ -631,7 +654,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator)
 		if err != nil {
 			return nil, err
 		}

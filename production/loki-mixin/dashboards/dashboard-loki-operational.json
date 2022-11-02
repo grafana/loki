@@ -11,7 +11,7 @@
         "type": "dashboard"
       },
       {
-        "datasource": "$logs",
+        "datasource": "$loki_datasource",
         "enable": true,
         "expr": "{cluster=\"$cluster\", container=\"kube-diff-logger\"} | json | namespace_extracted=\"$namespace\"",
         "hide": true,
@@ -25,61 +25,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 68,
   "iteration": 1588704280892,
-  "links": [
-    {
-      "icon": "dashboard",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Chunks",
-      "tooltip": "",
-      "type": "link",
-      "url": "/grafana/d/586c2916e59d3f81282a776dbe8333e9/loki-chunks"
-    },
-    {
-      "icon": "dashboard",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Memcached",
-      "tooltip": "",
-      "type": "link",
-      "url": "/grafana/d/8127d7f60e3a3230d7c633c8b5ddf68c/memcached"
-    },
-    {
-      "icon": "dashboard",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Promtail",
-      "type": "link",
-      "url": "/grafana/d/739c15a23c04c6ace0d03f6e14ba26e8/loki-promtail?var-datasource=$datasource&var-cluster=$cluster&var-namespace=default"
-    },
-    {
-      "icon": "dashboard",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "BigTable Backup",
-      "type": "link",
-      "url": "/grafana/d/da5ce918801d6d9f775a8c7e9f9f339a/loki-bigtable-backup"
-    },
-    {
-      "icon": "dashboard",
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Consul",
-      "type": "link",
-      "url": "/grafana/d/836793349c8ce200baa98f045123d19b/consul?var-datasource=$datasource&var-job=$namespace%2Fconsul"
-    }
-  ],
   "panels": [
     {
       "collapsed": false,
@@ -239,7 +185,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
+          "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw(-internal)?\", route=~\"api_prom_push|loki_api_v1_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -2076,7 +2022,7 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logs",
+          "datasource": "$loki_datasource",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2163,7 +2109,7 @@
           }
         },
         {
-          "datasource": "$logs",
+          "datasource": "$loki_datasource",
           "gridPos": {
             "h": 18,
             "w": 12,
@@ -2318,9 +2264,9 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (ingester)",
+              "expr": "sum(rate(loki_distributor_ingester_append_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (pod)",
               "intervalFactor": 1,
-              "legendFormat": "{{ingester}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
@@ -2740,7 +2686,7 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logs",
+          "datasource": "$loki_datasource",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2827,7 +2773,7 @@
           }
         },
         {
-          "datasource": "$logs",
+          "datasource": "$loki_datasource",
           "gridPos": {
             "h": 18,
             "w": 18,
@@ -3666,7 +3612,7 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logs",
+          "datasource": "$loki_datasource",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -3753,7 +3699,7 @@
           }
         },
         {
-          "datasource": "$logs",
+          "datasource": "$loki_datasource",
           "gridPos": {
             "h": 18,
             "w": 18,

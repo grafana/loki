@@ -44,9 +44,15 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{- end }}
+  compactor_address: {{ .Compactor.Protocol }}://{{ .Compactor.FQDN }}:{{ .Compactor.Port }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
+{{- if .Retention.Enabled }}{{- with .Retention }}
+  retention_enabled: true
+  retention_delete_delay: 4h
+  retention_delete_worker_count: {{.DeleteWorkerCount}}
+{{- end }}{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
   compress_responses: true
@@ -114,6 +120,18 @@ limits_config:
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
+  query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
+{{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
+  retention_period: {{.Days}}d
+{{- with .Streams }}
+  retention_stream:
+{{- range . }}
+  - selector: '{{ .Selector }}'
+    priority: {{ .Priority }}
+    period: {{ .Days }}d
+{{- end }}
+{{- end }}
+{{- end }}{{- end }}
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
@@ -132,7 +150,6 @@ querier:
     timeout: 3m
   extra_query_delay: 0s
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
   max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
 query_range:
@@ -168,7 +185,9 @@ ruler:
   poll_interval: {{ . }}
   {{ end }}
   {{ with .Ruler.AlertManager }}
-  external_url: {{ .ExternalURL }}
+  {{ with .ExternalURL }}
+  external_url: {{ . }}
+  {{ end}}
   {{ with .ExternalLabels }}
   external_labels:
     {{ range $name, $value := . }}
@@ -189,6 +208,32 @@ ruler:
   {{ if .Timeout }}
   notification_timeout: {{ .Timeout }}
   {{ end }}
+
+  {{ with .RelabelConfigs }}
+  alert_relabel_configs:
+    {{ range $k, $cfg := . }}
+    - {{ if $cfg.SourceLabels}}
+      source_labels: {{ $cfg.SourceLabelsString }}
+      {{ end }}
+      {{ if $cfg.Regex }}
+      regex: {{ $cfg.Regex }}
+      {{ end }}
+      {{ if $cfg.Action }}
+      action: {{ $cfg.Action }}
+      {{ end }}
+      separator: {{ $cfg.SeparatorString }}
+      {{ if $cfg.Replacement }}
+      replacement: {{ $cfg.Replacement }}
+      {{ end }}
+      {{ if $cfg.TargetLabel }}
+      target_label: {{ $cfg.TargetLabel }}
+      {{ end }}
+      {{ if $cfg.Modulus }}
+      modulus: {{ $cfg.Modulus }}
+      {{ end }}
+    {{ end}}
+  {{end }}
+
   {{ if .ForOutageTolerance }}
   for_outage_tolerance: {{ .ForOutageTolerance }}
   {{ end }}

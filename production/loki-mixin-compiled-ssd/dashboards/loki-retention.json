@@ -1401,7 +1401,7 @@
             "height": "250px",
             "panels": [
                {
-                  "datasource": "$logs",
+                  "datasource": "$loki_datasource",
                   "id": 17,
                   "span": 12,
                   "targets": [
@@ -1492,7 +1492,7 @@
             {
                "hide": 0,
                "label": null,
-               "name": "logs",
+               "name": "loki_datasource",
                "options": [ ],
                "query": "loki",
                "refresh": 1,

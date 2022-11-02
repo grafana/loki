@@ -190,21 +190,8 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	if err := conf.Validate(); err != nil {
-		return err
-	}
-
-	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
-	if err != nil {
-		return err
-	}
 	cm := storage.NewClientMetrics()
-	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
-	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
-
-	schema := conf.SchemaConfig
 	if useRemoteSchema {
-		cm := storage.NewClientMetrics()
 		client, err := GetObjectClient(conf, cm)
 		if err != nil {
 			return err
@@ -215,10 +202,21 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			return err
 		}
 
-		schema = *loadedSchema
+		conf.SchemaConfig = *loadedSchema
 	}
 
-	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, schema, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	if err := conf.Validate(); err != nil {
+		return err
+	}
+
+	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
+	if err != nil {
+		return err
+	}
+	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return err
 	}

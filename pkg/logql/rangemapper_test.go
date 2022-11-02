@@ -1401,15 +1401,14 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			)`,
 		},
 		{
-			`bytes_over_time({app="foo"}[3m]) + count_over_time({app="foo"}[5m])`,
+			`bytes_over_time({app="foo"}[3m]) + count_over_time({app="foo"}[4m])`,
 			`(sum without (
 				   downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 			) +
 			sum without (
-				   downstream<count_over_time({app="foo"}[1m] offset 4m0s), shard=<nil>>
-				++ downstream<count_over_time({app="foo"}[1m] offset 3m0s), shard=<nil>>
+				downstream<count_over_time({app="foo"}[1m] offset 3m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
@@ -1417,7 +1416,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			`,
 		},
 		{
-			`sum(count_over_time({app="foo"}[3m]) * count(sum_over_time({app="foo"} | unwrap bar [5m])))`,
+			`sum(count_over_time({app="foo"}[3m]) * count(sum_over_time({app="foo"} | unwrap bar [4m])))`,
 			`sum(
 				(sum without(
 					   downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
@@ -1426,8 +1425,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				) *
 				count (
 					sum without(
-						   downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 4m0s), shard=<nil>>
-						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 3m0s), shard=<nil>>
+						downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 3m0s), shard=<nil>>
 						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
 						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
 						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
@@ -1710,6 +1708,14 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
 			`(sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
 		},
+		{
+			`count_over_time({app="foo"}[3m]) or vector(0)`,
+			`(count_over_time({app="foo"}[3m]) or vector(0.000000))`,
+		},
+		{
+			`sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0)`,
+			`(sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0.000000))`,
+		},
 
 		// should be noop if literal expression
 		{
@@ -1719,6 +1725,11 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 		{
 			`5 * 5`,
 			`25`,
+		},
+		// should be noop if VectorExpr
+		{
+			`vector(0)`,
+			`vector(0.000000)`,
 		},
 	} {
 		tc := tc

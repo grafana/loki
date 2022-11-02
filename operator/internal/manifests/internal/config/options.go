@@ -15,6 +15,7 @@ type Options struct {
 
 	Namespace             string
 	Name                  string
+	Compactor             Address
 	FrontendWorker        Address
 	GossipRing            Address
 	Querier               Address
@@ -26,6 +27,8 @@ type Options struct {
 	EnableRemoteReporting bool
 
 	ObjectStorage storage.Options
+
+	Retention RetentionOptions
 }
 
 // Address FQDN and port for a k8s service.
@@ -65,6 +68,8 @@ type AlertManagerConfig struct {
 	ForOutageTolerance string
 	ForGracePeriod     string
 	ResendDelay        string
+
+	RelabelConfigs []RelabelConfig
 }
 
 // RemoteWriteConfig for ruler remote write config
@@ -73,7 +78,7 @@ type RemoteWriteConfig struct {
 	RefreshPeriod  string
 	Client         *RemoteWriteClientConfig
 	Queue          *RemoteWriteQueueConfig
-	RelabelConfigs []RemoteWriteRelabelConfig
+	RelabelConfigs []RelabelConfig
 }
 
 // RemoteWriteClientConfig for ruler remote write client config
@@ -102,8 +107,8 @@ type RemoteWriteQueueConfig struct {
 	MaxBackOffPeriod  string
 }
 
-// RemoteWriteRelabelConfig for ruler remote write relabel configs.
-type RemoteWriteRelabelConfig struct {
+// RelabelConfig for ruler remote write relabel configs.
+type RelabelConfig struct {
 	SourceLabels []string
 	Separator    string
 	TargetLabel  string
@@ -114,7 +119,7 @@ type RemoteWriteRelabelConfig struct {
 }
 
 // SourceLabelsString returns a string array of source labels.
-func (r RemoteWriteRelabelConfig) SourceLabelsString() string {
+func (r RelabelConfig) SourceLabelsString() string {
 	var sb strings.Builder
 	sb.WriteString("[")
 	for i, labelname := range r.SourceLabels {
@@ -130,7 +135,7 @@ func (r RemoteWriteRelabelConfig) SourceLabelsString() string {
 }
 
 // SeparatorString returns the user-defined separator or per default semicolon.
-func (r RemoteWriteRelabelConfig) SeparatorString() string {
+func (r RelabelConfig) SeparatorString() string {
 	if r.Separator == "" {
 		return `""`
 	}
@@ -154,4 +159,10 @@ type WriteAheadLog struct {
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
 	value := int64(math.Ceil(float64(w.IngesterMemoryRequest) * float64(0.5)))
 	return fmt.Sprintf("%d", value)
+}
+
+// RetentionOptions configures global retention options on the compactor.
+type RetentionOptions struct {
+	Enabled           bool
+	DeleteWorkerCount uint
 }

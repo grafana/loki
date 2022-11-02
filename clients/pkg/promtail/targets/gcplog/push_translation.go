@@ -57,6 +57,8 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 	// If the incoming request carries the tenant id, inject it as the reserved label, so it's used by the
 	// remote write client.
 	if xScopeOrgID != "" {
+		// Expose tenant ID through relabel to use as logs or metrics label
+		lbs.Set(lokiClient.ReservedLabelTenantID, xScopeOrgID)
 		fixedLabels[lokiClient.ReservedLabelTenantID] = model.LabelValue(xScopeOrgID)
 	}
 
@@ -65,7 +67,7 @@ func translate(m PushMessage, other model.LabelSet, useIncomingTimestamp bool, r
 		return api.Entry{}, fmt.Errorf("failed to decode data: %w", err)
 	}
 
-	entry, err := parseGCPLogsEntry(decodedData, fixedLabels, lbs.Labels(), useIncomingTimestamp, relabelConfigs)
+	entry, err := parseGCPLogsEntry(decodedData, fixedLabels, lbs.Labels(nil), useIncomingTimestamp, relabelConfigs)
 	if err != nil {
 		return api.Entry{}, fmt.Errorf("failed to parse logs entry: %w", err)
 	}

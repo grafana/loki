@@ -3,7 +3,8 @@ package storage
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestIndexStorageClient(t *testing.T) {
 	for tableName, files := range tablesToSetup {
 		require.NoError(t, util.EnsureDirectory(filepath.Join(tempDir, storageKeyPrefix, tableName)))
 		for _, file := range files {
-			err := ioutil.WriteFile(filepath.Join(tempDir, storageKeyPrefix, tableName, file), []byte(tableName+file), 0o666)
+			err := os.WriteFile(filepath.Join(tempDir, storageKeyPrefix, tableName, file), []byte(tableName+file), 0o666)
 			require.NoError(t, err)
 		}
 	}
@@ -53,7 +54,7 @@ func TestIndexStorageClient(t *testing.T) {
 				readCloser, err := indexStorageClient.GetFile(context.Background(), table, fileInStorage.Name)
 				require.NoError(t, err)
 
-				b, err := ioutil.ReadAll(readCloser)
+				b, err := io.ReadAll(readCloser)
 				require.NoError(t, readCloser.Close())
 				require.NoError(t, err)
 				require.EqualValues(t, []byte(table+fileInStorage.Name), b)

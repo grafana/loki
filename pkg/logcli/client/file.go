@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"strings"
 	"time"
@@ -222,7 +221,7 @@ func newFileIterator(
 ) (iter.EntryIterator, error) {
 
 	lr := io.LimitReader(r, defaultMaxFileSize)
-	b, err := ioutil.ReadAll(lr)
+	b, err := io.ReadAll(lr)
 	if err != nil {
 		return nil, err
 	}
