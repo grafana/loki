@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -79,13 +80,17 @@ func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r q
 		currentInterval = r.GetStart() / denominator
 	}
 
-	if l.transformer != nil {
-		userID = l.transformer(ctx, userID)
-	}
-
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
-	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
+	cacheKey := fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
+
+	level.Info(util_log.Logger).Log(
+		"msg", "cache key",
+		"cacheKey", cacheKey,
+		"request", r,
+	)
+
+	return cacheKey
 }
 
 type limitsMiddleware struct {
