@@ -67,7 +67,12 @@ type cacheKeyLimits struct {
 }
 
 func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
-	split := l.QuerySplitDuration(userID)
+	overridesUserID := userID
+	if l.transformer != nil {
+		overridesUserID = l.transformer(ctx, userID)
+	}
+
+	split := l.QuerySplitDuration(overridesUserID)
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
