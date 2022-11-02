@@ -6,6 +6,8 @@ import (
 	"strconv"
 )
 
+type Simple string
+
 // ErrProtocol is the general error for unexpected input
 var ErrProtocol = errors.New("invalid request")
 
@@ -98,7 +100,7 @@ func ParseReply(rd *bufio.Reader) (interface{}, error) {
 		return nil, ErrProtocol
 	case '+':
 		// +: simple string
-		return string(line[1 : len(line)-2]), nil
+		return Simple(line[1 : len(line)-2]), nil
 	case '-':
 		// -: errors
 		return nil, errors.New(string(line[1 : len(line)-2]))

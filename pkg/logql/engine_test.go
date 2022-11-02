@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+
 	"github.com/go-kit/log"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
@@ -2191,6 +2194,43 @@ func TestEngine_Stats(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
 	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+}
+
+type metaQuerier struct{}
+
+func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{
+			Name:   "Header",
+			Values: []string{"value"},
+		},
+	})
+	return iter.NoopIterator, nil
+}
+
+func (metaQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	})
+	return iter.NoopIterator, nil
+}
+
+func TestEngine_Metadata(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
+
+	q := eng.Query(LiteralParams{
+		qs:        `{foo="bar"}`,
+		start:     time.Now(),
+		end:       time.Now(),
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+
+	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.NoError(t, err)
+	require.Equal(t, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	}, r.Headers)
 }
 
 func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {

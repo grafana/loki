@@ -151,6 +151,12 @@ func InjectThanos(logger log.Logger, bdir string, meta Thanos, downsampledMeta *
 	return newMeta, nil
 }
 
+// Returns a unique identifier for the compaction group the block belongs to.
+// It considers the downsampling resolution and the block's labels.
+func (m *Thanos) GroupKey() string {
+	return fmt.Sprintf("%d@%v", m.Downsample.Resolution, labels.FromMap(m.Labels).Hash())
+}
+
 // WriteToDir writes the encoded meta into <dir>/meta.json.
 func (m Meta) WriteToDir(logger log.Logger, dir string) error {
 	// Make any changes to the file appear atomic.

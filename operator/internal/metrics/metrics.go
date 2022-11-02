@@ -74,11 +74,11 @@ func Collect(spec *lokiv1.LokiStackSpec, stackName string) {
 
 	for _, size := range sizes {
 		var (
-			globalRate                float64 = 0
-			tenantRate                float64 = 0
-			isUsingSize                       = false
-			isUsingTenantLimits               = false
-			isUsingCustomGlobalLimits         = false
+			globalRate                float64
+			tenantRate                float64
+			isUsingSize               = false
+			isUsingTenantLimits       = false
+			isUsingCustomGlobalLimits = false
 		)
 
 		if spec.Size == size {

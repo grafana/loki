@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -33,6 +34,7 @@ type IndexSet interface {
 	Init(forQuerying bool) error
 	Close()
 	ForEach(ctx context.Context, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -178,11 +180,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	if err := t.indexMtx.rLock(ctx); err != nil {
 		return err
 	}
-
-	go func() {
-		<-ctx.Done()
-		t.indexMtx.rUnlock()
-	}()
+	defer t.indexMtx.rUnlock()
 
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
@@ -194,6 +192,27 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 
 	return nil
+}
+
+func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error {
+
+	if err := t.indexMtx.rLock(ctx); err != nil {
+		return err
+	}
+	defer t.indexMtx.rUnlock()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	logger := util_log.WithContext(ctx, t.logger)
+	level.Debug(logger).Log("index-files-count", len(t.index))
+
+	for i := range t.index {
+		idx := t.index[i]
+		g.Go(func() error {
+			return callback(t.userID == "", idx)
+		})
+	}
+	return g.Wait()
 }
 
 // DropAllDBs closes reference to all the open index and removes the local files.

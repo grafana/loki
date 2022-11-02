@@ -90,7 +90,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   containerLabelMatcher(containerName)::
     'label_name=~"%s.*"' % containerName,
 
-  logPanel(title, selector, datasource='$loki_datasources'):: {
+  logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
     type: 'logs',
     datasource: datasource,
@@ -189,7 +189,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
   containerMemoryWorkingSetPanel(title, containerName)::
-    self.memoryWorkingSetPanel(title, 'container="%s"' % containerName),
+    self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
   goHeapInUsePanel(title, jobName)::
     $.panel(title) +

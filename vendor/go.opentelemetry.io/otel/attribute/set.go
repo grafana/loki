@@ -71,8 +71,8 @@ func EmptySet() *Set {
 	return emptySet
 }
 
-// reflect abbreviates reflect.ValueOf.
-func (d Distinct) reflect() reflect.Value {
+// reflectValue abbreviates reflect.ValueOf(d).
+func (d Distinct) reflectValue() reflect.Value {
 	return reflect.ValueOf(d.iface)
 }
 
@@ -86,7 +86,7 @@ func (l *Set) Len() int {
 	if l == nil || !l.equivalent.Valid() {
 		return 0
 	}
-	return l.equivalent.reflect().Len()
+	return l.equivalent.reflectValue().Len()
 }
 
 // Get returns the KeyValue at ordered position idx in this set.
@@ -94,7 +94,7 @@ func (l *Set) Get(idx int) (KeyValue, bool) {
 	if l == nil {
 		return KeyValue{}, false
 	}
-	value := l.equivalent.reflect()
+	value := l.equivalent.reflectValue()
 
 	if idx >= 0 && idx < value.Len() {
 		// Note: The Go compiler successfully avoids an allocation for
@@ -110,7 +110,7 @@ func (l *Set) Value(k Key) (Value, bool) {
 	if l == nil {
 		return Value{}, false
 	}
-	rValue := l.equivalent.reflect()
+	rValue := l.equivalent.reflectValue()
 	vlen := rValue.Len()
 
 	idx := sort.Search(vlen, func(idx int) bool {

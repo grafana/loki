@@ -49,8 +49,7 @@ import (
 
 const (
 	// RingKey is the key under which we store the ingesters ring in the KVStore.
-	RingKey            = "ring"
-	internalInstanceID = "internal"
+	RingKey = "ring"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -200,11 +199,10 @@ type Ingester struct {
 	clientConfig  client.Config
 	tenantConfigs *runtime.TenantConfigs
 
-	shutdownMtx      sync.Mutex // Allows processes to grab a lock and prevent a shutdown
-	instancesMtx     sync.RWMutex
-	instances        map[string]*instance
-	internalInstance *instance // used for non-user communication from the distributors
-	readonly         bool
+	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
+	instancesMtx sync.RWMutex
+	instances    map[string]*instance
+	readonly     bool
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
@@ -239,6 +237,8 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter chunk.RequestChunkFilterer
+
+	streamRateCalculator *StreamRateCalculator
 }
 
 // New makes a new Ingester.
@@ -267,6 +267,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
+		streamRateCalculator:  NewStreamRateCalculator(),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -528,6 +529,8 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	i.flushQueuesDone.Wait()
 
+	i.streamRateCalculator.Stop()
+
 	// In case the flag to terminate on shutdown is set we need to mark the
 	// ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
@@ -631,13 +634,20 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 // GetStreamRates returns a response containing all streams and their current rate
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
-func (i *Ingester) GetStreamRates(ctx context.Context, req *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	instance, err := i.getOrCreateInternalInstance()
-	if err != nil {
-		return &logproto.StreamRatesResponse{}, err
+func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	allRates := i.streamRateCalculator.Rates()
+
+	rates := make([]*logproto.StreamRate, 0, len(allRates))
+	for _, r := range allRates {
+		rates = append(rates, &logproto.StreamRate{
+			Tenant:            r.Tenant,
+			StreamHash:        r.StreamHash,
+			StreamHashNoShard: r.StreamHashNoShard,
+			Rate:              r.Rate,
+		})
 	}
 
-	return instance.GetStreamRates(ctx, req)
+	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
 }
 
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
@@ -651,7 +661,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator)
 		if err != nil {
 			return nil, err
 		}
@@ -659,25 +669,6 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		activeTenantsStats.Set(int64(len(i.instances)))
 	}
 	return inst, nil
-}
-
-func (i *Ingester) getOrCreateInternalInstance() (*instance, error) { //nolint:revive
-	if inst, ok := i.getInternalInstance(); ok {
-		return inst, nil
-	}
-
-	i.instancesMtx.Lock()
-	defer i.instancesMtx.Unlock()
-
-	if i.internalInstance == nil {
-		inst, err := newInstance(&i.cfg, i.periodicConfigs, internalInstanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
-		if err != nil {
-			return nil, err
-		}
-		i.internalInstance = inst
-	}
-
-	return i.internalInstance, nil
 }
 
 // Query the ingests for log streams matching a set of matchers.
@@ -985,17 +976,6 @@ func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 
 	inst, ok := i.instances[id]
 	return inst, ok
-}
-
-func (i *Ingester) getInternalInstance() (*instance, bool) {
-	i.instancesMtx.RLock()
-	defer i.instancesMtx.RUnlock()
-
-	if i.internalInstance != nil {
-		return i.internalInstance, true
-	}
-
-	return nil, false
 }
 
 func (i *Ingester) getInstances() []*instance {

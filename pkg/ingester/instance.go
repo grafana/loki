@@ -102,7 +102,8 @@ type instance struct {
 
 	metrics *ingesterMetrics
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter          chunk.RequestChunkFilterer
+	streamRateCalculator *StreamRateCalculator
 }
 
 func newInstance(
@@ -115,6 +116,7 @@ func newInstance(
 	metrics *ingesterMetrics,
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
+	streamRateCalculator *StreamRateCalculator,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -139,6 +141,8 @@ func newInstance(
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
 		chunkFilter: chunkFilter,
+
+		streamRateCalculator: streamRateCalculator,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -268,7 +272,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -299,7 +303,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -342,14 +346,6 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 		return nil
 	}
 	return s.labels
-}
-
-func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	resp := &logproto.StreamRatesResponse{
-		StreamRates: make([]*logproto.StreamRate, 0, i.streams.Len()),
-	}
-
-	return resp, nil
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
@@ -540,7 +536,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
-					key := stream.labels.Hash()
+					key := stream.labelHash
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
