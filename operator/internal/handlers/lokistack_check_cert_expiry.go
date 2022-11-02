@@ -31,7 +31,12 @@ func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.String())
 	}
 
-	opts, err := certificates.GetOptions(ctx, k, req)
+	var mode lokiv1.ModeType
+	if stack.Spec.Tenants != nil {
+		mode = stack.Spec.Tenants.Mode
+	}
+
+	opts, err := certificates.GetOptions(ctx, k, req, mode)
 	if err != nil {
 		return kverrors.Wrap(err, "failed to lookup certificates secrets", "name", req.String())
 	}

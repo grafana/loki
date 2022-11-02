@@ -2,8 +2,10 @@ package certificates
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 
@@ -13,9 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var serviceCAnnotationsRe = regexp.MustCompile(`^service.(?:alpha|beta)\.openshift\.io\/.+`)
+
 // GetOptions return a certrotation options struct filled with all found client and serving certificate secrets if any found.
 // Return an error only if either the k8s client returns any other error except IsNotFound or if merging options fails.
-func GetOptions(ctx context.Context, k k8s.Client, req ctrl.Request) (certrotation.Options, error) {
+func GetOptions(ctx context.Context, k k8s.Client, req ctrl.Request, mode lokiv1.ModeType) (certrotation.Options, error) {
 	name := certrotation.SigningCASecretName(req.Name)
 	ca, err := getSecret(ctx, k, name, req.Namespace)
 	if err != nil {
@@ -31,11 +35,13 @@ func GetOptions(ctx context.Context, k k8s.Client, req ctrl.Request) (certrotati
 			return certrotation.Options{}, kverrors.Wrap(err, "failed to get ca bundle secret", "name", name)
 		}
 	}
+	configureCABundleForTenantMode(bundle, mode)
 
 	certs, err := getCertificateOptions(ctx, k, req)
 	if err != nil {
 		return certrotation.Options{}, err
 	}
+	configureCertificatesForTenantMode(certs, mode)
 
 	return certrotation.Options{
 		StackName:      req.Name,
@@ -87,4 +93,36 @@ func getConfigMap(ctx context.Context, k k8s.Client, name, ns string) (*corev1.C
 	}
 
 	return s, nil
+}
+
+func configureCertificatesForTenantMode(certs certrotation.ComponentCertificates, mode lokiv1.ModeType) {
+	switch mode {
+	case "", lokiv1.Dynamic, lokiv1.Static:
+		return
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		// Remove serviceCA annotations for existing secrets to
+		// enable upgrading secrets to built-in cert management
+		for name := range certs {
+			for key := range certs[name].Secret.Annotations {
+				if serviceCAnnotationsRe.MatchString(key) {
+					delete(certs[name].Secret.Annotations, key)
+				}
+			}
+		}
+	}
+}
+
+func configureCABundleForTenantMode(cm *corev1.ConfigMap, mode lokiv1.ModeType) {
+	switch mode {
+	case "", lokiv1.Dynamic, lokiv1.Static:
+		return
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		// Remove serviceCA annotations for existing ConfigMap to
+		// enable upgrading CABundle from built-in cert management
+		for key := range cm.Annotations {
+			if serviceCAnnotationsRe.MatchString(key) {
+				delete(cm.Annotations, key)
+			}
+		}
+	}
 }

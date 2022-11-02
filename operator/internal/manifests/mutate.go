@@ -134,6 +134,8 @@ func mergeWithOverride(dst, src interface{}) error {
 }
 
 func mutateConfigMap(existing, desired *corev1.ConfigMap) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
 	existing.BinaryData = desired.BinaryData
 	existing.Data = desired.Data
 }
