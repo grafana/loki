@@ -412,7 +412,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		if bytes.ContainsRune(val, utf8.RuneError) {
 			val = nil
 		}
-		if l.expressions[key] != nil {
+		if _, ok := l.expressions[key]; ok {
 			lbs.Set(key, string(val))
 		}
 	}
