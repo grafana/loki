@@ -75,8 +75,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "/query/ Queriers should only query the ingesters and not try to query any store")
 	f.BoolVar(&cfg.SeriesIngesterOnly, "querier.series-ingester-only", true, "/series/,Queriers should only query the ingesters and not try to query any store")
 	f.BoolVar(&cfg.LabelIngesterOnly, "querier.label-ingester-only", true, "/label/,Queriers should only query the ingesters and not try to query any store")
-	f.BoolVar(&cfg.PostFilterChunk, "querier.query-post-filter-chunk", false, "")
-	f.BoolVar(&cfg.PostMetricsFilterChunk, "querier.query-post-metrics-filter-chunk", false, "")
+	f.BoolVar(&cfg.PostFilterChunk, "querier.query-post-filter-chunk", true, "")
+	f.BoolVar(&cfg.PostMetricsFilterChunk, "querier.query-post-metrics-filter-chunk", true, "")
 	f.IntVar(&cfg.PostFilterMaxParallel, "querier.post_filter-max-parallel", 256, "post filter max parallel")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "Enable queries across multiple tenants. (Experimental)")
 }
