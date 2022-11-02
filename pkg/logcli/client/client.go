@@ -241,7 +241,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := io.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
@@ -254,11 +254,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 
 	}
 	if !success {
-		msg := "Run out of attempts while querying the server"
-		if respErrorMsg != "" {
-			msg = fmt.Sprintf("%s; response: %s", msg, respErrorMsg)
-		}
-		return fmt.Errorf(msg)
+		return fmt.Errorf("run out of attempts while querying the server")
 	}
 
 	defer func() {
