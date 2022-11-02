@@ -10,7 +10,7 @@ import (
 )
 
 // GetUID return the server-side generated UID for a created serviceaccount to
-// associate with a Sercret of type SercretServiceaccountTokenType. Returns an error if the
+// associate with a Secret of type SecretServiceaccountTokenType. Returns an error if the
 // associated serviceaccount is not created or the get operation failed for any reason.
 func GetUID(ctx context.Context, k k8s.Client, key client.ObjectKey) (string, error) {
 	sa := corev1.ServiceAccount{}
