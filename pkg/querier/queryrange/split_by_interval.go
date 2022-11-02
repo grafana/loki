@@ -2,11 +2,9 @@ package queryrange
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -179,9 +176,6 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
-	level.Info(util_log.Logger).Log(
-		"msg", "split interval",
-		"interval", fmt.Sprintf("%d", interval))
 	// skip split by if unset
 	if interval == 0 {
 		return h.next.Do(ctx, r)
@@ -192,14 +186,6 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 	h.metrics.splits.Observe(float64(len(intervals)))
-	for _, interval := range intervals {
-		interval := interval
-		level.Info(util_log.Logger).Log(
-			"msg", "intervals after splitter",
-			"interval", interval,
-			"request", r,
-		)
-	}
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {

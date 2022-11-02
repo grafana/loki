@@ -60,10 +60,6 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	}
 
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
-	level.Info(util_log.Logger).Log(
-		"msg", "split interval by range",
-		"interval", fmt.Sprintf("%d", interval),
-		"request", request)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)
