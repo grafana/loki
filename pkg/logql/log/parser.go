@@ -348,7 +348,7 @@ type LogfmtExpressionParser struct {
 }
 
 func NewLogfmtExpressionParser(expressions []LogfmtExpression) (*LogfmtExpressionParser, error) {
-	paths := make(map[string][]interface{})
+	paths := make(map[string][]interface{}, len(expressions))
 
 	for _, exp := range expressions {
 		path, err := logfmt.Parse(exp.Expression, false)

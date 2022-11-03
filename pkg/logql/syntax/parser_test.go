@@ -3052,13 +3052,48 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | logfmt response_code="response.code", api_key="api.key"`,
+			in: `{app="foo"} | logfmt msg`,
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
 					newLogfmtExpressionParser([]log.LogfmtExpression{
-						log.NewLogfmtExpr("response_code", `response.code`),
-						log.NewLogfmtExpr("api_key", `api.key`),
+						log.NewLogfmtExpr("msg", `msg`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err `,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LogfmtExpression{
+						log.NewLogfmtExpr("msg", `msg`),
+						log.NewLogfmtExpr("err", `err`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err="error"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LogfmtExpression{
+						log.NewLogfmtExpr("msg", `msg`),
+						log.NewLogfmtExpr("err", `error`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg="message", apiKey="api_key"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LogfmtExpression{
+						log.NewLogfmtExpr("msg", `message`),
+						log.NewLogfmtExpr("apiKey", `api_key`),
 					}),
 				},
 			},
