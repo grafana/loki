@@ -31,6 +31,12 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.singleBinarySelectorLabels" . | nindent 8 }}
+        {{- with .Values.loki.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.singleBinary.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.singleBinary.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
