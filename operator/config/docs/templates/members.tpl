@@ -9,8 +9,8 @@
     <td>
         <code>{{ fieldName . }}</code><br/>
         <em>
-            {{ if linkForType .Type }}
-                <a href="{{ linkForType .Type}}">
+            {{ if linkMDForType .Type }}
+                <a href="{{ linkMDForType .Type }}">
                     {{ typeDisplayName .Type }}
                 </a>
             {{ else }}
@@ -30,13 +30,6 @@
         <code>metadata</code> field.
     {{ end }}
 
-    {{ if or (eq (fieldName .) "spec") }}
-        <br/>
-        <br/>
-        <table>
-            {{ template "members" .Type }}
-        </table>
-    {{ end }}
     </td>
 </tr>
 {{ end }}

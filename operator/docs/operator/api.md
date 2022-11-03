@@ -4,31 +4,24 @@ description: "Generated API docs for the Loki Operator"
 lead: ""
 draft: false
 images: []
-menu: "operator"
+menu:
+  docs:
+    parent: "operator"
 weight: 1000
 toc: true
 ---
 This Document contains the types introduced by the Loki Operator to be consumed by users.
 > This page is automatically generated with `gen-crd-api-reference-docs`.
-<p>Packages:</p>
-<ul>
-<li>
-<a href="#loki.grafana.com%2fv1">loki.grafana.com/v1</a>
-</li>
-<li>
-<a href="#loki.grafana.com%2fv1beta1">loki.grafana.com/v1beta1</a>
-</li>
-</ul>
-<h2 id="loki.grafana.com/v1">loki.grafana.com/v1</h2>
+# loki.grafana.com/v1 { #loki-grafana-com-v1 }
 <div>
 <p>Package v1 contains API Schema definitions for the loki v1 API group</p>
 </div>
 Resource Types:
 <ul></ul>
-<h3 id="loki.grafana.com/v1.AuthenticationSpec">AuthenticationSpec
-</h3>
+
+## AuthenticationSpec { #loki-grafana-com-v1-AuthenticationSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.</p>
@@ -67,7 +60,7 @@ string
 <td>
 <code>oidc</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.OIDCSpec">
+<a href="#loki-grafana-com-v1-OIDCSpec">
 OIDCSpec
 </a>
 </em>
@@ -78,10 +71,10 @@ OIDCSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.AuthorizationSpec">AuthorizationSpec
-</h3>
+
+## AuthorizationSpec { #loki-grafana-com-v1-AuthorizationSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>AuthorizationSpec defines the opa, role bindings and roles
@@ -99,7 +92,7 @@ configuration per tenant for lokiStack Gateway component.</p>
 <td>
 <code>opa</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.OPASpec">
+<a href="#loki-grafana-com-v1-OPASpec">
 OPASpec
 </a>
 </em>
@@ -113,7 +106,7 @@ OPASpec
 <td>
 <code>roles</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.RoleSpec">
+<a href="#loki-grafana-com-v1-RoleSpec">
 []RoleSpec
 </a>
 </em>
@@ -127,7 +120,7 @@ OPASpec
 <td>
 <code>roleBindings</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.RoleBindingsSpec">
+<a href="#loki-grafana-com-v1-RoleBindingsSpec">
 []RoleBindingsSpec
 </a>
 </em>
@@ -139,10 +132,10 @@ OPASpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.IngestionLimitSpec">IngestionLimitSpec
-</h3>
+
+## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
 </p>
 <div>
 <p>IngestionLimitSpec defines the limits applied at the ingestion path.</p>
@@ -247,10 +240,10 @@ int32
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LimitsSpec">LimitsSpec
-</h3>
+
+## LimitsSpec { #loki-grafana-com-v1-LimitsSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>LimitsSpec defines the spec for limits applied at ingestion or query
@@ -268,7 +261,7 @@ path across the cluster or per tenant.</p>
 <td>
 <code>global</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LimitsTemplateSpec">
+<a href="#loki-grafana-com-v1-LimitsTemplateSpec">
 LimitsTemplateSpec
 </a>
 </em>
@@ -282,7 +275,7 @@ LimitsTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LimitsTemplateSpec">
+<a href="#loki-grafana-com-v1-LimitsTemplateSpec">
 map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
 </a>
 </em>
@@ -294,10 +287,10 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LimitsTemplateSpec">LimitsTemplateSpec
-</h3>
+
+## LimitsTemplateSpec { #loki-grafana-com-v1-LimitsTemplateSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LimitsSpec">LimitsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
 </p>
 <div>
 <p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
@@ -314,7 +307,7 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
 <td>
 <code>ingestion</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.IngestionLimitSpec">
+<a href="#loki-grafana-com-v1-IngestionLimitSpec">
 IngestionLimitSpec
 </a>
 </em>
@@ -328,7 +321,7 @@ IngestionLimitSpec
 <td>
 <code>queries</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.QueryLimitSpec">
+<a href="#loki-grafana-com-v1-QueryLimitSpec">
 QueryLimitSpec
 </a>
 </em>
@@ -342,7 +335,7 @@ QueryLimitSpec
 <td>
 <code>retention</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.RetentionLimitSpec">
+<a href="#loki-grafana-com-v1-RetentionLimitSpec">
 RetentionLimitSpec
 </a>
 </em>
@@ -354,10 +347,10 @@ RetentionLimitSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiComponentSpec">LokiComponentSpec
-</h3>
+
+## LokiComponentSpec { #loki-grafana-com-v1-LokiComponentSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiTemplateSpec">LokiTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiTemplateSpec">LokiTemplateSpec</a>)
 </p>
 <div>
 <p>LokiComponentSpec defines the requirements to configure scheduling
@@ -413,8 +406,8 @@ the component onto it.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStack">LokiStack
-</h3>
+
+## LokiStack { #loki-grafana-com-v1-LokiStack }
 <div>
 <p>LokiStack is the Schema for the lokistacks API</p>
 </div>
@@ -430,147 +423,26 @@ the component onto it.</p>
 <td>
 <code>spec</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiStackSpec">
+<a href="#loki-grafana-com-v1-LokiStackSpec">
 LokiStackSpec
 </a>
 </em>
 </td>
 <td>
-<br/>
-<br/>
-<table>
-<tr>
-<td>
-<code>managementState</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.ManagementStateType">
-ManagementStateType
-</a>
-</em>
-</td>
-<td>
-<p>ManagementState defines if the CR should be managed by the operator or not.
-Default is managed.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>size</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.LokiStackSizeType">
-LokiStackSizeType
-</a>
-</em>
-</td>
-<td>
-<p>Size defines one of the support Loki deployment scale out sizes.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>storage</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.ObjectStorageSpec">
-ObjectStorageSpec
-</a>
-</em>
-</td>
-<td>
-<p>Storage defines the spec for the object storage endpoint to store logs.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>storageClassName</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>Storage class name defines the storage class for ingester/querier PVCs.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>replicationFactor</code><br/>
-<em>
-int32
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>ReplicationFactor defines the policy for log stream replication.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>rules</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.RulesSpec">
-RulesSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Rules defines the spec for the ruler component</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>limits</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.LimitsSpec">
-LimitsSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Limits defines the limits to be applied to log stream processing.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>template</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.LokiTemplateSpec">
-LokiTemplateSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Template defines the resource/limits/tolerations/nodeselectors per component</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>tenants</code><br/>
-<em>
-<a href="#loki.grafana.com/v1.TenantsSpec">
-TenantsSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
-</td>
-</tr>
-</table>
+<p>LokiStack CR spec field.</p>
 </td>
 </tr>
 <tr>
 <td>
 <code>status</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiStackStatus">
+<a href="#loki-grafana-com-v1-LokiStackStatus">
 LokiStackStatus
 </a>
 </em>
 </td>
 <td>
+<p>LokiStack CR spec Status.</p>
 </td>
 </tr>
 <tr>
@@ -589,10 +461,10 @@ Refer to the Kubernetes API documentation for the fields of the
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackComponentStatus">LokiStackComponentStatus
-</h3>
+
+## LokiStackComponentStatus { #loki-grafana-com-v1-LokiStackComponentStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackStatus">LokiStackStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
 </p>
 <div>
 <p>LokiStackComponentStatus defines the map of per pod status per LokiStack component.
@@ -610,7 +482,7 @@ Each component is represented by a separate map of v1.Phase to a list of pods.</
 <td>
 <code>compactor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -624,7 +496,7 @@ PodStatusMap
 <td>
 <code>distributor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -638,7 +510,7 @@ PodStatusMap
 <td>
 <code>indexGateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -652,7 +524,7 @@ PodStatusMap
 <td>
 <code>ingester</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -666,7 +538,7 @@ PodStatusMap
 <td>
 <code>querier</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -680,7 +552,7 @@ PodStatusMap
 <td>
 <code>queryFrontend</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -694,7 +566,7 @@ PodStatusMap
 <td>
 <code>gateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -708,7 +580,7 @@ PodStatusMap
 <td>
 <code>ruler</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PodStatusMap">
+<a href="#loki-grafana-com-v1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -720,8 +592,9 @@ PodStatusMap
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackConditionReason">LokiStackConditionReason
-(<code>string</code> alias)</h3>
+
+## LokiStackConditionReason { #loki-grafana-com-v1-LokiStackConditionReason }
+(<code>string</code> alias)
 <div>
 <p>LokiStackConditionReason defines the type for valid reasons of a Loki deployment conditions.</p>
 </div>
@@ -784,8 +657,9 @@ for the ruler is missing.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackConditionType">LokiStackConditionType
-(<code>string</code> alias)</h3>
+
+## LokiStackConditionType { #loki-grafana-com-v1-LokiStackConditionType }
+(<code>string</code> alias)
 <div>
 <p>LokiStackConditionType deifnes the type of condition types of a Loki deployment.</p>
 </div>
@@ -811,10 +685,11 @@ are degraded or the cluster cannot connect to object storage.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackSizeType">LokiStackSizeType
-(<code>string</code> alias)</h3>
+
+## LokiStackSizeType { #loki-grafana-com-v1-LokiStackSizeType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>LokiStackSizeType declares the type for loki cluster scale outs.</p>
@@ -849,10 +724,10 @@ requirement for single replication factor and auto-compaction.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackSpec">LokiStackSpec
-</h3>
+
+## LokiStackSpec { #loki-grafana-com-v1-LokiStackSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStack">LokiStack</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStack">LokiStack</a>)
 </p>
 <div>
 <p>LokiStackSpec defines the desired state of LokiStack</p>
@@ -869,7 +744,7 @@ requirement for single replication factor and auto-compaction.</p>
 <td>
 <code>managementState</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ManagementStateType">
+<a href="#loki-grafana-com-v1-ManagementStateType">
 ManagementStateType
 </a>
 </em>
@@ -883,7 +758,7 @@ Default is managed.</p>
 <td>
 <code>size</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiStackSizeType">
+<a href="#loki-grafana-com-v1-LokiStackSizeType">
 LokiStackSizeType
 </a>
 </em>
@@ -896,7 +771,7 @@ LokiStackSizeType
 <td>
 <code>storage</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageSpec">
+<a href="#loki-grafana-com-v1-ObjectStorageSpec">
 ObjectStorageSpec
 </a>
 </em>
@@ -932,7 +807,7 @@ int32
 <td>
 <code>rules</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.RulesSpec">
+<a href="#loki-grafana-com-v1-RulesSpec">
 RulesSpec
 </a>
 </em>
@@ -946,7 +821,7 @@ RulesSpec
 <td>
 <code>limits</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LimitsSpec">
+<a href="#loki-grafana-com-v1-LimitsSpec">
 LimitsSpec
 </a>
 </em>
@@ -960,7 +835,7 @@ LimitsSpec
 <td>
 <code>template</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiTemplateSpec">
+<a href="#loki-grafana-com-v1-LokiTemplateSpec">
 LokiTemplateSpec
 </a>
 </em>
@@ -974,7 +849,7 @@ LokiTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.TenantsSpec">
+<a href="#loki-grafana-com-v1-TenantsSpec">
 TenantsSpec
 </a>
 </em>
@@ -986,10 +861,10 @@ TenantsSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackStatus">LokiStackStatus
-</h3>
+
+## LokiStackStatus { #loki-grafana-com-v1-LokiStackStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStack">LokiStack</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStack">LokiStack</a>)
 </p>
 <div>
 <p>LokiStackStatus defines the observed state of LokiStack</p>
@@ -1006,7 +881,7 @@ TenantsSpec
 <td>
 <code>components</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiStackComponentStatus">
+<a href="#loki-grafana-com-v1-LokiStackComponentStatus">
 LokiStackComponentStatus
 </a>
 </em>
@@ -1021,7 +896,7 @@ per component.</p>
 <td>
 <code>storage</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiStackStorageStatus">
+<a href="#loki-grafana-com-v1-LokiStackStorageStatus">
 LokiStackStorageStatus
 </a>
 </em>
@@ -1048,10 +923,10 @@ to the storage configuration.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiStackStorageStatus">LokiStackStorageStatus
-</h3>
+
+## LokiStackStorageStatus { #loki-grafana-com-v1-LokiStackStorageStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackStatus">LokiStackStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
 </p>
 <div>
 <p>LokiStackStorageStatus defines the observed state of
@@ -1069,7 +944,7 @@ the Loki storage configuration.</p>
 <td>
 <code>schemas</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageSchema">
+<a href="#loki-grafana-com-v1-ObjectStorageSchema">
 []ObjectStorageSchema
 </a>
 </em>
@@ -1082,10 +957,10 @@ to the LokiStack.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.LokiTemplateSpec">LokiTemplateSpec
-</h3>
+
+## LokiTemplateSpec { #loki-grafana-com-v1-LokiTemplateSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>LokiTemplateSpec defines the template of all requirements to configure
@@ -1103,7 +978,7 @@ scheduling of all Loki components to be deployed.</p>
 <td>
 <code>compactor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1117,7 +992,7 @@ LokiComponentSpec
 <td>
 <code>distributor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1131,7 +1006,7 @@ LokiComponentSpec
 <td>
 <code>ingester</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1145,7 +1020,7 @@ LokiComponentSpec
 <td>
 <code>querier</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1159,7 +1034,7 @@ LokiComponentSpec
 <td>
 <code>queryFrontend</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1173,7 +1048,7 @@ LokiComponentSpec
 <td>
 <code>gateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1187,7 +1062,7 @@ LokiComponentSpec
 <td>
 <code>indexGateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1201,7 +1076,7 @@ LokiComponentSpec
 <td>
 <code>ruler</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -1213,10 +1088,11 @@ LokiComponentSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ManagementStateType">ManagementStateType
-(<code>string</code> alias)</h3>
+
+## ManagementStateType { #loki-grafana-com-v1-ManagementStateType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>ManagementStateType defines the type for CR management states.</p>
@@ -1238,10 +1114,11 @@ reconciled by the operator.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ModeType">ModeType
-(<code>string</code> alias)</h3>
+
+## ModeType { #loki-grafana-com-v1-ModeType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.</p>
@@ -1268,10 +1145,10 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.OIDCSpec">OIDCSpec
-</h3>
+
+## OIDCSpec { #loki-grafana-com-v1-OIDCSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.AuthenticationSpec">AuthenticationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthenticationSpec">AuthenticationSpec</a>)
 </p>
 <div>
 <p>OIDCSpec defines the oidc configuration spec for lokiStack Gateway component.</p>
@@ -1288,7 +1165,7 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 <td>
 <code>secret</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.TenantSecretSpec">
+<a href="#loki-grafana-com-v1-TenantSecretSpec">
 TenantSecretSpec
 </a>
 </em>
@@ -1346,10 +1223,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.OPASpec">OPASpec
-</h3>
+
+## OPASpec { #loki-grafana-com-v1-OPASpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.AuthorizationSpec">AuthorizationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthorizationSpec">AuthorizationSpec</a>)
 </p>
 <div>
 <p>OPASpec defines the opa configuration spec for lokiStack Gateway component.</p>
@@ -1375,10 +1252,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ObjectStorageSchema">ObjectStorageSchema
-</h3>
+
+## ObjectStorageSchema { #loki-grafana-com-v1-ObjectStorageSchema }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki.grafana.com/v1.ObjectStorageSpec">ObjectStorageSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSchema defines the requirements needed to configure a new
@@ -1396,7 +1273,7 @@ storage schema.</p>
 <td>
 <code>version</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageSchemaVersion">
+<a href="#loki-grafana-com-v1-ObjectStorageSchemaVersion">
 ObjectStorageSchemaVersion
 </a>
 </em>
@@ -1409,7 +1286,7 @@ ObjectStorageSchemaVersion
 <td>
 <code>effectiveDate</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.StorageSchemaEffectiveDate">
+<a href="#loki-grafana-com-v1-StorageSchemaEffectiveDate">
 StorageSchemaEffectiveDate
 </a>
 </em>
@@ -1422,10 +1299,11 @@ date in UTC.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ObjectStorageSchemaVersion">ObjectStorageSchemaVersion
-(<code>string</code> alias)</h3>
+
+## ObjectStorageSchemaVersion { #loki-grafana-com-v1-ObjectStorageSchemaVersion }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.ObjectStorageSchema">ObjectStorageSchema</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ObjectStorageSchema">ObjectStorageSchema</a>)
 </p>
 <div>
 <p>ObjectStorageSchemaVersion defines the storage schema version which will be
@@ -1446,10 +1324,10 @@ used with the Loki cluster.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ObjectStorageSecretSpec">ObjectStorageSecretSpec
-</h3>
+
+## ObjectStorageSecretSpec { #loki-grafana-com-v1-ObjectStorageSecretSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.ObjectStorageSpec">ObjectStorageSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSecretSpec is a secret reference containing name only, no namespace.</p>
@@ -1466,7 +1344,7 @@ used with the Loki cluster.</p>
 <td>
 <code>type</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageSecretType">
+<a href="#loki-grafana-com-v1-ObjectStorageSecretType">
 ObjectStorageSecretType
 </a>
 </em>
@@ -1488,10 +1366,11 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ObjectStorageSecretType">ObjectStorageSecretType
-(<code>string</code> alias)</h3>
+
+## ObjectStorageSecretType { #loki-grafana-com-v1-ObjectStorageSecretType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.</p>
@@ -1517,10 +1396,10 @@ string
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ObjectStorageSpec">ObjectStorageSpec
-</h3>
+
+## ObjectStorageSpec { #loki-grafana-com-v1-ObjectStorageSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSpec defines the requirements to access the object
@@ -1538,7 +1417,7 @@ storage bucket to persist logs by the ingester component.</p>
 <td>
 <code>schemas</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageSchema">
+<a href="#loki-grafana-com-v1-ObjectStorageSchema">
 []ObjectStorageSchema
 </a>
 </em>
@@ -1552,7 +1431,7 @@ storage bucket to persist logs by the ingester component.</p>
 <td>
 <code>secret</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageSecretSpec">
+<a href="#loki-grafana-com-v1-ObjectStorageSecretSpec">
 ObjectStorageSecretSpec
 </a>
 </em>
@@ -1566,7 +1445,7 @@ Name of a secret in the same namespace as the LokiStack custom resource.</p>
 <td>
 <code>tls</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ObjectStorageTLSSpec">
+<a href="#loki-grafana-com-v1-ObjectStorageTLSSpec">
 ObjectStorageTLSSpec
 </a>
 </em>
@@ -1578,10 +1457,10 @@ ObjectStorageTLSSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.ObjectStorageTLSSpec">ObjectStorageTLSSpec
-</h3>
+
+## ObjectStorageTLSSpec { #loki-grafana-com-v1-ObjectStorageTLSSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.ObjectStorageSpec">ObjectStorageSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
 <p>ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.</p>
@@ -1622,10 +1501,11 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.PermissionType">PermissionType
-(<code>string</code> alias)</h3>
+
+## PermissionType { #loki-grafana-com-v1-PermissionType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.RoleSpec">RoleSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RoleSpec">RoleSpec</a>)
 </p>
 <div>
 <p>PermissionType is a LokiStack Gateway RBAC permission.</p>
@@ -1645,18 +1525,19 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.PodStatusMap">PodStatusMap
-(<code>map[k8s.io/api/core/v1.PodPhase][]string</code> alias)</h3>
+
+## PodStatusMap { #loki-grafana-com-v1-PodStatusMap }
+(<code>map[k8s.io/api/core/v1.PodPhase][]string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackComponentStatus">LokiStackComponentStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackComponentStatus">LokiStackComponentStatus</a>)
 </p>
 <div>
 <p>PodStatusMap defines the type for mapping pod status to pod name.</p>
 </div>
-<h3 id="loki.grafana.com/v1.QueryLimitSpec">QueryLimitSpec
-</h3>
+
+## QueryLimitSpec { #loki-grafana-com-v1-QueryLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
 </p>
 <div>
 <p>QueryLimitSpec defines the limits applies at the query path.</p>
@@ -1721,10 +1602,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.RetentionLimitSpec">RetentionLimitSpec
-</h3>
+
+## RetentionLimitSpec { #loki-grafana-com-v1-RetentionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
 </p>
 <div>
 <p>RetentionLimitSpec controls how long logs will be kept in storage.</p>
@@ -1752,8 +1633,8 @@ uint
 <td>
 <code>streams</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.RetentionStreamSpec">
-[]RetentionStreamSpec
+<a href="#loki-grafana-com-v1-RetentionStreamSpec">
+[]*github.com/grafana/loki/operator/apis/loki/v1.RetentionStreamSpec
 </a>
 </em>
 </td>
@@ -1764,11 +1645,8 @@ uint
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.RetentionStreamSpec">RetentionStreamSpec
-</h3>
-<p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.RetentionLimitSpec">RetentionLimitSpec</a>)
-</p>
+
+## RetentionStreamSpec { #loki-grafana-com-v1-RetentionStreamSpec }
 <div>
 <p>RetentionStreamSpec defines a log stream with separate retention time.</p>
 </div>
@@ -1816,10 +1694,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.RoleBindingsSpec">RoleBindingsSpec
-</h3>
+
+## RoleBindingsSpec { #loki-grafana-com-v1-RoleBindingsSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.AuthorizationSpec">AuthorizationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthorizationSpec">AuthorizationSpec</a>)
 </p>
 <div>
 <p>RoleBindingsSpec binds a set of roles to a set of subjects.</p>
@@ -1846,7 +1724,7 @@ string
 <td>
 <code>subjects</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.Subject">
+<a href="#loki-grafana-com-v1-Subject">
 []Subject
 </a>
 </em>
@@ -1866,10 +1744,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.RoleSpec">RoleSpec
-</h3>
+
+## RoleSpec { #loki-grafana-com-v1-RoleSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.AuthorizationSpec">AuthorizationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthorizationSpec">AuthorizationSpec</a>)
 </p>
 <div>
 <p>RoleSpec describes a set of permissions to interact with a tenant.</p>
@@ -1916,7 +1794,7 @@ string
 <td>
 <code>permissions</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.PermissionType">
+<a href="#loki-grafana-com-v1-PermissionType">
 []PermissionType
 </a>
 </em>
@@ -1926,10 +1804,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.RulesSpec">RulesSpec
-</h3>
+
+## RulesSpec { #loki-grafana-com-v1-RulesSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>RulesSpec defines the spec for the ruler component.</p>
@@ -1985,18 +1863,19 @@ the same namespace as the LokiStack object is in is used.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.StorageSchemaEffectiveDate">StorageSchemaEffectiveDate
-(<code>string</code> alias)</h3>
+
+## StorageSchemaEffectiveDate { #loki-grafana-com-v1-StorageSchemaEffectiveDate }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.ObjectStorageSchema">ObjectStorageSchema</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ObjectStorageSchema">ObjectStorageSchema</a>)
 </p>
 <div>
 <p>StorageSchemaEffectiveDate defines the type for the Storage Schema Effect Date</p>
 </div>
-<h3 id="loki.grafana.com/v1.Subject">Subject
-</h3>
+
+## Subject { #loki-grafana-com-v1-Subject }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.RoleBindingsSpec">RoleBindingsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RoleBindingsSpec">RoleBindingsSpec</a>)
 </p>
 <div>
 <p>Subject represents a subject that has been bound to a role.</p>
@@ -2023,7 +1902,7 @@ string
 <td>
 <code>kind</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.SubjectKind">
+<a href="#loki-grafana-com-v1-SubjectKind">
 SubjectKind
 </a>
 </em>
@@ -2033,10 +1912,11 @@ SubjectKind
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.SubjectKind">SubjectKind
-(<code>string</code> alias)</h3>
+
+## SubjectKind { #loki-grafana-com-v1-SubjectKind }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.Subject">Subject</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-Subject">Subject</a>)
 </p>
 <div>
 <p>SubjectKind is a kind of LokiStack Gateway RBAC subject.</p>
@@ -2056,10 +1936,10 @@ SubjectKind
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1.TenantSecretSpec">TenantSecretSpec
-</h3>
+
+## TenantSecretSpec { #loki-grafana-com-v1-TenantSecretSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.OIDCSpec">OIDCSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OIDCSpec">OIDCSpec</a>)
 </p>
 <div>
 <p>TenantSecretSpec is a secret reference containing name only
@@ -2086,10 +1966,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1.TenantsSpec">TenantsSpec
-</h3>
+
+## TenantsSpec { #loki-grafana-com-v1-TenantsSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>TenantsSpec defines the mode, authentication and authorization
@@ -2107,7 +1987,7 @@ configuration of the lokiStack gateway component.</p>
 <td>
 <code>mode</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.ModeType">
+<a href="#loki-grafana-com-v1-ModeType">
 ModeType
 </a>
 </em>
@@ -2120,7 +2000,7 @@ ModeType
 <td>
 <code>authentication</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.AuthenticationSpec">
+<a href="#loki-grafana-com-v1-AuthenticationSpec">
 []AuthenticationSpec
 </a>
 </em>
@@ -2134,7 +2014,7 @@ ModeType
 <td>
 <code>authorization</code><br/>
 <em>
-<a href="#loki.grafana.com/v1.AuthorizationSpec">
+<a href="#loki-grafana-com-v1-AuthorizationSpec">
 AuthorizationSpec
 </a>
 </em>
@@ -2147,16 +2027,18 @@ AuthorizationSpec
 </tbody>
 </table>
 <hr/>
-<h2 id="loki.grafana.com/v1beta1">loki.grafana.com/v1beta1</h2>
+
+
+# loki.grafana.com/v1beta1 { #loki-grafana-com-v1beta1 }
 <div>
 <p>Package v1beta1 contains API Schema definitions for the loki v1beta1 API group</p>
 </div>
 Resource Types:
 <ul></ul>
-<h3 id="loki.grafana.com/v1beta1.AlertManagerDiscoverySpec">AlertManagerDiscoverySpec
-</h3>
+
+## AlertManagerDiscoverySpec { #loki-grafana-com-v1beta1-AlertManagerDiscoverySpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertManagerSpec">AlertManagerSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerSpec">AlertManagerSpec</a>)
 </p>
 <div>
 <p>AlertManagerDiscoverySpec defines the configuration to use DNS resolution for AlertManager hosts.</p>
@@ -2185,7 +2067,7 @@ bool
 <td>
 <code>refreshInterval</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2197,10 +2079,10 @@ PrometheusDuration
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertManagerNotificationQueueSpec">AlertManagerNotificationQueueSpec
-</h3>
+
+## AlertManagerNotificationQueueSpec { #loki-grafana-com-v1beta1-AlertManagerNotificationQueueSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertManagerSpec">AlertManagerSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerSpec">AlertManagerSpec</a>)
 </p>
 <div>
 <p>AlertManagerNotificationQueueSpec defines the configuration for AlertManager notification settings.</p>
@@ -2229,7 +2111,7 @@ int32
 <td>
 <code>timeout</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2243,7 +2125,7 @@ PrometheusDuration
 <td>
 <code>forOutageTolerance</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2257,7 +2139,7 @@ PrometheusDuration
 <td>
 <code>forGracePeriod</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2272,7 +2154,7 @@ only for alerts with configured &ldquo;for&rdquo; time greater than the grace pe
 <td>
 <code>resendDelay</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2284,10 +2166,10 @@ PrometheusDuration
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertManagerSpec">AlertManagerSpec
-</h3>
+
+## AlertManagerSpec { #loki-grafana-com-v1beta1-AlertManagerSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RulerConfigSpec">RulerConfigSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfigSpec">RulerConfigSpec</a>)
 </p>
 <div>
 <p>AlertManagerSpec defines the configuration for ruler&rsquo;s alertmanager connectivity.</p>
@@ -2353,7 +2235,7 @@ supported by using DNS resolution (See EnableDNSDiscovery).</p>
 <td>
 <code>discovery</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertManagerDiscoverySpec">
+<a href="#loki-grafana-com-v1beta1-AlertManagerDiscoverySpec">
 AlertManagerDiscoverySpec
 </a>
 </em>
@@ -2367,7 +2249,7 @@ AlertManagerDiscoverySpec
 <td>
 <code>notificationQueue</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertManagerNotificationQueueSpec">
+<a href="#loki-grafana-com-v1beta1-AlertManagerNotificationQueueSpec">
 AlertManagerNotificationQueueSpec
 </a>
 </em>
@@ -2381,7 +2263,7 @@ AlertManagerNotificationQueueSpec
 <td>
 <code>relabelConfigs</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RelabelConfig">
+<a href="#loki-grafana-com-v1beta1-RelabelConfig">
 []RelabelConfig
 </a>
 </em>
@@ -2393,8 +2275,8 @@ AlertManagerNotificationQueueSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertingRule">AlertingRule
-</h3>
+
+## AlertingRule { #loki-grafana-com-v1beta1-AlertingRule }
 <div>
 <p>AlertingRule is the Schema for the alertingrules API</p>
 </div>
@@ -2424,48 +2306,19 @@ Refer to the Kubernetes API documentation for the fields of the
 <td>
 <code>spec</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertingRuleSpec">
+<a href="#loki-grafana-com-v1beta1-AlertingRuleSpec">
 AlertingRuleSpec
 </a>
 </em>
 </td>
 <td>
-<br/>
-<br/>
-<table>
-<tr>
-<td>
-<code>tenantID</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>TenantID of tenant where the alerting rules are evaluated in.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>groups</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.AlertingRuleGroup">
-[]AlertingRuleGroup
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>List of groups for alerting rules.</p>
-</td>
-</tr>
-</table>
 </td>
 </tr>
 <tr>
 <td>
 <code>status</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertingRuleStatus">
+<a href="#loki-grafana-com-v1beta1-AlertingRuleStatus">
 AlertingRuleStatus
 </a>
 </em>
@@ -2475,11 +2328,8 @@ AlertingRuleStatus
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertingRuleGroup">AlertingRuleGroup
-</h3>
-<p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertingRuleSpec">AlertingRuleSpec</a>)
-</p>
+
+## AlertingRuleGroup { #loki-grafana-com-v1beta1-AlertingRuleGroup }
 <div>
 <p>AlertingRuleGroup defines a group of Loki alerting rules.</p>
 </div>
@@ -2506,7 +2356,7 @@ string
 <td>
 <code>interval</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2533,8 +2383,8 @@ int32
 <td>
 <code>rules</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertingRuleGroupSpec">
-[]AlertingRuleGroupSpec
+<a href="#loki-grafana-com-v1beta1-AlertingRuleGroupSpec">
+[]*github.com/grafana/loki/operator/apis/loki/v1beta1.AlertingRuleGroupSpec
 </a>
 </em>
 </td>
@@ -2544,11 +2394,8 @@ int32
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertingRuleGroupSpec">AlertingRuleGroupSpec
-</h3>
-<p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertingRuleGroup">AlertingRuleGroup</a>)
-</p>
+
+## AlertingRuleGroupSpec { #loki-grafana-com-v1beta1-AlertingRuleGroupSpec }
 <div>
 <p>AlertingRuleGroupSpec defines the spec for a Loki alerting rule.</p>
 </div>
@@ -2589,7 +2436,7 @@ pending/firing alerts.</p>
 <td>
 <code>for</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -2626,10 +2473,10 @@ map[string]string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertingRuleSpec">AlertingRuleSpec
-</h3>
+
+## AlertingRuleSpec { #loki-grafana-com-v1beta1-AlertingRuleSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertingRule">AlertingRule</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertingRule">AlertingRule</a>)
 </p>
 <div>
 <p>AlertingRuleSpec defines the desired state of AlertingRule</p>
@@ -2657,8 +2504,8 @@ string
 <td>
 <code>groups</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertingRuleGroup">
-[]AlertingRuleGroup
+<a href="#loki-grafana-com-v1beta1-AlertingRuleGroup">
+[]*github.com/grafana/loki/operator/apis/loki/v1beta1.AlertingRuleGroup
 </a>
 </em>
 </td>
@@ -2669,10 +2516,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AlertingRuleStatus">AlertingRuleStatus
-</h3>
+
+## AlertingRuleStatus { #loki-grafana-com-v1beta1-AlertingRuleStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertingRule">AlertingRule</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertingRule">AlertingRule</a>)
 </p>
 <div>
 <p>AlertingRuleStatus defines the observed state of AlertingRule</p>
@@ -2701,10 +2548,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AuthenticationSpec">AuthenticationSpec
-</h3>
+
+## AuthenticationSpec { #loki-grafana-com-v1beta1-AuthenticationSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.</p>
@@ -2743,7 +2590,7 @@ string
 <td>
 <code>oidc</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.OIDCSpec">
+<a href="#loki-grafana-com-v1beta1-OIDCSpec">
 OIDCSpec
 </a>
 </em>
@@ -2754,10 +2601,10 @@ OIDCSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.AuthorizationSpec">AuthorizationSpec
-</h3>
+
+## AuthorizationSpec { #loki-grafana-com-v1beta1-AuthorizationSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>AuthorizationSpec defines the opa, role bindings and roles
@@ -2775,7 +2622,7 @@ configuration per tenant for lokiStack Gateway component.</p>
 <td>
 <code>opa</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.OPASpec">
+<a href="#loki-grafana-com-v1beta1-OPASpec">
 OPASpec
 </a>
 </em>
@@ -2789,7 +2636,7 @@ OPASpec
 <td>
 <code>roles</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RoleSpec">
+<a href="#loki-grafana-com-v1beta1-RoleSpec">
 []RoleSpec
 </a>
 </em>
@@ -2803,7 +2650,7 @@ OPASpec
 <td>
 <code>roleBindings</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RoleBindingsSpec">
+<a href="#loki-grafana-com-v1beta1-RoleBindingsSpec">
 []RoleBindingsSpec
 </a>
 </em>
@@ -2815,10 +2662,10 @@ OPASpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.IngestionLimitSpec">IngestionLimitSpec
-</h3>
+
+## IngestionLimitSpec { #loki-grafana-com-v1beta1-IngestionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
 </p>
 <div>
 <p>IngestionLimitSpec defines the limits applied at the ingestion path.</p>
@@ -2923,10 +2770,10 @@ int32
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LimitsSpec">LimitsSpec
-</h3>
+
+## LimitsSpec { #loki-grafana-com-v1beta1-LimitsSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>LimitsSpec defines the spec for limits applied at ingestion or query
@@ -2944,7 +2791,7 @@ path across the cluster or per tenant.</p>
 <td>
 <code>global</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LimitsTemplateSpec">
+<a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">
 LimitsTemplateSpec
 </a>
 </em>
@@ -2958,7 +2805,7 @@ LimitsTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LimitsTemplateSpec">
+<a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">
 map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
 </a>
 </em>
@@ -2970,10 +2817,10 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LimitsTemplateSpec">LimitsTemplateSpec
-</h3>
+
+## LimitsTemplateSpec { #loki-grafana-com-v1beta1-LimitsTemplateSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LimitsSpec">LimitsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LimitsSpec">LimitsSpec</a>)
 </p>
 <div>
 <p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
@@ -2990,7 +2837,7 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
 <td>
 <code>ingestion</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.IngestionLimitSpec">
+<a href="#loki-grafana-com-v1beta1-IngestionLimitSpec">
 IngestionLimitSpec
 </a>
 </em>
@@ -3004,7 +2851,7 @@ IngestionLimitSpec
 <td>
 <code>queries</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.QueryLimitSpec">
+<a href="#loki-grafana-com-v1beta1-QueryLimitSpec">
 QueryLimitSpec
 </a>
 </em>
@@ -3016,10 +2863,10 @@ QueryLimitSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiComponentSpec">LokiComponentSpec
-</h3>
+
+## LokiComponentSpec { #loki-grafana-com-v1beta1-LokiComponentSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiTemplateSpec">LokiTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiTemplateSpec">LokiTemplateSpec</a>)
 </p>
 <div>
 <p>LokiComponentSpec defines the requirements to configure scheduling
@@ -3075,8 +2922,8 @@ the component onto it.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStack">LokiStack
-</h3>
+
+## LokiStack { #loki-grafana-com-v1beta1-LokiStack }
 <div>
 <p>LokiStack is the Schema for the lokistacks API</p>
 </div>
@@ -3092,142 +2939,19 @@ the component onto it.</p>
 <td>
 <code>spec</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiStackSpec">
+<a href="#loki-grafana-com-v1beta1-LokiStackSpec">
 LokiStackSpec
 </a>
 </em>
 </td>
 <td>
-<br/>
-<br/>
-<table>
-<tr>
-<td>
-<code>managementState</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.ManagementStateType">
-ManagementStateType
-</a>
-</em>
-</td>
-<td>
-<p>ManagementState defines if the CR should be managed by the operator or not.
-Default is managed.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>size</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.LokiStackSizeType">
-LokiStackSizeType
-</a>
-</em>
-</td>
-<td>
-<p>Size defines one of the support Loki deployment scale out sizes.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>storage</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSpec">
-ObjectStorageSpec
-</a>
-</em>
-</td>
-<td>
-<p>Storage defines the spec for the object storage endpoint to store logs.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>storageClassName</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>Storage class name defines the storage class for ingester/querier PVCs.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>replicationFactor</code><br/>
-<em>
-int32
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>ReplicationFactor defines the policy for log stream replication.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>rules</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.RulesSpec">
-RulesSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Rules defines the spec for the ruler component</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>limits</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.LimitsSpec">
-LimitsSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Limits defines the limits to be applied to log stream processing.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>template</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.LokiTemplateSpec">
-LokiTemplateSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Template defines the resource/limits/tolerations/nodeselectors per component</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>tenants</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.TenantsSpec">
-TenantsSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
-</td>
-</tr>
-</table>
 </td>
 </tr>
 <tr>
 <td>
 <code>status</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiStackStatus">
+<a href="#loki-grafana-com-v1beta1-LokiStackStatus">
 LokiStackStatus
 </a>
 </em>
@@ -3251,10 +2975,10 @@ Refer to the Kubernetes API documentation for the fields of the
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackComponentStatus">LokiStackComponentStatus
-</h3>
+
+## LokiStackComponentStatus { #loki-grafana-com-v1beta1-LokiStackComponentStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackStatus">LokiStackStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackStatus">LokiStackStatus</a>)
 </p>
 <div>
 <p>LokiStackComponentStatus defines the map of per pod status per LokiStack component.
@@ -3272,7 +2996,7 @@ Each component is represented by a separate map of v1.Phase to a list of pods.</
 <td>
 <code>compactor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3286,7 +3010,7 @@ PodStatusMap
 <td>
 <code>distributor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3300,7 +3024,7 @@ PodStatusMap
 <td>
 <code>indexGateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3314,7 +3038,7 @@ PodStatusMap
 <td>
 <code>ingester</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3328,7 +3052,7 @@ PodStatusMap
 <td>
 <code>querier</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3342,7 +3066,7 @@ PodStatusMap
 <td>
 <code>queryFrontend</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3356,7 +3080,7 @@ PodStatusMap
 <td>
 <code>gateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3370,7 +3094,7 @@ PodStatusMap
 <td>
 <code>ruler</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PodStatusMap">
+<a href="#loki-grafana-com-v1beta1-PodStatusMap">
 PodStatusMap
 </a>
 </em>
@@ -3382,8 +3106,9 @@ PodStatusMap
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackConditionReason">LokiStackConditionReason
-(<code>string</code> alias)</h3>
+
+## LokiStackConditionReason { #loki-grafana-com-v1beta1-LokiStackConditionReason }
+(<code>string</code> alias)
 <div>
 <p>LokiStackConditionReason defines the type for valid reasons of a Loki deployment conditions.</p>
 </div>
@@ -3446,8 +3171,9 @@ for the ruler is missing.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackConditionType">LokiStackConditionType
-(<code>string</code> alias)</h3>
+
+## LokiStackConditionType { #loki-grafana-com-v1beta1-LokiStackConditionType }
+(<code>string</code> alias)
 <div>
 <p>LokiStackConditionType deifnes the type of condition types of a Loki deployment.</p>
 </div>
@@ -3473,10 +3199,11 @@ are degraded or the cluster cannot connect to object storage.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackSizeType">LokiStackSizeType
-(<code>string</code> alias)</h3>
+
+## LokiStackSizeType { #loki-grafana-com-v1beta1-LokiStackSizeType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>LokiStackSizeType declares the type for loki cluster scale outs.</p>
@@ -3511,10 +3238,10 @@ requirement for single replication factor and auto-compaction.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec
-</h3>
+
+## LokiStackSpec { #loki-grafana-com-v1beta1-LokiStackSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStack">LokiStack</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStack">LokiStack</a>)
 </p>
 <div>
 <p>LokiStackSpec defines the desired state of LokiStack</p>
@@ -3531,7 +3258,7 @@ requirement for single replication factor and auto-compaction.</p>
 <td>
 <code>managementState</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ManagementStateType">
+<a href="#loki-grafana-com-v1beta1-ManagementStateType">
 ManagementStateType
 </a>
 </em>
@@ -3545,7 +3272,7 @@ Default is managed.</p>
 <td>
 <code>size</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiStackSizeType">
+<a href="#loki-grafana-com-v1beta1-LokiStackSizeType">
 LokiStackSizeType
 </a>
 </em>
@@ -3558,7 +3285,7 @@ LokiStackSizeType
 <td>
 <code>storage</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSpec">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageSpec">
 ObjectStorageSpec
 </a>
 </em>
@@ -3594,7 +3321,7 @@ int32
 <td>
 <code>rules</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RulesSpec">
+<a href="#loki-grafana-com-v1beta1-RulesSpec">
 RulesSpec
 </a>
 </em>
@@ -3608,7 +3335,7 @@ RulesSpec
 <td>
 <code>limits</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LimitsSpec">
+<a href="#loki-grafana-com-v1beta1-LimitsSpec">
 LimitsSpec
 </a>
 </em>
@@ -3622,7 +3349,7 @@ LimitsSpec
 <td>
 <code>template</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiTemplateSpec">
+<a href="#loki-grafana-com-v1beta1-LokiTemplateSpec">
 LokiTemplateSpec
 </a>
 </em>
@@ -3636,7 +3363,7 @@ LokiTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.TenantsSpec">
+<a href="#loki-grafana-com-v1beta1-TenantsSpec">
 TenantsSpec
 </a>
 </em>
@@ -3648,10 +3375,10 @@ TenantsSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackStatus">LokiStackStatus
-</h3>
+
+## LokiStackStatus { #loki-grafana-com-v1beta1-LokiStackStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStack">LokiStack</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStack">LokiStack</a>)
 </p>
 <div>
 <p>LokiStackStatus defines the observed state of LokiStack</p>
@@ -3668,7 +3395,7 @@ TenantsSpec
 <td>
 <code>components</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiStackComponentStatus">
+<a href="#loki-grafana-com-v1beta1-LokiStackComponentStatus">
 LokiStackComponentStatus
 </a>
 </em>
@@ -3683,7 +3410,7 @@ per component.</p>
 <td>
 <code>storage</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiStackStorageStatus">
+<a href="#loki-grafana-com-v1beta1-LokiStackStorageStatus">
 LokiStackStorageStatus
 </a>
 </em>
@@ -3710,10 +3437,10 @@ to the storage configuration.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiStackStorageStatus">LokiStackStorageStatus
-</h3>
+
+## LokiStackStorageStatus { #loki-grafana-com-v1beta1-LokiStackStorageStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackStatus">LokiStackStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackStatus">LokiStackStatus</a>)
 </p>
 <div>
 <p>LokiStackStorageStatus defines the observed state of
@@ -3731,7 +3458,7 @@ the Loki storage configuration.</p>
 <td>
 <code>schemas</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSchema">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageSchema">
 []ObjectStorageSchema
 </a>
 </em>
@@ -3744,10 +3471,10 @@ to the LokiStack.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.LokiTemplateSpec">LokiTemplateSpec
-</h3>
+
+## LokiTemplateSpec { #loki-grafana-com-v1beta1-LokiTemplateSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>LokiTemplateSpec defines the template of all requirements to configure
@@ -3765,7 +3492,7 @@ scheduling of all Loki components to be deployed.</p>
 <td>
 <code>compactor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3779,7 +3506,7 @@ LokiComponentSpec
 <td>
 <code>distributor</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3793,7 +3520,7 @@ LokiComponentSpec
 <td>
 <code>ingester</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3807,7 +3534,7 @@ LokiComponentSpec
 <td>
 <code>querier</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3821,7 +3548,7 @@ LokiComponentSpec
 <td>
 <code>queryFrontend</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3835,7 +3562,7 @@ LokiComponentSpec
 <td>
 <code>gateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3849,7 +3576,7 @@ LokiComponentSpec
 <td>
 <code>indexGateway</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3863,7 +3590,7 @@ LokiComponentSpec
 <td>
 <code>ruler</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.LokiComponentSpec">
+<a href="#loki-grafana-com-v1beta1-LokiComponentSpec">
 LokiComponentSpec
 </a>
 </em>
@@ -3875,10 +3602,11 @@ LokiComponentSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ManagementStateType">ManagementStateType
-(<code>string</code> alias)</h3>
+
+## ManagementStateType { #loki-grafana-com-v1beta1-ManagementStateType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>ManagementStateType defines the type for CR management states.</p>
@@ -3900,10 +3628,11 @@ reconciled by the operator.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ModeType">ModeType
-(<code>string</code> alias)</h3>
+
+## ModeType { #loki-grafana-com-v1beta1-ModeType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.</p>
@@ -3927,10 +3656,10 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.OIDCSpec">OIDCSpec
-</h3>
+
+## OIDCSpec { #loki-grafana-com-v1beta1-OIDCSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AuthenticationSpec">AuthenticationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AuthenticationSpec">AuthenticationSpec</a>)
 </p>
 <div>
 <p>OIDCSpec defines the oidc configuration spec for lokiStack Gateway component.</p>
@@ -3947,7 +3676,7 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 <td>
 <code>secret</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.TenantSecretSpec">
+<a href="#loki-grafana-com-v1beta1-TenantSecretSpec">
 TenantSecretSpec
 </a>
 </em>
@@ -4005,10 +3734,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.OPASpec">OPASpec
-</h3>
+
+## OPASpec { #loki-grafana-com-v1beta1-OPASpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AuthorizationSpec">AuthorizationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AuthorizationSpec">AuthorizationSpec</a>)
 </p>
 <div>
 <p>OPASpec defines the opa configuration spec for lokiStack Gateway component.</p>
@@ -4034,10 +3763,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ObjectStorageSchema">ObjectStorageSchema
-</h3>
+
+## ObjectStorageSchema { #loki-grafana-com-v1beta1-ObjectStorageSchema }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki.grafana.com/v1beta1.ObjectStorageSpec">ObjectStorageSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1beta1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSchema defines the requirements needed to configure a new
@@ -4055,7 +3784,7 @@ storage schema.</p>
 <td>
 <code>version</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSchemaVersion">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageSchemaVersion">
 ObjectStorageSchemaVersion
 </a>
 </em>
@@ -4068,7 +3797,7 @@ ObjectStorageSchemaVersion
 <td>
 <code>effectiveDate</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.StorageSchemaEffectiveDate">
+<a href="#loki-grafana-com-v1beta1-StorageSchemaEffectiveDate">
 StorageSchemaEffectiveDate
 </a>
 </em>
@@ -4081,10 +3810,11 @@ date in UTC.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ObjectStorageSchemaVersion">ObjectStorageSchemaVersion
-(<code>string</code> alias)</h3>
+
+## ObjectStorageSchemaVersion { #loki-grafana-com-v1beta1-ObjectStorageSchemaVersion }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.ObjectStorageSchema">ObjectStorageSchema</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-ObjectStorageSchema">ObjectStorageSchema</a>)
 </p>
 <div>
 <p>ObjectStorageSchemaVersion defines the storage schema version which will be
@@ -4105,10 +3835,10 @@ used with the Loki cluster.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ObjectStorageSecretSpec">ObjectStorageSecretSpec
-</h3>
+
+## ObjectStorageSecretSpec { #loki-grafana-com-v1beta1-ObjectStorageSecretSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.ObjectStorageSpec">ObjectStorageSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSecretSpec is a secret reference containing name only, no namespace.</p>
@@ -4125,7 +3855,7 @@ used with the Loki cluster.</p>
 <td>
 <code>type</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSecretType">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageSecretType">
 ObjectStorageSecretType
 </a>
 </em>
@@ -4147,10 +3877,11 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ObjectStorageSecretType">ObjectStorageSecretType
-(<code>string</code> alias)</h3>
+
+## ObjectStorageSecretType { #loki-grafana-com-v1beta1-ObjectStorageSecretType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.</p>
@@ -4176,10 +3907,10 @@ string
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ObjectStorageSpec">ObjectStorageSpec
-</h3>
+
+## ObjectStorageSpec { #loki-grafana-com-v1beta1-ObjectStorageSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>ObjectStorageSpec defines the requirements to access the object
@@ -4197,7 +3928,7 @@ storage bucket to persist logs by the ingester component.</p>
 <td>
 <code>schemas</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSchema">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageSchema">
 []ObjectStorageSchema
 </a>
 </em>
@@ -4211,7 +3942,7 @@ storage bucket to persist logs by the ingester component.</p>
 <td>
 <code>secret</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageSecretSpec">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageSecretSpec">
 ObjectStorageSecretSpec
 </a>
 </em>
@@ -4225,7 +3956,7 @@ Name of a secret in the same namespace as the LokiStack custom resource.</p>
 <td>
 <code>tls</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ObjectStorageTLSSpec">
+<a href="#loki-grafana-com-v1beta1-ObjectStorageTLSSpec">
 ObjectStorageTLSSpec
 </a>
 </em>
@@ -4237,10 +3968,10 @@ ObjectStorageTLSSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.ObjectStorageTLSSpec">ObjectStorageTLSSpec
-</h3>
+
+## ObjectStorageTLSSpec { #loki-grafana-com-v1beta1-ObjectStorageTLSSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.ObjectStorageSpec">ObjectStorageSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
 <p>ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.</p>
@@ -4268,10 +3999,11 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.PermissionType">PermissionType
-(<code>string</code> alias)</h3>
+
+## PermissionType { #loki-grafana-com-v1beta1-PermissionType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RoleSpec">RoleSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RoleSpec">RoleSpec</a>)
 </p>
 <div>
 <p>PermissionType is a LokiStack Gateway RBAC permission.</p>
@@ -4291,26 +4023,28 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.PodStatusMap">PodStatusMap
-(<code>map[k8s.io/api/core/v1.PodPhase][]string</code> alias)</h3>
+
+## PodStatusMap { #loki-grafana-com-v1beta1-PodStatusMap }
+(<code>map[k8s.io/api/core/v1.PodPhase][]string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackComponentStatus">LokiStackComponentStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackComponentStatus">LokiStackComponentStatus</a>)
 </p>
 <div>
 <p>PodStatusMap defines the type for mapping pod status to pod name.</p>
 </div>
-<h3 id="loki.grafana.com/v1beta1.PrometheusDuration">PrometheusDuration
-(<code>string</code> alias)</h3>
+
+## PrometheusDuration { #loki-grafana-com-v1beta1-PrometheusDuration }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertManagerDiscoverySpec">AlertManagerDiscoverySpec</a>, <a href="#loki.grafana.com/v1beta1.AlertManagerNotificationQueueSpec">AlertManagerNotificationQueueSpec</a>, <a href="#loki.grafana.com/v1beta1.AlertingRuleGroup">AlertingRuleGroup</a>, <a href="#loki.grafana.com/v1beta1.AlertingRuleGroupSpec">AlertingRuleGroupSpec</a>, <a href="#loki.grafana.com/v1beta1.RecordingRuleGroup">RecordingRuleGroup</a>, <a href="#loki.grafana.com/v1beta1.RemoteWriteClientQueueSpec">RemoteWriteClientQueueSpec</a>, <a href="#loki.grafana.com/v1beta1.RemoteWriteClientSpec">RemoteWriteClientSpec</a>, <a href="#loki.grafana.com/v1beta1.RemoteWriteSpec">RemoteWriteSpec</a>, <a href="#loki.grafana.com/v1beta1.RulerConfigSpec">RulerConfigSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerDiscoverySpec">AlertManagerDiscoverySpec</a>, <a href="#loki-grafana-com-v1beta1-AlertManagerNotificationQueueSpec">AlertManagerNotificationQueueSpec</a>, <a href="#loki-grafana-com-v1beta1-AlertingRuleGroup">AlertingRuleGroup</a>, <a href="#loki-grafana-com-v1beta1-AlertingRuleGroupSpec">AlertingRuleGroupSpec</a>, <a href="#loki-grafana-com-v1beta1-RecordingRuleGroup">RecordingRuleGroup</a>, <a href="#loki-grafana-com-v1beta1-RemoteWriteClientQueueSpec">RemoteWriteClientQueueSpec</a>, <a href="#loki-grafana-com-v1beta1-RemoteWriteClientSpec">RemoteWriteClientSpec</a>, <a href="#loki-grafana-com-v1beta1-RemoteWriteSpec">RemoteWriteSpec</a>, <a href="#loki-grafana-com-v1beta1-RulerConfigSpec">RulerConfigSpec</a>)
 </p>
 <div>
 <p>PrometheusDuration defines the type for Prometheus durations.</p>
 </div>
-<h3 id="loki.grafana.com/v1beta1.QueryLimitSpec">QueryLimitSpec
-</h3>
+
+## QueryLimitSpec { #loki-grafana-com-v1beta1-QueryLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
 </p>
 <div>
 <p>QueryLimitSpec defines the limits applies at the query path.</p>
@@ -4363,8 +4097,8 @@ that is returned by a metric query.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RecordingRule">RecordingRule
-</h3>
+
+## RecordingRule { #loki-grafana-com-v1beta1-RecordingRule }
 <div>
 <p>RecordingRule is the Schema for the recordingrules API</p>
 </div>
@@ -4394,48 +4128,19 @@ Refer to the Kubernetes API documentation for the fields of the
 <td>
 <code>spec</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RecordingRuleSpec">
+<a href="#loki-grafana-com-v1beta1-RecordingRuleSpec">
 RecordingRuleSpec
 </a>
 </em>
 </td>
 <td>
-<br/>
-<br/>
-<table>
-<tr>
-<td>
-<code>tenantID</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>TenantID of tenant where the recording rules are evaluated in.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>groups</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.RecordingRuleGroup">
-[]RecordingRuleGroup
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>List of groups for recording rules.</p>
-</td>
-</tr>
-</table>
 </td>
 </tr>
 <tr>
 <td>
 <code>status</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RecordingRuleStatus">
+<a href="#loki-grafana-com-v1beta1-RecordingRuleStatus">
 RecordingRuleStatus
 </a>
 </em>
@@ -4445,11 +4150,8 @@ RecordingRuleStatus
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RecordingRuleGroup">RecordingRuleGroup
-</h3>
-<p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RecordingRuleSpec">RecordingRuleSpec</a>)
-</p>
+
+## RecordingRuleGroup { #loki-grafana-com-v1beta1-RecordingRuleGroup }
 <div>
 <p>RecordingRuleGroup defines a group of Loki  recording rules.</p>
 </div>
@@ -4476,7 +4178,7 @@ string
 <td>
 <code>interval</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -4503,8 +4205,8 @@ int32
 <td>
 <code>rules</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RecordingRuleGroupSpec">
-[]RecordingRuleGroupSpec
+<a href="#loki-grafana-com-v1beta1-RecordingRuleGroupSpec">
+[]*github.com/grafana/loki/operator/apis/loki/v1beta1.RecordingRuleGroupSpec
 </a>
 </em>
 </td>
@@ -4514,11 +4216,8 @@ int32
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RecordingRuleGroupSpec">RecordingRuleGroupSpec
-</h3>
-<p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RecordingRuleGroup">RecordingRuleGroup</a>)
-</p>
+
+## RecordingRuleGroupSpec { #loki-grafana-com-v1beta1-RecordingRuleGroupSpec }
 <div>
 <p>RecordingRuleGroupSpec defines the spec for a Loki recording rule.</p>
 </div>
@@ -4557,10 +4256,10 @@ pending/firing alerts.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RecordingRuleSpec">RecordingRuleSpec
-</h3>
+
+## RecordingRuleSpec { #loki-grafana-com-v1beta1-RecordingRuleSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RecordingRule">RecordingRule</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RecordingRule">RecordingRule</a>)
 </p>
 <div>
 <p>RecordingRuleSpec defines the desired state of RecordingRule</p>
@@ -4588,8 +4287,8 @@ string
 <td>
 <code>groups</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RecordingRuleGroup">
-[]RecordingRuleGroup
+<a href="#loki-grafana-com-v1beta1-RecordingRuleGroup">
+[]*github.com/grafana/loki/operator/apis/loki/v1beta1.RecordingRuleGroup
 </a>
 </em>
 </td>
@@ -4600,10 +4299,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RecordingRuleStatus">RecordingRuleStatus
-</h3>
+
+## RecordingRuleStatus { #loki-grafana-com-v1beta1-RecordingRuleStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RecordingRule">RecordingRule</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RecordingRule">RecordingRule</a>)
 </p>
 <div>
 <p>RecordingRuleStatus defines the observed state of RecordingRule</p>
@@ -4632,18 +4331,19 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RelabelActionType">RelabelActionType
-(<code>string</code> alias)</h3>
+
+## RelabelActionType { #loki-grafana-com-v1beta1-RelabelActionType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RelabelConfig">RelabelConfig</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RelabelConfig">RelabelConfig</a>)
 </p>
 <div>
 <p>RelabelActionType defines the enumeration type for RelabelConfig actions.</p>
 </div>
-<h3 id="loki.grafana.com/v1beta1.RelabelConfig">RelabelConfig
-</h3>
+
+## RelabelConfig { #loki-grafana-com-v1beta1-RelabelConfig }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AlertManagerSpec">AlertManagerSpec</a>, <a href="#loki.grafana.com/v1beta1.RemoteWriteClientSpec">RemoteWriteClientSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerSpec">AlertManagerSpec</a>, <a href="#loki-grafana-com-v1beta1-RemoteWriteClientSpec">RemoteWriteClientSpec</a>)
 </p>
 <div>
 <p>RelabelConfig allows dynamic rewriting of the label set, being applied to samples before ingestion.
@@ -4737,7 +4437,7 @@ regular expression matches. Regex capture groups are available. Default is &lsqu
 <td>
 <code>action</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RelabelActionType">
+<a href="#loki-grafana-com-v1beta1-RelabelActionType">
 RelabelActionType
 </a>
 </em>
@@ -4749,10 +4449,11 @@ RelabelActionType
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RemoteWriteAuthType">RemoteWriteAuthType
-(<code>string</code> alias)</h3>
+
+## RemoteWriteAuthType { #loki-grafana-com-v1beta1-RemoteWriteAuthType }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RemoteWriteClientSpec">RemoteWriteClientSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RemoteWriteClientSpec">RemoteWriteClientSpec</a>)
 </p>
 <div>
 <p>RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.</p>
@@ -4772,10 +4473,10 @@ RelabelActionType
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RemoteWriteClientQueueSpec">RemoteWriteClientQueueSpec
-</h3>
+
+## RemoteWriteClientQueueSpec { #loki-grafana-com-v1beta1-RemoteWriteClientQueueSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RemoteWriteSpec">RemoteWriteSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RemoteWriteSpec">RemoteWriteSpec</a>)
 </p>
 <div>
 <p>RemoteWriteClientQueueSpec defines the configuration of the remote write client queue.</p>
@@ -4840,7 +4541,7 @@ int32
 <td>
 <code>batchSendDeadline</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -4854,7 +4555,7 @@ PrometheusDuration
 <td>
 <code>minBackOffPeriod</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -4868,7 +4569,7 @@ PrometheusDuration
 <td>
 <code>maxBackOffPeriod</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -4880,10 +4581,10 @@ PrometheusDuration
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RemoteWriteClientSpec">RemoteWriteClientSpec
-</h3>
+
+## RemoteWriteClientSpec { #loki-grafana-com-v1beta1-RemoteWriteClientSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RemoteWriteSpec">RemoteWriteSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RemoteWriteSpec">RemoteWriteSpec</a>)
 </p>
 <div>
 <p>RemoteWriteClientSpec defines the configuration of the remote write client.</p>
@@ -4922,7 +4623,7 @@ string
 <td>
 <code>timeout</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -4936,7 +4637,7 @@ PrometheusDuration
 <td>
 <code>authorization</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RemoteWriteAuthType">
+<a href="#loki-grafana-com-v1beta1-RemoteWriteAuthType">
 RemoteWriteAuthType
 </a>
 </em>
@@ -4972,7 +4673,7 @@ map[string]string
 <td>
 <code>relabelConfigs</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RelabelConfig">
+<a href="#loki-grafana-com-v1beta1-RelabelConfig">
 []RelabelConfig
 </a>
 </em>
@@ -5008,10 +4709,10 @@ bool
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RemoteWriteSpec">RemoteWriteSpec
-</h3>
+
+## RemoteWriteSpec { #loki-grafana-com-v1beta1-RemoteWriteSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RulerConfigSpec">RulerConfigSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfigSpec">RulerConfigSpec</a>)
 </p>
 <div>
 <p>RemoteWriteSpec defines the configuration for ruler&rsquo;s remote_write connectivity.</p>
@@ -5040,7 +4741,7 @@ bool
 <td>
 <code>refreshPeriod</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -5054,7 +4755,7 @@ PrometheusDuration
 <td>
 <code>client</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RemoteWriteClientSpec">
+<a href="#loki-grafana-com-v1beta1-RemoteWriteClientSpec">
 RemoteWriteClientSpec
 </a>
 </em>
@@ -5068,7 +4769,7 @@ RemoteWriteClientSpec
 <td>
 <code>queue</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RemoteWriteClientQueueSpec">
+<a href="#loki-grafana-com-v1beta1-RemoteWriteClientQueueSpec">
 RemoteWriteClientQueueSpec
 </a>
 </em>
@@ -5080,10 +4781,10 @@ RemoteWriteClientQueueSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RoleBindingsSpec">RoleBindingsSpec
-</h3>
+
+## RoleBindingsSpec { #loki-grafana-com-v1beta1-RoleBindingsSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AuthorizationSpec">AuthorizationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AuthorizationSpec">AuthorizationSpec</a>)
 </p>
 <div>
 <p>RoleBindingsSpec binds a set of roles to a set of subjects.</p>
@@ -5110,7 +4811,7 @@ string
 <td>
 <code>subjects</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.Subject">
+<a href="#loki-grafana-com-v1beta1-Subject">
 []Subject
 </a>
 </em>
@@ -5130,10 +4831,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RoleSpec">RoleSpec
-</h3>
+
+## RoleSpec { #loki-grafana-com-v1beta1-RoleSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.AuthorizationSpec">AuthorizationSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AuthorizationSpec">AuthorizationSpec</a>)
 </p>
 <div>
 <p>RoleSpec describes a set of permissions to interact with a tenant.</p>
@@ -5180,7 +4881,7 @@ string
 <td>
 <code>permissions</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PermissionType">
+<a href="#loki-grafana-com-v1beta1-PermissionType">
 []PermissionType
 </a>
 </em>
@@ -5190,8 +4891,8 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RulerConfig">RulerConfig
-</h3>
+
+## RulerConfig { #loki-grafana-com-v1beta1-RulerConfig }
 <div>
 <p>RulerConfig is the Schema for the rulerconfigs API</p>
 </div>
@@ -5221,79 +4922,19 @@ Refer to the Kubernetes API documentation for the fields of the
 <td>
 <code>spec</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RulerConfigSpec">
+<a href="#loki-grafana-com-v1beta1-RulerConfigSpec">
 RulerConfigSpec
 </a>
 </em>
 </td>
 <td>
-<br/>
-<br/>
-<table>
-<tr>
-<td>
-<code>evaluationInterval</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
-PrometheusDuration
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Interval on how frequently to evaluate rules.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>pollInterval</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
-PrometheusDuration
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Interval on how frequently to poll for new rule definitions.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>alertmanager</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.AlertManagerSpec">
-AlertManagerSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Defines alert manager configuration to notify on firing alerts.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>remoteWrite</code><br/>
-<em>
-<a href="#loki.grafana.com/v1beta1.RemoteWriteSpec">
-RemoteWriteSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Defines a remote write endpoint to write recording rule metrics.</p>
-</td>
-</tr>
-</table>
 </td>
 </tr>
 <tr>
 <td>
 <code>status</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RulerConfigStatus">
+<a href="#loki-grafana-com-v1beta1-RulerConfigStatus">
 RulerConfigStatus
 </a>
 </em>
@@ -5303,10 +4944,10 @@ RulerConfigStatus
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RulerConfigSpec">RulerConfigSpec
-</h3>
+
+## RulerConfigSpec { #loki-grafana-com-v1beta1-RulerConfigSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RulerConfig">RulerConfig</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfig">RulerConfig</a>)
 </p>
 <div>
 <p>RulerConfigSpec defines the desired state of Ruler</p>
@@ -5323,7 +4964,7 @@ RulerConfigStatus
 <td>
 <code>evaluationInterval</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -5337,7 +4978,7 @@ PrometheusDuration
 <td>
 <code>pollInterval</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.PrometheusDuration">
+<a href="#loki-grafana-com-v1beta1-PrometheusDuration">
 PrometheusDuration
 </a>
 </em>
@@ -5351,7 +4992,7 @@ PrometheusDuration
 <td>
 <code>alertmanager</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AlertManagerSpec">
+<a href="#loki-grafana-com-v1beta1-AlertManagerSpec">
 AlertManagerSpec
 </a>
 </em>
@@ -5365,7 +5006,7 @@ AlertManagerSpec
 <td>
 <code>remoteWrite</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.RemoteWriteSpec">
+<a href="#loki-grafana-com-v1beta1-RemoteWriteSpec">
 RemoteWriteSpec
 </a>
 </em>
@@ -5377,10 +5018,10 @@ RemoteWriteSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RulerConfigStatus">RulerConfigStatus
-</h3>
+
+## RulerConfigStatus { #loki-grafana-com-v1beta1-RulerConfigStatus }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RulerConfig">RulerConfig</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfig">RulerConfig</a>)
 </p>
 <div>
 <p>RulerConfigStatus defines the observed state of RulerConfig</p>
@@ -5409,10 +5050,10 @@ RemoteWriteSpec
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.RulesSpec">RulesSpec
-</h3>
+
+## RulesSpec { #loki-grafana-com-v1beta1-RulesSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>RulesSpec deifnes the spec for the ruler component.</p>
@@ -5468,18 +5109,19 @@ the same namespace as the LokiStack object is in is used.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.StorageSchemaEffectiveDate">StorageSchemaEffectiveDate
-(<code>string</code> alias)</h3>
+
+## StorageSchemaEffectiveDate { #loki-grafana-com-v1beta1-StorageSchemaEffectiveDate }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.ObjectStorageSchema">ObjectStorageSchema</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-ObjectStorageSchema">ObjectStorageSchema</a>)
 </p>
 <div>
 <p>StorageSchemaEffectiveDate defines the type for the Storage Schema Effect Date</p>
 </div>
-<h3 id="loki.grafana.com/v1beta1.Subject">Subject
-</h3>
+
+## Subject { #loki-grafana-com-v1beta1-Subject }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.RoleBindingsSpec">RoleBindingsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RoleBindingsSpec">RoleBindingsSpec</a>)
 </p>
 <div>
 <p>Subject represents a subject that has been bound to a role.</p>
@@ -5506,7 +5148,7 @@ string
 <td>
 <code>kind</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.SubjectKind">
+<a href="#loki-grafana-com-v1beta1-SubjectKind">
 SubjectKind
 </a>
 </em>
@@ -5516,10 +5158,11 @@ SubjectKind
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.SubjectKind">SubjectKind
-(<code>string</code> alias)</h3>
+
+## SubjectKind { #loki-grafana-com-v1beta1-SubjectKind }
+(<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.Subject">Subject</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-Subject">Subject</a>)
 </p>
 <div>
 <p>SubjectKind is a kind of LokiStack Gateway RBAC subject.</p>
@@ -5539,10 +5182,10 @@ SubjectKind
 </td>
 </tr></tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.TenantSecretSpec">TenantSecretSpec
-</h3>
+
+## TenantSecretSpec { #loki-grafana-com-v1beta1-TenantSecretSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.OIDCSpec">OIDCSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-OIDCSpec">OIDCSpec</a>)
 </p>
 <div>
 <p>TenantSecretSpec is a secret reference containing name only
@@ -5569,10 +5212,10 @@ string
 </tr>
 </tbody>
 </table>
-<h3 id="loki.grafana.com/v1beta1.TenantsSpec">TenantsSpec
-</h3>
+
+## TenantsSpec { #loki-grafana-com-v1beta1-TenantsSpec }
 <p>
-(<em>Appears on:</em><a href="#loki.grafana.com/v1beta1.LokiStackSpec">LokiStackSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LokiStackSpec">LokiStackSpec</a>)
 </p>
 <div>
 <p>TenantsSpec defines the mode, authentication and authorization
@@ -5590,7 +5233,7 @@ configuration of the lokiStack gateway component.</p>
 <td>
 <code>mode</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.ModeType">
+<a href="#loki-grafana-com-v1beta1-ModeType">
 ModeType
 </a>
 </em>
@@ -5603,7 +5246,7 @@ ModeType
 <td>
 <code>authentication</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AuthenticationSpec">
+<a href="#loki-grafana-com-v1beta1-AuthenticationSpec">
 []AuthenticationSpec
 </a>
 </em>
@@ -5617,7 +5260,7 @@ ModeType
 <td>
 <code>authorization</code><br/>
 <em>
-<a href="#loki.grafana.com/v1beta1.AuthorizationSpec">
+<a href="#loki-grafana-com-v1beta1-AuthorizationSpec">
 AuthorizationSpec
 </a>
 </em>
@@ -5630,3 +5273,5 @@ AuthorizationSpec
 </tbody>
 </table>
 <hr/>
+
+

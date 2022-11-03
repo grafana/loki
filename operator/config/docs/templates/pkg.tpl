@@ -5,7 +5,9 @@ description: "Generated API docs for the Loki Operator"
 lead: ""
 draft: false
 images: []
-menu: "operator"
+menu:
++docs:
++parent: "operator"
 weight: 1000
 toc: true
 ---
@@ -14,22 +16,8 @@ This Document contains the types introduced by the Loki Operator to be consumed 
 
 > This page is automatically generated with `gen-crd-api-reference-docs`.
 
-{{ with .packages}}
-<p>Packages:</p>
-<ul>
-    {{ range . }}
-    <li>
-        <a href="#{{- packageAnchorID . -}}">{{ packageDisplayName . }}</a>
-    </li>
-    {{ end }}
-</ul>
-{{ end}}
-
 {{ range .packages }}
-    <h2 id="{{- packageAnchorID . -}}">
-        {{- packageDisplayName . -}}
-    </h2>
-
+    # {{ packageDisplayName . }} { #{{packageMDAnchorID . }} }
     {{ with (index .GoPackages 0 )}}
         {{ with .DocComments }}
         <div>
@@ -43,7 +31,7 @@ This Document contains the types introduced by the Loki Operator to be consumed 
     {{- range (visibleTypes (sortedTypes .Types)) -}}
         {{ if isExportedType . -}}
         <li>
-            <a href="{{ linkForType . }}">{{ typeDisplayName . }}</a>
+            <a href="{{ linkMDForType . }}">{{ typeDisplayName . }}</a>
         </li>
         {{- end }}
     {{- end -}}
@@ -53,6 +41,7 @@ This Document contains the types introduced by the Loki Operator to be consumed 
         {{ template "type" .  }}
     {{ end }}
     <hr/>
+    +newline
 {{ end }}
 
 {{ end }}

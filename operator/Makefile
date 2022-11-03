@@ -277,13 +277,20 @@ oci-push-calculator: ## Push the calculator image
 ##@ Website
 TYPES_TARGET := $(shell find apis/loki -type f -iname "*_types.go")
 docs/operator/api.md: $(TYPES_TARGET)
-	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/loki/" -config "$(PWD)/docs/operator/config/config.json" -template-dir "$(PWD)/docs/operator/config/templates" -out-file "$(PWD)/$@"
-
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
+	sed -i 's/+docs:/  docs:/' $@
+	sed -i 's/+parent:/    parent:/' $@
+	sed -i 's/##/\n##/' $@
+	sed -i 's/+newline/\n/' $@
 
 FEATURE_GATES_TARGET := $(shell find apis/config -type f -iname "*_types.go")
 docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET)
-	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/config/v1/" -config "$(PWD)/docs/operator/config/config.json" -template-dir "$(PWD)/docs/operator/config/templates" -out-file "$(PWD)/$@"
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/config/v1/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
 	sed -i 's/title: "API"/title: "Feature Gates"/' $@
+	sed -i 's/+docs:/  docs:/' $@
+	sed -i 's/+parent:/    parent:/' $@
+	sed -i 's/##/\n##/' $@
+	sed -i 's/+newline/\n/' $@
 
 .PHONY: web-pre
 web-pre: docs/operator/api.md docs/operator/feature-gates.md

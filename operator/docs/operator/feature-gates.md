@@ -4,28 +4,24 @@ description: "Generated API docs for the Loki Operator"
 lead: ""
 draft: false
 images: []
-menu: "operator"
+menu:
+  docs:
+    parent: "operator"
 weight: 1000
 toc: true
 ---
 This Document contains the types introduced by the Loki Operator to be consumed by users.
 > This page is automatically generated with `gen-crd-api-reference-docs`.
-<p>Packages:</p>
-<ul>
-<li>
-<a href="#config.loki.grafana.com%2fv1">config.loki.grafana.com/v1</a>
-</li>
-</ul>
-<h2 id="config.loki.grafana.com/v1">config.loki.grafana.com/v1</h2>
+# config.loki.grafana.com/v1 { #config-loki-grafana-com-v1 }
 <div>
 <p>Package v1 contains API Schema definitions for the config v1 API group</p>
 </div>
 Resource Types:
 <ul></ul>
-<h3 id="config.loki.grafana.com/v1.FeatureGates">FeatureGates
-</h3>
+
+## FeatureGates { #config-loki-grafana-com-v1-FeatureGates }
 <p>
-(<em>Appears on:</em><a href="#config.loki.grafana.com/v1.ProjectConfig">ProjectConfig</a>)
+(<em>Appears on:</em><a href="#config-loki-grafana-com-v1-ProjectConfig">ProjectConfig</a>)
 </p>
 <div>
 <p>FeatureGates is the supported set of all operator feature gates.</p>
@@ -193,7 +189,7 @@ This will limit scheduling of the pods to Nodes with Linux.</p>
 <td>
 <code>openshift</code><br/>
 <em>
-<a href="#config.loki.grafana.com/v1.OpenShiftFeatureGates">
+<a href="#config-loki-grafana-com-v1-OpenShiftFeatureGates">
 OpenShiftFeatureGates
 </a>
 </em>
@@ -216,10 +212,10 @@ when using HTTPEncryption or GRPCEncryption.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="config.loki.grafana.com/v1.OpenShiftFeatureGates">OpenShiftFeatureGates
-</h3>
+
+## OpenShiftFeatureGates { #config-loki-grafana-com-v1-OpenShiftFeatureGates }
 <p>
-(<em>Appears on:</em><a href="#config.loki.grafana.com/v1.FeatureGates">FeatureGates</a>)
+(<em>Appears on:</em><a href="#config-loki-grafana-com-v1-FeatureGates">FeatureGates</a>)
 </p>
 <div>
 <p>OpenShiftFeatureGates is the supported set of all operator features gates on OpenShift.</p>
@@ -285,8 +281,8 @@ More details: <a href="https://docs.openshift.com/container-platform/4.11/securi
 </tr>
 </tbody>
 </table>
-<h3 id="config.loki.grafana.com/v1.ProjectConfig">ProjectConfig
-</h3>
+
+## ProjectConfig { #config-loki-grafana-com-v1-ProjectConfig }
 <div>
 <p>ProjectConfig is the Schema for the projectconfigs API</p>
 </div>
@@ -321,7 +317,9 @@ so that all controllers will not send list requests simultaneously.</p>
 <td>
 <code>leaderElection</code><br/>
 <em>
-k8s.io/component-base/config/v1alpha1.LeaderElectionConfiguration
+<a href="https://pkg.go.dev/k8s.io/component-base/config#LeaderElectionConfiguration">
+Kubernetes v1alpha1.LeaderElectionConfiguration
+</a>
 </em>
 </td>
 <td>
@@ -366,7 +364,9 @@ The graceful shutdown is skipped for safety reasons in case the leader election 
 <td>
 <code>controller</code><br/>
 <em>
-sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerConfigurationSpec
+<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerConfigurationSpec">
+K8S Controller-runtime v1alpha1.ControllerConfigurationSpec
+</a>
 </em>
 </td>
 <td>
@@ -379,7 +379,9 @@ registered within this manager.</p>
 <td>
 <code>metrics</code><br/>
 <em>
-sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerMetrics
+<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerMetrics">
+K8S Controller-runtime v1alpha1.ControllerMetrics
+</a>
 </em>
 </td>
 <td>
@@ -391,7 +393,9 @@ sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerMetrics
 <td>
 <code>health</code><br/>
 <em>
-sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerHealth
+<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerHealth">
+K8S Controller-runtime v1alpha1.ControllerHealth
+</a>
 </em>
 </td>
 <td>
@@ -403,7 +407,9 @@ sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerHealth
 <td>
 <code>webhook</code><br/>
 <em>
-sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerWebhook
+<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerWebhook">
+K8S Controller-runtime v1alpha1.ControllerWebhook
+</a>
 </em>
 </td>
 <td>
@@ -415,7 +421,7 @@ sigs.k8s.io/controller-runtime/pkg/config/v1alpha1.ControllerWebhook
 <td>
 <code>featureGates</code><br/>
 <em>
-<a href="#config.loki.grafana.com/v1.FeatureGates">
+<a href="#config-loki-grafana-com-v1-FeatureGates">
 FeatureGates
 </a>
 </em>
@@ -425,8 +431,9 @@ FeatureGates
 </tr>
 </tbody>
 </table>
-<h3 id="config.loki.grafana.com/v1.TLSProfileType">TLSProfileType
-(<code>string</code> alias)</h3>
+
+## TLSProfileType { #config-loki-grafana-com-v1-TLSProfileType }
+(<code>string</code> alias)
 <div>
 <p>TLSProfileType is a TLS security profile based on the Mozilla definitions:
 <a href="https://wiki.mozilla.org/Security/Server_Side_TLS">https://wiki.mozilla.org/Security/Server_Side_TLS</a></p>
@@ -453,3 +460,5 @@ FeatureGates
 </tr></tbody>
 </table>
 <hr/>
+
+
