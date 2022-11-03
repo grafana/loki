@@ -186,6 +186,9 @@ PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
+ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
+PROMTAIL_GO_TAGS = promtail_journal_enabled
+endif
 .PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
 promtail: clients/cmd/promtail/promtail
 promtail-debug: clients/cmd/promtail/promtail-debug
@@ -199,10 +202,10 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
 clients/cmd/promtail/promtail:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
 
 clients/cmd/promtail/promtail-debug:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
 
 #########
 # Mixin #
