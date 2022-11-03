@@ -269,6 +269,7 @@ func NewLogFilterTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
+			cfg.Transformer,
 			metrics.LogResultCacheMetrics,
 		)
 		queryRangeMiddleware = append(
