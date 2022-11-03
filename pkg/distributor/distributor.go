@@ -616,9 +616,8 @@ type labelData struct {
 
 func (d *Distributor) parseStreamLabels(tenantID string, vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
 	val, ok := d.labelCache.Get(key)
-	labelVal := val.(labelData)
-
 	if ok {
+		labelVal := val.(labelData)
 		return labelVal.labels, labelVal.hash, nil
 	}
 
