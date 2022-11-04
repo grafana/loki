@@ -1,5 +1,6 @@
 ## Main
 
+- [7592](https://github.com/grafana/loki/pull/7592) **aminesnow**: Update API docs generation using gen-crd-api-reference-docs
 - [7448](https://github.com/grafana/loki/pull/7448) **periklis**: Add TLS support for compactor delete client
 - [7596](https://github.com/grafana/loki/pull/7596) **periklis**: Fix fresh-installs with built-in cert management enabled
 - [7064](https://github.com/grafana/loki/pull/7064) **periklis**: Add support for built-in cert management
