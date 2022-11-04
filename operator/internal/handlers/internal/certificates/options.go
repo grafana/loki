@@ -113,6 +113,10 @@ func configureCertificatesForTenantMode(certs certrotation.ComponentCertificates
 }
 
 func configureCABundleForTenantMode(cm *corev1.ConfigMap, mode lokiv1.ModeType) {
+	if cm == nil {
+		return
+	}
+
 	switch mode {
 	case "", lokiv1.Dynamic, lokiv1.Static:
 		return
