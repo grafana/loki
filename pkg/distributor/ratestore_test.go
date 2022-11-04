@@ -177,7 +177,7 @@ func TestRateStore(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			return 25 == tc.rateStore.RateFor("tenant 1", 0)
-		}, time.Second, time.Millisecond)
+		}, time.Second, 100*time.Millisecond)
 
 		require.Eventually(t, func() bool {
 			return 0 == tc.rateStore.RateFor("tenant 1", 0)
