@@ -74,7 +74,7 @@ type Config struct {
 	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
-	DeleteClient     deletion.Config          `yaml:"delete_client,omitempty"`
+	CompactorClient  compactor.ClientConfig   `yaml:"compactor_client,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
@@ -115,7 +115,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.DeleteClient.RegisterFlags(f)
+	c.CompactorClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
