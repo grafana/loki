@@ -194,7 +194,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	if c.from.Before(startTime) {
 		startTime = c.from
 	}
-	if c.through.After(startTime) {
+	if c.through.After(endTime) {
 		endTime = c.through
 	}
 
@@ -211,6 +211,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 		entry := iterator.Entry()
 		//reset line after post filter.
 		//entry.Line = iterator.ProcessLine()
+		//fmt.Println("label:", s.ExternalKey(cnk.ChunkRef), ",line accept :", entry.Line)
 		err := postFilterChunkData.Append(&entry)
 		if err != nil {
 			return nil, err
