@@ -11,8 +11,6 @@ keywords:
   - caching
 ---
 
--<!-- Refer to [Front matter]({{< relref "../../front-matter/" >}}) for more information about how to populate front matter. -->
-
 # Components
 
 This section describes the components installed by the Helm Chart.

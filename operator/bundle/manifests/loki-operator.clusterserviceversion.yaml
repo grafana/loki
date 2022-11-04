@@ -984,6 +984,7 @@ spec:
           - endpoints
           - nodes
           - pods
+          - secrets
           - serviceaccounts
           - services
           verbs:

@@ -21,7 +21,7 @@ const (
 	opaDefaultLabelMatcher = "kubernetes_namespace_name"
 )
 
-func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphers string, withTLS bool) corev1.Container {
+func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool) corev1.Container {
 	var (
 		image        string
 		args         []string
@@ -52,8 +52,8 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, ce
 	}
 
 	if withTLS {
-		certFilePath := path.Join(tlsDir, certFile)
-		keyFilePath := path.Join(tlsDir, keyFile)
+		certFilePath := path.Join(tlsDir, corev1.TLSCertKey)
+		keyFilePath := path.Join(tlsDir, corev1.TLSPrivateKeyKey)
 
 		args = append(args, []string{
 			fmt.Sprintf("--tls.internal.server.cert-file=%s", certFilePath),

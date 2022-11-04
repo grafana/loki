@@ -251,6 +251,8 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
+	app.Flag("min-backoff", "Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.").Default("0").Envar("LOKI_CLIENT_MIN_BACKOFF").IntVar(&client.BackoffConfig.MinBackoff)
+	app.Flag("max-backoff", "Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.").Default("0").Envar("LOKI_CLIENT_MAX_BACKOFF").IntVar(&client.BackoffConfig.MaxBackoff)
 	app.Flag("auth-header", "The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.").Default("Authorization").Envar("LOKI_AUTH_HEADER").StringVar(&client.AuthHeader)
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
 
