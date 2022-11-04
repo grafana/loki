@@ -26,16 +26,7 @@ This Document contains the types introduced by the Loki Operator to be consumed 
         {{ end }}
     {{ end }}
 
-    Resource Types:
-    <ul>
-    {{- range (visibleTypes (sortedTypes .Types)) -}}
-        {{ if isExportedType . -}}
-        <li>
-            <a href="{{ linkMDForType . }}">{{ typeDisplayName . }}</a>
-        </li>
-        {{- end }}
-    {{- end -}}
-    </ul>
+    <b>Resource Types:</b>
 
     {{ range (visibleTypes (sortedTypes .Types))}}
         {{ template "type" .  }}

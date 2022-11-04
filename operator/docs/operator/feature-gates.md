@@ -16,8 +16,7 @@ This Document contains the types introduced by the Loki Operator to be consumed 
 <div>
 <p>Package v1 contains API Schema definitions for the config v1 API group</p>
 </div>
-Resource Types:
-<ul></ul>
+<b>Resource Types:</b>
 
 ## FeatureGates { #config-loki-grafana-com-v1-FeatureGates }
 <p>

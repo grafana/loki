@@ -16,8 +16,7 @@ This Document contains the types introduced by the Loki Operator to be consumed 
 <div>
 <p>Package v1 contains API Schema definitions for the loki v1 API group</p>
 </div>
-Resource Types:
-<ul></ul>
+<b>Resource Types:</b>
 
 ## AuthenticationSpec { #loki-grafana-com-v1-AuthenticationSpec }
 <p>
@@ -2033,8 +2032,7 @@ AuthorizationSpec
 <div>
 <p>Package v1beta1 contains API Schema definitions for the loki v1beta1 API group</p>
 </div>
-Resource Types:
-<ul></ul>
+<b>Resource Types:</b>
 
 ## AlertManagerDiscoverySpec { #loki-grafana-com-v1beta1-AlertManagerDiscoverySpec }
 <p>
