@@ -123,7 +123,7 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			lb.Set(lokiClient.ReservedLabelTenantID, tenantIDHeaderValue)
 		}
 
-		processed := relabel.Process(lb.Labels(), h.relabelConfigs...)
+		processed := relabel.Process(lb.Labels(nil), h.relabelConfigs...)
 
 		// Start with the set of labels fixed in the configuration
 		filtered := h.Labels().Clone()

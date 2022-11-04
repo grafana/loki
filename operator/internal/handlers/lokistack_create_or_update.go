@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
+	"github.com/grafana/loki/operator/internal/handlers/internal/serviceaccounts"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
@@ -214,18 +216,24 @@ func CreateOrUpdateLokiStack(
 
 	}
 
+	certRotationRequiredAt := ""
+	if stack.Annotations != nil {
+		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
+	}
+
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
-		Name:              req.Name,
-		Namespace:         req.Namespace,
-		Image:             img,
-		GatewayImage:      gwImg,
-		GatewayBaseDomain: baseDomain,
-		Stack:             stack.Spec,
-		Gates:             fg,
-		ObjectStorage:     *objStore,
-		AlertingRules:     alertingRules,
-		RecordingRules:    recordingRules,
+		Name:                   req.Name,
+		Namespace:              req.Namespace,
+		Image:                  img,
+		GatewayImage:           gwImg,
+		GatewayBaseDomain:      baseDomain,
+		Stack:                  stack.Spec,
+		Gates:                  fg,
+		ObjectStorage:          *objStore,
+		CertRotationRequiredAt: certRotationRequiredAt,
+		AlertingRules:          alertingRules,
+		RecordingRules:         recordingRules,
 		Ruler: manifests.Ruler{
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
@@ -308,8 +316,13 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
+		depAnnotations, err := dependentAnnotations(ctx, k, obj)
+		if err != nil {
+			return err
+		}
+
 		desired := obj.DeepCopyObject().(client.Object)
-		mutateFn := manifests.MutateFuncFor(obj, desired)
+		mutateFn := manifests.MutateFuncFor(obj, desired, depAnnotations)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {
@@ -318,7 +331,13 @@ func CreateOrUpdateLokiStack(
 			continue
 		}
 
-		l.Info(fmt.Sprintf("Resource has been %s", op))
+		msg := fmt.Sprintf("Resource has been %s", op)
+		switch op {
+		case ctrlutil.OperationResultNone:
+			l.V(1).Info(msg)
+		default:
+			l.Info(msg)
+		}
 	}
 
 	if errCount > 0 {
@@ -332,6 +351,24 @@ func CreateOrUpdateLokiStack(
 	}
 
 	return nil
+}
+
+func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {
+	a := obj.GetAnnotations()
+	saName, ok := a[corev1.ServiceAccountNameKey]
+	if !ok || saName == "" {
+		return nil, nil
+	}
+
+	key := client.ObjectKey{Name: saName, Namespace: obj.GetNamespace()}
+	uid, err := serviceaccounts.GetUID(ctx, k, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{
+		corev1.ServiceAccountUIDKey: uid,
+	}, nil
 }
 
 func isNamespaceScoped(obj client.Object) bool {

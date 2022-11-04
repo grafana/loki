@@ -1,7 +1,6 @@
 package uploads
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -65,12 +64,10 @@ func TestTableManager(t *testing.T) {
 
 					// see if we can find all the added indexes in the table.
 					indexesFound := map[string]*mockIndex{}
-					doneChan := make(chan struct{})
-					err := testTableManager.ForEach(context.Background(), tableName, userID, doneChan, func(_ bool, index index.Index) error {
+					err := testTableManager.ForEach(tableName, userID, func(_ bool, index index.Index) error {
 						indexesFound[index.Path()] = index.(*mockIndex)
 						return nil
 					})
-					close(doneChan)
 					require.NoError(t, err)
 
 					require.Equal(t, testIndexes, indexesFound)

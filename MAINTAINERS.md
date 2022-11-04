@@ -2,4 +2,5 @@
 
 Some parts of the codebase have other maintainers:
 - `docs`:
-  - @KMiller-Grafana - [@KMiller-Grafana ](https://github.com/@kmiller-grafana) ([Grafana Labs](https://grafana.com/))
+  - @osg-grafana - [@osg-grafana](https://github.com/osg-grafana) ([Grafana Labs](https://grafana.com/))
+  - @knylander-grafana - [@knylander-grafana](https://github.com/knylander-grafana) ([Grafana Labs](https://grafana.com/))

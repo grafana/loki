@@ -85,10 +85,6 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, gatewayObjects...)
 	}
 
-	if opts.Stack.Tenants != nil {
-		res = configureLokiStackObjsForMode(res, opts)
-	}
-
 	if opts.Gates.ServiceMonitors {
 		res = append(res, BuildServiceMonitors(opts)...)
 	}
