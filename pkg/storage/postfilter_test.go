@@ -720,7 +720,7 @@ func Test_PostFilter_Sample_OverlappingChunks(t *testing.T) {
 		},
 		chunkMetrics: NilMetrics,
 	}
-	s.SetPostFetcherChunkFilterer(NewRequestPostFetcherChunkFiltererForRequest(10))
+	s.SetPostFetcherChunkMetricsFilterer(NewRequestPostFetcherChunkFiltererForRequest(10))
 
 	ctx = user.InjectOrgID(context.Background(), "test-user")
 	req := newSampleQuery(`count_over_time({foo="bar"} |~ "2|3" [1m])`, from, from.Add(10*time.Millisecond), nil)
@@ -782,7 +782,7 @@ func Test_PostFilter_OverlappingChunks(t *testing.T) {
 		},
 		chunkMetrics: NilMetrics,
 	}
-	s.SetPostFetcherChunkMetricsFilterer(NewRequestPostFetcherChunkFiltererForRequest(10))
+	s.SetPostFetcherChunkFilterer(NewRequestPostFetcherChunkFiltererForRequest(10))
 
 	ctx = user.InjectOrgID(context.Background(), "test-user")
 	it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
