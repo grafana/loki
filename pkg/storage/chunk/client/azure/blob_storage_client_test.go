@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -90,5 +92,103 @@ func Test_Hedging(t *testing.T) {
 			tc.do(c)
 			require.Equal(t, tc.expectedCalls, count.Load())
 		})
+	}
+}
+
+func Test_DefaultContainerURL(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo")
+	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_EndpointSuffixWithContainer(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.test.com/foo")
+	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_DefaultBlobURL(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo/blob")
+	bloburl, err := c.getBlobURL("blob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, bloburl.URL())
+}
+
+func Test_EndpointSuffixWithBlob(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.test.com/foo/blob")
+	bloburl, err := c.getBlobURL("blob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, bloburl.URL())
+}
+
+func Test_ConfigValidation(t *testing.T) {
+	t.Run("expected validation error if environment is not supported", func(t *testing.T) {
+		cfg := &BlobStorageConfig{
+			Environment: "",
+		}
+
+		require.EqualError(t, cfg.Validate(), "unsupported Azure blob storage environment: , please select one of: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment ")
+	})
+	t.Run("expected validation error if tenant_id is empty and UseServicePrincipal is enabled", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("", "", "")
+
+		require.EqualError(t, cfg.Validate(), "tenant_id is required if authentication using Service Principal is enabled")
+	})
+	t.Run("expected validation error if client_id is empty and UseServicePrincipal is enabled", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("fake_tenant", "", "")
+
+		require.EqualError(t, cfg.Validate(), "client_id is required if authentication using Service Principal is enabled")
+	})
+	t.Run("expected validation error if client_secret is empty and UseServicePrincipal is enabled", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("fake_tenant", "fake_client", "")
+
+		require.EqualError(t, cfg.Validate(), "client_secret is required if authentication using Service Principal is enabled")
+	})
+	t.Run("expected no errors if UseServicePrincipal is enabled and required fields are set", func(t *testing.T) {
+		cfg := createServicePrincipalStorageConfig("fake_tenant", "fake_client", "fake_secret")
+
+		require.NoError(t, cfg.Validate())
+	})
+	t.Run("expected no errors if UseServicePrincipal is disabled and fields are empty", func(t *testing.T) {
+		cfg := &BlobStorageConfig{
+			Environment:         azureGlobal,
+			UseServicePrincipal: false,
+		}
+
+		require.NoError(t, cfg.Validate())
+	})
+}
+
+func createServicePrincipalStorageConfig(tenantID string, clientID string, clientSecret string) *BlobStorageConfig {
+	return &BlobStorageConfig{
+		Environment:         azureGlobal,
+		UseServicePrincipal: true,
+		TenantID:            tenantID,
+		ClientID:            clientID,
+		ClientSecret:        flagext.SecretWithValue(clientSecret),
 	}
 }

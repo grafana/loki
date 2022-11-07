@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
@@ -55,7 +56,7 @@ type WriteStorage struct {
 	watcherMetrics    *wal.WatcherMetrics
 	liveReaderMetrics *wal.LiveReaderMetrics
 	externalLabels    labels.Labels
-	walDir            string
+	dir               string
 	queues            map[string]*QueueManager
 	samplesIn         *ewmaRate
 	flushDeadline     time.Duration
@@ -68,7 +69,7 @@ type WriteStorage struct {
 }
 
 // NewWriteStorage creates and runs a WriteStorage.
-func NewWriteStorage(logger log.Logger, reg prometheus.Registerer, walDir string, flushDeadline time.Duration, sm ReadyScrapeManager) *WriteStorage {
+func NewWriteStorage(logger log.Logger, reg prometheus.Registerer, dir string, flushDeadline time.Duration, sm ReadyScrapeManager) *WriteStorage {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -80,7 +81,7 @@ func NewWriteStorage(logger log.Logger, reg prometheus.Registerer, walDir string
 		reg:               reg,
 		flushDeadline:     flushDeadline,
 		samplesIn:         newEWMARate(ewmaWeight, shardUpdateDuration),
-		walDir:            walDir,
+		dir:               dir,
 		interner:          newPool(),
 		scraper:           sm,
 		quit:              make(chan struct{}),
@@ -175,7 +176,7 @@ func (rws *WriteStorage) ApplyConfig(conf *config.Config) error {
 			rws.watcherMetrics,
 			rws.liveReaderMetrics,
 			rws.logger,
-			rws.walDir,
+			rws.dir,
 			rws.samplesIn,
 			rwConf.QueueConfig,
 			rwConf.MetadataConfig,
@@ -265,6 +266,12 @@ func (t *timestampTracker) Append(_ storage.SeriesRef, _ labels.Labels, ts int64
 
 func (t *timestampTracker) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
 	t.exemplars++
+	return 0, nil
+}
+
+func (t *timestampTracker) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
+	// TODO: Add and increment a `metadata` field when we get around to wiring metadata in remote_write.
+	// UpadteMetadata is no-op for remote write (where timestampTracker is being used) for now.
 	return 0, nil
 }
 

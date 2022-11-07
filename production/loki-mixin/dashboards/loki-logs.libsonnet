@@ -2,12 +2,12 @@ local lokiLogs = (import './dashboard-loki-logs.json');
 local template = import 'grafonnet/template.libsonnet';
 
 
-{
+(import 'dashboard-utils.libsonnet') {
   local deploymentTemplate =
     template.new(
       'deployment',
       '$datasource',
-      'label_values(kube_deployment_created{cluster="$cluster", namespace="$namespace"}, deployment)',
+      'label_values(kube_deployment_created{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace"}, deployment)',
       sort=1,
     ),
 
@@ -15,7 +15,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'pod',
       '$datasource',
-      'label_values(kube_pod_container_info{cluster="$cluster", namespace="$namespace", pod=~"$deployment.*"}, pod)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", pod=~"$deployment.*"}, pod)',
       sort=1,
     ),
 
@@ -23,7 +23,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'container',
       '$datasource',
-      'label_values(kube_pod_container_info{cluster="$cluster", namespace="$namespace", pod=~"$pod", pod=~"$deployment.*"}, container)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", pod=~"$pod", pod=~"$deployment.*"}, container)',
       sort=1,
     ),
 
@@ -48,7 +48,7 @@ local template = import 'grafonnet/template.libsonnet';
                         local cfg = self,
 
                         showMultiCluster:: true,
-                        clusterLabel:: 'cluster',
+                        clusterLabel:: $._config.per_cluster_label,
 
                       } + lokiLogs +
                       $.dashboard('Loki / Logs', uid='logs')
@@ -62,7 +62,7 @@ local template = import 'grafonnet/template.libsonnet';
                             targets: [
                               e {
                                 expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
-                                else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
+                                else std.strReplace(super.expr, $._config.per_cluster_label + '="$cluster", ', ''),
                               }
                               for e in p.targets
                             ],

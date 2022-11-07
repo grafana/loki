@@ -272,7 +272,7 @@ func (r relabel) relabel(original string) string {
 	}
 
 	lbls, _ = syntax.ParseLabels(original)
-	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
+	builder := labels.NewBuilder(lbls).Del(defaultTenantLabel)
 
 	// Prefix label if it conflicts with the tenant label.
 	if lbls.Has(defaultTenantLabel) {
@@ -280,7 +280,7 @@ func (r relabel) relabel(original string) string {
 	}
 	builder.Set(defaultTenantLabel, r.tenantID)
 
-	lbls = builder.Labels()
+	lbls = builder.Labels(nil)
 	r.cache[original] = lbls
 	return lbls.String()
 }

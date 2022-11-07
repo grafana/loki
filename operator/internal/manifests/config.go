@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -14,6 +16,13 @@ import (
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := ConfigOptions(opt)
+
+	if opt.Stack.Tenants != nil {
+		if err := ConfigureOptionsForMode(&cfg, opt); err != nil {
+			return nil, "", err
+		}
+	}
+
 	c, rc, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
@@ -51,9 +60,8 @@ func ConfigOptions(opt Options) config.Options {
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
 	)
-	if rulerEnabled {
-		rulerEnabled = true
 
+	if rulerEnabled {
 		// Map alertmanager config from CRD to config options
 		if opt.Ruler.Spec != nil {
 			evalInterval = string(opt.Ruler.Spec.EvalutionInterval)
@@ -67,10 +75,20 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
+	protocol := "http"
+	if opt.Gates.HTTPEncryption {
+		protocol = "https"
+	}
+
 	return config.Options{
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
+		Compactor: config.Address{
+			FQDN:     fqdn(NewCompactorHTTPService(opt).GetName(), opt.Namespace),
+			Port:     httpPort,
+			Protocol: protocol,
+		},
 		FrontendWorker: config.Address{
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
@@ -80,8 +98,9 @@ func ConfigOptions(opt Options) config.Options {
 			Port: gossipPort,
 		},
 		Querier: config.Address{
-			FQDN: fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
-			Port: httpPort,
+			Protocol: protocol,
+			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
+			Port:     httpPort,
 		},
 		IndexGateway: config.Address{
 			FQDN: fqdn(NewIndexGatewayGRPCService(opt).GetName(), opt.Namespace),
@@ -96,7 +115,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
-		EnableRemoteReporting: opt.Flags.EnableGrafanaLabsStats,
+		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
 			RulesStorageDirectory: rulesStorageDirectory,
@@ -105,11 +124,8 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
+		Retention: retentionConfig(&opt.Stack),
 	}
-}
-
-func lokiConfigMapName(stackName string) string {
-	return fmt.Sprintf("%s-config", stackName)
 }
 
 func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
@@ -135,6 +151,18 @@ func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerCon
 		c.ForOutageTolerance = string(n.ForOutageTolerance)
 		c.ForGracePeriod = string(n.ForGracePeriod)
 		c.ResendDelay = string(n.ResendDelay)
+	}
+
+	for _, cfg := range s.RelabelConfigs {
+		c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
+			SourceLabels: cfg.SourceLabels,
+			Separator:    cfg.Separator,
+			TargetLabel:  cfg.TargetLabel,
+			Regex:        cfg.Regex,
+			Modulus:      cfg.Modulus,
+			Replacement:  cfg.Replacement,
+			Action:       string(cfg.Action),
+		})
 	}
 
 	return c
@@ -169,7 +197,7 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		for _, cfg := range cls.RelabelConfigs {
-			c.RelabelConfigs = append(c.RelabelConfigs, config.RemoteWriteRelabelConfig{
+			c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
 				SourceLabels: cfg.SourceLabels,
 				Separator:    cfg.Separator,
 				TargetLabel:  cfg.TargetLabel,
@@ -194,4 +222,34 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 	}
 
 	return c
+}
+
+var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXExtraSmall: 10,
+	lokiv1.SizeOneXSmall:      150,
+	lokiv1.SizeOneXMedium:     150,
+}
+
+func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
+	if ls.Limits == nil {
+		return config.RetentionOptions{}
+	}
+
+	globalRetention := ls.Limits.Global != nil && ls.Limits.Global.Retention != nil
+	tenantRetention := false
+	for _, t := range ls.Limits.Tenants {
+		if t.Retention != nil {
+			tenantRetention = true
+			break
+		}
+	}
+
+	if !globalRetention && !tenantRetention {
+		return config.RetentionOptions{}
+	}
+
+	return config.RetentionOptions{
+		Enabled:           true,
+		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
+	}
 }

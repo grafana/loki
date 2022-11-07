@@ -1,6 +1,13 @@
 package logproto
 
-import "github.com/prometheus/prometheus/model/labels"
+import (
+	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+)
 
 // Note, this is not very efficient and use should be minimized as it requires label construction on each comparison
 type SeriesIdentifiers []SeriesIdentifier
@@ -21,3 +28,19 @@ func (xs Streams) Less(i, j int) bool { return xs[i].Labels <= xs[j].Labels }
 func (s Series) Len() int           { return len(s.Samples) }
 func (s Series) Swap(i, j int)      { s.Samples[i], s.Samples[j] = s.Samples[j], s.Samples[i] }
 func (s Series) Less(i, j int) bool { return s.Samples[i].Timestamp < s.Samples[j].Timestamp }
+
+// Safe for concurrent use
+func (m *IndexStatsResponse) AddStream(_ model.Fingerprint) {
+	atomic.AddUint64(&m.Streams, 1)
+}
+
+// Safe for concurrent use
+func (m *IndexStatsResponse) AddChunk(_ model.Fingerprint, chk index.ChunkMeta) {
+	atomic.AddUint64(&m.Chunks, 1)
+	atomic.AddUint64(&m.Bytes, uint64(chk.KB<<10))
+	atomic.AddUint64(&m.Entries, uint64(chk.Entries))
+}
+
+func (m *IndexStatsResponse) Stats() IndexStatsResponse {
+	return *m
+}

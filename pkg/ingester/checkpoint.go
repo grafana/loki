@@ -3,8 +3,7 @@ package ingester
 import (
 	"bytes"
 	"context"
-	fmt "fmt"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -207,7 +206,7 @@ type streamIterator struct {
 func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
-	for i, inst := range ing.getInstances() {
+	for i, inst := range instances {
 		streams := make([]*stream, 0, inst.streams.Len())
 		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
 			streams = append(streams, s)
@@ -330,7 +329,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 
 	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
 	// low throughput scenarios and to minimize segment replays on top of checkpoints.
-	if err := w.segmentWAL.NextSegment(); err != nil {
+	if _, err := w.segmentWAL.NextSegment(); err != nil {
 		return false, err
 	}
 
@@ -425,7 +424,7 @@ func checkpointIndex(filename string, includeTmp bool) (int, error) {
 // lastCheckpoint returns the directory name and index of the most recent checkpoint.
 // If dir does not contain any checkpoints, -1 is returned as index.
 func lastCheckpoint(dir string) (string, int, error) {
-	dirs, err := ioutil.ReadDir(dir)
+	dirs, err := os.ReadDir(dir)
 	if err != nil {
 		return "", -1, err
 	}
@@ -466,7 +465,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 
 	errs := tsdb_errors.NewMulti()
 
-	files, err := ioutil.ReadDir(w.segmentWAL.Dir())
+	files, err := os.ReadDir(w.segmentWAL.Dir())
 	if err != nil {
 		return err
 	}

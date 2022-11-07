@@ -3,7 +3,6 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -40,7 +39,7 @@ func TestIndexSet_Init(t *testing.T) {
 	checkIndexSet := func() {
 		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 		require.Len(t, indexSet.index, len(indexesSetup))
-		verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+		verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
 			return indexSet.ForEach(context.Background(), callbackFunc)
 		})
 		stopFunc()
@@ -85,7 +84,7 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 			if tc > 0 {
 				require.Len(t, indexSet.index, tc)
 			}
-			verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+			verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
 				return indexSet.ForEach(context.Background(), callbackFunc)
 			})
 		})
@@ -104,7 +103,7 @@ func TestIndexSet_Sync(t *testing.T) {
 
 	checkIndexSet := func() {
 		require.Len(t, indexSet.index, len(indexesSetup))
-		verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+		verifyIndexForEach(t, indexesSetup, func(callbackFunc index.ForEachIndexCallback) error {
 			return indexSet.ForEach(context.Background(), callbackFunc)
 		})
 	}
@@ -135,14 +134,14 @@ func TestIndexSet_Sync(t *testing.T) {
 
 	// first, let us add a new file and refresh the index list cache
 	oneMoreDB := "one-more-db"
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
 	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
 
 	// now, without syncing the indexset, let us compact the index in storage
 	compactedDBName := "compacted-db"
 	require.NoError(t, os.RemoveAll(tablePathInStorage))
 	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
 	indexesSetup = []string{compactedDBName}
 
 	// verify that we are getting errIndexListCacheTooStale without refreshing the list cache

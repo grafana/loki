@@ -117,19 +117,25 @@ const (
 	AppAlertSpecOperator_LessThan            AppAlertSpecOperator = "LESS_THAN"
 )
 
-// AppAlertSpecRule  - CPU_UTILIZATION: Represents CPU for a given container instance. Only applicable at the component level.  - MEM_UTILIZATION: Represents RAM for a given container instance. Only applicable at the component level.  - RESTART_COUNT: Represents restart count for a given container instance. Only applicable at the component level.  - DEPLOYMENT_FAILED: Represents whether a deployment has failed. Only applicable at the app level.  - DEPLOYMENT_LIVE: Represents whether a deployment has succeeded. Only applicable at the app level.  - DOMAIN_FAILED: Represents whether a domain configuration has failed. Only applicable at the app level.  - DOMAIN_LIVE: Represents whether a domain configuration has succeeded. Only applicable at the app level.
+// AppAlertSpecRule  - CPU_UTILIZATION: Represents CPU for a given container instance. Only applicable at the component level.  - MEM_UTILIZATION: Represents RAM for a given container instance. Only applicable at the component level.  - RESTART_COUNT: Represents restart count for a given container instance. Only applicable at the component level.  - DEPLOYMENT_FAILED: Represents whether a deployment has failed. Only applicable at the app level.  - DEPLOYMENT_LIVE: Represents whether a deployment has succeeded. Only applicable at the app level.  - DOMAIN_FAILED: Represents whether a domain configuration has failed. Only applicable at the app level.  - DOMAIN_LIVE: Represents whether a domain configuration has succeeded. Only applicable at the app level.  - FUNCTIONS_ACTIVATION_COUNT: Represents an activation count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_DURATION_MS: Represents the average duration for function runtimes. Only applicable to functions components.  - FUNCTIONS_ERROR_RATE_PER_MINUTE: Represents an error rate per minute for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_WAIT_TIME_MS: Represents the average wait time for functions. Only applicable to functions components.  - FUNCTIONS_ERROR_COUNT: Represents an error count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_GB_RATE_PER_SECOND: Represents the rate of memory consumption (GB x seconds) for functions. Only applicable to functions components.
 type AppAlertSpecRule string
 
 // List of AppAlertSpecRule
 const (
-	AppAlertSpecRule_UnspecifiedRule  AppAlertSpecRule = "UNSPECIFIED_RULE"
-	AppAlertSpecRule_CPUUtilization   AppAlertSpecRule = "CPU_UTILIZATION"
-	AppAlertSpecRule_MemUtilization   AppAlertSpecRule = "MEM_UTILIZATION"
-	AppAlertSpecRule_RestartCount     AppAlertSpecRule = "RESTART_COUNT"
-	AppAlertSpecRule_DeploymentFailed AppAlertSpecRule = "DEPLOYMENT_FAILED"
-	AppAlertSpecRule_DeploymentLive   AppAlertSpecRule = "DEPLOYMENT_LIVE"
-	AppAlertSpecRule_DomainFailed     AppAlertSpecRule = "DOMAIN_FAILED"
-	AppAlertSpecRule_DomainLive       AppAlertSpecRule = "DOMAIN_LIVE"
+	AppAlertSpecRule_UnspecifiedRule             AppAlertSpecRule = "UNSPECIFIED_RULE"
+	AppAlertSpecRule_CPUUtilization              AppAlertSpecRule = "CPU_UTILIZATION"
+	AppAlertSpecRule_MemUtilization              AppAlertSpecRule = "MEM_UTILIZATION"
+	AppAlertSpecRule_RestartCount                AppAlertSpecRule = "RESTART_COUNT"
+	AppAlertSpecRule_DeploymentFailed            AppAlertSpecRule = "DEPLOYMENT_FAILED"
+	AppAlertSpecRule_DeploymentLive              AppAlertSpecRule = "DEPLOYMENT_LIVE"
+	AppAlertSpecRule_DomainFailed                AppAlertSpecRule = "DOMAIN_FAILED"
+	AppAlertSpecRule_DomainLive                  AppAlertSpecRule = "DOMAIN_LIVE"
+	AppAlertSpecRule_FunctionsActivationCount    AppAlertSpecRule = "FUNCTIONS_ACTIVATION_COUNT"
+	AppAlertSpecRule_FunctionsAverageDurationMS  AppAlertSpecRule = "FUNCTIONS_AVERAGE_DURATION_MS"
+	AppAlertSpecRule_FunctionsErrorRatePerMinute AppAlertSpecRule = "FUNCTIONS_ERROR_RATE_PER_MINUTE"
+	AppAlertSpecRule_FunctionsAverageWaitTimeMs  AppAlertSpecRule = "FUNCTIONS_AVERAGE_WAIT_TIME_MS"
+	AppAlertSpecRule_FunctionsErrorCount         AppAlertSpecRule = "FUNCTIONS_ERROR_COUNT"
+	AppAlertSpecRule_FunctionsGBRatePerSecond    AppAlertSpecRule = "FUNCTIONS_GB_RATE_PER_SECOND"
 )
 
 // AppAlertSpecWindow the model 'AppAlertSpecWindow'
@@ -184,7 +190,7 @@ type AppDomainSpec struct {
 	// Optional. If the domain uses DigitalOcean DNS and you would like App Platform to automatically manage it for you, set this to the name of the domain on your account.  For example, If the domain you are adding is `app.domain.com`, the zone could be `domain.com`.
 	Zone        string `json:"zone,omitempty"`
 	Certificate string `json:"certificate,omitempty"`
-	// Optional. The minimum version of TLS a client application can use to access resources for the domain.  Must be one of the following values wrapped within quotations: `\"1.0\"`, `\"1.1\"`, `\"1.2\"`, or `\"1.3\"`.
+	// Optional. The minimum version of TLS a client application can use to access resources for the domain.  Must be one of the following values wrapped within quotations: `\"1.2\"` or `\"1.3\"`.
 	MinimumTLSVersion string `json:"minimum_tls_version,omitempty"`
 }
 
@@ -218,6 +224,21 @@ type AppFunctionsSpec struct {
 	LogDestinations []*AppLogDestinationSpec `json:"log_destinations,omitempty"`
 	CORS            *AppCORSPolicy           `json:"cors,omitempty"`
 }
+
+// AppIngressSpec struct for AppIngressSpec
+type AppIngressSpec struct {
+	LoadBalancer     AppIngressSpecLoadBalancer `json:"load_balancer,omitempty"`
+	LoadBalancerSize int64                      `json:"load_balancer_size,omitempty"`
+}
+
+// AppIngressSpecLoadBalancer the model 'AppIngressSpecLoadBalancer'
+type AppIngressSpecLoadBalancer string
+
+// List of AppIngressSpecLoadBalancer
+const (
+	AppIngressSpecLoadBalancer_Unknown      AppIngressSpecLoadBalancer = "UNKNOWN"
+	AppIngressSpecLoadBalancer_DigitalOcean AppIngressSpecLoadBalancer = "DIGITALOCEAN"
+)
 
 // AppJobSpec struct for AppJobSpec
 type AppJobSpec struct {
@@ -262,13 +283,13 @@ const (
 
 // AppLogDestinationSpec struct for AppLogDestinationSpec
 type AppLogDestinationSpec struct {
-	// Name of the log destination.
-	Name       string                           `json:"name,omitempty"`
-	Papertrail *AppLogDestinationSpecPapertrail `json:"papertrail,omitempty"`
-	Datadog    *AppLogDestinationSpecDataDog    `json:"datadog,omitempty"`
-	Logtail    *AppLogDestinationSpecLogtail    `json:"logtail,omitempty"`
-	Endpoint   string                           `json:"endpoint,omitempty"`
-	Headers    []*AppLogDestinationSpecHeader   `json:"headers,omitempty"`
+	Name        string                           `json:"name"`
+	Papertrail  *AppLogDestinationSpecPapertrail `json:"papertrail,omitempty"`
+	Datadog     *AppLogDestinationSpecDataDog    `json:"datadog,omitempty"`
+	Logtail     *AppLogDestinationSpecLogtail    `json:"logtail,omitempty"`
+	Endpoint    string                           `json:"endpoint,omitempty"`
+	TLSInsecure bool                             `json:"tls_insecure,omitempty"`
+	Headers     []*AppLogDestinationSpecHeader   `json:"headers,omitempty"`
 }
 
 // AppLogDestinationSpecDataDog DataDog configuration.
@@ -303,7 +324,7 @@ type AppLogDestinationSpecPapertrail struct {
 type AppRouteSpec struct {
 	// An HTTP path prefix. Paths must start with / and must be unique across all components within an app.
 	Path string `json:"path,omitempty"`
-	// An optional flag to preserve the path that is forwarded to the backend service. By default, the HTTP request path will be trimmed from the left when forwarded to the component. For example, a component with `path=/api` will have requests to `/api/list` trimmed to `/list`. If this value is `true`, the path will remain `/api/list`.
+	// An optional flag to preserve the path that is forwarded to the backend service. By default, the HTTP request path will be trimmed from the left when forwarded to the component. For example, a component with `path=/api` will have requests to `/api/list` trimmed to `/list`. If this value is `true`, the path will remain `/api/list`. Note: this is not applicable for Functions Components.
 	PreservePathPrefix bool `json:"preserve_path_prefix,omitempty"`
 }
 
@@ -367,14 +388,15 @@ type AppServiceSpecHealthCheck struct {
 type AppSpec struct {
 	// The name of the app. Must be unique across all apps in the same account.
 	Name string `json:"name"`
-	// Workloads which expose publicy-accessible HTTP services.
+	// Workloads which expose publicly-accessible HTTP services.
 	Services []*AppServiceSpec `json:"services,omitempty"`
 	// Content which can be rendered to static web assets.
 	StaticSites []*AppStaticSiteSpec `json:"static_sites,omitempty"`
 	// Workloads which do not expose publicly-accessible HTTP services.
 	Workers []*AppWorkerSpec `json:"workers,omitempty"`
 	// Pre and post deployment workloads which do not expose publicly-accessible HTTP routes.
-	Jobs      []*AppJobSpec       `json:"jobs,omitempty"`
+	Jobs []*AppJobSpec `json:"jobs,omitempty"`
+	// Workloads which expose publicly-accessible HTTP services via Functions Components.
 	Functions []*AppFunctionsSpec `json:"functions,omitempty"`
 	// Database instances which can provide persistence to workloads within the application.
 	Databases []*AppDatabaseSpec `json:"databases,omitempty"`
@@ -384,7 +406,9 @@ type AppSpec struct {
 	// A list of environment variables made available to all components in the app.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// A list of alerts which apply to the app.
-	Alerts []*AppAlertSpec `json:"alerts,omitempty"`
+	Alerts   []*AppAlertSpec `json:"alerts,omitempty"`
+	Ingress  *AppIngressSpec `json:"ingress,omitempty"`
+	Features []string        `json:"features,omitempty"`
 }
 
 // AppStaticSiteSpec struct for AppStaticSiteSpec
@@ -488,7 +512,7 @@ type AppCORSPolicy struct {
 	AllowHeaders []string `json:"allow_headers,omitempty"`
 	// The set of HTTP response headers that browsers are allowed to access. This configures the Access-Control-Expose-Headers  header.
 	ExposeHeaders []string `json:"expose_headers,omitempty"`
-	// An optional duration specifiying how long browsers can cache the results of a preflight request. This configures the Access-Control-Max-Age header. Example: `5h30m`.
+	// An optional duration specifying how long browsers can cache the results of a preflight request. This configures the Access-Control-Max-Age header. Example: `5h30m`.
 	MaxAge string `json:"max_age,omitempty"`
 	// Whether browsers should expose the response to the client-side JavaScript code when the request's credentials mode is `include`. This configures the Access-Control-Allow-Credentials header.
 	AllowCredentials bool `json:"allow_credentials,omitempty"`
@@ -497,6 +521,11 @@ type AppCORSPolicy struct {
 // AppCreateRequest struct for AppCreateRequest
 type AppCreateRequest struct {
 	Spec *AppSpec `json:"spec"`
+}
+
+// DeployTemplate struct for DeployTemplate
+type DeployTemplate struct {
+	Spec *AppSpec `json:"spec,omitempty"`
 }
 
 // Deployment struct for Deployment
@@ -518,6 +547,7 @@ type Deployment struct {
 	TierSlug             string                  `json:"tier_slug,omitempty"`
 	PreviousDeploymentID string                  `json:"previous_deployment_id,omitempty"`
 	CauseDetails         *DeploymentCauseDetails `json:"cause_details,omitempty"`
+	LoadBalancerID       string                  `json:"load_balancer_id,omitempty"`
 }
 
 // DeploymentCauseDetails struct for DeploymentCauseDetails
@@ -632,6 +662,75 @@ type DeploymentWorker struct {
 	Name             string `json:"name,omitempty"`
 	SourceCommitHash string `json:"source_commit_hash,omitempty"`
 }
+
+// DetectRequest struct for DetectRequest
+type DetectRequest struct {
+	Git    *GitSourceSpec    `json:"git,omitempty"`
+	GitHub *GitHubSourceSpec `json:"github,omitempty"`
+	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	// An optional commit hash to use instead of the branch specified in the source spec.
+	CommitSHA string `json:"commit_sha,omitempty"`
+	// An optional path to the working directory for the detection process.
+	SourceDir string `json:"source_dir,omitempty"`
+}
+
+// DetectResponse struct for DetectResponse
+type DetectResponse struct {
+	Components    []*DetectResponseComponent `json:"components,omitempty"`
+	Template      *DeployTemplate            `json:"template,omitempty"`
+	TemplateFound bool                       `json:"template_found,omitempty"`
+	TemplateValid bool                       `json:"template_valid,omitempty"`
+	TemplateError string                     `json:"template_error,omitempty"`
+}
+
+// DetectResponseComponent struct for DetectResponseComponent
+type DetectResponseComponent struct {
+	Strategy DetectResponseType `json:"strategy,omitempty"`
+	Types    []string           `json:"types,omitempty"`
+	// A list of Dockerfiles that were found for this component. The recommendation is to use the first Dockerfile.
+	Dockerfiles     []string `json:"dockerfiles,omitempty"`
+	BuildCommand    string   `json:"build_command,omitempty"`
+	RunCommand      string   `json:"run_command,omitempty"`
+	EnvironmentSlug string   `json:"environment_slug,omitempty"`
+	// A list of HTTP ports that this component may listen on. The recommendation is to use the last port in the list.
+	HTTPPorts          []int64                            `json:"http_ports,omitempty"`
+	EnvVars            []*AppVariableDefinition           `json:"env_vars,omitempty"`
+	ServerlessPackages []*DetectResponseServerlessPackage `json:"serverless_packages,omitempty"`
+	SourceDir          string                             `json:"source_dir,omitempty"`
+}
+
+// DetectResponseServerlessFunction struct for DetectResponseServerlessFunction
+type DetectResponseServerlessFunction struct {
+	Name    string                                  `json:"name,omitempty"`
+	Package string                                  `json:"package,omitempty"`
+	Runtime string                                  `json:"runtime,omitempty"`
+	Limits  *DetectResponseServerlessFunctionLimits `json:"limits,omitempty"`
+}
+
+// DetectResponseServerlessFunctionLimits struct for DetectResponseServerlessFunctionLimits
+type DetectResponseServerlessFunctionLimits struct {
+	Timeout string `json:"timeout,omitempty"`
+	Memory  string `json:"memory,omitempty"`
+	Logs    string `json:"logs,omitempty"`
+}
+
+// DetectResponseServerlessPackage struct for DetectResponseServerlessPackage
+type DetectResponseServerlessPackage struct {
+	Name      string                              `json:"name,omitempty"`
+	Functions []*DetectResponseServerlessFunction `json:"functions,omitempty"`
+}
+
+// DetectResponseType the model 'DetectResponseType'
+type DetectResponseType string
+
+// List of DetectResponseType
+const (
+	DetectResponseType_Unspecified DetectResponseType = "UNSPECIFIED"
+	DetectResponseType_Dockerfile  DetectResponseType = "DOCKERFILE"
+	DetectResponseType_Buildpack   DetectResponseType = "BUILDPACK"
+	DetectResponseType_HTML        DetectResponseType = "HTML"
+	DetectResponseType_Serverless  DetectResponseType = "SERVERLESS"
+)
 
 // DeploymentCauseDetailsDigitalOceanUserActionName the model 'CauseDetailsDigitalOceanUserActionName'
 type DeploymentCauseDetailsDigitalOceanUserActionName string
@@ -780,20 +879,29 @@ type AppProposeRequest struct {
 
 // AppProposeResponse struct for AppProposeResponse
 type AppProposeResponse struct {
-	AppIsStatic      bool `json:"app_is_static,omitempty"`
+	// Deprecated. Please use AppIsStarter instead.
+	AppIsStatic bool `json:"app_is_static,omitempty"`
+	// Indicates whether the app name is available.
 	AppNameAvailable bool `json:"app_name_available,omitempty"`
 	// If the app name is unavailable, this will be set to a suggested available name.
 	AppNameSuggestion string `json:"app_name_suggestion,omitempty"`
-	// The number of existing static apps the account has.
+	// Deprecated. Please use ExistingStarterApps instead.
 	ExistingStaticApps string `json:"existing_static_apps,omitempty"`
-	// The maximum number of free static apps the account can have. Any additional static apps will be charged for.
+	// Deprecated. Please use MaxFreeStarterApps instead.
 	MaxFreeStaticApps string   `json:"max_free_static_apps,omitempty"`
 	Spec              *AppSpec `json:"spec,omitempty"`
-	AppCost           float32  `json:"app_cost,omitempty"`
-	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `app_tier_upgrade_cost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
+	// The monthly cost of the proposed app in USD.
+	AppCost float32 `json:"app_cost,omitempty"`
+	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `AppTierUpgradeCost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
 	AppTierUpgradeCost float32 `json:"app_tier_upgrade_cost,omitempty"`
-	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `app_tier_downgrade_cost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
+	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `AppTierDowngradeCost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
 	AppTierDowngradeCost float32 `json:"app_tier_downgrade_cost,omitempty"`
+	// The number of existing starter tier apps the account has.
+	ExistingStarterApps string `json:"existing_starter_apps,omitempty"`
+	// The maximum number of free starter apps the account can have. Any additional starter apps will be charged for. These include apps with only static sites, functions, and databases.
+	MaxFreeStarterApps string `json:"max_free_starter_apps,omitempty"`
+	// Indicates whether the app is a starter tier app.
+	AppIsStarter bool `json:"app_is_starter,omitempty"`
 }
 
 // AppRegion struct for AppRegion

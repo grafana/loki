@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +14,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -36,6 +34,7 @@ type IndexSet interface {
 	Init(forQuerying bool) error
 	Close()
 	ForEach(ctx context.Context, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -115,18 +114,18 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 		t.indexMtx.markReady()
 	}()
 
-	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
+	dirEntries, err := os.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
 	}
 
 	// open all the locally present files first to avoid downloading them again during sync operation below.
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
 			continue
 		}
 
-		fullPath := filepath.Join(t.cacheLocation, fileInfo.Name())
+		fullPath := filepath.Join(t.cacheLocation, entry.Name())
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
@@ -140,7 +139,7 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 			continue
 		}
 
-		t.index[fileInfo.Name()] = idx
+		t.index[entry.Name()] = idx
 	}
 
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.index)))
@@ -187,12 +186,33 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	for _, idx := range t.index {
-		if err := callback(idx); err != nil {
+		if err := callback(t.userID == "", idx); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error {
+
+	if err := t.indexMtx.rLock(ctx); err != nil {
+		return err
+	}
+	defer t.indexMtx.rUnlock()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	logger := util_log.WithContext(ctx, t.logger)
+	level.Debug(logger).Log("index-files-count", len(t.index))
+
+	for i := range t.index {
+		idx := t.index[i]
+		g.Go(func() error {
+			return callback(t.userID == "", idx)
+		})
+	}
+	return g.Wait()
 }
 
 // DropAllDBs closes reference to all the open index and removes the local files.
@@ -288,7 +308,7 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 	// it means the cache is not valid anymore since compaction would have happened after last index list cache refresh.
 	// Let us return error to ask the caller to re-run the sync after the list cache refresh.
 	if !bypassListCache && len(downloadedFiles) == 0 && len(toDownload) > 0 {
-		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownload)
+		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", fmt.Sprint(toDownload))
 		return errIndexListCacheTooStale
 	}
 
@@ -366,64 +386,20 @@ func (t *indexSet) AwaitReady(ctx context.Context) error {
 }
 
 func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) (string, error) {
-	decompress := shipper_util.IsCompressedFile(fileName)
+	decompress := storage.IsCompressedFile(fileName)
 	dst := filepath.Join(folderPathForTable, fileName)
 	if decompress {
 		dst = strings.Trim(dst, gzipExtension)
 	}
-	return filepath.Base(dst), downloadFileFromStorage(
+	return filepath.Base(dst), storage.DownloadFileFromStorage(
 		dst,
 		decompress,
 		true,
-		shipper_util.LoggerWithFilename(t.logger, fileName),
+		storage.LoggerWithFilename(t.logger, fileName),
 		func() (io.ReadCloser, error) {
 			return t.baseIndexSet.GetFile(ctx, t.tableName, t.userID, fileName)
 		},
 	)
-}
-
-// DownloadFileFromStorage downloads a file from storage to given location.
-func downloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc shipper_util.GetFileFunc) error {
-	start := time.Now()
-	readCloser, err := getFileFunc()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := f.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
-		}
-	}()
-	var objectReader io.Reader = readCloser
-	if decompressFile {
-		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-		defer chunkenc.Gzip.PutReader(decompressedReader)
-
-		objectReader = decompressedReader
-	}
-
-	_, err = io.Copy(f, objectReader)
-	if err != nil {
-		return err
-	}
-
-	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
-	if sync {
-		return f.Sync()
-	}
-	return nil
 }
 
 // doConcurrentDownload downloads objects(files) concurrently. It ignores only missing file errors caused by removal of file by compaction.

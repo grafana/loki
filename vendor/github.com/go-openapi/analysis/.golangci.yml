@@ -5,6 +5,8 @@ linters-settings:
     min-confidence: 0
   gocyclo:
     min-complexity: 40
+  gocognit:
+    min-complexity: 40
   maligned:
     suggest-new: true
   dupl:
@@ -27,17 +29,17 @@ linters:
     - scopelint
     - godox
     - gocognit
-    - whitespace
+    #- whitespace
     - wsl
     - funlen
     - testpackage
     - wrapcheck
-    - nlreturn
+    #- nlreturn
     - gomnd
     - goerr113
     - exhaustivestruct
-    - errorlint
-    - nestif
+    #- errorlint
+    #- nestif
     - gofumpt
     - godot
     - gci
@@ -47,3 +49,5 @@ linters:
     - thelper
     - ifshort
     - forbidigo
+    - cyclop
+    - varnamelen

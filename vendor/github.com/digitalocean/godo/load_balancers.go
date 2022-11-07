@@ -50,6 +50,7 @@ type LoadBalancer struct {
 	EnableBackendKeepalive       bool             `json:"enable_backend_keepalive,omitempty"`
 	VPCUUID                      string           `json:"vpc_uuid,omitempty"`
 	DisableLetsEncryptDNSRecords *bool            `json:"disable_lets_encrypt_dns_records,omitempty"`
+	ValidateOnly                 bool             `json:"validate_only,omitempty"`
 }
 
 // String creates a human-readable description of a LoadBalancer.
@@ -79,6 +80,7 @@ func (l LoadBalancer) AsRequest() *LoadBalancerRequest {
 		HealthCheck:                  l.HealthCheck,
 		VPCUUID:                      l.VPCUUID,
 		DisableLetsEncryptDNSRecords: l.DisableLetsEncryptDNSRecords,
+		ValidateOnly:                 l.ValidateOnly,
 	}
 
 	if l.DisableLetsEncryptDNSRecords != nil {
@@ -162,6 +164,7 @@ type LoadBalancerRequest struct {
 	EnableBackendKeepalive       bool             `json:"enable_backend_keepalive,omitempty"`
 	VPCUUID                      string           `json:"vpc_uuid,omitempty"`
 	DisableLetsEncryptDNSRecords *bool            `json:"disable_lets_encrypt_dns_records,omitempty"`
+	ValidateOnly                 bool             `json:"validate_only,omitempty"`
 }
 
 // String creates a human-readable description of a LoadBalancerRequest.

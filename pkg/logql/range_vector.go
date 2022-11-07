@@ -189,6 +189,8 @@ func aggregator(r *syntax.RangeAggregationExpr) (RangeVectorAggregator, error) {
 	switch r.Operation {
 	case syntax.OpRangeTypeRate:
 		return rateLogs(r.Left.Interval, r.Left.Unwrap != nil), nil
+	case syntax.OpRangeTypeRateCounter:
+		return rateCounter(r.Left.Interval), nil
 	case syntax.OpRangeTypeCount:
 		return countOverTime, nil
 	case syntax.OpRangeTypeBytesRate:
@@ -218,12 +220,25 @@ func aggregator(r *syntax.RangeAggregationExpr) (RangeVectorAggregator, error) {
 	}
 }
 
-// rateLogs calculates the per-second rate of log lines.
+// rateLogs calculates the per-second rate of log lines or values extracted
+// from log lines
 func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.Point) float64 {
 	return func(samples []promql.Point) float64 {
 		if !computeValues {
 			return float64(len(samples)) / selRange.Seconds()
 		}
+		var result float64
+		for _, sample := range samples {
+			result += sample.V
+		}
+		return result / selRange.Seconds()
+	}
+}
+
+// rateCounter calculates the per-second rate of values extracted from log lines
+// and treat them like a "counter" metric.
+func rateCounter(selRange time.Duration) func(samples []promql.Point) float64 {
+	return func(samples []promql.Point) float64 {
 		return extrapolatedRate(samples, selRange, true, true)
 	}
 }

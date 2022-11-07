@@ -31,7 +31,7 @@ func main() {
 
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	}, prometheus.DefaultRegisterer)
+	}, prometheus.DefaultRegisterer, true, false)
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()
@@ -44,7 +44,7 @@ func main() {
 	}
 
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
@@ -77,5 +77,12 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 		{Path: "/api/prom/label", RouteName: "api_prom_label", Methods: []string{"GET"}, ResponseComparator: nil},
 		{Path: "/api/prom/label/{name}/values", RouteName: "api_prom_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
 		{Path: "/api/prom/series", RouteName: "api_prom_series", Methods: []string{"GET"}, ResponseComparator: nil},
+	}
+}
+
+func lokiWriteRoutes() []querytee.Route {
+	return []querytee.Route{
+		{Path: "/loki/api/v1/push", RouteName: "api_v1_push", Methods: []string{"POST"}, ResponseComparator: nil},
+		{Path: "/api/prom/push", RouteName: "api_prom_push", Methods: []string{"POST"}, ResponseComparator: nil},
 	}
 }

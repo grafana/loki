@@ -19,12 +19,12 @@ The Terraform deployment also takes in an array of log group and bucket names, a
 
 There's also a flag to keep the log stream label when propagating the logs from Cloudwatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
-Additionally, an environment variable can be configured to add extra lables to the logs streamed by lambda-protmail.
-These extra labels will take the form `__extra_<name>=<value>`
+Additionally, an environment variable can be configured to add extra labels to the logs streamed by lambda-protmail.
+These extra labels will take the form `__extra_<name>=<value>`.
 
-Optional environment variable can be configured to add tenant id to the logs streamed by lambda-protmail.
+An optional environment variable can be configured to add the tenant ID to the logs streamed by lambda-protmail.
 
-In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users are still able to clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo if they wish.
+In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users may clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo.
 
 ### Examples
 
@@ -33,7 +33,8 @@ Terraform:
 terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2"]' -var 'bucket_names=["bucket-a", "bucket-b"]' -var 'batch_size=131072'
 ```
 
-The first few lines of `main.tf` define the AWS region to deploy to, you are free to modify this or remove and deploy to 
+The first few lines of `main.tf` define the AWS region to deploy to.
+Modify as desired, or remove and deploy to
 ```
 provider "aws" {
   region = "us-east-2"
@@ -42,18 +43,20 @@ provider "aws" {
 
 To keep the log group label add `-var "keep_stream=true"`.
 
-To add extra labels add `-var 'extra_labels="name1,value1,name2,value2"'`
+To add extra labels add `-var 'extra_labels="name1,value1,name2,value2"'`.
 
-To add tenant id add `-var "tenant_id=value"`
+To add tenant id add `-var "tenant_id=value"`.
 
-Note that the creation of subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names, it does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
+Note that the creation of a subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names.
+It does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so.
+Or, have lambda-promtail write to Promtail and use [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
 
 CloudFormation:
 ```
 aws cloudformation create-stack --stack-name lambda-promtail --template-body file://template.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://logs-prod-us-central1.grafana.net/loki/api/v1/push ParameterKey=Username,ParameterValue=<user> ParameterKey=Password,ParameterValue=<password> ParameterKey=LambdaPromtailImage,ParameterValue=<repo:tag>
 ```
 
-Within the CloudFormation template file you should copy/paste and modify the subscription filter section as needed for each log group:
+Within the CloudFormation template file, copy, paste, and modify the subscription filter section as needed for each log group:
 ```
 MainLambdaPromtailSubscriptionFilter:
   Type: AWS::Logs::SubscriptionFilter
@@ -63,13 +66,13 @@ MainLambdaPromtailSubscriptionFilter:
     LogGroupName: "/aws/lambda/some-lamda-log-group"
 ```
 
-To keep the log group label add `ParameterKey=KeepStream,ParameterValue=true`.
+To keep the log group label, add `ParameterKey=KeepStream,ParameterValue=true`.
 
-To add extra labels, include `ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2"`
+To add extra labels, include `ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2"`.
 
-To add tenant id add `ParameterKey=TenantID,ParameterValue=value`.
+To add a tenant ID, add `ParameterKey=TenantID,ParameterValue=value`.
 
-To modify an already created CloudFormation stack you need to use [update-stack](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/update-stack.html).
+To modify an existing CloudFormation stack, use [update-stack](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/update-stack.html).
 
 ## Uses
 
@@ -77,7 +80,7 @@ To modify an already created CloudFormation stack you need to use [update-stack]
 
 This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients](../).
 
-Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraing on logs within a single stream. 
+Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream.
 
 ### Proof of concept Loki deployments
 
@@ -89,14 +92,19 @@ Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ 
 
 This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
 
+### Cloudfront real-time logs
+
+Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
+
 ## Propagated Labels
 
-Incoming logs can have six special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
-- `__aws_log_type`: Where this log came from (Cloudwatch or S3).
+- `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
 - `__aws_cloudwatch_log_stream`: The associated Cloudwatch Log Stream for this log (if `KEEP_STREAM=true`).
 - `__aws_cloudwatch_owner`: The AWS ID of the owner of this event.
+- `__aws_kinesis_event_source_arn`: The Kinesis event source ARN.
 - `__aws_s3_log_lb`: The name of the loadbalancer.
 - `__aws_s3_log_lb_owner`: The Account ID of the loadbalancer owner.
 
@@ -106,7 +114,7 @@ Incoming logs can have six special labels assigned to them which can be used in 
 
 Note: This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
 
-As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs. 
+As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs.
 
 This trade-off is very effective when you have a large number of log streams but want to aggregate them by the log group. This is very common in AWS Lambda, where log groups are the "application" and log streams are the individual application containers which are spun up and down at a whim, possibly just for a single function invocation.
 
@@ -156,13 +164,13 @@ scrape_configs:
         promtail: 'lambda-promtail'
     relabel_configs:
       - source_labels: ['__aws_log_type']
-        taget_label: 'log_type'
+        target_label: 'log_type'
       # Maps the cloudwatch log group into a label called `log_group` for use in Loki.
       - source_labels: ['__aws_cloudwatch_log_group']
         target_label: 'log_group'
       # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
       - source_label: ['__aws_s3_log_lb']
-        taget_label: 'loadbalancer_name'
+        target_label: 'loadbalancer_name'
 ```
 
 ## Multiple Promtail Deployment

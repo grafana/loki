@@ -20,6 +20,7 @@ func Test_optimizeSampleExpr(t *testing.T) {
 		{`sum by(name)(bytes_over_time({region="us-east1"} | line_format "something else"[5m]))`, `sum by(name)(bytes_over_time({region="us-east1"} | line_format "something else"[5m]))`},
 		{`sum by(name)(rate({region="us-east1"} | json | line_format "something else" |= "something"[5m]))`, `sum by(name)(rate({region="us-east1"} | json | line_format "something else" |= "something"[5m]))`},
 		{`sum by(name)(rate({region="us-east1"} | json | line_format "something else" | logfmt[5m]))`, `sum by(name)(rate({region="us-east1"} | json | line_format "something else" | logfmt[5m]))`},
+		{`sum by(name)(count_over_time({region="us-east1"} | line_format "{{ .message }}" | json foo="bar"[5m]))`, `sum by(name)(count_over_time({region="us-east1"} | line_format "{{ .message }}" | json foo="bar"[5m]))`},
 
 		// remove line_format that is not required.
 		{`sum by(name)(rate({region="us-east1"} | line_format "something else"[5m]))`, `sum by(name)(rate({region="us-east1"}[5m]))`},

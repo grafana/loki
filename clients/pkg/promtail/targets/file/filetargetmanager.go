@@ -8,8 +8,6 @@ import (
 	"sync"
 
 	"github.com/bmatcuk/doublestar"
-	"gopkg.in/fsnotify.v1"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -112,10 +111,7 @@ func NewFileTargetManager(
 		// download metadata for all pods running on a cluster, which may be a long operation.
 		for _, kube := range cfg.ServiceDiscoveryConfig.KubernetesSDConfigs {
 			if kube.Role == kubernetes.RolePod {
-				selector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, hostname)
-				kube.Selectors = []kubernetes.SelectorConfig{
-					{Role: kubernetes.RolePod, Field: selector},
-				}
+				kube.Selectors = tm.fulfillKubePodSelector(kube.Selectors, hostname)
 			}
 		}
 
@@ -130,6 +126,7 @@ func NewFileTargetManager(
 			entryHandler:      pipeline.Wrap(client),
 			targetConfig:      targetConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
+			encoding:          cfg.Encoding,
 		}
 		tm.syncers[cfg.JobName] = s
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
@@ -244,6 +241,24 @@ func (tm *FileTargetManager) AllTargets() map[string][]target.Target {
 	return result
 }
 
+func (tm *FileTargetManager) fulfillKubePodSelector(selectors []kubernetes.SelectorConfig, host string) []kubernetes.SelectorConfig {
+	nodeSelector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, host)
+	if len(selectors) == 0 {
+		return []kubernetes.SelectorConfig{{Role: kubernetes.RolePod, Field: nodeSelector}}
+	}
+
+	for _, selector := range selectors {
+		if selector.Field == "" {
+			selector.Field = nodeSelector
+		} else if !strings.Contains(selector.Field, nodeSelector) {
+			selector.Field += "," + nodeSelector
+		}
+		selector.Role = kubernetes.RolePod
+	}
+
+	return selectors
+}
+
 // targetSyncer sync targets based on service discovery changes.
 type targetSyncer struct {
 	metrics      *Metrics
@@ -260,6 +275,8 @@ type targetSyncer struct {
 
 	relabelConfig []*relabel.Config
 	targetConfig  *Config
+
+	encoding string
 }
 
 // sync synchronize target based on received target groups received by service discovery
@@ -267,7 +284,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	targets := map[string]struct{}{}
+	targetsSeen := map[string]struct{}{}
 	dropped := []target.Target{}
 
 	for _, group := range groups {
@@ -324,7 +341,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				key = fmt.Sprintf("%s:%s", key, pathExclude)
 			}
 
-			targets[key] = struct{}{}
+			targetsSeen[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
 				dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
@@ -353,15 +370,38 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 		}
 	}
 
+	s.droppedTargets = dropped
+
+	// keep track of how many targets are using a fileEventWatcher
+	watcherUseCount := make(map[string]int, len(s.fileEventWatchers))
+	for _, target := range s.targets {
+		if _, ok := watcherUseCount[target.path]; !ok {
+			watcherUseCount[target.path] = 1
+		} else {
+			watcherUseCount[target.path]++
+		}
+	}
+
+	// remove existing targets not seen in groups arg; cleanup unused fileEventWatchers
 	for key, target := range s.targets {
-		if _, ok := targets[key]; !ok {
+		if _, ok := targetsSeen[key]; !ok {
 			level.Info(s.log).Log("msg", "Removing target", "key", key)
 			target.Stop()
 			s.metrics.targetsActive.Add(-1.)
 			delete(s.targets, key)
 
-			// close related file event watcher
+			// close related file event watcher if no other targets are using
 			k := target.path
+			_, ok := watcherUseCount[k]
+			if !ok {
+				level.Warn(s.log).Log("msg", "failed to find file event watcher", "path", k)
+				continue
+			} else {
+				if watcherUseCount[k]--; watcherUseCount[k] > 0 {
+					// Multiple targets are using this file watcher, leave it alone
+					continue
+				}
+			}
 			if _, ok := s.fileEventWatchers[k]; ok {
 				close(s.fileEventWatchers[k])
 				delete(s.fileEventWatchers, k)
@@ -370,7 +410,6 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			}
 		}
 	}
-	s.droppedTargets = dropped
 }
 
 // sendFileCreateEvent sends file creation events to only the targets with matched path.
@@ -395,7 +434,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 }
 
 func (s *targetSyncer) newTarget(path, pathExclude string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

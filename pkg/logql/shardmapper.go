@@ -12,19 +12,24 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+type ShardResolver interface {
+	Shards(expr syntax.Expr) (int, error)
+}
+
+type ConstantShards int
+
+func (s ConstantShards) Shards(_ syntax.Expr) (int, error) { return int(s), nil }
+
 type ShardMapper struct {
-	shards  int
+	shards  ShardResolver
 	metrics *MapperMetrics
 }
 
-func NewShardMapper(shards int, metrics *MapperMetrics) (ShardMapper, error) {
-	if shards < 2 {
-		return ShardMapper{}, fmt.Errorf("cannot create ShardMapper with <2 shards. Received %d", shards)
-	}
+func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics) ShardMapper {
 	return ShardMapper{
-		shards:  shards,
+		shards:  resolver,
 		metrics: metrics,
-	}, nil
+	}
 }
 
 func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
@@ -69,14 +74,16 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	switch e := expr.(type) {
 	case *syntax.LiteralExpr:
 		return e, nil
+	case *syntax.VectorExpr:
+		return e, nil
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
-		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r), nil
+		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, r)
 	case *syntax.LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r)
 	case *syntax.RangeAggregationExpr:
-		return m.mapRangeAggregationExpr(e, r), nil
+		return m.mapRangeAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
 		lhsMapped, err := m.Map(e.SampleExpr, r)
 		if err != nil {
@@ -102,42 +109,66 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	}
 }
 
-func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstreamRecorder) syntax.LogSelectorExpr {
+func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstreamRecorder) (syntax.LogSelectorExpr, error) {
 	var head *ConcatLogSelectorExpr
-	for i := m.shards - 1; i >= 0; i-- {
+	shards, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, err
+	}
+	if shards == 0 {
+		return &ConcatLogSelectorExpr{
+			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
+				shard:           nil,
+				LogSelectorExpr: expr,
+			},
+		}, nil
+	}
+	for i := shards - 1; i >= 0; i-- {
 		head = &ConcatLogSelectorExpr{
 			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 				shard: &astmapper.ShardAnnotation{
 					Shard: i,
-					Of:    m.shards,
+					Of:    shards,
 				},
 				LogSelectorExpr: expr,
 			},
 			next: head,
 		}
 	}
-	r.Add(m.shards, StreamsKey)
+	r.Add(shards, StreamsKey)
 
-	return head
+	return head, nil
 }
 
-func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder) syntax.SampleExpr {
+func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder) (syntax.SampleExpr, error) {
 	var head *ConcatSampleExpr
-	for i := m.shards - 1; i >= 0; i-- {
+	shards, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, err
+	}
+	if shards == 0 {
+		return &ConcatSampleExpr{
+			DownstreamSampleExpr: DownstreamSampleExpr{
+				shard:      nil,
+				SampleExpr: expr,
+			},
+		}, nil
+	}
+	for i := shards - 1; i >= 0; i-- {
 		head = &ConcatSampleExpr{
 			DownstreamSampleExpr: DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{
 					Shard: i,
-					Of:    m.shards,
+					Of:    shards,
 				},
 				SampleExpr: expr,
 			},
 			next: head,
 		}
 	}
-	r.Add(m.shards, MetricsKey)
+	r.Add(shards, MetricsKey)
 
-	return head
+	return head, nil
 }
 
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
@@ -167,8 +198,12 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	switch expr.Operation {
 	case syntax.OpTypeSum:
 		// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
+		sharded, err := m.mapSampleExpr(expr, r)
+		if err != nil {
+			return nil, err
+		}
 		return &syntax.VectorAggregationExpr{
-			Left:      m.mapSampleExpr(expr, r),
+			Left:      sharded,
 			Grouping:  expr.Grouping,
 			Params:    expr.Params,
 			Operation: expr.Operation,
@@ -201,7 +236,10 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 	case syntax.OpTypeCount:
 		// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
-		sharded := m.mapSampleExpr(expr, r)
+		sharded, err := m.mapSampleExpr(expr, r)
+		if err != nil {
+			return nil, err
+		}
 		return &syntax.VectorAggregationExpr{
 			Left:      sharded,
 			Grouping:  expr.Grouping,
@@ -228,13 +266,13 @@ func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downs
 	return &cpy, nil
 }
 
-func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) syntax.SampleExpr {
+func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, error) {
 	if hasLabelModifier(expr) {
 		// if an expr can modify labels this means multiple shards can return the same labelset.
 		// When this happens the merge strategy needs to be different from a simple concatenation.
 		// For instance for rates we need to sum data from different shards but same series.
 		// Since we currently support only concatenation as merge strategy, we skip those queries.
-		return expr
+		return expr, nil
 	}
 	switch expr.Operation {
 	case syntax.OpRangeTypeCount, syntax.OpRangeTypeRate, syntax.OpRangeTypeBytesRate, syntax.OpRangeTypeBytes:
@@ -243,7 +281,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		// same goes for bytes_rate and bytes_over_time
 		return m.mapSampleExpr(expr, r)
 	default:
-		return expr
+		return expr, nil
 	}
 }
 

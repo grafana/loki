@@ -138,6 +138,19 @@ func CompositeValidationError(errors ...error) *CompositeError {
 	}
 }
 
+// ValidateName recursively sets the name for all validations or updates them for nested properties
+func (c *CompositeError) ValidateName(name string) *CompositeError {
+	for i, e := range c.Errors {
+		if ve, ok := e.(*Validation); ok {
+			c.Errors[i] = ve.ValidateName(name)
+		} else if ce, ok := e.(*CompositeError); ok {
+			c.Errors[i] = ce.ValidateName(name)
+		}
+	}
+
+	return c
+}
+
 // FailedAllPatternProperties an error for when the property doesn't match a pattern
 func FailedAllPatternProperties(name, in, key string) *Validation {
 	msg := fmt.Sprintf(failedAllPatternProps, name, key, in)

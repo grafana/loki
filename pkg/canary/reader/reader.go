@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -51,13 +50,14 @@ type LokiReader interface {
 
 type Reader struct {
 	header          http.Header
-	tls             bool
+	useTLS          bool
 	clientTLSConfig *tls.Config
 	caFile          string
 	addr            string
 	user            string
 	pass            string
 	tenantID        string
+	httpClient      *http.Client
 	queryTimeout    time.Duration
 	sName           string
 	sValue          string
@@ -77,7 +77,7 @@ type Reader struct {
 
 func NewReader(writer io.Writer,
 	receivedChan chan time.Time,
-	tls bool,
+	useTLS bool,
 	tlsConfig *tls.Config,
 	caFile string,
 	address string,
@@ -90,8 +90,21 @@ func NewReader(writer io.Writer,
 	streamName string,
 	streamValue string,
 	interval time.Duration,
-) *Reader {
+) (*Reader, error) {
 	h := http.Header{}
+
+	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
+	httpClient := http.DefaultClient
+	if tlsConfig != nil {
+		// For the mTLS case, use a http.Client configured with the client side certificates.
+		rt, err := config.NewTLSRoundTripper(tlsConfig, caFile, func(tls *tls.Config) (http.RoundTripper, error) {
+			return &http.Transport{TLSClientConfig: tls}, nil
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create HTTPS transport with TLS config")
+		}
+		httpClient = &http.Client{Transport: rt}
+	}
 	if user != "" {
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
 	}
@@ -109,7 +122,7 @@ func NewReader(writer io.Writer,
 
 	rd := Reader{
 		header:          h,
-		tls:             tls,
+		useTLS:          useTLS,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
 		addr:            address,
@@ -117,6 +130,7 @@ func NewReader(writer io.Writer,
 		pass:            pass,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
+		httpClient:      httpClient,
 		sName:           streamName,
 		sValue:          streamValue,
 		lName:           labelName,
@@ -142,7 +156,7 @@ func NewReader(writer io.Writer,
 		}
 	}()
 
-	return &rd
+	return &rd, nil
 }
 
 func (r *Reader) Stop() {
@@ -168,7 +182,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	}
 
 	scheme := "http"
-	if r.tls {
+	if r.useTLS {
 		scheme = "https"
 	}
 	u := url.URL{
@@ -197,13 +211,9 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 
-	httpClient, err := r.httpClient()
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to create httpClient when querying Loki for count of logs over time")
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "query request failed")
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -215,7 +225,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		r.backoffMtx.Lock()
 		r.nextQuery = nextBackoff(r.w, resp.StatusCode, r.backoff)
 		r.backoffMtx.Unlock()
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := io.ReadAll(resp.Body)
 		return 0, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
 	// No Errors, reset backoff
@@ -263,7 +273,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 
 	scheme := "http"
-	if r.tls {
+	if r.useTLS {
 		scheme = "https"
 	}
 	u := url.URL{
@@ -292,13 +302,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 
-	httpClient, err := r.httpClient()
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return nil, err
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create httpClient when issuing Loki query")
+		return nil, errors.Wrap(err, "query_range request failed")
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -310,7 +316,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		r.backoffMtx.Lock()
 		r.nextQuery = nextBackoff(r.w, resp.StatusCode, r.backoff)
 		r.backoffMtx.Unlock()
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
 	// No Errors, reset backoff
@@ -425,7 +431,7 @@ func (r *Reader) closeAndReconnect() {
 	}
 	for r.conn == nil {
 		scheme := "ws"
-		if r.tls {
+		if r.useTLS {
 			scheme = "wss"
 		}
 		u := url.URL{
@@ -450,31 +456,13 @@ func (r *Reader) closeAndReconnect() {
 			err := c.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(time.Second))
 			if err == websocket.ErrCloseSent {
 				return nil
-			} else if e, ok := err.(net.Error); ok && e.Temporary() {
+			} else if _, ok := err.(net.Error); ok {
 				return nil
 			}
 			return err
 		})
 		r.conn = c
 	}
-}
-
-// httpClient uses the config in Reader to return a http client.
-// http.DefaultClient will be returned in the case that the connection to Loki is http or TLS without client certs.
-// For the mTLS case, return a http.Client configured to use the client side certificates.
-func (r *Reader) httpClient() (*http.Client, error) {
-	if r.clientTLSConfig == nil {
-		return http.DefaultClient, nil
-	}
-	rt, err := config.NewTLSRoundTripper(r.clientTLSConfig, r.caFile, func(tls *tls.Config) (http.RoundTripper, error) {
-		return &http.Transport{TLSClientConfig: tls}, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &http.Client{
-		Transport: rt,
-	}, nil
 }
 
 // webSocketDialer creates a dialer for the web socket connection to Loki

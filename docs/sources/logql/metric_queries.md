@@ -68,7 +68,8 @@ We currently support the functions:
 
 Supported function for operating over unwrapped ranges are:
 
-- `rate(unwrapped-range)`: calculates per second rate of all values in the specified interval.
+- `rate(unwrapped-range)`: calculates per second rate of the sum of all values in the specified interval.
+- `rate_counter(unwrapped-range)`: calculates per second rate of the values in the specified interval and treating them as "counter metric"
 - `sum_over_time(unwrapped-range)`: the sum of all values in the specified interval.
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
@@ -80,7 +81,7 @@ Supported function for operating over unwrapped ranges are:
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 - `absent_over_time(unwrapped-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
 
-Except for `sum_over_time`,`absent_over_time` and `rate`, unwrapped range aggregations support grouping.
+Except for `sum_over_time`,`absent_over_time`, `rate` and `rate_counter`, unwrapped range aggregations support grouping.
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
@@ -90,29 +91,7 @@ Which can be used to aggregate over distinct labels dimensions by including a `w
 
 `without` removes the listed labels from the result vector, while all other labels are preserved the output. `by` does the opposite and drops labels that are not listed in the `by` clause, even if their label values are identical between all elements of the vector.
 
-### Unwrapped examples
-
-```logql
-quantile_over_time(0.99,
-  {cluster="ops-tools1",container="ingress-nginx"}
-    | json
-    | __error__ = ""
-    | unwrap request_time [1m]) by (path)
-```
-
-This example calculates the p99 of the nginx-ingress latency by path.
-
-```logql
-sum by (org_id) (
-  sum_over_time(
-  {cluster="ops-tools1",container="loki-dev"}
-      |= "metrics.go"
-      | logfmt
-      | unwrap bytes_processed [1m])
-  )
-```
-
-This calculates the amount of bytes processed per organization ID.
+See [Unwrap examples](../query_examples/#unwrap-examples) for query examples that use the unwrap expression.
 
 ## Built-in aggregation operators
 
@@ -141,24 +120,21 @@ The aggregation operators can either be used to aggregate over all label values 
 The `without` clause removes the listed labels from the resulting vector, keeping all others.
 The `by` clause does the opposite, dropping labels that are not listed in the clause, even if their label values are identical between all elements of the vector.
 
-### Vector aggregation examples
+See [vector aggregation examples](../query_examples/#vector-aggregation-examples) for query examples that use vector aggregation expressions.
 
-Get the top 10 applications by the highest log throughput:
+## Functions
 
-```logql
-topk(10,sum(rate({region="us-east1"}[5m])) by (name))
-```
+LogQL supports a set of built-in functions.
 
-Get the count of log lines for the last five minutes for a specified job, grouping
-by level:
+- `vector(s scalar)`: returns the scalar s as a vector with no labels. This behaves identically to the [Prometheus `vector()` function](https://prometheus.io/docs/prometheus/latest/querying/functions/#vector).
+  `vector` is mainly used to return a value for a series that would otherwise return nothing; this can be useful when using LogQL to define an alert.
 
-```logql
-sum(count_over_time({job="mysql"}[5m])) by (level)
-```
+Examples:
 
-Get the rate of HTTP GET requests to the `/home` endpoint for NGINX logs by region:
+- Count all the log lines within the last five minutes for the traefik namespace.
 
-```logql
-avg(rate(({job="nginx"} |= "GET" | json | path="/home")[10s])) by (region)
-```
-
+    ```logql
+    sum(count_over_time({namespace="traefik"}[5m])) # will return nothing
+      or
+    vector(0) # will return 0
+    ```

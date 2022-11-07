@@ -14,16 +14,15 @@
 package remote
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sort"
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -52,7 +51,7 @@ func (e HTTPError) Status() int {
 
 // DecodeReadRequest reads a remote.Request from a http.Request.
 func DecodeReadRequest(r *http.Request) (*prompb.ReadRequest, error) {
-	compressed, err := ioutil.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
+	compressed, err := io.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +180,7 @@ func NegotiateResponseType(accepted []prompb.ReadRequest_ResponseType) (prompb.R
 			return resType, nil
 		}
 	}
-	return 0, errors.Errorf("server does not support any of the requested response types: %v; supported: %v", accepted, supported)
+	return 0, fmt.Errorf("server does not support any of the requested response types: %v; supported: %v", accepted, supported)
 }
 
 // StreamChunkedReadResponses iterates over series, builds chunks and streams those to the caller.
@@ -215,7 +214,7 @@ func StreamChunkedReadResponses(
 			chk := iter.At()
 
 			if chk.Chunk == nil {
-				return ss.Warnings(), errors.Errorf("StreamChunkedReadResponses: found not populated chunk returned by SeriesSet at ref: %v", chk.Ref)
+				return ss.Warnings(), fmt.Errorf("StreamChunkedReadResponses: found not populated chunk returned by SeriesSet at ref: %v", chk.Ref)
 			}
 
 			// Cut the chunk.
@@ -240,11 +239,11 @@ func StreamChunkedReadResponses(
 				QueryIndex: queryIndex,
 			})
 			if err != nil {
-				return ss.Warnings(), errors.Wrap(err, "marshal ChunkedReadResponse")
+				return ss.Warnings(), fmt.Errorf("marshal ChunkedReadResponse: %w", err)
 			}
 
 			if _, err := stream.Write(b); err != nil {
-				return ss.Warnings(), errors.Wrap(err, "write to stream")
+				return ss.Warnings(), fmt.Errorf("write to stream: %w", err)
 			}
 			chks = chks[:0]
 		}
@@ -396,16 +395,16 @@ func (c *concreteSeriesIterator) Err() error {
 func validateLabelsAndMetricName(ls labels.Labels) error {
 	for i, l := range ls {
 		if l.Name == labels.MetricName && !model.IsValidMetricName(model.LabelValue(l.Value)) {
-			return errors.Errorf("invalid metric name: %v", l.Value)
+			return fmt.Errorf("invalid metric name: %v", l.Value)
 		}
 		if !model.LabelName(l.Name).IsValid() {
-			return errors.Errorf("invalid label name: %v", l.Name)
+			return fmt.Errorf("invalid label name: %v", l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
-			return errors.Errorf("invalid label value: %v", l.Value)
+			return fmt.Errorf("invalid label value: %v", l.Value)
 		}
 		if i > 0 && l.Name == ls[i-1].Name {
-			return errors.Errorf("duplicate label with name: %v", l.Name)
+			return fmt.Errorf("duplicate label with name: %v", l.Name)
 		}
 	}
 	return nil
@@ -524,7 +523,7 @@ func metricTypeToMetricTypeProto(t textparse.MetricType) prompb.MetricMetadata_M
 // DecodeWriteRequest from an io.Reader into a prompb.WriteRequest, handling
 // snappy decompression.
 func DecodeWriteRequest(r io.Reader) (*prompb.WriteRequest, error) {
-	compressed, err := ioutil.ReadAll(r)
+	compressed, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

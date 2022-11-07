@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -17,15 +19,16 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		assert.NoError(t, clu.Cleanup())
 	}()
 
+	// initially, run only compactor, index-gateway and distributor.
 	var (
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
 			"-boltdb.shipper.compactor.compaction-interval=1s",
 			"-boltdb.shipper.compactor.retention-delete-delay=1s",
-			"-boltdb.shipper.compactor.deletion-mode=filter-and-delete",
-			// By default a minute is added to the delete request start time. This compensates for that.
+			// By default, a minute is added to the delete request start time. This compensates for that.
 			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
@@ -35,44 +38,97 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"distributor",
 			"-target=distributor",
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	// then, run only ingester and query-scheduler.
+	var (
 		tIngester = clu.AddComponent(
 			"ingester",
 			"-target=ingester",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
 			"-target=query-scheduler",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-query-scheduler.use-scheduler-ring=false",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
 			"-target=query-frontend",
-			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL().Host,
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-frontend.default-validity=0s",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 		_ = clu.AddComponent(
 			"querier",
 			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL().Host,
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	remoteCalled := []bool{false, false}
+
+	var (
+		tRuler = clu.AddComponent(
+			"ruler",
+			"-target=ruler",
+			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 	)
 
+	handler1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/write" {
+			t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
+		}
+		remoteCalled[0] = true
+
+		w.WriteHeader(http.StatusOK)
+	})
+	server1 := cluster.NewRemoteWriteServer(&handler1)
+	defer server1.Close()
+
+	handler2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/write" {
+			t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
+		}
+		remoteCalled[1] = true
+
+		w.WriteHeader(http.StatusOK)
+	})
+	server2 := cluster.NewRemoteWriteServer(&handler2)
+	defer server2.Close()
+
+	tRuler.RemoteWriteUrls = []string{
+		server1.URL,
+		server2.URL,
+	}
+	// initialize only the ruler now.
 	require.NoError(t, clu.Run())
 
-	tenantID := randStringRunes(12)
+	tenantID := randStringRunes()
 
 	now := time.Now()
-	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL().String())
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliDistributor.Now = now
-	cliIngester := client.New(tenantID, "", tIngester.HTTPURL().String())
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
 	cliIngester.Now = now
-	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL().String())
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 	cliQueryFrontend.Now = now
-	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL().String())
+	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL())
 	cliCompactor.Now = now
+	cliRuler := client.New(tRuler.RulesTenant, "", tRuler.HTTPURL())
+	cliRuler.Now = now
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
 		// ingest some log lines
@@ -91,7 +147,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -105,7 +161,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 
 	t.Run("add-delete-request", func(t *testing.T) {
-		params := client.DeleteRequestParams{Query: `{job="fake"} |= "lineB"`}
+		params := client.DeleteRequestParams{Start: "0000000000", Query: `{job="fake"} |= "lineB"`}
 		require.NoError(t, cliCompactor.AddDeleteRequest(params))
 	})
 
@@ -137,7 +193,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	// Query lines
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -149,6 +205,25 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		}
 		// Remove lineB once flush works
 		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines, "lineB should not be there")
+	})
+
+	t.Run("ruler", func(t *testing.T) {
+		// Check rules are read correctly.
+		resp, err := cliRuler.GetRules(context.Background())
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		require.Equal(t, "success", resp.Status)
+
+		require.Len(t, resp.Data.Groups, 1)
+		require.Len(t, resp.Data.Groups[0].Rules, 1)
+
+		// Wait for remote write to be called.
+		time.Sleep(5 * time.Second)
+
+		// Check remote write was successful.
+		require.EqualValues(t, []bool{true, true}, remoteCalled, "one or both of the remote write target were not called")
 	})
 }
 

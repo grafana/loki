@@ -1,40 +1,48 @@
-apiVersion: loki.grafana.com/v1beta1
+---
+apiVersion: v1
+kind: Secret
+stringData:
+  clientID: lokistack
+metadata:
+  name: test-oidc
+---
+apiVersion: loki.grafana.com/v1
 kind: LokiStack
 metadata:
   name: lokistack-dev
 spec:
   size: 1x.extra-small
   storage:
+    schemas:
+    - version: v12
+      effectiveDate: 2022-06-01
     secret:
       name: test
       type: s3
-  storageClassName: gp2
+  storageClassName: standard
   tenants:
     mode: static
     authentication:
-      - tenantName: tenant-a
-        tenantId: test
+      - tenantName: test-oidc
+        tenantId: test-oidc
         oidc:
           secret:
-            name: test1
-          issuerURL: https://127.0.0.1:5556/dex
-          redirectURL: https://localhost:8443/oidc/tenant-a/callback
-          usernameClaim: test
-          groupClaim: test
+            name: test-oidc
+          issuerURL: http://hydra.hydra.svc:4444/
     authorization:
       roleBindings:
-      - name: tenant-a
+      - name: test-oidc
         roles:
-          - read-write
+        - read-write
         subjects:
-          - kind: user
-            name: admin@example.com
+        - kind: user
+          name: user
       roles:
       - name: read-write
         permissions:
-          - read
-          - write
+        - read
+        - write
         resources:
-          - metrics
+        - logs
         tenants:
-          - tenant-a
+        - test-oidc

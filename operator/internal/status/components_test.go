@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/status"
 	"github.com/stretchr/testify/require"
@@ -28,7 +28,7 @@ func TestSetComponentsStatus_WhenGetLokiStackReturnsError_ReturnError(t *testing
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
@@ -46,7 +46,7 @@ func TestSetComponentsStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *testin
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -60,7 +60,7 @@ func TestSetComponentsStatus_WhenListReturnError_ReturnError(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	s := lokiv1beta1.LokiStack{
+	s := lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
@@ -74,7 +74,7 @@ func TestSetComponentsStatus_WhenListReturnError_ReturnError(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -96,7 +96,7 @@ func TestSetComponentsStatus_WhenPodListExisting_SetPodStatusMap(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	s := lokiv1beta1.LokiStack{
+	s := lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
@@ -110,7 +110,7 @@ func TestSetComponentsStatus_WhenPodListExisting_SetPodStatusMap(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -143,13 +143,13 @@ func TestSetComponentsStatus_WhenPodListExisting_SetPodStatusMap(t *testing.T) {
 		return nil
 	}
 
-	expected := lokiv1beta1.PodStatusMap{
+	expected := lokiv1.PodStatusMap{
 		"Pending": []string{"pod-a"},
 		"Running": []string{"pod-b"},
 	}
 
 	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
-		stack := obj.(*lokiv1beta1.LokiStack)
+		stack := obj.(*lokiv1.LokiStack)
 		require.Equal(t, expected, stack.Status.Components.Compactor)
 		return nil
 	}
@@ -167,13 +167,13 @@ func TestSetComponentsStatus_WhenRulerEnabled_SetPodStatusMap(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	s := lokiv1beta1.LokiStack{
+	s := lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
-		Spec: lokiv1beta1.LokiStackSpec{
-			Rules: &lokiv1beta1.RulesSpec{
+		Spec: lokiv1.LokiStackSpec{
+			Rules: &lokiv1.RulesSpec{
 				Enabled: true,
 			},
 		},
@@ -186,7 +186,7 @@ func TestSetComponentsStatus_WhenRulerEnabled_SetPodStatusMap(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -219,13 +219,13 @@ func TestSetComponentsStatus_WhenRulerEnabled_SetPodStatusMap(t *testing.T) {
 		return nil
 	}
 
-	expected := lokiv1beta1.PodStatusMap{
+	expected := lokiv1.PodStatusMap{
 		"Pending": []string{"pod-a"},
 		"Running": []string{"pod-b"},
 	}
 
 	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
-		stack := obj.(*lokiv1beta1.LokiStack)
+		stack := obj.(*lokiv1.LokiStack)
 		require.Equal(t, expected, stack.Status.Components.Ruler)
 		return nil
 	}
@@ -243,13 +243,13 @@ func TestSetComponentsStatus_WhenRulerNotEnabled_DoNothing(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	s := lokiv1beta1.LokiStack{
+	s := lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
-		Spec: lokiv1beta1.LokiStackSpec{
-			Rules: &lokiv1beta1.RulesSpec{
+		Spec: lokiv1.LokiStackSpec{
+			Rules: &lokiv1.RulesSpec{
 				Enabled: false,
 			},
 		},
@@ -262,7 +262,7 @@ func TestSetComponentsStatus_WhenRulerNotEnabled_DoNothing(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &s)
 			return nil
@@ -303,8 +303,8 @@ func TestSetComponentsStatus_WhenRulerNotEnabled_DoNothing(t *testing.T) {
 	}
 
 	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
-		stack := obj.(*lokiv1beta1.LokiStack)
-		require.Equal(t, stack.Status.Components.Ruler, lokiv1beta1.PodStatusMap{})
+		stack := obj.(*lokiv1.LokiStack)
+		require.Equal(t, stack.Status.Components.Ruler, lokiv1.PodStatusMap{})
 		return nil
 	}
 

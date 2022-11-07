@@ -69,13 +69,14 @@ func newASTMapperware(
 	next queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
-	limits logql.Limits,
+	limits Limits,
 ) *astMapperware {
 	return &astMapperware{
 		confs:   confs,
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:  limits,
 		next:    next,
-		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, limits, logger),
+		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics: metrics,
 	}
 }
@@ -83,6 +84,7 @@ func newASTMapperware(
 type astMapperware struct {
 	confs   ShardingConfigs
 	logger  log.Logger
+	limits  Limits
 	next    queryrangebase.Handler
 	ng      *logql.DownstreamEngine
 	metrics *logql.MapperMetrics
@@ -97,7 +99,25 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resolver, ok := shardResolverForConf(
+		ctx,
+		conf,
+		ast.ng.Opts().MaxLookBackPeriod,
+		ast.logger,
+		ast.limits.MaxQueryParallelism(userID),
+		r,
+		ast.next,
+	)
+	if !ok {
+		return ast.next.Do(ctx, r)
+	}
+
+	mapper := logql.NewShardMapper(resolver, ast.metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +149,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	default:
 		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
-	query := ast.ng.Query(params, parsed)
+	query := ast.ng.Query(ctx, params, parsed)
 
 	res, err := query.Exec(ctx)
 	if err != nil {
@@ -150,10 +170,16 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     toProtoMatrix(value.(loghttp.Matrix)),
 				},
+				Headers: res.Headers,
 			},
 			Statistics: res.Statistics,
 		}, nil
 	case logqlmodel.ValueTypeStreams:
+		respHeaders := make([]queryrangebase.PrometheusResponseHeader, 0, len(res.Headers))
+		for i := range res.Headers {
+			respHeaders = append(respHeaders, *res.Headers[i])
+		}
+
 		return &LokiResponse{
 			Status:     loghttp.QueryStatusSuccess,
 			Direction:  params.Direction(),
@@ -164,6 +190,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 				ResultType: loghttp.ResultTypeStream,
 				Result:     value.(loghttp.Streams).ToProto(),
 			},
+			Headers: respHeaders,
 		}, nil
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
@@ -174,6 +201,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 					ResultType: loghttp.ResultTypeVector,
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
+				Headers: res.Headers,
 			},
 		}, nil
 	default:
@@ -211,7 +239,7 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 
 func hasShards(confs ShardingConfigs) bool {
 	for _, conf := range confs {
-		if conf.RowShards > 0 {
+		if conf.RowShards > 0 || conf.IndexType == config.TSDBType {
 			return true
 		}
 	}
@@ -250,7 +278,7 @@ func (confs ShardingConfigs) GetConf(r queryrangebase.Request) (config.PeriodCon
 	}
 
 	// query doesn't have shard factor, so don't try to do AST mapping.
-	if conf.RowShards < 2 {
+	if conf.RowShards < 2 && conf.IndexType != config.TSDBType {
 		return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
 	}
 
@@ -304,10 +332,6 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
-		return ss.next.Do(ctx, r)
-	}
-
-	if conf.RowShards <= 1 {
 		return ss.next.Do(ctx, r)
 	}
 

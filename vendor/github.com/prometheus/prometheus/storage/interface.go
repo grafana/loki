@@ -20,16 +20,22 @@ import (
 
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 )
 
 // The errors exposed.
 var (
-	ErrNotFound                    = errors.New("not found")
-	ErrOutOfOrderSample            = errors.New("out of order sample")
+	ErrNotFound = errors.New("not found")
+	// ErrOutOfOrderSample is when out of order support is disabled and the sample is out of order.
+	ErrOutOfOrderSample = errors.New("out of order sample")
+	// ErrOutOfBounds is when out of order support is disabled and the sample is older than the min valid time for the append.
+	ErrOutOfBounds = errors.New("out of bounds")
+	// ErrTooOldSample is when out of order support is enabled but the sample is outside the time window allowed.
+	ErrTooOldSample = errors.New("too old sample")
+	// ErrDuplicateSampleForTimestamp is when the sample has same timestamp but different value.
 	ErrDuplicateSampleForTimestamp = errors.New("duplicate sample for timestamp")
-	ErrOutOfBounds                 = errors.New("out of bounds")
 	ErrOutOfOrderExemplar          = errors.New("out of order exemplar")
 	ErrDuplicateExemplar           = errors.New("duplicate exemplar")
 	ErrExemplarLabelLength         = fmt.Errorf("label length for exemplar exceeds maximum of %d UTF-8 characters", exemplar.ExemplarMaxLabelSetLength)
@@ -82,6 +88,15 @@ type Queryable interface {
 	Querier(ctx context.Context, mint, maxt int64) (Querier, error)
 }
 
+// A MockQueryable is used for testing purposes so that a mock Querier can be used.
+type MockQueryable struct {
+	MockQuerier Querier
+}
+
+func (q *MockQueryable) Querier(ctx context.Context, mint, maxt int64) (Querier, error) {
+	return q.MockQuerier, nil
+}
+
 // Querier provides querying access over time series data of a fixed time range.
 type Querier interface {
 	LabelQuerier
@@ -90,6 +105,27 @@ type Querier interface {
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
 	Select(sortSeries bool, hints *SelectHints, matchers ...*labels.Matcher) SeriesSet
+}
+
+// MockQuerier is used for test purposes to mock the selected series that is returned.
+type MockQuerier struct {
+	SelectMockFunction func(sortSeries bool, hints *SelectHints, matchers ...*labels.Matcher) SeriesSet
+}
+
+func (q *MockQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, Warnings, error) {
+	return nil, nil, nil
+}
+
+func (q *MockQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, Warnings, error) {
+	return nil, nil, nil
+}
+
+func (q *MockQuerier) Close() error {
+	return nil
+}
+
+func (q *MockQuerier) Select(sortSeries bool, hints *SelectHints, matchers ...*labels.Matcher) SeriesSet {
+	return q.SelectMockFunction(sortSeries, hints, matchers...)
 }
 
 // A ChunkQueryable handles queries against a storage.
@@ -192,6 +228,7 @@ type Appender interface {
 	// Appender has to be discarded after rollback.
 	Rollback() error
 	ExemplarAppender
+	MetadataUpdater
 }
 
 // GetRef is an extra interface on Appenders used by downstream projects
@@ -220,6 +257,18 @@ type ExemplarAppender interface {
 	AppendExemplar(ref SeriesRef, l labels.Labels, e exemplar.Exemplar) (SeriesRef, error)
 }
 
+// MetadataUpdater provides an interface for associating metadata to stored series.
+type MetadataUpdater interface {
+	// UpdateMetadata updates a metadata entry for the given series and labels.
+	// A series reference number is returned which can be used to modify the
+	// metadata of the given series in the same or later transactions.
+	// Returned reference numbers are ephemeral and may be rejected in calls
+	// to UpdateMetadata() at any point. If the series does not exist,
+	// UpdateMetadata returns an error.
+	// If the reference is 0 it must not be used for caching.
+	UpdateMetadata(ref SeriesRef, l labels.Labels, m metadata.Metadata) (SeriesRef, error)
+}
+
 // SeriesSet contains a set of series.
 type SeriesSet interface {
 	Next() bool
@@ -238,6 +287,20 @@ var emptySeriesSet = errSeriesSet{}
 // EmptySeriesSet returns a series set that's always empty.
 func EmptySeriesSet() SeriesSet {
 	return emptySeriesSet
+}
+
+type testSeriesSet struct {
+	series Series
+}
+
+func (s testSeriesSet) Next() bool         { return true }
+func (s testSeriesSet) At() Series         { return s.series }
+func (s testSeriesSet) Err() error         { return nil }
+func (s testSeriesSet) Warnings() Warnings { return nil }
+
+// TestSeriesSet returns a mock series set
+func TestSeriesSet(series Series) SeriesSet {
+	return testSeriesSet{series: series}
 }
 
 type errSeriesSet struct {
@@ -279,6 +342,29 @@ func ErrChunkSeriesSet(err error) ChunkSeriesSet {
 type Series interface {
 	Labels
 	SampleIterable
+}
+
+type mockSeries struct {
+	timestamps []int64
+	values     []float64
+	labelSet   []string
+}
+
+func (s mockSeries) Labels() labels.Labels {
+	return labels.FromStrings(s.labelSet...)
+}
+
+func (s mockSeries) Iterator() chunkenc.Iterator {
+	return chunkenc.MockSeriesIterator(s.timestamps, s.values)
+}
+
+// MockSeries returns a series with custom timestamps, values and labelSet.
+func MockSeries(timestamps []int64, values []float64, labelSet []string) Series {
+	return mockSeries{
+		timestamps: timestamps,
+		values:     values,
+		labelSet:   labelSet,
+	}
 }
 
 // ChunkSeriesSet contains a set of chunked series.

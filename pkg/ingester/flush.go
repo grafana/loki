@@ -139,11 +139,9 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		level.Debug(util_log.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
-
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
@@ -166,12 +164,15 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 		return nil
 	}
 
+	lbs := labels.String()
+	level.Info(util_log.Logger).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
+
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
 	err := i.flushChunks(ctx, fp, labels, chunks, chunkMtx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to flush chunks: %w, num_chunks: %d, labels: %s", err, len(chunks), lbs)
 	}
 
 	return nil
@@ -281,7 +282,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	// It's required by historical index stores so we keep it for now.
 	labelsBuilder := labels.NewBuilder(labelPairs)
 	labelsBuilder.Set(nameLabel, logsValue)
-	metric := labelsBuilder.Labels()
+	metric := labelsBuilder.Labels(nil)
 
 	sizePerTenant := i.metrics.chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := i.metrics.chunksPerTenant.WithLabelValues(userID)
@@ -308,8 +309,6 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return err
 		}
 
-		i.markChunkAsFlushed(cs[j], chunkMtx)
-
 		reason := func() string {
 			chunkMtx.Lock()
 			defer chunkMtx.Unlock()
@@ -318,6 +317,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		}()
 
 		i.reportFlushedChunkStatistics(&ch, c, sizePerTenant, countPerTenant, reason)
+		i.markChunkAsFlushed(cs[j], chunkMtx)
 	}
 
 	return nil

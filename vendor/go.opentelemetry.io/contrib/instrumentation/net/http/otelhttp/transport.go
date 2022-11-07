@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otelhttp
+package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -46,7 +46,7 @@ var _ http.RoundTripper = &Transport{}
 // starts a span and injects the span context into the outbound request headers.
 //
 // If the provided http.RoundTripper is nil, http.DefaultTransport will be used
-// as the base http.RoundTripper
+// as the base http.RoundTripper.
 func NewTransport(base http.RoundTripper, opts ...Option) *Transport {
 	if base == nil {
 		base = http.DefaultTransport
@@ -186,5 +186,8 @@ func (wb *wrappedBody) Read(b []byte) (int, error) {
 
 func (wb *wrappedBody) Close() error {
 	wb.span.End()
-	return wb.body.Close()
+	if wb.body != nil {
+		return wb.body.Close()
+	}
+	return nil
 }

@@ -8,5 +8,20 @@
 
     // The label used to differentiate between different nodes (i.e. servers).
     per_node_label: 'instance',
+
+    // The label used to differentiate between different clusters.
+    per_cluster_label: 'cluster',
+
+    // Enable dashboard and panels for Grafana Labs internal components.
+    internal_components: false,
+
+    // SSD related configuration for dashboards.
+    ssd: {
+      // Support Loki SSD mode on dashboards.
+      enabled: false,
+
+      // The prefix used to match the write and read pods on SSD mode.
+      pod_prefix_matcher: '(loki|enterprise-logs)',
+    },
   },
 }

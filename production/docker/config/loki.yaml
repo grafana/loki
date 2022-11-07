@@ -1,0 +1,106 @@
+auth_enabled: true
+
+http_prefix:
+
+server:
+  http_listen_address: 0.0.0.0
+  grpc_listen_address: 0.0.0.0
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  storage:
+    s3:
+      endpoint: minio:9000
+      insecure: true
+      bucketnames: loki-data
+      access_key_id: loki
+      secret_access_key: supersecret
+      s3forcepathstyle: true
+  compactor_address: http://loki-write:3100
+
+memberlist:
+  join_members: ["loki-read", "loki-write"]
+  dead_node_reclaim_time: 30s
+  gossip_to_dead_nodes_time: 15s
+  left_ingesters_timeout: 30s
+  bind_addr: ['0.0.0.0']
+  bind_port: 7946
+  gossip_interval: 2s
+
+ingester:
+  lifecycler:
+    join_after: 10s
+    observe_period: 5s
+    ring:
+      replication_factor: 3
+      kvstore:
+        store: memberlist
+    final_sleep: 0s
+  chunk_idle_period: 1m
+  wal:
+    enabled: true
+    dir: /loki/wal
+  max_chunk_age: 1m
+  chunk_retain_period: 30s
+  chunk_encoding: snappy
+  chunk_target_size: 1.572864e+06
+  chunk_block_size: 262144
+  flush_op_timeout: 10s
+
+schema_config:
+  configs:
+  - from: 2020-08-01
+    store: boltdb-shipper
+    object_store: s3
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+
+storage_config:
+  boltdb_shipper:
+    shared_store: s3
+    active_index_directory: /tmp/index
+    cache_location: /tmp/boltdb-cache
+
+
+limits_config:
+  max_cache_freshness_per_query: '10m'
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 30m
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+  # parallelize queries in 15min intervals
+  split_queries_by_interval: 15m
+
+chunk_store_config:
+  max_look_back_period: 336h
+
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 336h
+
+query_range:
+  # make queries more cache-able by aligning them with their step intervals
+  align_queries_with_step: true
+  max_retries: 5
+  parallelise_shardable_queries: true
+  cache_results: true
+
+frontend:
+  log_queries_longer_than: 5s
+  compress_responses: true
+  max_outstanding_per_tenant: 2048
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 1024
+
+querier:
+  query_ingesters_within: 2h
+
+compactor:
+  working_directory: /tmp/compactor
+  shared_store: s3

@@ -2855,6 +2855,10 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", 1, 20),
 		},
 		{
+			in:  `vector(abc)`,
+			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8),
+		},
+		{
 			in: `{app="foo"}
 					# |= "bar"
 					| json`,
@@ -2954,15 +2958,33 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | json response_code, api_key="request.headers[\"X-API-KEY\"]"`,
+			in: `{app="foo"} | json response_code, api_key="request.headers[\"X-API-KEY\"]", layer7_something_specific="layer7_something_specific"`,
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
 					newJSONExpressionParser([]log.JSONExpression{
 						log.NewJSONExpr("response_code", `response_code`),
 						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+						log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
 					}),
 				},
+			},
+		},
+		{
+			in: `count_over_time({ foo ="bar" } | json layer7_something_specific="layer7_something_specific" [12m])`,
+			exp: &RangeAggregationExpr{
+				Left: &LogRange{
+					Left: &PipelineExpr{
+						MultiStages: MultiStageExpr{
+							newJSONExpressionParser([]log.JSONExpression{
+								log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+							}),
+						},
+						Left: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					},
+					Interval: 12 * time.Minute,
+				},
+				Operation: "count_over_time",
 			},
 		},
 	} {
@@ -3249,6 +3271,30 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			_, err := ParseLogSelector(tc.in, true)
 			require.Equal(t, tc.err, err)
+		})
+	}
+}
+
+func TestParseLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc   string
+		input  string
+		output labels.Labels
+	}{
+		{
+			desc:   "basic",
+			input:  `{job="foo"}`,
+			output: []labels.Label{{Name: "job", Value: "foo"}},
+		},
+		{
+			desc:   "strip empty label value",
+			input:  `{job="foo", bar=""}`,
+			output: []labels.Label{{Name: "job", Value: "foo"}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, _ := ParseLabels(tc.input)
+			require.Equal(t, tc.output, got)
 		})
 	}
 }

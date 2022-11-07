@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"strings"
 	"time"
@@ -190,6 +189,10 @@ func (l *limiter) MaxQuerySeries(userID string) int {
 	return l.n
 }
 
+func (l *limiter) QueryTimeout(userID string) time.Duration {
+	return time.Minute * 5
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels
@@ -218,7 +221,7 @@ func newFileIterator(
 ) (iter.EntryIterator, error) {
 
 	lr := io.LimitReader(r, defaultMaxFileSize)
-	b, err := ioutil.ReadAll(lr)
+	b, err := io.ReadAll(lr)
 	if err != nil {
 		return nil, err
 	}

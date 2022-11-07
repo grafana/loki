@@ -6,7 +6,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
@@ -19,13 +19,13 @@ import (
 
 // GetTenantSecrets returns the list to gateway tenant secrets for a tenant mode.
 // For modes static and dynamic the secrets are fetched from external provided
-// secrets. For mode openshift-logging a secret per default tenants are created.
+// secrets. For modes openshift-logging and openshift-network a secret per default tenants are created.
 // All secrets live in the same namespace as the lokistack request.
 func GetTenantSecrets(
 	ctx context.Context,
 	k k8s.Client,
 	req ctrl.Request,
-	stack *lokiv1beta1.LokiStack,
+	stack *lokiv1.LokiStack,
 ) ([]*manifests.TenantSecrets, error) {
 	var (
 		tenantSecrets []*manifests.TenantSecrets
@@ -38,7 +38,7 @@ func GetTenantSecrets(
 			if apierrors.IsNotFound(err) {
 				return nil, &status.DegradedError{
 					Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
-					Reason:  lokiv1beta1.ReasonMissingGatewayTenantSecret,
+					Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
 					Requeue: true,
 				}
 			}
@@ -51,7 +51,7 @@ func GetTenantSecrets(
 		if err != nil {
 			return nil, &status.DegradedError{
 				Message: "Invalid gateway tenant secret contents",
-				Reason:  lokiv1beta1.ReasonInvalidGatewayTenantSecret,
+				Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
 				Requeue: true,
 			}
 		}
@@ -69,13 +69,7 @@ func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecret
 		return nil, kverrors.New("missing clientID field", "field", "clientID")
 	}
 	clientSecret := s.Data["clientSecret"]
-	if len(clientSecret) == 0 {
-		return nil, kverrors.New("missing clientSecret field", "field", "clientSecret")
-	}
 	issuerCAPath := s.Data["issuerCAPath"]
-	if len(issuerCAPath) == 0 {
-		return nil, kverrors.New("missing issuerCAPath field", "field", "issuerCAPath")
-	}
 
 	return &manifests.TenantSecrets{
 		TenantName:   tenantName,

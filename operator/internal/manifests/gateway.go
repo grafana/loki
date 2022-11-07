@@ -4,10 +4,13 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"path"
+	"regexp"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,8 +23,10 @@ import (
 )
 
 const (
-	tlsMetricsSercetVolume = "tls-metrics-secret"
+	tlsSecretVolume = "tls-secret"
 )
+
+var logsEndpointRe = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
@@ -31,6 +36,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	}
 
 	dpl := NewGatewayDeployment(opts, sha1C)
+	sa := NewServiceAccount(opts)
+	saToken := NewServiceAccountTokenSecret(opts)
 	svc := NewGatewayHTTPService(opts)
 
 	ing, err := NewGatewayIngress(opts)
@@ -38,27 +45,42 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	objs := []client.Object{cm, dpl, svc, ing}
+	objs := []client.Object{cm, dpl, sa, saToken, svc, ing}
 
-	if opts.Flags.EnableTLSServiceMonitorConfig {
+	minTLSVersion := opts.TLSProfile.MinTLSVersion
+	ciphersList := opts.TLSProfile.Ciphers
+	ciphers := strings.Join(ciphersList, `,`)
+
+	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
+		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Gates.HTTPEncryption {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
-		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName); err != nil {
+		serverCAName := gatewaySigningCABundleName(GatewayName(opts.Name))
+		upstreamCAName := signingCABundleName(opts.Name)
+		upstreamClientName := gatewayClientSecretName(opts.Name)
+		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureDeploymentForMode(dpl, mode, opts.Flags); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers); err != nil {
 			return nil, err
 		}
 
-		if err := configureServiceForMode(&svc.Spec, mode); err != nil {
+		if err := configureGatewayServiceForMode(&svc.Spec, mode); err != nil {
 			return nil, err
 		}
 
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
+
+	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
 
 	return objs, nil
 }
@@ -66,6 +88,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		ServiceAccountName: GatewayName(opts.Name),
+		Affinity:           defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -177,7 +201,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	}
 
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := commonAnnotations(sha1C)
+	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -211,8 +235,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 // NewGatewayHTTPService creates a k8s service for the lokistack-gateway HTTP endpoint
 func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -221,8 +244,8 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -235,7 +258,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 					Port: gatewayInternalPort,
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -284,6 +307,46 @@ func NewGatewayIngress(opts Options) (*networkingv1.Ingress, error) {
 			},
 		},
 	}, nil
+}
+
+// NewServiceAccount returns a k8s object for the LokiStack Gateway
+// serviceaccount.
+func NewServiceAccount(opts Options) client.Object {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	return &corev1.ServiceAccount{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ServiceAccount",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      GatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		AutomountServiceAccountToken: pointer.Bool(true),
+	}
+}
+
+// NewServiceAccountTokenSecret returns a k8s object for the LokiStack
+// Gateway secret. This secret represents the ServiceAccountToken.
+func NewServiceAccountTokenSecret(opts Options) client.Object {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+
+	return &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				corev1.ServiceAccountNameKey: GatewayName(opts.Name),
+			},
+			Labels:    l,
+			Name:      gatewayTokenSecretName(GatewayName(opts.Name)),
+			Namespace: opts.Namespace,
+		},
+		Type: corev1.SecretTypeServiceAccountToken,
+	}
 }
 
 // gatewayConfigMap creates a configMap for rbac.yaml and tenants.yaml
@@ -340,7 +403,12 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	}
 }
 
-func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) error {
+func configureGatewayServerPKI(
+	podSpec *corev1.PodSpec,
+	namespace, serviceName, serverCAName string,
+	upstreamCAName, upstreamClientName string,
+	minTLSVersion, ciphers string,
+) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
 		if c.Name == gatewayContainerName {
@@ -349,63 +417,150 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 		}
 	}
 
-	secretName := signingServiceSecretName(serviceName)
-	certFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayCertFile)
-	keyFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayKeyFile)
+	gwContainer := podSpec.Containers[gwIndex].DeepCopy()
+	gwArgs := gwContainer.Args
+	gwVolumes := podSpec.Volumes
 
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: tlsMetricsSercetVolume,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+	for i, a := range gwArgs {
+		if strings.HasPrefix(a, "--web.healthchecks.url=") {
+			gwArgs[i] = fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort)
+		}
+
+		if logsEndpointRe.MatchString(a) {
+			gwArgs[i] = strings.Replace(a, "http", "https", 1)
+		}
+	}
+
+	serverName := fqdn(serviceName, namespace)
+	gwArgs = append(gwArgs,
+		"--tls.client-auth-type=NoClientCert",
+		"--tls.min-version=VersionTLS12",
+		fmt.Sprintf("--tls.server.cert-file=%s", gatewayServerHTTPTLSCert()),
+		fmt.Sprintf("--tls.server.key-file=%s", gatewayServerHTTPTLSKey()),
+		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", gatewaySigningCAPath()),
+		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName),
+		fmt.Sprintf("--tls.internal.server.cert-file=%s", gatewayServerHTTPTLSCert()),
+		fmt.Sprintf("--tls.internal.server.key-file=%s", gatewayServerHTTPTLSKey()),
+		fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
+		fmt.Sprintf("--tls.cipher-suites=%s", ciphers),
+		fmt.Sprintf("--logs.tls.ca-file=%s", gatewayUpstreamCAPath()),
+		fmt.Sprintf("--logs.tls.cert-file=%s", gatewayUpstreamHTTPTLSCert()),
+		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
+	)
+
+	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.Args = gwArgs
+
+	gwVolumes = append(gwVolumes,
+		corev1.Volume{
+			Name: tlsSecretVolume,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: serviceName,
+				},
+			},
+		},
+		corev1.Volume{
+			Name: upstreamClientName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: upstreamClientName,
+				},
+			},
+		},
+		corev1.Volume{
+			Name: upstreamCAName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: upstreamCAName,
 					},
 				},
 			},
 		},
-	}
-	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      tlsMetricsSercetVolume,
-				ReadOnly:  true,
-				MountPath: gateway.LokiGatewayTLSDir,
+		corev1.Volume{
+			Name: serverCAName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: serverCAName,
+					},
+				},
 			},
 		},
+	)
+
+	gwContainer.VolumeMounts = append(
+		gwContainer.VolumeMounts,
+		corev1.VolumeMount{
+			Name:      tlsSecretVolume,
+			ReadOnly:  true,
+			MountPath: gatewayServerHTTPTLSDir(),
+		},
+		corev1.VolumeMount{
+			Name:      upstreamClientName,
+			ReadOnly:  true,
+			MountPath: gatewayUpstreamHTTPTLSDir(),
+		},
+		corev1.VolumeMount{
+			Name:      upstreamCAName,
+			ReadOnly:  true,
+			MountPath: gatewayUpstreamCADir(),
+		},
+		corev1.VolumeMount{
+			Name:      serverCAName,
+			ReadOnly:  true,
+			MountPath: gatewaySigningCADir(),
+		},
+	)
+
+	p := corev1.PodSpec{
+		Containers: []corev1.Container{
+			*gwContainer,
+		},
+		Volumes: gwVolumes,
+	}
+
+	if err := mergo.Merge(podSpec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge server pki into container spec ")
+	}
+
+	return nil
+}
+
+func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string) error {
+	var gwIndex int
+	for i, c := range podSpec.Containers {
+		if c.Name == gatewayContainerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
 		Args: []string{
-			fmt.Sprintf("--tls.internal.server.cert-file=%s", certFile),
-			fmt.Sprintf("--tls.internal.server.key-file=%s", keyFile),
-		},
-	}
-	uriSchemeContainerSpec := corev1.Container{
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
+			fmt.Sprintf("--logs.rules.endpoint=http://%s:%d", fqdn(serviceNameRulerHTTP(stackName), stackNs), httpPort),
+			"--logs.rules.read-only=true",
 		},
 	}
 
-	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[gwIndex], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
+	if err := mergo.Merge(&podSpec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
 	return nil
+}
+
+func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
+	podSpec := d.Spec.Template.Spec
+
+	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
+	for i := range podSpec.Containers {
+		podSpec.Containers[i].SecurityContext = containerSecurityContext()
+	}
+
+	d.Spec.Template.Spec = podSpec
 }

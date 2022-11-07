@@ -2,7 +2,6 @@ package local
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -27,7 +26,7 @@ func (f *fixture) Clients() (
 	indexClient index.Client, chunkClient client.Client, tableClient index.TableClient,
 	schemaConfig config.SchemaConfig, closer io.Closer, err error,
 ) {
-	f.dirname, err = ioutil.TempDir(os.TempDir(), "boltdb")
+	f.dirname, err = os.MkdirTemp(os.TempDir(), "boltdb")
 	if err != nil {
 		return
 	}

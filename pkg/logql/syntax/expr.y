@@ -23,6 +23,8 @@ import (
   ConvOp                  string
   Selector                []*labels.Matcher
   VectorAggregationExpr   SampleExpr
+  VectorExpr              *VectorExpr
+  Vector                  string
   MetricExpr              SampleExpr
   VectorOp                string
   FilterOp                string
@@ -75,6 +77,8 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <VectorExpr>            vectorExpr
+%type <Vector>                vector
 %type <FilterOp>              filterOp
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
@@ -107,10 +111,10 @@ import (
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
-                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -135,6 +139,7 @@ metricExpr:
     | binOpExpr                                     { $$ = $1 }
     | literalExpr                                   { $$ = $1 }
     | labelReplaceExpr                              { $$ = $1 }
+    | vectorExpr                                    { $$ = $1 }
     | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
     ;
 
@@ -442,6 +447,13 @@ literalExpr:
            | SUB NUMBER   { $$ = mustNewLiteralExpr( $2, true ) }
            ;
 
+vectorExpr:
+    vector OPEN_PARENTHESIS NUMBER CLOSE_PARENTHESIS       { $$ = NewVectorExpr( $3 )  }
+    ;
+vector:
+    VECTOR  { $$ = OpTypeVector }
+    ;
+
 vectorOp:
         SUM     { $$ = OpTypeSum }
       | AVG     { $$ = OpTypeAvg }
@@ -457,6 +469,7 @@ vectorOp:
 rangeOp:
       COUNT_OVER_TIME    { $$ = OpRangeTypeCount }
     | RATE               { $$ = OpRangeTypeRate }
+    | RATE_COUNTER       { $$ = OpRangeTypeRateCounter }
     | BYTES_OVER_TIME    { $$ = OpRangeTypeBytes }
     | BYTES_RATE         { $$ = OpRangeTypeBytesRate }
     | AVG_OVER_TIME      { $$ = OpRangeTypeAvg }

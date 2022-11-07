@@ -25,6 +25,7 @@ import (
 // Config is the configuration for the queryrange tripperware
 type Config struct {
 	queryrangebase.Config `yaml:",inline"`
+	Transformer           UserIDTransformer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -44,6 +45,7 @@ func NewTripperware(
 	limits Limits,
 	schema config.SchemaConfig,
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, Stopper, error) {
 	metrics := NewMetrics(registerer)
@@ -52,6 +54,7 @@ func NewTripperware(
 		c   cache.Cache
 		err error
 	)
+
 	if cfg.CacheResults {
 		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
 		if err != nil {
@@ -63,7 +66,7 @@ func NewTripperware(
 	}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, PrometheusExtractor{}, metrics, registerer)
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -138,16 +141,13 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		case syntax.SampleExpr:
 			return r.metric.RoundTrip(req)
 		case syntax.LogSelectorExpr:
-			expr, err := transformRegexQuery(req, e)
+			// Note, this function can mutate the request
+			_, err := transformRegexQuery(req, e)
 			if err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
-			}
-			// Only filter expressions are query sharded
-			if !expr.HasFilter() {
-				return r.next.RoundTrip(req)
 			}
 			return r.log.RoundTrip(req)
 
@@ -225,6 +225,7 @@ const (
 	QueryRangeOp   = "query_range"
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
+	IndexStatsOp   = "index_stats"
 )
 
 func getOperation(path string) string {
@@ -237,12 +238,14 @@ func getOperation(path string) string {
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
 		return InstantQueryOp
+	case path == "/loki/api/v1/index/stats":
+		return IndexStatsOp
 	default:
 		return ""
 	}
 }
 
-// NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.
+// NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
 func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
@@ -267,6 +270,7 @@ func NewLogFilterTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
+			cfg.Transformer,
 			metrics.LogResultCacheMetrics,
 		)
 		queryRangeMiddleware = append(
@@ -392,6 +396,7 @@ func NewMetricTripperware(
 	codec queryrangebase.Codec,
 	c cache.Cache,
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
 	registerer prometheus.Registerer,
@@ -411,11 +416,12 @@ func NewMetricTripperware(
 		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, metrics.SplitByMetrics),
 	)
 
+	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := queryrangebase.NewResultsCacheMiddleware(
 			log,
 			c,
-			cacheKeyLimits{limits},
+			cacheKey,
 			limits,
 			codec,
 			extractor,
@@ -423,7 +429,8 @@ func NewMetricTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
-			registerer,
+			retentionEnabled,
+			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
 			return nil, err

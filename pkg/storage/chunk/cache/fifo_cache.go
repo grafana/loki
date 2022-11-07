@@ -34,7 +34,7 @@ const (
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
 	MaxSizeBytes string        `yaml:"max_size_bytes"`
-	MaxSizeItems int           `yaml:"max_size_items"`
+	MaxSizeItems int           `yaml:"max_size_items"` // deprecated
 	TTL          time.Duration `yaml:"ttl"`
 
 	DeprecatedValidity time.Duration `yaml:"validity"`
@@ -46,7 +46,7 @@ type FifoCacheConfig struct {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "1GB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
-	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
+	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"deprecated: Maximum number of entries in the cache.")
 	f.DurationVar(&cfg.TTL, prefix+"fifocache.ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
 
 	f.DurationVar(&cfg.DeprecatedValidity, prefix+"fifocache.duration", 0, "Deprecated (use ttl instead): "+description+"The expiry duration for the cache.")
@@ -125,7 +125,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 
 	if cfg.DeprecatedValidity > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.interval, use fifocache.ttl instead", "cache", name)
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.duration, use fifocache.ttl instead", "cache", name)
 		cfg.TTL = cfg.DeprecatedValidity
 	}
 

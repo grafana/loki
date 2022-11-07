@@ -45,6 +45,8 @@ type HealthCheck struct {
 	Type        string
 	Namespace   string `json:",omitempty"`
 	Partition   string `json:",omitempty"`
+	ExposedPort int
+	PeerName    string `json:",omitempty"`
 
 	Definition HealthCheckDefinition
 
@@ -62,6 +64,9 @@ type HealthCheckDefinition struct {
 	TLSServerName                          string
 	TLSSkipVerify                          bool
 	TCP                                    string
+	UDP                                    string
+	GRPC                                   string
+	GRPCUseTLS                             bool
 	IntervalDuration                       time.Duration `json:"-"`
 	TimeoutDuration                        time.Duration `json:"-"`
 	DeregisterCriticalServiceAfterDuration time.Duration `json:"-"`
@@ -173,8 +178,7 @@ type HealthChecks []*HealthCheck
 // attached, this function determines the best representative of the status as
 // as single string using the following heuristic:
 //
-//  maintenance > critical > warning > passing
-//
+//	maintenance > critical > warning > passing
 func (c HealthChecks) AggregatedStatus() string {
 	var passing, warning, critical, maintenance bool
 	for _, check := range c {

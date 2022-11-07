@@ -5,6 +5,22 @@ metadata:
     alm-examples: |-
       [
         {
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "LokiStack",
+          "metadata": {
+            "name": "lokistack-sample"
+          },
+          "spec": {
+            "size": "1x.small",
+            "storage": {
+              "secret": {
+                "name": "test"
+              }
+            },
+            "storageClassName": "standard"
+          }
+        },
+        {
           "apiVersion": "loki.grafana.com/v1beta1",
           "kind": "AlertingRule",
           "metadata": {
@@ -42,22 +58,6 @@ metadata:
               }
             ],
             "tenantID": "test-tenant"
-          }
-        },
-        {
-          "apiVersion": "loki.grafana.com/v1beta1",
-          "kind": "LokiStack",
-          "metadata": {
-            "name": "lokistack-sample"
-          },
-          "spec": {
-            "size": "1x.small",
-            "storage": {
-              "secret": {
-                "name": "test"
-              }
-            },
-            "storageClassName": "standard"
           }
         },
         {
@@ -154,14 +154,16 @@ metadata:
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
       ### Loki Operator Namespace
-      The Loki Operator must be deployed to the global operator group namespace `openshift-logging`.
+      The Loki Operator must be deployed to the global operator group namespace `openshift-operators-redhat`.
       ### Memory Considerations
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=5.4.0-0 <5.5.0'
+    olm.skipRange: '>=5.4.0-0 <5.6.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
+    operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift
+      Platform Plus"]'
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     support: AOS Cluster Logging
@@ -183,7 +185,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for alerting rules.
         displayName: Groups
@@ -335,6 +337,10 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Timeout when querying ingesters or storage during the execution
+          of a query request.
+        displayName: Query Timeout
+        path: limits.global.queries.queryTimeout
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
@@ -398,6 +404,10 @@ spec:
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Timeout when querying ingesters or storage during the execution
+          of a query request.
+        displayName: Query Timeout
+        path: limits.tenants.queries.queryTimeout
       - description: ManagementState defines if the CR should be managed by the operator
           or not. Default is managed.
         displayName: Management State
@@ -439,6 +449,12 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
+      - description: Version for writing and reading logs.
+        displayName: Version
+        path: storage.schemas[0].version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:v11
+        - urn:alm:descriptor:com.tectonic.ui:select:v12
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name
@@ -456,6 +472,12 @@ spec:
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Key
+        path: storage.tls.caKey
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: CA is the name of a ConfigMap containing a CA certificate. It
           needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
@@ -596,6 +618,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:static
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
+        - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment
@@ -646,7 +669,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
     - description: RecordingRule is the Schema for the recordingrules API
       displayName: RecordingRule
       kind: RecordingRule
@@ -654,7 +677,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for recording rules.
         displayName: Groups
@@ -702,7 +725,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: Defines alert manager configuration to notify on firing alerts.
         displayName: Alert Manager Configuration
@@ -763,6 +786,45 @@ spec:
       - description: HTTP timeout duration when sending notifications to the Alertmanager.
         displayName: Timeout
         path: alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: alertmanager.relabelConfigs[0].targetLabel
       - description: Interval on how frequently to evaluate rules.
         displayName: Evaluation Interval
         path: evaluationInterval
@@ -902,7 +964,7 @@ spec:
     The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
     ## Prerequisites and Requirements
     ### Loki Operator Namespace
-    The Loki Operator must be deployed to the global operator group namespace `openshift-logging`.
+    The Loki Operator must be deployed to the global operator group namespace `openshift-operators-redhat`.
     ### Memory Considerations
     Loki is a memory intensive application.  The initial
     set of OCP nodes may not be large enough to support the Loki cluster.  Additional OCP nodes must be added
@@ -922,6 +984,7 @@ spec:
           - endpoints
           - nodes
           - pods
+          - secrets
           - serviceaccounts
           - services
           verbs:
@@ -964,6 +1027,7 @@ spec:
         - apiGroups:
           - config.openshift.io
           resources:
+          - apiservers
           - dnses
           verbs:
           - get
@@ -1084,10 +1148,17 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - alertmanagers
+          verbs:
+          - patch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
           - prometheusrules
           - servicemonitors
           verbs:
           - create
+          - delete
           - get
           - list
           - update
@@ -1123,6 +1194,7 @@ spec:
           - routes
           verbs:
           - create
+          - delete
           - get
           - list
           - update
@@ -1170,17 +1242,12 @@ spec:
             spec:
               containers:
               - args:
-                - --with-lokistack-gateway
-                - --with-lokistack-gateway-route
-                - --with-cert-signing-service
-                - --with-service-monitors
-                - --with-tls-service-monitors
-                - --with-prometheus-alerts
+                - --config=controller_manager_config.yaml
                 command:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.5.0
+                  value: quay.io/openshift-logging/loki:v2.7.0-pre
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1209,16 +1276,24 @@ spec:
                 resources: {}
                 securityContext:
                   allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
                 volumeMounts:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: webhook-cert
                   readOnly: true
+                - mountPath: /controller_manager_config.yaml
+                  name: manager-config
+                  subPath: controller_manager_config.yaml
               - args:
                 - --secure-listen-address=0.0.0.0:8443
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
                 - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
+                - --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_CBC_SHA256
+                - --tls-min-version=VersionTLS12
                 - --v=0
                 image: quay.io/openshift/origin-kube-rbac-proxy:latest
                 name: kube-rbac-proxy
@@ -1226,17 +1301,27 @@ spec:
                 - containerPort: 8443
                   name: https
                 resources: {}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
               nodeSelector:
                 kubernetes.io/os: linux
+              securityContext:
+                runAsNonRoot: true
               terminationGracePeriodSeconds: 10
               volumes:
               - name: webhook-cert
                 secret:
                   defaultMode: 420
                   secretName: loki-operator-webhook-service
+              - configMap:
+                  name: loki-operator-manager-config
+                name: manager-config
               - name: loki-operator-metrics-cert
                 secret:
                   defaultMode: 420
@@ -1268,7 +1353,7 @@ spec:
         serviceAccountName: default
     strategy: deployment
   installModes:
-  - supported: true
+  - supported: false
     type: OwnNamespace
   - supported: false
     type: SingleNamespace
@@ -1290,7 +1375,7 @@ spec:
   provider:
     name: Grafana.com
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.5.0
+  - image: quay.io/openshift-logging/loki:v2.7.0-pre
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
@@ -1300,10 +1385,22 @@ spec:
   webhookdefinitions:
   - admissionReviewVersions:
     - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - lokistacks.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: clokistacks.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: valertingrule.kb.io
+    generateName: valertingrule.loki.grafana.com
     rules:
     - apiGroups:
       - loki.grafana.com
@@ -1323,7 +1420,27 @@ spec:
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: vrecordingrule.kb.io
+    generateName: vlokistack.loki.grafana.com
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - lokistacks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-lokistack
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vrecordingrule.loki.grafana.com
     rules:
     - apiGroups:
       - loki.grafana.com
