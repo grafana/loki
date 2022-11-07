@@ -68,7 +68,6 @@ var tokens = map[string]int{
 	// fmt
 	OpFmtLabel:   LABEL_FMT,
 	OpFmtLine:    LINE_FMT,
-	OpDecolorize: DECOLORIZE,
 
 	// filter functions
 	OpFilterIP:   IP,
