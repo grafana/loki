@@ -11,9 +11,12 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-## 3.3.1
+## 3.3.2
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
+
+## 3.3.1
+
 - [BUGFIX] Fix invalid ruler config when filesystem storage is being used
 
 ## 3.3.0
