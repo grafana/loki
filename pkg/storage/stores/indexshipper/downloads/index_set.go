@@ -308,7 +308,7 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 	// it means the cache is not valid anymore since compaction would have happened after last index list cache refresh.
 	// Let us return error to ask the caller to re-run the sync after the list cache refresh.
 	if !bypassListCache && len(downloadedFiles) == 0 && len(toDownload) > 0 {
-		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownload)
+		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", fmt.Sprint(toDownload))
 		return errIndexListCacheTooStale
 	}
 
