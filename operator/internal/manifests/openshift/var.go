@@ -15,8 +15,6 @@ var (
 	// GatewayOPAInternalPortName is the HTTP container metrics port name of the OpenPolicyAgent sidecar.
 	GatewayOPAInternalPortName = "opa-metrics"
 
-	bearerTokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-
 	cookieSecretLength = 32
 	allowedRunes       = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
@@ -65,10 +63,17 @@ func rulerServiceAccountName(opts Options) string {
 }
 
 func serviceCABundleName(opts Options) string {
-	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.LokiStackName)
+	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.GatewayName)
 }
 
-func serviceAccountAnnotations(opts Options) map[string]string {
+func alertmanagerCABundleName(opts Options) string {
+	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.RulerName)
+}
+
+// ServiceAccountAnnotations returns a map of OpenShift specific routes for ServiceAccounts.
+// Specifically the serviceacount will be annotated for each tenant with the OAuthRedirectReference
+// to make the serviceaccount a valid oauth-client.
+func ServiceAccountAnnotations(opts Options) map[string]string {
 	a := make(map[string]string, len(opts.Authentication))
 	for _, auth := range opts.Authentication {
 		key := fmt.Sprintf("serviceaccounts.openshift.io/oauth-redirectreference.%s", auth.TenantName)
