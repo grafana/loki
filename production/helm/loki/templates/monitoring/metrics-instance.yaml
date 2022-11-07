@@ -1,4 +1,4 @@
-{{- if .Values.monitoring.serviceMonitor.enabled }}
+{{- if and .Values.monitoring.serviceMonitor.enabled .Values.monitoring.serviceMonitor.metricsInstance.enabled  }}
 {{- with .Values.monitoring.serviceMonitor.metricsInstance }}
 apiVersion: monitoring.grafana.com/v1alpha1
 kind: MetricsInstance

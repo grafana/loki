@@ -289,66 +289,96 @@ the Grafana Explore table view), then you should use the "instant-query" command
 instead.
 
 Flags:
-      --help               Show context-sensitive help (also try --help-long and
-                           --help-man).
-      --version            Show application version.
-  -q, --quiet              Suppress query metadata
-      --stats              Show query statistics
-  -o, --output=default     Specify output mode [default, raw, jsonl]. raw
-                           suppresses log labels and timestamp.
-  -z, --timezone=Local     Specify the timezone to use when formatting output
-                           timestamps [Local, UTC]
-      --cpuprofile=""      Specify the location for writing a CPU profile.
-      --memprofile=""      Specify the location for writing a memory profile.
-      --stdin              Take input logs from stdin
-      --addr="http://localhost:3100"
-                           Server address. Can also be set using LOKI_ADDR env
-                           var.
-      --username=""        Username for HTTP basic auth. Can also be set using
-                           LOKI_USERNAME env var.
-      --password=""        Password for HTTP basic auth. Can also be set using
-                           LOKI_PASSWORD env var.
-      --ca-cert=""         Path to the server Certificate Authority. Can also be
-                           set using LOKI_CA_CERT_PATH env var.
-      --tls-skip-verify    Server certificate TLS skip verify.
-      --cert=""            Path to the client certificate. Can also be set using
-                           LOKI_CLIENT_CERT_PATH env var.
-      --key=""             Path to the client certificate key. Can also be set
-                           using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""          adds X-Scope-OrgID to API requests for representing
-                           tenant ID. Useful for requesting tenant data when
-                           bypassing an auth gateway.
-      --limit=30           Limit on number of entries to print.
-      --since=1h           Lookback window.
-      --from=FROM          Start looking for logs at this absolute time
-                           (inclusive)
-      --to=TO              Stop looking for logs at this absolute time
-                           (exclusive)
-      --step=STEP          Query resolution step width, for metric queries.
-                           Evaluate the query at the specified step over the
-                           time range.
-      --interval=INTERVAL  Query interval, for log queries. Return entries at
-                           the specified interval, ignoring those between.
-                           **This parameter is experimental, please see Issue
-                           1779**
-      --batch=1000         Query batch size to use until 'limit' is reached
-      --forward            Scan forwards through logs.
-      --no-labels          Do not print any labels
-      --exclude-label=EXCLUDE-LABEL ...
-                           Exclude labels given the provided key during output.
-      --include-label=INCLUDE-LABEL ...
-                           Include labels given the provided key during output.
-      --labels-length=0    Set a fixed padding to labels
-      --store-config=""    Execute the current query using a configured storage
-                           from a given Loki configuration file.
+      --help                  Show context-sensitive help (also try --help-long
+                              and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw
+                              suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output
+                              timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"  
+                              Server address. Can also be set using LOKI_ADDR
+                              env var.
+      --username=""           Username for HTTP basic auth. Can also be set
+                              using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set
+                              using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also
+                              be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be
+                              set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set
+                              using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be
+                              set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for
+                              representing tenant ID. Useful for requesting
+                              tenant data when bypassing an auth gateway. Can
+                              also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests.
+                              This header value will be part of `metrics.go`
+                              statistics. Useful for tracking the query. Can
+                              also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for
+                              authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for
+                              authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an
+                              error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be
+                              set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be
+                              set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"  
+                              The authorization header used. Can also be set
+                              using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making
+                              requests. Can also be set using
+                              LOKI_HTTP_PROXY_URL env var.
+      --limit=30              Limit on number of entries to print.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for logs at this absolute time
+                              (inclusive)
+      --to=TO                 Stop looking for logs at this absolute time
+                              (exclusive)
+      --step=STEP             Query resolution step width, for metric queries.
+                              Evaluate the query at the specified step over the
+                              time range.
+      --interval=INTERVAL     Query interval, for log queries. Return entries at
+                              the specified interval, ignoring those between.
+                              **This parameter is experimental, please see Issue
+                              1779**
+      --batch=1000            Query batch size to use until 'limit' is reached
+      --forward               Scan forwards through logs.
+      --no-labels             Do not print any labels
+      --exclude-label=EXCLUDE-LABEL ...  
+                              Exclude labels given the provided key during
+                              output.
+      --include-label=INCLUDE-LABEL ...  
+                              Include labels given the provided key during
+                              output.
+      --labels-length=0       Set a fixed padding to labels
+      --store-config=""       Execute the current query using a configured
+                              storage from a given Loki configuration file.
+      --remote-schema         Execute the current query using a remote schema
+                              retrieved using the configured storage in the
+                              given Loki configuration file.
       --remote-schema      Execute the current query using a remote schema
                            retrieved using the configured storage in the given
                            Loki configuration file.
-      --colored-output     Show output with colored labels
-  -t, --tail               Tail the logs
-  -f, --follow             Alias for --tail
-      --delay-for=0        Delay in tailing by number of seconds to accumulate
-                           logs for re-ordering
+      --colored-output        Show output with colored labels
+  -t, --tail                  Tail the logs
+  -f, --follow                Alias for --tail
+      --delay-for=0           Delay in tailing by number of seconds to
+                              accumulate logs for re-ordering
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'

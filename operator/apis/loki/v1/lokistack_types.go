@@ -761,6 +761,8 @@ const (
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
+	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
+	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
@@ -870,7 +872,9 @@ type LokiStackStatus struct {
 //
 // +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Ingress,v1},{Service,v1},{ServiceAccount,v1},{PersistentVolumeClaims,v1},{Route,v1},{ServiceMonitor,v1}}
 type LokiStack struct {
-	Spec              LokiStackSpec   `json:"spec,omitempty"`
+	// LokiStack CR spec field.
+	Spec LokiStackSpec `json:"spec,omitempty"`
+	// LokiStack CR spec Status.
 	Status            LokiStackStatus `json:"status,omitempty"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	metav1.TypeMeta   `json:",inline"`

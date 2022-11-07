@@ -21,8 +21,8 @@ import (
 	"regexp"
 
 	"cloud.google.com/go/internal/trace"
+	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
 	raw "google.golang.org/api/storage/v1"
-	storagepb "google.golang.org/genproto/googleapis/storage/v2"
 )
 
 // A Notification describes how to send Cloud PubSub messages when certain
@@ -157,21 +157,10 @@ func (b *BucketHandle) AddNotification(ctx context.Context, n *Notification) (re
 	if n.TopicID == "" {
 		return nil, errors.New("storage: AddNotification: missing TopicID")
 	}
-	call := b.c.raw.Notifications.Insert(b.name, toRawNotification(n))
-	setClientHeader(call.Header())
-	if b.userProject != "" {
-		call.UserProject(b.userProject)
-	}
 
-	var rn *raw.Notification
-	err = run(ctx, func() error {
-		rn, err = call.Context(ctx).Do()
-		return err
-	}, b.retry, false, setRetryHeaderHTTP(call))
-	if err != nil {
-		return nil, err
-	}
-	return toNotification(rn), nil
+	opts := makeStorageOpts(false, b.retry, b.userProject)
+	ret, err = b.c.tc.CreateNotification(ctx, b.name, n, opts...)
+	return ret, err
 }
 
 // Notifications returns all the Notifications configured for this bucket, as a map
@@ -180,20 +169,9 @@ func (b *BucketHandle) Notifications(ctx context.Context) (n map[string]*Notific
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Notifications")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	call := b.c.raw.Notifications.List(b.name)
-	setClientHeader(call.Header())
-	if b.userProject != "" {
-		call.UserProject(b.userProject)
-	}
-	var res *raw.Notifications
-	err = run(ctx, func() error {
-		res, err = call.Context(ctx).Do()
-		return err
-	}, b.retry, true, setRetryHeaderHTTP(call))
-	if err != nil {
-		return nil, err
-	}
-	return notificationsToMap(res.Items), nil
+	opts := makeStorageOpts(true, b.retry, b.userProject)
+	n, err = b.c.tc.ListNotifications(ctx, b.name, opts...)
+	return n, err
 }
 
 func notificationsToMap(rns []*raw.Notification) map[string]*Notification {
@@ -217,12 +195,6 @@ func (b *BucketHandle) DeleteNotification(ctx context.Context, id string) (err e
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.DeleteNotification")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	call := b.c.raw.Notifications.Delete(b.name, id)
-	setClientHeader(call.Header())
-	if b.userProject != "" {
-		call.UserProject(b.userProject)
-	}
-	return run(ctx, func() error {
-		return call.Context(ctx).Do()
-	}, b.retry, true, setRetryHeaderHTTP(call))
+	opts := makeStorageOpts(true, b.retry, b.userProject)
+	return b.c.tc.DeleteNotification(ctx, b.name, id, opts...)
 }

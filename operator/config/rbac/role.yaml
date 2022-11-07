@@ -12,6 +12,7 @@ rules:
   - endpoints
   - nodes
   - pods
+  - secrets
   - serviceaccounts
   - services
   verbs:

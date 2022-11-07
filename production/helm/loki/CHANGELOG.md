@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.3.1
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
+- [BUGFIX] Fix invalid ruler config when filesystem storage is being used
 
 ## 3.3.0
 
