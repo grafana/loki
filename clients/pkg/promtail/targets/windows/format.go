@@ -80,7 +80,7 @@ func formatLine(cfg *scrapeconfig.WindowsEventsTargetConfig, event win_eventlog.
 		structuredEvent.EventData = string(event.EventData.InnerXML)
 	}
 	if !cfg.ExcludeUserData {
-		structuredEvent.UserData = string(event.EventData.InnerXML)
+		structuredEvent.UserData = string(event.UserData.InnerXML)
 	}
 	if event.Correlation.ActivityID != "" || event.Correlation.RelatedActivityID != "" {
 		structuredEvent.Correlation = &Correlation{
