@@ -40,4 +40,4 @@ Issue the following command to send `/var/log` logs to your `http://localhost:31
 $ make fluent-bit-test
 ```
 
-You can easily override the address by setting `$LOKI_URL` environment variable.
+You can easily override the address by setting  the `$LOKI_URL` environment variable.
