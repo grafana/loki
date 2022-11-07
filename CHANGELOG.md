@@ -6,11 +6,15 @@
 
 ##### Enhancements
 
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
+
 ##### Fixes
 
 ##### Changes
 
 #### Promtail
+
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
 
 ##### Enhancements
 
