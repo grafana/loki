@@ -183,6 +183,13 @@ log stream selectors have been applied.
 
 Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
+Line filter expressions support stripping ANSI sequences (color codes) from
+the line:
+
+```
+{job="example"} | decolorize
+```
+
 ### Label filter expression
 
 Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
