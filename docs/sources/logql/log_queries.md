@@ -183,6 +183,9 @@ log stream selectors have been applied.
 
 Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
+
+### Removing color codes
+
 Line filter expressions support stripping ANSI sequences (color codes) from
 the line:
 
