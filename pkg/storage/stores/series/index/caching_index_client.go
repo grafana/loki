@@ -296,7 +296,6 @@ func isChunksQuery(q Query) bool {
 }
 
 func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) error {
-	logger := util_log.WithContext(ctx, s.logger)
 	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
