@@ -272,7 +272,7 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 
 func (t *Loki) initDistributor() (services.Service, error) {
 	var err error
-	t.distributor, err = distributor.New(
+	t.Distributor, err = distributor.New(
 		t.Cfg.Distributor,
 		t.Cfg.IngesterClient,
 		t.tenantConfigs,
@@ -287,7 +287,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	// Register the distributor to receive Push requests over GRPC
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Write) && !t.Cfg.isModuleEnabled(Ingester) {
-		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
+		logproto.RegisterPusherServer(t.Server.GRPC, t.Distributor)
 	}
 
 	// If the querier module is not part of this process we need to check if multi-tenant queries are enabled.
@@ -299,17 +299,17 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	pushHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
-	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
+	).Wrap(http.HandlerFunc(t.Distributor.PushHandler))
 
-	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
+	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.Distributor)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.Distributor)
 	}
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
-	return t.distributor, nil
+	return t.Distributor, nil
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {

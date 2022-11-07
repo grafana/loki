@@ -249,7 +249,7 @@ type Loki struct {
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
-	distributor              *distributor.Distributor
+	Distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
 	Querier                  querier.Querier
 	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
@@ -471,6 +471,13 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 		// and that all other ring entries are OK too.
 		if t.Ingester != nil {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
+		if t.Distributor != nil {
+			if err := t.Distributor.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}

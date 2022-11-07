@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -240,6 +241,13 @@ func (d *Distributor) running(ctx context.Context) error {
 
 func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
+}
+
+func (d *Distributor) CheckReady(ctx context.Context) error {
+	if s := d.State(); s != services.Running && s != services.Stopping {
+		return fmt.Errorf("distributor not ready: %v", s)
+	}
+	return d.distributorsLifecycler.CheckReady(ctx)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
