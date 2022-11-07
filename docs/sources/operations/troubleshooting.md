@@ -76,7 +76,7 @@ Loki cache generation number errors(Loki >= 2.6)
 
 - Investigation:
 
-  - Check metric `loki_delete_cache_gen_load_failures_total` on Prometheus, which is an indicator for the occurrence of the problem.If the value is greater than 1, it means that there is a problem with that component.
+  - Check the metric `loki_delete_cache_gen_load_failures_total` on `/metrics`, which is an indicator for the occurrence of the problem. If the value is greater than 1, it means that there is a problem with that component.
 
   - Try Http GET request to route: /loki/api/v1/cache/generation_numbers
     - If response is equal as `"deletion is not avaliable for this tenant"`,means the deletion API is not enabled. To enable this api, set `allow_deletes: true` via the configuration settings. Check more docs: https://grafana.com/docs/loki/latest/operations/storage/logs-deletion/
