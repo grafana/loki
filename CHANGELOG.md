@@ -2,6 +2,38 @@
 
 ### All Changes
 
+#### Loki
+
+##### Enhancements
+
+##### Fixes
+
+##### Changes
+
+#### Promtail
+
+##### Enhancements
+
+##### Fixes
+
+##### Changes
+
+#### Fluent Bit
+
+#### Loki Canary
+
+#### Jsonnet
+
+### Notes
+
+This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+
+Check the history of the branch FIXME.
+
+### Dependencies
+
+* Go Version:     FIXME
+
 ## 2.7.0
 
 #### Loki
