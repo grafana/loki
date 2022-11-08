@@ -45,7 +45,7 @@ This is the [Loki Write API](https://grafana.com/docs/loki/latest/api/#post-loki
 
 The `lambda-promtail` code picks this value up via an environment variable.
 
-Also, if your deployment requires a [VPC configuration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config), make sure to edit the `vpc_config` field in `main.tf` manually. Additonal documentation for the Lambda specific Terraform configuration is [here](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config). and, If you want to link kinesis data stream to Lambda as event source, see [here](https://docs.aws.amazon.com/ko_kr/lambda/latest/dg/with-kinesis.html). 
+Also, if your deployment requires a [VPC configuration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config), make sure to edit the `vpc_config` field in `main.tf` manually. Additonal documentation for the Lambda specific Terraform configuration is [here](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config). If you want to link kinesis data stream to Lambda as event source, see [here](https://docs.aws.amazon.com/ko_kr/lambda/latest/dg/with-kinesis.html). 
 
 
 
