@@ -150,7 +150,7 @@ scorecard: generate go-generate bundle ## Run scorecard test
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run --timeout=5m ./...
 
 .PHONY: lint-prometheus
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.

@@ -1978,7 +1978,7 @@ null
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance.annotations</td>
 			<td>object</td>
-			<td>MerticsInstance annotations</td>
+			<td>MetricsInstance annotations</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1996,7 +1996,7 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance.labels</td>
 			<td>object</td>
-			<td>Additional MatricsInstance labels</td>
+			<td>Additional MetricsInstance labels</td>
 			<td><pre lang="json">
 {}
 </pre>

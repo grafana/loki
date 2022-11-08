@@ -635,9 +635,9 @@ monitoring:
     metricsInstance:
       # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
       enabled: true
-      # -- MerticsInstance annotations
+      # -- MetricsInstance annotations
       annotations: {}
-      # -- Additional MatricsInstance labels
+      # -- Additional MetricsInstance labels
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
