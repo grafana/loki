@@ -258,7 +258,7 @@ func AdjustForTimeoutsMigration(c *Config) error {
 	if !perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
 		level.Warn(util_log.Logger).Log("msg",
 			fmt.Sprintf(
-				"using configured per-tenant timeout (%q) for all queries, configured engine timeout (%q) is deprecated and will be ignored.",
+				"using configured per-tenant timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
 				c.LimitsConfig.QueryTimeout.String(),
 				c.Querier.Engine.Timeout.String(),
 			),
@@ -272,7 +272,7 @@ func AdjustForTimeoutsMigration(c *Config) error {
 		}
 		level.Warn(util_log.Logger).Log("msg",
 			fmt.Sprintf(
-				"using configured engine timeout (%q) for all queries. Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
+				"using configured engine timeout (%q) as the default (can be overridden per-tenant in the limits_config). Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
 				c.Querier.Engine.Timeout.String(),
 				c.LimitsConfig.QueryTimeout.String(),
 			),
