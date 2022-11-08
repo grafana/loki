@@ -15,8 +15,9 @@ import (
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockBest(dst, src []byte) (d int) {
 	// Initialize the hash tables.
 	const (
@@ -176,20 +177,37 @@ func encodeBlockBest(dst, src []byte) (d int) {
 						best = bestOf(best, matchAt(getPrev(nextLong), s, uint32(cv), false))
 					}
 					// Search for a match at best match end, see if that is better.
-					if sAt := best.s + best.length; sAt < sLimit {
-						sBack := best.s
-						backL := best.length
+					// Allow some bytes at the beginning to mismatch.
+					// Sweet spot is around 1-2 bytes, but depends on input.
+					// The skipped bytes are tested in Extend backwards,
+					// and still picked up as part of the match if they do.
+					const skipBeginning = 2
+					const skipEnd = 1
+					if sAt := best.s + best.length - skipEnd; sAt < sLimit {
+
+						sBack := best.s + skipBeginning - skipEnd
+						backL := best.length - skipBeginning
 						// Load initial values
 						cv = load64(src, sBack)
-						// Search for mismatch
+
+						// Grab candidates...
 						next := lTable[hash8(load64(src, sAt), lTableBits)]
-						//next := sTable[hash4(load64(src, sAt), sTableBits)]
 
 						if checkAt := getCur(next) - backL; checkAt > 0 {
 							best = bestOf(best, matchAt(checkAt, sBack, uint32(cv), false))
 						}
 						if checkAt := getPrev(next) - backL; checkAt > 0 {
 							best = bestOf(best, matchAt(checkAt, sBack, uint32(cv), false))
+						}
+						// Disabled: Extremely small gain
+						if false {
+							next = sTable[hash4(load64(src, sAt), sTableBits)]
+							if checkAt := getCur(next) - backL; checkAt > 0 {
+								best = bestOf(best, matchAt(checkAt, sBack, uint32(cv), false))
+							}
+							if checkAt := getPrev(next) - backL; checkAt > 0 {
+								best = bestOf(best, matchAt(checkAt, sBack, uint32(cv), false))
+							}
 						}
 					}
 				}
@@ -288,8 +306,9 @@ emitRemainder:
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockBestSnappy(dst, src []byte) (d int) {
 	// Initialize the hash tables.
 	const (
@@ -370,7 +389,7 @@ func encodeBlockBestSnappy(dst, src []byte) (d int) {
 				}
 				offset := m.s - m.offset
 
-				return score - emitCopySize(offset, m.length)
+				return score - emitCopyNoRepeatSize(offset, m.length)
 			}
 
 			matchAt := func(offset, s int, first uint32) match {
@@ -546,6 +565,7 @@ emitRemainder:
 // emitCopySize returns the size to encode the offset+length
 //
 // It assumes that:
+//
 //	1 <= offset && offset <= math.MaxUint32
 //	4 <= length && length <= 1 << 24
 func emitCopySize(offset, length int) int {
@@ -567,8 +587,35 @@ func emitCopySize(offset, length int) int {
 
 	// Offset no more than 2 bytes.
 	if length > 64 {
+		if offset < 2048 {
+			// Emit 8 bytes, then rest as repeats...
+			return 2 + emitRepeatSize(offset, length-8)
+		}
 		// Emit remaining as repeats, at least 4 bytes remain.
 		return 3 + emitRepeatSize(offset, length-60)
+	}
+	if length >= 12 || offset >= 2048 {
+		return 3
+	}
+	// Emit the remaining copy, encoded as 2 bytes.
+	return 2
+}
+
+// emitCopyNoRepeatSize returns the size to encode the offset+length
+//
+// It assumes that:
+//
+//	1 <= offset && offset <= math.MaxUint32
+//	4 <= length && length <= 1 << 24
+func emitCopyNoRepeatSize(offset, length int) int {
+	if offset >= 65536 {
+		return 5 + 5*(length/64)
+	}
+
+	// Offset no more than 2 bytes.
+	if length > 64 {
+		// Emit remaining as repeats, at least 4 bytes remain.
+		return 3 + 3*(length/60)
 	}
 	if length >= 12 || offset >= 2048 {
 		return 3

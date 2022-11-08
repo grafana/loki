@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.23.0
+BUILD_IMAGE_VERSION := 0.24.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -149,6 +149,16 @@ loki-canary: cmd/loki-canary/loki-canary
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
+###############
+# Helm-Test #
+###############
+.PHONY: production/helm/loki/src/helm-test/helm-test
+helm-test: production/helm/loki/src/helm-test/helm-test
+
+# Package Helm tests but do not run them.
+production/helm/loki/src/helm-test/helm-test:
+	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
+
 #################
 # Loki-QueryTee #
 #################
@@ -256,8 +266,10 @@ publish: packages
 ########
 
 # To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.23.0 lint
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint:
+	go version
+	golangci-lint version
 	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
@@ -416,7 +428,7 @@ fluent-bit-plugin:
 	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o clients/cmd/fluent-bit/out_grafana_loki.so ./clients/cmd/fluent-bit/
 
 fluent-bit-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluent-bit/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
 fluent-bit-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
@@ -483,7 +495,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
+images: promtail-image loki-image loki-canary-image helm-test-image docker-driver fluent-bit-image fluentd-image
 
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
@@ -532,6 +544,10 @@ loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+helm-test-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+helm-test-push: helm-test-image
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
@@ -571,6 +587,15 @@ loki-operator-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+
+#################
+# Documentation #
+#################
+
+documentation-helm-reference-check:
+	@echo "Checking diff"
+	$(MAKE) -BC docs sources/installation/helm/reference.md
+	@git diff --exit-code -- docs || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
 
 ########
 # Misc #

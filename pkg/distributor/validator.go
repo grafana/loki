@@ -65,17 +65,17 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 	ts := entry.Timestamp.UnixNano()
 	validation.LineLengthHist.Observe(float64(len(entry.Line)))
 
-	// Makes time string on the error message formatted consistently.
-	formatedEntryTime := entry.Timestamp.Format(timeFormat)
-	formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
-
 	if ctx.rejectOldSample && ts < ctx.rejectOldSampleMaxAge {
+		// Makes time string on the error message formatted consistently.
+		formatedEntryTime := entry.Timestamp.Format(timeFormat)
+		formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
 		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > ctx.creationGracePeriod {
+		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
 		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)

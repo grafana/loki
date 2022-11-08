@@ -43,6 +43,7 @@ type IndexGatewayOwnsTenant func(tenant string) bool
 type TableManager interface {
 	Stop()
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 }
 
 type Config struct {
@@ -153,6 +154,15 @@ func (tm *tableManager) Stop() {
 	for _, table := range tm.tables {
 		table.Close()
 	}
+}
+
+// Only used by TSDB. boltdb-shipper manages concurrency elsewhere
+func (tm *tableManager) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	table, err := tm.getOrCreateTable(tableName)
+	if err != nil {
+		return err
+	}
+	return table.ForEachConcurrent(ctx, userID, callback)
 }
 
 func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {

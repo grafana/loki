@@ -65,6 +65,22 @@ attempt to run a [LogCLI](../../tools/logcli/) query in as direct a manner as yo
     - Adjust the [Grafana dataproxy timeout](https://grafana.com/docs/grafana/latest/administration/configuration/#dataproxy). Configure Grafana with a large enough dataproxy timeout.
     - Check timeouts for reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy (a dataproxy). Therefore, connections from your client to Grafana must have their timeout configured as well.
 
+## Cache Generation errors
+Loki cache generation number errors(Loki >= 2.6)
+
+### error loading cache generation numbers
+
+- Symptom:
+
+  - Loki exposed errors on log with `msg="error loading cache generation numbers" err="unexpected status code: 403"` or `msg="error getting cache gen numbers from the store"`
+
+- Investigation:
+
+  - Check the metric `loki_delete_cache_gen_load_failures_total` on `/metrics`, which is an indicator for the occurrence of the problem. If the value is greater than 1, it means that there is a problem with that component.
+
+  - Try Http GET request to route: /loki/api/v1/cache/generation_numbers
+    - If response is equal as `"deletion is not available for this tenant"`, this means the deletion API is not enabled for the tenant. To enable this api, set `allow_deletes: true` for this tenant via the configuration settings. Check more docs: https://grafana.com/docs/loki/latest/operations/storage/logs-deletion/
+
 ## Troubleshooting targets
 
 Promtail exposes two web pages that can be used to understand how its service

@@ -28,7 +28,7 @@ func init() {
 	// Enable debug logging
 	cfg := &server.Config{}
 	_ = cfg.LogLevel.Set("debug")
-	util_log.InitLogger(cfg, nil)
+	util_log.InitLogger(cfg, nil, true, false)
 }
 
 // Test that you can use to generate event logs locally.
@@ -156,7 +156,7 @@ func Test_renderEntries(t *testing.T) {
 			Labels: model.LabelSet{"channel": "channel", "computer": "local", "job": "windows-events"},
 			Entry: logproto.Entry{
 				Timestamp: time.Unix(0, 1).UTC(),
-				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":10,"level":10,"task":10,"opCode":10,"keywords":"keywords","timeCreated":"1970-01-01T00:00:00.000000001Z","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"eventdata","event_data":"eventdata","message":"message"}`,
+				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":10,"level":10,"task":10,"opCode":10,"keywords":"keywords","timeCreated":"1970-01-01T00:00:00.000000001Z","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"userdata","event_data":"eventdata","message":"message"}`,
 			},
 		},
 	}, entries)

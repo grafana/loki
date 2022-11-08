@@ -35,6 +35,13 @@ variable "password" {
   default     = ""
 }
 
+variable "bearer_token" {
+  type        = string
+  description = "The bearer token, necessary if target endpoint requires it."
+  sensitive   = true
+  default     = ""
+}
+
 variable "tenant_id" {
   type        = string
   description = "Tenant ID to be added when writing logs from lambda-promtail."

@@ -27,7 +27,7 @@ func (cfg Config) Description() string {
 	return cfg.description
 }
 
-// Unit describes the measurement unit for a instrument.
+// Unit describes the measurement unit for an instrument.
 func (cfg Config) Unit() unit.Unit {
 	return cfg.unit
 }
@@ -61,9 +61,9 @@ func WithDescription(desc string) Option {
 }
 
 // WithUnit applies provided unit.
-func WithUnit(unit unit.Unit) Option {
+func WithUnit(u unit.Unit) Option {
 	return optionFunc(func(cfg Config) Config {
-		cfg.unit = unit
+		cfg.unit = u
 		return cfg
 	})
 }

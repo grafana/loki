@@ -23,7 +23,7 @@ import (
 )
 
 type IndexWriter interface {
-	Append(userID string, ls labels.Labels, chks tsdb_index.ChunkMetas) error
+	Append(userID string, ls labels.Labels, fprint uint64, chks tsdb_index.ChunkMetas) error
 }
 
 type store struct {
@@ -165,10 +165,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 	}
 
 	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRanges))
-	multiIndex, err := NewMultiIndex(indices...)
-	if err != nil {
-		return err
-	}
+	multiIndex := NewMultiIndex(IndexSlice(indices))
 
 	s.Reader = NewIndexClient(multiIndex, opts)
 
@@ -198,7 +195,7 @@ func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
 			Entries:  uint32(chk.Data.Entries()),
 		},
 	}
-	if err := s.indexWriter.Append(chk.UserID, chk.Metric, metas); err != nil {
+	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}
 
@@ -207,7 +204,7 @@ func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
 
 type failingIndexWriter struct{}
 
-func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ tsdb_index.ChunkMetas) error {
+func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_index.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }
 

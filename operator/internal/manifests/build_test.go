@@ -2,8 +2,11 @@ package manifests
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -11,6 +14,7 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,6 +84,122 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 
 		// Require compactor to be reverted to 1 replica
 		require.Equal(t, defs.Template.Compactor, opt.Stack.Template.Compactor)
+	}
+}
+
+func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
+	type tt struct {
+		desc     string
+		profile  openshiftconfigv1.TLSSecurityProfile
+		expected TLSProfileSpec
+		err      error
+	}
+
+	tc := []tt{
+		{
+			desc: "Old profile",
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileOldType,
+			},
+			expected: TLSProfileSpec{
+				MinTLSVersion: "VersionTLS10",
+				Ciphers: []string{
+					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+					"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+					"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+					"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+					"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+					"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+					"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+					"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+					"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+					"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+					"TLS_RSA_WITH_AES_128_GCM_SHA256",
+					"TLS_RSA_WITH_AES_256_GCM_SHA384",
+					"TLS_RSA_WITH_AES_128_CBC_SHA256",
+					"TLS_RSA_WITH_AES_128_CBC_SHA",
+					"TLS_RSA_WITH_AES_256_CBC_SHA",
+					"TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+				},
+			},
+		},
+		{
+			desc: "Intermediate profile",
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileIntermediateType,
+			},
+			expected: TLSProfileSpec{
+				MinTLSVersion: "VersionTLS12",
+				Ciphers: []string{
+					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+					"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+					"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+					"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+				},
+			},
+		},
+		{
+			desc: "Modern profile",
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileModernType,
+			},
+			expected: TLSProfileSpec{
+				MinTLSVersion: "VersionTLS13",
+				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
+				// (Read this and weep: https://github.com/golang/go/issues/29349)
+				Ciphers: []string{},
+			},
+		},
+		{
+			desc: "custom profile",
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileCustomType,
+				Custom: &openshiftconfigv1.CustomTLSProfile{
+					TLSProfileSpec: openshiftconfigv1.TLSProfileSpec{
+						MinTLSVersion: "VersionTLS11",
+						Ciphers: []string{
+							"ECDHE-ECDSA-CHACHA20-POLY1305",
+							"ECDHE-RSA-CHACHA20-POLY1305",
+							"ECDHE-RSA-AES128-GCM-SHA256",
+							"ECDHE-ECDSA-AES128-GCM-SHA256",
+						},
+					},
+				},
+			},
+			expected: TLSProfileSpec{
+				MinTLSVersion: "VersionTLS11",
+				Ciphers: []string{
+					"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+					"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+				},
+			},
+		},
+		{
+			desc: "broken custom profile",
+			profile: openshiftconfigv1.TLSSecurityProfile{
+				Type: openshiftconfigv1.TLSProfileCustomType,
+			},
+			err: kverrors.New("missing TLS custom profile spec"),
+		},
+	}
+
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			opts := Options{}
+			err := ApplyTLSSettings(&opts, &tc.profile)
+
+			require.EqualValues(t, tc.err, err)
+			require.EqualValues(t, tc.expected, opts.TLSProfile)
+		})
 	}
 }
 
@@ -200,20 +320,6 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 			require.NoError(t, err)
 
 			svcs := []*corev1.Service{
-				NewDistributorGRPCService(tst.BuildOptions),
-				NewDistributorHTTPService(tst.BuildOptions),
-				NewIngesterGRPCService(tst.BuildOptions),
-				NewIngesterHTTPService(tst.BuildOptions),
-				NewQuerierGRPCService(tst.BuildOptions),
-				NewQuerierHTTPService(tst.BuildOptions),
-				NewQueryFrontendGRPCService(tst.BuildOptions),
-				NewQueryFrontendHTTPService(tst.BuildOptions),
-				NewCompactorGRPCService(tst.BuildOptions),
-				NewCompactorHTTPService(tst.BuildOptions),
-				NewIndexGatewayGRPCService(tst.BuildOptions),
-				NewIndexGatewayHTTPService(tst.BuildOptions),
-				NewRulerHTTPService(tst.BuildOptions),
-				NewRulerGRPCService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
@@ -242,8 +348,18 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			HTTPEncryption: true,
 		},
 	}
+	ciphers := strings.Join([]string{
+		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+	}, ",")
 
 	err := ApplyDefaultSettings(&opts)
+	require.NoError(t, err)
+	err = ApplyTLSSettings(&opts, nil)
 	require.NoError(t, err)
 	objects, buildErr := BuildAll(opts)
 	require.NoError(t, buildErr)
@@ -291,12 +407,14 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/var/run/tls/http",
+			MountPath: "/var/run/tls/http/server",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
+		require.Contains(t, args, "-server.tls-min-version=VersionTLS12")
+		require.Contains(t, args, fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers))
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/server/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/server/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -368,12 +486,12 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/var/run/tls/http",
+			MountPath: "/var/run/tls/http/server",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/server/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/server/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -484,12 +602,24 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 		"test-ruler":         "test-ruler-grpc",
 	}
 
+	ciphers := strings.Join([]string{
+		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+	}, ",")
+
 	for _, tst := range table {
 		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 
 			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+
+			err = ApplyTLSSettings(&tst.BuildOptions, nil)
 			require.NoError(t, err)
 
 			objs, err := BuildAll(tst.BuildOptions)
@@ -514,14 +644,16 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					secretName := secretsMap[name]
 					args := []string{
-						"-server.grpc-tls-cert-path=/var/run/tls/grpc/tls.crt",
-						"-server.grpc-tls-key-path=/var/run/tls/grpc/tls.key",
+						"-server.grpc-tls-cert-path=/var/run/tls/grpc/server/tls.crt",
+						"-server.grpc-tls-key-path=/var/run/tls/grpc/server/tls.key",
+						"-server.tls-min-version=VersionTLS12",
+						fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers),
 					}
 
 					vm := corev1.VolumeMount{
 						Name:      secretName,
 						ReadOnly:  false,
-						MountPath: "/var/run/tls/grpc",
+						MountPath: "/var/run/tls/grpc/server",
 					}
 
 					v := corev1.Volume{

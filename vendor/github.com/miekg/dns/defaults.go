@@ -218,6 +218,11 @@ func IsDomainName(s string) (labels int, ok bool) {
 
 			wasDot = false
 		case '.':
+			if i == 0 && len(s) > 1 {
+				// leading dots are not legal except for the root zone
+				return labels, false
+			}
+
 			if wasDot {
 				// two dots back to back is not legal
 				return labels, false

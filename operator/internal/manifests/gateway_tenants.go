@@ -5,6 +5,7 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -46,6 +47,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			tenantData,
+			RulerName(opts.Name),
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
@@ -57,38 +59,13 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureGatewayDeploymentForMode(
-	d *appsv1.Deployment, mode lokiv1.ModeType,
-	fg configv1.FeatureGates, stackName, stackNs string,
-	minTLSVersion string, ciphers string,
-) error {
+func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		caBundleName := signingCABundleName(stackName)
-		serviceName := serviceNameGatewayHTTP(stackName)
-		secretName := signingServiceSecretName(serviceName)
-		serverName := fqdn(serviceName, stackNs)
-		return openshift.ConfigureGatewayDeployment(
-			d,
-			mode,
-			gatewayContainerName,
-			tlsSecretVolume,
-			httpTLSDir,
-			tlsCertFile,
-			tlsKeyFile,
-			caBundleName,
-			caBundleDir,
-			caFile,
-			fg.HTTPEncryption,
-			fg.OpenShift.ServingCertsService,
-			secretName,
-			serverName,
-			gatewayHTTPPort,
-			minTLSVersion,
-			ciphers,
-		)
+		tlsDir := gatewayServerHTTPTLSDir()
+		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption)
 	}
 
 	return nil
@@ -105,23 +82,25 @@ func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType)
 	return nil
 }
 
-func configureLokiStackObjsForMode(objs []client.Object, opts Options) []client.Object {
-	switch opts.Stack.Tenants.Mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		// nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		openShiftObjs := openshift.BuildLokiStackObjects(opts.OpenShiftOptions)
-		objs = append(objs, openShiftObjs...)
-	}
-
-	return objs
-}
-
 func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Object {
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		for _, o := range objs {
+			switch sa := o.(type) {
+			case *corev1.ServiceAccount:
+				if sa.Annotations == nil {
+					sa.Annotations = map[string]string{}
+				}
+
+				a := openshift.ServiceAccountAnnotations(opts.OpenShiftOptions)
+				for key, value := range a {
+					sa.Annotations[key] = value
+				}
+			}
+		}
+
 		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
 
 		var cObjs []client.Object
@@ -143,12 +122,27 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 	return objs
 }
 
-func configureGatewayServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1.ModeType, fg configv1.FeatureGates) error {
-	switch mode {
+func configureGatewayServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, opts Options) error {
+	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		return openshift.ConfigureGatewayServiceMonitor(sm, fg.ServiceMonitorTLSEndpoints)
+		return openshift.ConfigureGatewayServiceMonitor(sm, opts.Gates.ServiceMonitorTLSEndpoints)
+	}
+
+	return nil
+}
+
+// ConfigureOptionsForMode applies configuration depending on the mode type.
+func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
+	switch opt.Stack.Tenants.Mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		if opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled {
+			return openshift.ConfigureOptions(cfg)
+		}
+		return nil
 	}
 
 	return nil

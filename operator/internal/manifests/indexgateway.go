@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -20,7 +21,7 @@ import (
 func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	statefulSet := NewIndexGatewayStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureIndexGatewayHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureIndexGatewayHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -30,7 +31,14 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&statefulSet.Spec.Template.Spec, caBundleName); err != nil {
 			return nil, err
 		}
 	}
@@ -107,13 +115,20 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
+	}
+
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
 		podSpec.Tolerations = opts.Stack.Template.IndexGateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
 	}
 
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -175,9 +190,8 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -205,9 +219,8 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -223,12 +236,12 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIndexGatewayHTTP(stackName)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
+func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
 }
 
-func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIndexGatewayGRPC(stackName)
+func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIndexGatewayGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

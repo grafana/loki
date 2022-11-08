@@ -26,7 +26,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 // Client expects to load already existing rules located at:
-//  cfg.Directory / userID / namespace
+//
+//	cfg.Directory / userID / namespace
 type Client struct {
 	cfg    Config
 	loader promRules.GroupLoader

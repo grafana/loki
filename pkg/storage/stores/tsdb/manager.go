@@ -35,11 +35,11 @@ type TSDBManager interface {
 
 /*
 tsdbManager is used for managing active index and is responsible for:
- * Turning WALs into optimized multi-tenant TSDBs when requested
- * Serving reads from these TSDBs
- * Shipping them to remote storage
- * Keeping them available for querying
- * Removing old TSDBs which are no longer needed
+  - Turning WALs into optimized multi-tenant TSDBs when requested
+  - Serving reads from these TSDBs
+  - Shipping them to remote storage
+  - Keeping them available for querying
+  - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
 	nodeName    string // node name
@@ -134,10 +134,7 @@ func (m *tsdbManager) Start() (err error) {
 			indices++
 
 			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
-			loaded, err := NewShippableTSDBFile(
-				prefixed,
-				false,
-			)
+			loaded, err := NewShippableTSDBFile(prefixed)
 
 			if err != nil {
 				level.Warn(m.log).Log(
@@ -162,7 +159,7 @@ func (m *tsdbManager) Start() (err error) {
 func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 	periods := make(map[string]*Builder)
 
-	if err := heads.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) error {
+	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]index.ChunkMetas)
@@ -177,7 +174,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		// Embed the tenant label into TSDB
 		lb := labels.NewBuilder(ls)
 		lb.Set(TenantLabel, user)
-		withTenant := lb.Labels()
+		withTenant := lb.Labels(nil)
 
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {
@@ -191,7 +188,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 				withTenant,
 				// use the fingerprint without the added tenant label
 				// so queries route to the chunks which actually exist.
-				model.Fingerprint(ls.Hash()),
+				model.Fingerprint(fp),
 				matchingChks,
 			)
 		}
@@ -229,7 +226,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 
 		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dst.Path(), "duration", time.Since(start))
 
-		loaded, err := NewShippableTSDBFile(dst, false)
+		loaded, err := NewShippableTSDBFile(dst)
 		if err != nil {
 			return err
 		}
