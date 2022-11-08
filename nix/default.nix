@@ -1,6 +1,4 @@
-{ self, nixpkgs, system }:
-let buildVars = import ./build-vars.nix;
-in
+{ self }:
 {
   overlay = final: prev:
     let
@@ -23,9 +21,9 @@ in
 
       imageTag =
         if (self ? rev) then
-          "${buildVars.gitBranch}-${imageTagVersion}"
+          "${imageTagVersion}"
         else
-          "${buildVars.gitBranch}-${imageTagVersion}-WIP";
+          "${imageTagVersion}-WIP";
 
       loki-helm-test = prev.callPackage ../production/helm/loki/src/helm-test {
         inherit (prev) pkgs lib buildGoModule dockerTools;
@@ -37,7 +35,6 @@ in
 
       loki = prev.callPackage ./loki.nix {
         inherit imageTag;
-        inherit (buildVars) gitBranch;
         version = shortGitRevsion;
         pkgs = prev;
       };
