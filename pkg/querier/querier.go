@@ -6,22 +6,25 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
-
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	listutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
@@ -42,7 +45,6 @@ type interval struct {
 
 // Config for a querier.
 type Config struct {
-	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
 	TailMaxDuration               time.Duration    `yaml:"tail_max_duration"`
 	ExtraQueryDelay               time.Duration    `yaml:"extra_query_delay,omitempty"`
 	QueryIngestersWithin          time.Duration    `yaml:"query_ingesters_within,omitempty"`
@@ -52,13 +54,13 @@ type Config struct {
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
+	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
-	f.DurationVar(&cfg.QueryTimeout, "querier.query-timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
@@ -81,6 +83,7 @@ type Querier interface {
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
+	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 }
 
 // SingleTenantQuerier handles single tenant queries.
@@ -90,6 +93,7 @@ type SingleTenantQuerier struct {
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
+	metrics         *Metrics
 }
 
 type deleteGetter interface {
@@ -97,13 +101,14 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter) (*SingleTenantQuerier, error) {
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
 		deleteGetter:    d,
+		metrics:         NewMetrics(r),
 	}, nil
 }
 
@@ -117,7 +122,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
@@ -171,7 +176,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
@@ -225,11 +230,11 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 
 	var deletes []*logproto.Delete
 	for _, del := range d {
-		if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
+		if del.StartTime.UnixNano() <= end && del.EndTime.UnixNano() >= start {
 			deletes = append(deletes, &logproto.Delete{
 				Selector: del.Query,
-				Start:    int64(del.StartTime),
-				End:      int64(del.EndTime),
+				Start:    del.StartTime.UnixNano(),
+				End:      del.EndTime.UnixNano(),
 			})
 		}
 	}
@@ -237,18 +242,41 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 	return deletes, nil
 }
 
+func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
+	// if no lookback limits are configured, always consider this within the range of the lookback period
+	if maxLookback <= 0 {
+		return true
+	}
+
+	// find the first instance that we would want to query the ingester from...
+	ingesterOldestStartTime := time.Now().Add(-maxLookback)
+
+	// ...and if the query range ends before that, don't query the ingester
+	return queryEnd.After(ingesterOldestStartTime)
+}
+
+func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration {
+	mlb := time.Duration(-1)
+	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
+		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
+		mlb = q.cfg.IngesterQueryStoreMaxLookback
+	} else if q.cfg.QueryIngestersWithin != 0 {
+		mlb = q.cfg.QueryIngestersWithin
+	}
+
+	return mlb
+}
+
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
-	ingesterMLB := time.Duration(-1)
 	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
 		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
 		limitQueryInterval = true
-		ingesterMLB = q.cfg.IngesterQueryStoreMaxLookback
-	} else if q.cfg.QueryIngestersWithin != 0 {
-		ingesterMLB = q.cfg.QueryIngestersWithin
 	}
+
+	ingesterMLB := q.calculateIngesterMaxLookbackPeriod()
 
 	// query ingester for whole duration.
 	if ingesterMLB == -1 {
@@ -266,14 +294,17 @@ func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time
 		return i, i
 	}
 
+	ingesterQueryWithinRange := q.isWithinIngesterMaxLookbackPeriod(ingesterMLB, queryEnd)
+
 	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
-	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
-	if queryEnd.Before(ingesterOldestStartTime) {
+	if !ingesterQueryWithinRange {
 		return nil, &interval{
 			start: queryStart,
 			end:   queryEnd,
 		}
 	}
+
+	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
 
 	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
 	if !limitQueryInterval {
@@ -324,31 +355,52 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	// TODO: remove this clause once we remove the deprecated query-timeout flag.
+	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "err", err, "call", "Label")
+		queryTimeout = q.cfg.QueryTimeout
+	}
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
+	g, ctx := errgroup.WithContext(ctx)
+
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+
 	var ingesterValues [][]string
-	if !q.cfg.QueryStoreOnly {
-		ingesterValues, err = q.ingesterQuerier.Label(ctx, req)
-		if err != nil {
-			return nil, err
-		}
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		g.Go(func() error {
+			var err error
+			timeFramedReq := *req
+			timeFramedReq.Start = &ingesterQueryInterval.start
+			timeFramedReq.End = &ingesterQueryInterval.end
+
+			ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
+			return err
+		})
 	}
 
 	var storeValues []string
-	if !q.cfg.QueryIngesterOnly {
-		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-		if req.Values {
-			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
-			if err != nil {
-				return nil, err
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		g.Go(func() error {
+			var (
+				err     error
+				from    = model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+				through = model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			)
+
+			if req.Values {
+				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+			} else {
+				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 			}
-		} else {
-			storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-			if err != nil {
-				return nil, err
-			}
-		}
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	results := append(ingesterValues, storeValues)
@@ -369,6 +421,11 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, err
 	}
 
+	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
+	if err != nil {
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+	}
+
 	histReq := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Query,
@@ -376,6 +433,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			End:       time.Now(),
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
+			Deletes:   deletes,
 		},
 	}
 
@@ -387,7 +445,17 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 	// Enforce the query timeout except when tailing, otherwise the tailing
 	// will be terminated once the query timeout is reached
 	tailCtx := ctx
-	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	tenantID, err := tenant.TenantID(tailCtx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load tenant")
+	}
+	queryTimeout := q.limits.QueryTimeout(tenantID)
+	// TODO: remove this clause once we remove the deprecated query-timeout flag.
+	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Tail")
+		queryTimeout = q.cfg.QueryTimeout
+	}
+	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancelQuery()
 
 	tailClients, err := q.ingesterQuerier.Tail(tailCtx, req)
@@ -414,6 +482,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		},
 		q.cfg.TailMaxDuration,
 		tailerWaitEntryThrottle,
+		q.metrics,
 	), nil
 }
 
@@ -429,7 +498,13 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 	}
 
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	queryTimeout := q.limits.QueryTimeout(userID)
+	// TODO: remove this clause once we remove the deprecated query-timeout flag.
+	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Series")
+		queryTimeout = q.cfg.QueryTimeout
+	}
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
@@ -440,13 +515,17 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
 	errs := make(chan error, 2)
 
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
+
 	// fetch series from ingesters and store concurrently
-	if q.cfg.QueryStoreOnly {
-		series <- [][]logproto.SeriesIdentifier{}
-	} else {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		timeFramedReq := *req
+		timeFramedReq.Start = ingesterQueryInterval.start
+		timeFramedReq.End = ingesterQueryInterval.end
+
 		go func() {
 			// fetch series identifiers from ingesters
-			resps, err := q.ingesterQuerier.Series(ctx, req)
+			resps, err := q.ingesterQuerier.Series(ctx, &timeFramedReq)
 			if err != nil {
 				errs <- err
 				return
@@ -454,17 +533,24 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 
 			series <- resps
 		}()
+	} else {
+		// If only queriying the store or the query range does not overlap with the ingester max lookback period (defined by `query_ingesters_within`)
+		// then don't call out to the ingesters, and send an empty result back to the channel
+		series <- [][]logproto.SeriesIdentifier{}
 	}
 
-	if !q.cfg.QueryIngesterOnly {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		go func() {
-			storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
+			storeValues, err := q.seriesForMatchers(ctx, storeQueryInterval.start, storeQueryInterval.end, req.GetGroups(), req.Shards)
 			if err != nil {
 				errs <- err
 				return
 			}
 			series <- [][]logproto.SeriesIdentifier{storeValues}
 		}()
+	} else {
+		// If we are not querying the store, send an empty result back to the channel
+		series <- [][]logproto.SeriesIdentifier{}
 	}
 
 	var sets [][]logproto.SeriesIdentifier
@@ -574,7 +660,8 @@ type timeRangeLimits interface {
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
-	if maxQueryLookback := limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+	var maxQueryLookback time.Duration
+	if maxQueryLookback = limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
@@ -588,7 +675,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
 	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "this data is no longer available, it is past now - max_query_lookback (%s)", maxQueryLookback)
 	}
 	return from, through, nil
 }
@@ -620,4 +707,40 @@ func (q *SingleTenantQuerier) checkTailRequestLimit(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	start, end, err := validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(userID)
+	// TODO: remove this clause once we remove the deprecated query-timeout flag.
+	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/IndexStats")
+		queryTimeout = q.cfg.QueryTimeout
+	}
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
+
+	return q.store.Stats(
+		ctx,
+		userID,
+		model.TimeFromUnixNano(start.UnixNano()),
+		model.TimeFromUnixNano(end.UnixNano()),
+		matchers...,
+	)
+
 }

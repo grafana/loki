@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net"
 
@@ -112,6 +113,7 @@ var (
 	resultTouched   = []byte("TOUCHED\r\n")
 
 	resultClientErrorPrefix = []byte("CLIENT_ERROR ")
+	versionPrefix           = []byte("VERSION")
 )
 
 // New returns a memcache client using the provided server(s)
@@ -125,7 +127,16 @@ func New(server ...string) *Client {
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
-	return &Client{selector: ss}
+	c := Client{selector: ss}
+
+	// TODO: make configurable
+	shards := 128
+
+	c.connMaps = make([]*connMap, 0, shards)
+	for i := 0; i < shards; i++ {
+		c.connMaps = append(c.connMaps, &connMap{})
+	}
+	return &c
 }
 
 // Client is a memcache client.
@@ -133,6 +144,7 @@ func NewFromSelector(ss ServerSelector) *Client {
 type Client struct {
 	// Dialer specifies a custom dialer used to dial new connections to a server.
 	DialTimeout func(network, address string, timeout time.Duration) (net.Conn, error)
+
 	// Timeout specifies the socket read/write timeout.
 	// If zero, DefaultTimeout is used.
 	Timeout time.Duration
@@ -147,6 +159,10 @@ type Client struct {
 
 	selector ServerSelector
 
+	connMaps []*connMap
+}
+
+type connMap struct {
 	lk       sync.Mutex
 	freeconn map[string][]*conn
 }
@@ -201,32 +217,47 @@ func (cn *conn) condRelease(err *error) {
 	}
 }
 
+func (c *Client) cmFor(addr string) *connMap {
+	return c.connMaps[int(hash(addr))%len(c.connMaps)]
+}
+
 func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-	if c.freeconn == nil {
-		c.freeconn = make(map[string][]*conn)
+	cm := c.cmFor(addr.String())
+	cm.lk.Lock()
+	defer cm.lk.Unlock()
+
+	if cm.freeconn == nil {
+		cm.freeconn = make(map[string][]*conn)
 	}
-	freelist := c.freeconn[addr.String()]
+	freelist := cm.freeconn[addr.String()]
 	if len(freelist) >= c.maxIdleConns() {
 		cn.nc.Close()
 		return
 	}
-	c.freeconn[addr.String()] = append(freelist, cn)
+	cm.freeconn[addr.String()] = append(freelist, cn)
+}
+
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
 
 func (c *Client) getFreeConn(addr net.Addr) (cn *conn, ok bool) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-	if c.freeconn == nil {
+	cm := c.cmFor(addr.String())
+	cm.lk.Lock()
+	defer cm.lk.Unlock()
+
+	if cm.freeconn == nil {
 		return nil, false
 	}
-	freelist, ok := c.freeconn[addr.String()]
+
+	freelist, ok := cm.freeconn[addr.String()]
 	if !ok || len(freelist) == 0 {
 		return nil, false
 	}
 	cn = freelist[len(freelist)-1]
-	c.freeconn[addr.String()] = freelist[:len(freelist)-1]
+	cm.freeconn[addr.String()] = freelist[:len(freelist)-1]
 	return cn, true
 }
 
@@ -256,14 +287,11 @@ func (cte *ConnectTimeoutError) Error() string {
 }
 
 func (c *Client) dial(addr net.Addr) (net.Conn, error) {
-	type connError struct {
-		cn  net.Conn
-		err error
-	}
 	if c.DialTimeout == nil {
 		c.DialTimeout = net.DialTimeout
 	}
-	nc, err := c.DialTimeout(addr.Network(), addr.String(), c.netTimeout())
+
+	nc, err := net.DialTimeout(addr.Network(), addr.String(), c.netTimeout())
 	if err == nil {
 		return nc, nil
 	}
@@ -402,6 +430,30 @@ func (c *Client) flushAllFromAddr(addr net.Addr) error {
 	})
 }
 
+// ping sends the version command to the given addr
+func (c *Client) ping(addr net.Addr) error {
+	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+		if _, err := fmt.Fprintf(rw, "version\r\n"); err != nil {
+			return err
+		}
+		if err := rw.Flush(); err != nil {
+			return err
+		}
+		line, err := rw.ReadSlice('\n')
+		if err != nil {
+			return err
+		}
+
+		switch {
+		case bytes.HasPrefix(line, versionPrefix):
+			break
+		default:
+			return fmt.Errorf("memcache: unexpected response line from ping: %q", string(line))
+		}
+		return nil
+	})
+}
+
 func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) error {
 	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
 		for _, key := range keys {
@@ -461,7 +513,7 @@ func (c *Client) GetMulti(keys []string) (map[string]*Item, error) {
 	}
 
 	var err error
-	for _ = range keyMap {
+	for range keyMap {
 		if ge := <-ch; ge != nil {
 			err = ge
 		}
@@ -646,6 +698,12 @@ func (c *Client) DeleteAll() error {
 	return c.withKeyRw("", func(rw *bufio.ReadWriter) error {
 		return writeExpectf(rw, resultDeleted, "flush_all\r\n")
 	})
+}
+
+// Ping checks all instances if they are alive. Returns error if any
+// of them is down.
+func (c *Client) Ping() error {
+	return c.selector.Each(c.ping)
 }
 
 // Increment atomically increments key by delta. The return value is

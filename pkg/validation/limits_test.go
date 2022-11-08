@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,8 +67,15 @@ split_queries_by_interval: 190s
 ruler_evaluation_delay_duration: 200s
 ruler_max_rules_per_rule_group: 210
 ruler_max_rule_groups_per_tenant: 220
+ruler_remote_write_sigv4_config:
+  region: us-east-1
 per_tenant_override_config: ""
 per_tenant_override_period: 230s
+query_timeout: 5m
+shard_streams:
+  enabled: true
+  desired_rate: 4mb
+  logging_enabled: true
 `
 	inputJSON := `
  {
@@ -96,8 +107,17 @@ per_tenant_override_period: 230s
   "ruler_evaluation_delay_duration": "200s",
   "ruler_max_rules_per_rule_group": 210,
   "ruler_max_rule_groups_per_tenant":220,
+  "ruler_remote_write_sigv4_config": {
+    "region": "us-east-1"
+  },
   "per_tenant_override_config": "",
-  "per_tenant_override_period": "230s"
+  "per_tenant_override_period": "230s",
+  "query_timeout": "5m",
+  "shard_streams": {
+    "desired_rate": "4mb",
+    "enabled": true,
+    "logging_enabled": true
+  }
  }
 `
 
@@ -230,6 +250,24 @@ reject_old_samples: true
 				},
 			},
 		},
+		{
+			desc: "per tenant query timeout",
+			yaml: `
+query_timeout: 5m
+`,
+			exp: Limits{
+				QueryTimeout: model.Duration(5 * time.Minute),
+
+				// Rest from new defaults.
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+			},
+		},
 	} {
 
 		t.Run(tc.desc, func(t *testing.T) {
@@ -237,5 +275,20 @@ reject_old_samples: true
 			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
 			require.Equal(t, tc.exp, out)
 		})
+	}
+}
+
+func TestLimitsValidation(t *testing.T) {
+	for _, tc := range []struct {
+		mode     string
+		expected error
+	}{
+		{mode: "disabled", expected: nil},
+		{mode: "filter-only", expected: nil},
+		{mode: "filter-and-delete", expected: nil},
+		{mode: "something-else", expected: deletionmode.ErrUnknownMode},
+	} {
+		limits := Limits{DeletionMode: tc.mode}
+		require.True(t, errors.Is(limits.Validate(), tc.expected))
 	}
 }

@@ -1,13 +1,13 @@
 package gateway
 
 import (
-	"github.com/ViaQ/logerr/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // ValidateModes validates the tenants mode specification.
-func ValidateModes(stack lokiv1beta1.LokiStack) error {
-	if stack.Spec.Tenants.Mode == lokiv1beta1.Static {
+func ValidateModes(stack lokiv1.LokiStack) error {
+	if stack.Spec.Tenants.Mode == lokiv1.Static {
 		if stack.Spec.Tenants.Authentication == nil {
 			return kverrors.New("mandatory configuration - missing tenants' authentication configuration")
 		}
@@ -25,7 +25,7 @@ func ValidateModes(stack lokiv1beta1.LokiStack) error {
 		}
 	}
 
-	if stack.Spec.Tenants.Mode == lokiv1beta1.Dynamic {
+	if stack.Spec.Tenants.Mode == lokiv1.Dynamic {
 		if stack.Spec.Tenants.Authentication == nil {
 			return kverrors.New("mandatory configuration - missing tenants configuration")
 		}
@@ -43,7 +43,7 @@ func ValidateModes(stack lokiv1beta1.LokiStack) error {
 		}
 	}
 
-	if stack.Spec.Tenants.Mode == lokiv1beta1.OpenshiftLogging {
+	if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging || stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
 		if stack.Spec.Tenants.Authentication != nil {
 			return kverrors.New("incompatible configuration - custom tenants configuration not required")
 		}

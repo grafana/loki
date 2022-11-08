@@ -13,10 +13,12 @@ Gem::Specification.new do |spec|
   spec.homepage      = 'https://github.com/grafana/loki/'
   spec.license       = 'Apache-2.0'
 
+  spec.required_ruby_version = '~> 2.7'
+
   # test_files, files  = `git ls-files -z`.split("\x0").partition do |f|
   #   f.match(%r{^(test|spec|features)/})
   # end
-  spec.files         = Dir.glob('{bin,lib}/**/*') + %w[LICENSE README.md]
+  spec.files         = Dir['{bin,lib}/**/*'] + %w[LICENSE README.md]
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
 

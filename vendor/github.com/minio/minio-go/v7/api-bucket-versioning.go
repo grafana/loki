@@ -27,7 +27,7 @@ import (
 )
 
 // SetBucketVersioning sets a bucket versioning configuration
-func (c Client) SetBucketVersioning(ctx context.Context, bucketName string, config BucketVersioningConfiguration) error {
+func (c *Client) SetBucketVersioning(ctx context.Context, bucketName string, config BucketVersioningConfiguration) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return err
@@ -67,13 +67,18 @@ func (c Client) SetBucketVersioning(ctx context.Context, bucketName string, conf
 }
 
 // EnableVersioning - enable object versioning in given bucket.
-func (c Client) EnableVersioning(ctx context.Context, bucketName string) error {
+func (c *Client) EnableVersioning(ctx context.Context, bucketName string) error {
 	return c.SetBucketVersioning(ctx, bucketName, BucketVersioningConfiguration{Status: "Enabled"})
 }
 
 // SuspendVersioning - suspend object versioning in given bucket.
-func (c Client) SuspendVersioning(ctx context.Context, bucketName string) error {
+func (c *Client) SuspendVersioning(ctx context.Context, bucketName string) error {
 	return c.SetBucketVersioning(ctx, bucketName, BucketVersioningConfiguration{Status: "Suspended"})
+}
+
+// ExcludedPrefix - holds individual prefixes excluded from being versioned.
+type ExcludedPrefix struct {
+	Prefix string
 }
 
 // BucketVersioningConfiguration is the versioning configuration structure
@@ -81,6 +86,10 @@ type BucketVersioningConfiguration struct {
 	XMLName   xml.Name `xml:"VersioningConfiguration"`
 	Status    string   `xml:"Status"`
 	MFADelete string   `xml:"MfaDelete,omitempty"`
+	// MinIO extension - allows selective, prefix-level versioning exclusion.
+	// Requires versioning to be enabled
+	ExcludedPrefixes []ExcludedPrefix `xml:",omitempty"`
+	ExcludeFolders   bool             `xml:",omitempty"`
 }
 
 // Various supported states
@@ -102,7 +111,7 @@ func (b BucketVersioningConfiguration) Suspended() bool {
 
 // GetBucketVersioning gets the versioning configuration on
 // an existing bucket with a context to control cancellations and timeouts.
-func (c Client) GetBucketVersioning(ctx context.Context, bucketName string) (BucketVersioningConfiguration, error) {
+func (c *Client) GetBucketVersioning(ctx context.Context, bucketName string) (BucketVersioningConfiguration, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return BucketVersioningConfiguration{}, err

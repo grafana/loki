@@ -1,20 +1,19 @@
-package manifests_test
+package manifests
 
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewQueryFrontendDeployment_SelectorMatchesLabels(t *testing.T) {
-	ss := manifests.NewQueryFrontendDeployment(manifests.Options{
+	ss := NewQueryFrontendDeployment(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -28,19 +27,39 @@ func TestNewQueryFrontendDeployment_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestNewQueryFrontendDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewQueryFrontendDeployment(manifests.Options{
+	ss := NewQueryFrontendDeployment(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
 		},
 	})
 	expected := "loki.grafana.com/config-hash"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
+}
+
+func TestNewQueryFrontendDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
+	ss := NewQueryFrontendDeployment(Options{
+		Name:                   "abcd",
+		Namespace:              "efgh",
+		CertRotationRequiredAt: "deadbeef",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	expected := "loki.grafana.com/certRotationRequiredAt"
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, expected)
 	require.Equal(t, annotations[expected], "deadbeef")

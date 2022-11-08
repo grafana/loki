@@ -12,10 +12,11 @@ for more information.
 
 All components of Loki expose the following metrics:
 
-| Metric Name                     | Metric Type | Description                              |
-| ------------------------------- | ----------- | ---------------------------------------- |
-| `loki_log_messages_total`       | Counter     | Total number of messages logged by Loki. |
-| `loki_request_duration_seconds` | Histogram   | Number of received HTTP requests.        |
+| Metric Name                        | Metric Type | Description                                                                                                                  |
+| ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by loki itself. |
+| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by loki itself.                                                                         |
+| `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                                                                            |
 
 The Loki Distributors expose the following metrics:
 
@@ -49,6 +50,18 @@ The Loki Ingesters expose the following metrics:
 | `loki_ingester_streams_created_total`        | Counter     | The total number of streams created per tenant.                                                           |
 | `loki_ingester_streams_removed_total`        | Counter     | The total number of streams removed per tenant.                                                           |
 
+The Loki compactor exposes the following metrics:
+
+| Metric Name                                                   | Metric Type | Description                                                                                             |
+| ------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `loki_compactor_delete_requests_processed_total`              | Counter     | Number of delete requests processed per user.                                                           |
+| `loki_compactor_delete_requests_chunks_selected_total`        | Counter     | Number of chunks selected while building delete plans per user.                                         |
+| `loki_compactor_delete_processing_fails_total`                | Counter     | Number of times the delete phase of compaction has failed.                                                 |
+| `loki_compactor_load_pending_requests_attempts_total`         | Counter     | Number of attempts that were made to load pending requests with status.                                 |
+| `loki_compactor_oldest_pending_delete_request_age_seconds`    | Gauge       | Age of oldest pending delete request in seconds since they are over their cancellation period.         |
+| `loki_compactor_pending_delete_requests_count`                | Gauge       | Count of delete requests which are over their cancellation period and have not finished processing yet. |
+| `loki_compactor_deleted_lines`                                | Counter     | Number of deleted lines per user.                                                                       |
+
 Promtail exposes these metrics:
 
 | Metric Name                               | Metric Type | Description                                                                                |
@@ -60,7 +73,7 @@ Promtail exposes these metrics:
 | `promtail_encoded_bytes_total`            | Counter     | Number of bytes encoded and ready to send.                                                 |
 | `promtail_file_bytes_total`               | Gauge       | Number of bytes read from files.                                                           |
 | `promtail_files_active_total`             | Gauge       | Number of active files.                                                                    |
-| `promtail_request_duration_seconds_count` | Histogram   | Number of send requests.                                                                   |
+| `promtail_request_duration_seconds` | Histogram   | Number of send requests.                                                                   |
 | `promtail_sent_bytes_total`               | Counter     | Number of bytes sent.                                                                      |
 | `promtail_sent_entries_total`             | Counter     | Number of log entries sent to the ingester.                                                |
 | `promtail_targets_active_total`           | Gauge       | Number of total active targets.                                                            |
@@ -81,6 +94,13 @@ exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
 
 An example Grafana dashboard was built by the community and is available as
 dashboard [10004](https://grafana.com/dashboards/10004).
+
+## Metrics cardinality
+
+Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels. 
+This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus [labels](https://prometheus.io/docs/practices/naming/#labels) discourage increasing cardinality in this way. 
+Review your emitted metrics before scraping with Prometheus, and configure the scraping to avoid this issue.
+
 
 ## Mixins
 

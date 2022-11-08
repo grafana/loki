@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -34,10 +36,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/wal"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -121,7 +125,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "Maximum chunk age before flushing.")
-	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
+	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper/tsdb index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing")
@@ -160,6 +164,7 @@ type ChunkStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
 }
 
 // Interface is an interface for the Ingester
@@ -169,10 +174,14 @@ type Interface interface {
 	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
+	logproto.StreamDataServer
+
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	GetOrCreateInstance(instanceID string) (*instance, error)
+	// deprecated
+	LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
-	GetOrCreateInstance(instanceID string) *instance
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -208,6 +217,10 @@ type Ingester struct {
 	// Denotes whether the ingester should flush on shutdown.
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
+	// Flag for whether stopping the ingester service should also terminate the
+	// loki process.
+	// This is set when calling the shutdown handler.
+	terminateOnShutdown bool
 
 	// Only used by WAL & flusher to coordinate backpressure during replay.
 	replayController *replayController
@@ -217,6 +230,8 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter chunk.RequestChunkFilterer
+
+	streamRateCalculator *StreamRateCalculator
 }
 
 // New makes a new Ingester.
@@ -244,6 +259,8 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
+		terminateOnShutdown:   false,
+		streamRateCalculator:  NewStreamRateCalculator(),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -420,7 +437,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		)
 
 		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
-		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
+		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}
@@ -505,6 +522,14 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	i.flushQueuesDone.Wait()
 
+	i.streamRateCalculator.Stop()
+
+	// In case the flag to terminate on shutdown is set we need to mark the
+	// ingester service as "failed", so Loki will shut down entirely.
+	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
+	if i.terminateOnShutdown && errs.Err() == nil {
+		return modules.ErrStopProcess
+	}
 	return errs.Err()
 }
 
@@ -525,16 +550,62 @@ func (i *Ingester) loop() {
 	}
 }
 
-// ShutdownHandler triggers the following set of operations in order:
-//     * Change the state of ring to stop accepting writes.
-//     * Flush all the chunks.
-func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+// LegacyShutdownHandler triggers the following set of operations in order:
+//   - Change the state of ring to stop accepting writes.
+//   - Flush all the chunks.
+//
+// Note: This handler does not trigger a termination of the Loki process,
+// despite its name. Instead, the ingester service is stopped, so an external
+// source can trigger a safe termination through a signal to the process.
+// The handler is deprecated and usage is discouraged. Use ShutdownHandler
+// instead.
+func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ShutdownHandler handles a graceful shutdown of the ingester service and
+// termination of the Loki process.
+func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	// Don't allow calling the shutdown handler multiple times
+	if i.State() != services.Running {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("Ingester is stopping or already stopped."))
+		return
+	}
+	params := r.URL.Query()
+	doFlush := util.FlagFromValues(params, "flush", true)
+	doDeleteRingTokens := util.FlagFromValues(params, "delete_ring_tokens", false)
+	doTerminate := util.FlagFromValues(params, "terminate", true)
+	err := i.handleShutdown(doTerminate, doFlush, doDeleteRingTokens)
+
+	// Stopping the module will return the modules.ErrStopProcess error. This is
+	// needed so the Loki process is shut down completely.
+	if err == nil || err == modules.ErrStopProcess {
+		w.WriteHeader(http.StatusNoContent)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(err.Error()))
+	}
+}
+
+// handleShutdown triggers the following operations:
+//   - Change the state of ring to stop accepting writes.
+//   - optional: Flush all the chunks.
+//   - optional: Delete ring tokens file
+//   - Unregister from KV store
+//   - optional: Terminate process (handled by service manager in loki.go)
+func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
+	i.lifecycler.SetFlushOnShutdown(flush)
+	i.lifecycler.SetClearTokensOnShutdown(del)
+	i.lifecycler.SetUnregisterOnShutdown(true)
+	i.terminateOnShutdown = terminate
+	return services.StopAndAwaitTerminated(context.Background(), i)
 }
 
 // Push implements logproto.Pusher.
@@ -546,26 +617,51 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return &logproto.PushResponse{}, err
+	}
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
+// GetStreamRates returns a response containing all streams and their current rate
+// TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
+func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	allRates := i.streamRateCalculator.Rates()
+
+	rates := make([]*logproto.StreamRate, 0, len(allRates))
+	for _, r := range allRates {
+		rates = append(rates, &logproto.StreamRate{
+			Tenant:            r.Tenant,
+			StreamHash:        r.StreamHash,
+			StreamHashNoShard: r.StreamHashNoShard,
+			Rate:              r.Rate,
+		})
+	}
+
+	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
+}
+
+func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
-		return inst
+		return inst, nil
 	}
 
 	i.instancesMtx.Lock()
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		var err error
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator)
+		if err != nil {
+			return nil, err
+		}
 		i.instances[instanceID] = inst
 		activeTenantsStats.Set(int64(len(i.instances)))
 	}
-	return inst
+	return inst, nil
 }
 
 // Query the ingests for log streams matching a set of matchers.
@@ -578,7 +674,10 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
 	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
@@ -592,6 +691,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			End:       end,
 			Limit:     req.Limit,
 			Shards:    req.Shards,
+			Deletes:   req.Deletes,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -603,7 +703,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendBatches(ctx, it, queryServer, req.Limit)
+	// sendBatches uses -1 to specify no limit.
+	batchLimit := int32(req.Limit)
+	if batchLimit == 0 {
+		batchLimit = -1
+	}
+
+	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -616,7 +722,10 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
 	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
@@ -628,6 +737,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			End:      end,
 			Selector: req.Selector,
 			Shards:   req.Shards,
+			Deletes:  req.Deletes,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
@@ -643,18 +753,20 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	return sendSampleBatches(ctx, it, queryServer)
 }
 
-// boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
-// max look back is limited to from time of boltdb-shipper config.
-// It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
-func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
+// asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
+// max look back is limited to from time of async store config.
+// It considers previous periodic config's from time if that also has async index type.
+// This is to limit the lookback to only async stores where relevant.
+func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != config.BoltDBShipperType {
+	if activePeriodicConfig.IndexType != config.BoltDBShipperType && activePeriodicConfig.IndexType != config.TSDBType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType ||
+		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.TSDBType) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -662,20 +774,20 @@ func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
 	return maxLookBack
 }
 
-// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
-	if boltdbShipperMaxLookBack == 0 {
+	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
+	if asyncStoreMaxLookBack == 0 {
 		return &logproto.GetChunkIDsResponse{}, nil
 	}
 
 	reqStart := req.Start
-	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
+	reqStart = adjustQueryStartTime(asyncStoreMaxLookBack, reqStart, time.Now())
 
 	// parse the request
 	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
@@ -713,7 +825,10 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	instance := i.GetOrCreateInstance(userID)
+	instance, err := i.GetOrCreateInstance(userID)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
@@ -723,9 +838,9 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return resp, nil
 	}
 
-	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
-	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
-	if boltdbShipperMaxLookBack == 0 && !i.cfg.QueryStore {
+	// Only continue if the active index type is one of async index store types or QueryStore flag is true.
+	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
+	if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
 		return resp, nil
 	}
 
@@ -736,8 +851,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-	if boltdbShipperMaxLookBack != 0 {
-		maxLookBackPeriod = boltdbShipperMaxLookBack
+	if asyncStoreMaxLookBack != 0 {
+		maxLookBackPeriod = asyncStoreMaxLookBack
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
 	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
@@ -771,13 +886,55 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return nil, err
+	}
 	return instance.Series(ctx, req)
 }
 
-// Check implements grpc_health_v1.HealthCheck.
-func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	user, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(user)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	type f func() (*logproto.IndexStatsResponse, error)
+	jobs := []f{
+		f(func() (*logproto.IndexStatsResponse, error) {
+			return instance.GetStats(ctx, req)
+		}),
+		f(func() (*logproto.IndexStatsResponse, error) {
+			return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
+		}),
+	}
+	resps := make([]*logproto.IndexStatsResponse, len(jobs))
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(ctx context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := index_stats.MergeStats(resps...)
+	return &merged, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
@@ -827,7 +984,10 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
 	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err

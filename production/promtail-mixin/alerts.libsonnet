@@ -38,21 +38,6 @@
             },
           },
           {
-            alert: 'PromtailFileLagging',
-            expr: |||
-              promtail_stream_lag_seconds > 10
-            |||,
-            'for': '15m',
-            labels: {
-              severity: 'warning',
-            },
-            annotations: {
-              message: |||
-                {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} has been lagging by more than 10 seconds for more than 15m.
-              |||,
-            },
-          },
-          {
             alert: 'PromtailFileMissing',
             expr: |||
               promtail_file_bytes_total unless promtail_read_bytes_total

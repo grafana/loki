@@ -325,10 +325,12 @@ type RequestOpts struct {
 	// OkCodes contains a list of numeric HTTP status codes that should be interpreted as success. If
 	// the response has a different code, an error will be returned.
 	OkCodes []int
-	// MoreHeaders specifies additional HTTP headers to be provide on the request. If a header is
-	// provided with a blank value (""), that header will be *omitted* instead: use this to suppress
-	// the default Accept header or an inferred Content-Type, for example.
+	// MoreHeaders specifies additional HTTP headers to be provided on the request.
+	// MoreHeaders will be overridden by OmitHeaders
 	MoreHeaders map[string]string
+	// OmitHeaders specifies the HTTP headers which should be omitted.
+	// OmitHeaders will override MoreHeaders
+	OmitHeaders []string
 	// ErrorContext specifies the resource error type to return if an error is encountered.
 	// This lets resources override default error messages based on the response status code.
 	ErrorContext error
@@ -396,7 +398,8 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 		req = req.WithContext(client.Context)
 	}
 
-	// Populate the request headers. Apply options.MoreHeaders last, to give the caller the chance to
+	// Populate the request headers.
+	// Apply options.MoreHeaders and options.OmitHeaders, to give the caller the chance to
 	// modify or omit any header.
 	if contentType != nil {
 		req.Header.Set("Content-Type", *contentType)
@@ -410,6 +413,10 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 		for k, v := range options.MoreHeaders {
 			req.Header.Set(k, v)
 		}
+	}
+
+	for _, v := range options.OmitHeaders {
+		req.Header.Del(v)
 	}
 
 	// get latest token from client
@@ -556,10 +563,20 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 			if error500er, ok := errType.(Err500er); ok {
 				err = error500er.Error500(respErr)
 			}
+		case http.StatusBadGateway:
+			err = ErrDefault502{respErr}
+			if error502er, ok := errType.(Err502er); ok {
+				err = error502er.Error502(respErr)
+			}
 		case http.StatusServiceUnavailable:
 			err = ErrDefault503{respErr}
 			if error503er, ok := errType.(Err503er); ok {
 				err = error503er.Error503(respErr)
+			}
+		case http.StatusGatewayTimeout:
+			err = ErrDefault504{respErr}
+			if error504er, ok := errType.(Err504er); ok {
+				err = error504er.Error504(respErr)
 			}
 		}
 

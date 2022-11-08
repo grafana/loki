@@ -79,7 +79,8 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{n}`),
 			labels.Labels{},
 			labels.Labels{
-				{Name: logqlmodel.ErrorLabel, Value: errJSON},
+				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "__error_details__", Value: "ReadMapCB: expect \" after {, but found n, error found in #2 byte of ...|{n}|..., bigger context ...|{n}|..."},
 			},
 		},
 		{
@@ -103,9 +104,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			_, _ = j.Process(tt.line, b)
+			_, _ = j.Process(0, tt.line, b)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, b.Labels())
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -353,9 +354,9 @@ func TestJSONExpressionParser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			_, _ = j.Process(tt.line, b)
+			_, _ = j.Process(0, tt.line, b)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, b.Labels())
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -440,7 +441,7 @@ func Benchmark_Parser(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(line, builder)
+					_, _ = tt.s.Process(0, line, builder)
 				}
 			})
 
@@ -449,7 +450,7 @@ func Benchmark_Parser(b *testing.B) {
 				builder.parserKeyHints = newParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(line, builder)
+					_, _ = tt.s.Process(0, line, builder)
 				}
 			})
 		})
@@ -548,9 +549,9 @@ func Test_regexpParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			_, _ = tt.parser.Process(tt.line, b)
+			_, _ = tt.parser.Process(0, tt.line, b)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, b.Labels())
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -570,7 +571,8 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: logqlmodel.ErrorLabel, Value: errLogfmt},
+				{Name: "__error__", Value: "LogfmtParserErr"},
+				{Name: "__error_details__", Value: "logfmt syntax error at pos 8 : unexpected '='"},
 			},
 		},
 		{
@@ -713,9 +715,9 @@ func Test_logfmtParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			_, _ = p.Process(tt.line, b)
+			_, _ = p.Process(0, tt.line, b)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, b.Labels())
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -746,6 +748,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.Labels{},
 			labels.Labels{
 				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "__error_details__", Value: "expecting json object(6), but it is not"},
 			},
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
 		},
@@ -755,6 +758,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.Labels{{Name: "cluster", Value: "us-central1"}},
 			labels.Labels{
 				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "__error_details__", Value: "expecting json object(6), but it is not"},
 				{Name: "cluster", Value: "us-central1"},
 			},
 			[]byte(`["foo","bar"]`),
@@ -807,9 +811,9 @@ func Test_unpackParser_Parse(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			copy := string(tt.line)
-			l, _ := j.Process(tt.line, b)
+			l, _ := j.Process(0, tt.line, b)
 			sort.Sort(tt.wantLbs)
-			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 			require.Equal(t, tt.wantLine, l)
 			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
@@ -875,9 +879,9 @@ func Test_PatternParser(t *testing.T) {
 			b.Reset()
 			pp, err := NewPatternParser(tt.pattern)
 			require.NoError(t, err)
-			_, _ = pp.Process(tt.line, b)
+			_, _ = pp.Process(0, tt.line, b)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, b.Labels())
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
 }

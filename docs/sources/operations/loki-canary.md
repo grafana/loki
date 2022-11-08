@@ -303,64 +303,75 @@ All options:
 
 ```
   -addr string
-        The Loki server URL:Port, e.g. loki:3100
+    	The Loki server URL:Port, e.g. loki:3100
   -buckets int
-        Number of buckets in the response_latency histogram (default 10)
+    	Number of buckets in the response_latency histogram (default 10)
+  -ca-file string
+    	Client certificate authority for optional use with TLS connection to Loki
+  -cert-file string
+    	Client PEM encoded X.509 certificate for optional use with TLS connection to Loki
+  -insecure
+    	Allow insecure TLS connections
   -interval duration
-        Duration between log entries (default 1s)
+    	Duration between log entries (default 1s)
+  -key-file string
+    	Client PEM encoded X.509 key for optional use with TLS connection to Loki
   -labelname string
-        The label name for this instance of Loki Canary to use in the log selector
-        (default "name")
+    	The label name for this instance of loki-canary to use in the log selector (default "name")
   -labelvalue string
-        The unique label value for this instance of Loki Canary to use in the log selector
-        (default "loki-canary")
+    	The unique label value for this instance of loki-canary to use in the log selector (default "loki-canary")
+  -max-wait duration
+    	Duration to keep querying Loki for missing websocket entries before reporting them missing (default 5m0s)
   -metric-test-interval duration
-        The interval the metric test query should be run (default 1h0m0s)
+    	The interval the metric test query should be run (default 1h0m0s)
   -metric-test-range duration
-        The range value [24h] used in the metric test instant-query. This value is truncated
-        to the running time of the canary until this value is reached (default 24h0m0s)
+    	The range value [24h] used in the metric test instant-query. Note: this value is truncated to the running time of the canary until this value is reached (default 24h0m0s)
   -out-of-order-max duration
-    	  Maximum amount of time (in seconds) in the past an out of order entry may have as a
-          timestamp. (default 60s)
+    	Maximum amount of time to go back for out of order entries (in seconds). (default 1m0s)
   -out-of-order-min duration
-    	  Minimum amount of time (in seconds) in the past an out of order entry may have as a
-          timestamp. (default 30s)
+    	Minimum amount of time to go back for out of order entries (in seconds). (default 30s)
   -out-of-order-percentage int
-      	Percentage (0-100) of log entries that should be sent out of order
+    	Percentage (0-100) of log entries that should be sent out of order.
   -pass string
-        Loki password
+    	Loki password. This credential should have both read and write permissions to Loki endpoints
   -port int
-        Port which Loki Canary should expose metrics (default 3500)
+    	Port which loki-canary should expose metrics (default 3500)
   -pruneinterval duration
-        Frequency to check sent versus received logs, and also the frequency at which queries
-        for missing logs will be dispatched to Loki, and the frequency spot check queries are run
-        (default 1m0s)
+    	Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
+  -push
+    	Push the logs directly to given Loki address
   -query-timeout duration
-        How long to wait for a query response from Loki (default 10s)
+    	How long to wait for a query response from Loki (default 10s)
   -size int
-        Size in bytes of each log line (default 100)
+    	Size in bytes of each log line (default 100)
+  -spot-check-initial-wait duration
+    	How long should the spot check query wait before starting to check for entries (default 10s)
   -spot-check-interval duration
-        Interval that a single result will be kept from sent entries and spot-checked against
-        Loki. For example, with the 15 minute default, one entry every 15 minutes will be saved,
-        and then queried again every 15 minutes until the time defined by spot-check-max is
-        reached (default 15m0s)
+    	Interval that a single result will be kept from sent entries and spot-checked against Loki, e.g. 15min default one entry every 15 min will be saved and then queried again every 15min until spot-check-max is reached (default 15m0s)
   -spot-check-max duration
-        How far back to check a spot check an entry before dropping it (default 4h0m0s)
+    	How far back to check a spot check entry before dropping it (default 4h0m0s)
   -spot-check-query-rate duration
-        Interval that Loki Canary will query Loki for the current list of all spot check entries
-        (default 1m0s)
+    	Interval that the canary will query Loki for the current list of all spot check entries (default 1m0s)
   -streamname string
-        The stream name for this instance of Loki Canary to use in the log selector
-        (default "stream")
+    	The stream name for this instance of loki-canary to use in the log selector (default "stream")
   -streamvalue string
-        The unique stream value for this instance of Loki Canary to use in the log selector
-        (default "stdout")
+    	The unique stream value for this instance of loki-canary to use in the log selector (default "stdout")
+  -tenant-id string
+    	Tenant ID to be set in X-Scope-OrgID header.
   -tls
-        Does the Loki connection use TLS?
+    	Does the loki connection use TLS?
   -user string
-        Loki user name
+    	Loki username.
   -version
-        Print this build's version information
+    	Print this builds version information
   -wait duration
-        Duration to wait for log entries before reporting them as lost (default 1m0s)
+    	Duration to wait for log entries on websocket before querying loki for them (default 1m0s)
+  -write-max-backoff duration
+    	Maximum backoff time between retries  (default 5m0s)
+  -write-max-retries int
+    	Maximum number of retries when push a log entry  (default 10)
+  -write-min-backoff duration
+    	Initial backoff time before first retry  (default 500ms)
+  -write-timeout duration
+    	How long to wait write response from Loki (default 10s)
 ```

@@ -1,6 +1,10 @@
 package log
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func Test_sanitizeLabelKey(t *testing.T) {
 	tests := []struct {
@@ -22,4 +26,11 @@ func Test_sanitizeLabelKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_UniqueStrings(t *testing.T) {
+	in := []string{"foo", "bar", "baz", "foo"}
+	out := uniqueString(in)
+	require.Equal(t, []string{"foo", "bar", "baz"}, out)
+	require.Equal(t, 4, cap(out))
 }

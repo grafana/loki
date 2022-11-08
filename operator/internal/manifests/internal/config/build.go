@@ -3,10 +3,10 @@ package config
 import (
 	"bytes"
 	"embed"
-	"io/ioutil"
+	"io"
 	"text/template"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 )
 
 const (
@@ -38,7 +38,7 @@ func Build(opts Options) ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to create loki configuration")
 	}
-	cfg, err := ioutil.ReadAll(w)
+	cfg, err := io.ReadAll(w)
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
@@ -48,7 +48,7 @@ func Build(opts Options) ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to create loki runtime configuration")
 	}
-	rcfg, err := ioutil.ReadAll(w)
+	rcfg, err := io.ReadAll(w)
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}

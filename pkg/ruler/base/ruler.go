@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/util"
@@ -86,20 +87,8 @@ type Config struct {
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 
-	// URL of the Alertmanager to send notifications to.
-	AlertmanagerURL string `yaml:"alertmanager_url"`
-	// Whether to use DNS SRV records to discover Alertmanager.
-	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`
-	// How long to wait between refreshing the list of Alertmanager based on DNS service discovery.
-	AlertmanagerRefreshInterval time.Duration `yaml:"alertmanager_refresh_interval"`
-	// Enables the ruler notifier to use the Alertmananger V2 API.
-	AlertmanangerEnableV2API bool `yaml:"enable_alertmanager_v2"`
-	// Capacity of the queue for notifications to be sent to the Alertmanager.
-	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
-	// HTTP timeout duration when sending notifications to the Alertmanager.
-	NotificationTimeout time.Duration `yaml:"notification_timeout"`
-	// Client configs for interacting with the Alertmanager
-	Notifier NotifierConfig `yaml:"alertmanager_client"`
+	// Global alertmanager config.
+	config.AlertManagerConfig `yaml:",inline"`
 
 	// Max time to tolerate outage for restoring "for" state of alert.
 	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
@@ -206,6 +195,7 @@ type MultiTenantManager interface {
 }
 
 // Ruler evaluates rules.
+//
 //	+---------------------------------------------------------------+
 //	|                                                               |
 //	|                   Query       +-------------+                 |

@@ -1,9 +1,10 @@
 # Running Loki
 
-Currently there are five ways to try out Loki, in order from easier to hardest:
+Currently there are six ways to try out Loki, in order from easier to hardest:
 
 - [Grafana Cloud: Hosted Logs](#grafana-cloud-logs)
 - [Run Loki locally with Docker](#run-locally-using-docker)
+- [Run Loki with Nomad](#run-with-nomad)
 - [Use Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
 - [Build Loki from source](#build-and-run-from-source)
 - [Get inspired by our production setup](#get-inspired-by-our-production-setup)
@@ -43,9 +44,17 @@ For instructions on how to query Loki, see [our usage docs](https://grafana.com/
 
 To deploy a cluster of loki locally, please refer to this [doc](./docker/)
 
+## Run with Nomad
+
+There are example [Nomad jobs](./nomad) that can be used to deploy Loki with
+[Nomad](https://www.nomadproject.io/) - simple and powerful workload
+orchestrator from HashiCorp.
+
 ## Using Helm to deploy on Kubernetes
 
-There is a [Helm chart](helm) to deploy Loki and Promtail to Kubernetes.
+Here are the Helm charts used to deploy Loki and Promtail to Kubernetes:
+- [Loki](./helm/loki/README.md#loki) 
+- [Promtail](https://github.com/grafana/helm-charts/blob/main/charts/promtail/README.md#promtail) 
 
 ## Build and run from source
 

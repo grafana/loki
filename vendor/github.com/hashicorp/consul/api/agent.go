@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 )
 
 // ServiceKind is the kind of service being registered.
@@ -93,6 +92,7 @@ type AgentService struct {
 	ContentHash       string                          `json:",omitempty" bexpr:"-"`
 	Proxy             *AgentServiceConnectProxyConfig `json:",omitempty"`
 	Connect           *AgentServiceConnect            `json:",omitempty"`
+	PeerName          string                          `json:",omitempty"`
 	// NOTE: If we ever set the ContentHash outside of singular service lookup then we may need
 	// to include the Namespace in the hash. When we do, then we are in for lots of fun with tests.
 	// For now though, ignoring it works well enough.
@@ -333,6 +333,7 @@ type AgentServiceCheck struct {
 	Method                 string              `json:",omitempty"`
 	Body                   string              `json:",omitempty"`
 	TCP                    string              `json:",omitempty"`
+	UDP                    string              `json:",omitempty"`
 	Status                 string              `json:",omitempty"`
 	Notes                  string              `json:",omitempty"`
 	TLSServerName          string              `json:",omitempty"`
@@ -427,6 +428,7 @@ type Upstream struct {
 	DestinationType      UpstreamDestType `json:",omitempty"`
 	DestinationPartition string           `json:",omitempty"`
 	DestinationNamespace string           `json:",omitempty"`
+	DestinationPeer      string           `json:",omitempty"`
 	DestinationName      string
 	Datacenter           string                 `json:",omitempty"`
 	LocalBindAddress     string                 `json:",omitempty"`
@@ -628,7 +630,7 @@ func (a *Agent) AgentHealthServiceByID(serviceID string) (string, *AgentServiceC
 }
 
 func (a *Agent) AgentHealthServiceByIDOpts(serviceID string, q *QueryOptions) (string, *AgentServiceChecksInfo, error) {
-	path := fmt.Sprintf("/v1/agent/health/service/id/%v", url.PathEscape(serviceID))
+	path := fmt.Sprintf("/v1/agent/health/service/id/%v", serviceID)
 	r := a.c.newRequest("GET", path)
 	r.setQueryOptions(q)
 	r.params.Add("format", "json")
@@ -669,7 +671,7 @@ func (a *Agent) AgentHealthServiceByName(service string) (string, []AgentService
 }
 
 func (a *Agent) AgentHealthServiceByNameOpts(service string, q *QueryOptions) (string, []AgentServiceChecksInfo, error) {
-	path := fmt.Sprintf("/v1/agent/health/service/name/%v", url.PathEscape(service))
+	path := fmt.Sprintf("/v1/agent/health/service/name/%v", service)
 	r := a.c.newRequest("GET", path)
 	r.setQueryOptions(q)
 	r.params.Add("format", "json")

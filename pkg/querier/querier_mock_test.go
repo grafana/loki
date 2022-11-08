@@ -19,11 +19,13 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -41,22 +43,38 @@ func newQuerierClientMock() *querierClientMock {
 
 func (c *querierClientMock) Query(ctx context.Context, in *logproto.QueryRequest, opts ...grpc.CallOption) (logproto.Querier_QueryClient, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(logproto.Querier_QueryClient), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (logproto.Querier_QueryClient)(nil), args.Error(1)
+	}
+	return res.(logproto.Querier_QueryClient), args.Error(1)
 }
 
 func (c *querierClientMock) QuerySample(ctx context.Context, in *logproto.SampleQueryRequest, opts ...grpc.CallOption) (logproto.Querier_QuerySampleClient, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(logproto.Querier_QuerySampleClient), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (logproto.Querier_QuerySampleClient)(nil), args.Error(1)
+	}
+	return res.(logproto.Querier_QuerySampleClient), args.Error(1)
 }
 
 func (c *querierClientMock) Label(ctx context.Context, in *logproto.LabelRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.LabelResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.LabelResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Tail(ctx context.Context, in *logproto.TailRequest, opts ...grpc.CallOption) (logproto.Querier_TailClient, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(logproto.Querier_TailClient), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (logproto.Querier_TailClient)(nil), args.Error(1)
+	}
+	return res.(logproto.Querier_TailClient), args.Error(1)
 }
 
 func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesRequest, opts ...grpc.CallOption) (*logproto.SeriesResponse, error) {
@@ -70,7 +88,20 @@ func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesReque
 
 func (c *querierClientMock) TailersCount(ctx context.Context, in *logproto.TailersCountRequest, opts ...grpc.CallOption) (*logproto.TailersCountResponse, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(*logproto.TailersCountResponse), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.TailersCountResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.TailersCountResponse), args.Error(1)
+}
+
+func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChunkIDsRequest, opts ...grpc.CallOption) (*logproto.GetChunkIDsResponse, error) {
+	args := c.Called(ctx, in, opts)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.GetChunkIDsResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Context() context.Context {
@@ -320,6 +351,10 @@ func (s *storeMock) GetSeries(ctx context.Context, userID string, from, through 
 	panic("don't call me please")
 }
 
+func (s *storeMock) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
+}
+
 func (s *storeMock) Stop() {
 }
 
@@ -329,11 +364,11 @@ type readRingMock struct {
 	replicationSet ring.ReplicationSet
 }
 
-func newReadRingMock(ingesters []ring.InstanceDesc) *readRingMock {
+func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
 	return &readRingMock{
 		replicationSet: ring.ReplicationSet{
 			Instances: ingesters,
-			MaxErrors: 0,
+			MaxErrors: maxErrors,
 		},
 	}
 }
@@ -402,7 +437,7 @@ func (r *readRingMock) GetInstanceState(instanceID string) (ring.InstanceState, 
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
-	})
+	}, 0)
 }
 
 func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
@@ -480,4 +515,8 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 
 func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
+}
+
+func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	return nil, nil
 }

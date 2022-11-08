@@ -2,7 +2,10 @@ package log
 
 import (
 	"fmt"
+	"io"
+	"math"
 	"os"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,12 +20,14 @@ var (
 	// TODO: Change all components to take a non-global logger via their constructors.
 	// Prefer accepting a non-global logger as an argument.
 	Logger = log.NewNopLogger()
+
+	bufferedLogger *log.LineBufferedLogger
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
 // default logger for the server.
-func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
-	l := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg)
+func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sync bool) {
+	l := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, buffered, sync)
 
 	// when use util_log.Logger, skip 3 stack frames.
 	Logger = log.With(l, "caller", log.Caller(3))
@@ -34,28 +39,92 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
 	cfg.Log = logging.GoKit(log.With(l, "caller", log.Caller(4)))
 }
 
+type Flusher interface {
+	Flush() error
+}
+
+func Flush() error {
+	if bufferedLogger != nil {
+		return bufferedLogger.Flush()
+	}
+
+	return nil
+}
+
 // prometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type prometheusLogger struct {
-	logger      log.Logger
-	logMessages *prometheus.CounterVec
+	logger              log.Logger
+	logMessages         *prometheus.CounterVec
+	internalLogMessages *prometheus.CounterVec
+	logFlushes          prometheus.Histogram
+
+	useBufferedLogger bool
+	useSyncLogger     bool
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
-func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer) log.Logger {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer, buffered bool, sync bool) log.Logger {
+
+	// buffered logger settings
+	var (
+		logEntries    uint32 = 256                    // buffer up to 256 log lines in memory before flushing to a write(2) syscall
+		logBufferSize uint32 = 10e6                   // 10MB
+		flushTimeout         = 100 * time.Millisecond // flush the buffer after 100ms regardless of how full it is, to prevent losing many logs in case of ungraceful termination
+	)
+
+	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "log_messages_total",
+		Help:      "DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself.",
+	}, []string{"level"})
+	internalLogMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "internal_log_messages_total",
+		Help:      "Total number of log messages created by Loki itself.",
+	}, []string{"level"})
+	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki",
+		Name:      "log_flushes",
+		Help:      "Histogram of log flushes using the line-buffered logger.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logEntries)))+1),
+	})
+
+	var writer io.Writer
+	if buffered {
+		// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
+		// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
+
+		// retain a reference to this logger because it doesn't conform to the standard Logger interface,
+		// and we can't unwrap it to get the underlying logger when we flush on shutdown
+		bufferedLogger = log.NewLineBufferedLogger(os.Stderr, logEntries,
+			log.WithFlushPeriod(flushTimeout),
+			log.WithPrellocatedBuffer(logBufferSize),
+			log.WithFlushCallback(func(entries uint32) {
+				logFlushes.Observe(float64(entries))
+			}),
+		)
+
+		writer = bufferedLogger
+	} else {
+		writer = os.Stderr
+	}
+
+	if sync {
+		writer = log.NewSyncWriter(writer)
+	}
+
+	logger := log.NewLogfmtLogger(writer)
 	if format.String() == "json" {
-		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+		logger = log.NewJSONLogger(writer)
 	}
 	logger = level.NewFilter(logger, levelFilter(l.String()))
 
 	plogger := &prometheusLogger{
-		logger: logger,
-		logMessages: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "log_messages_total",
-			Help:      "Total number of log messages.",
-		}, []string{"level"}),
+		logger:              logger,
+		logMessages:         logMessages,
+		internalLogMessages: internalLogMessages,
+		logFlushes:          logFlushes,
 	}
 	// Initialise counters for all supported levels:
 	supportedLevels := []level.Value{
@@ -66,6 +135,7 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	}
 	for _, level := range supportedLevels {
 		plogger.logMessages.WithLabelValues(level.String())
+		plogger.internalLogMessages.WithLabelValues(level.String())
 	}
 
 	// return a Logger without caller information, shouldn't use directly
@@ -83,6 +153,7 @@ func (pl *prometheusLogger) Log(kv ...interface{}) error {
 		}
 	}
 	pl.logMessages.WithLabelValues(l).Inc()
+	pl.internalLogMessages.WithLabelValues(l).Inc()
 	return nil
 }
 
@@ -104,8 +175,7 @@ func CheckFatal(location string, err error, logger log.Logger) {
 	os.Exit(1)
 }
 
-// TODOe remove once weaveworks/common updates to go-kit/log
-//                                     -> we can then revert to using Level.Gokit
+// TODO: remove once weaveworks/common updates to go-kit/log, we can then revert to using Level.Gokit
 func levelFilter(l string) level.Option {
 	switch l {
 	case "debug":

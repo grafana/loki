@@ -40,7 +40,7 @@ const (
 	// ReplicationStatusPending indicates replication is pending
 	ReplicationStatusPending ReplicationStatus = "PENDING"
 	// ReplicationStatusComplete indicates replication completed ok
-	ReplicationStatusComplete ReplicationStatus = "COMPLETE"
+	ReplicationStatusComplete ReplicationStatus = "COMPLETED"
 	// ReplicationStatusFailed indicates replication failed
 	ReplicationStatusFailed ReplicationStatus = "FAILED"
 	// ReplicationStatusReplica indicates object is a replica of a source
@@ -55,10 +55,14 @@ func (r ReplicationStatus) Empty() bool {
 // AdvancedPutOptions for internal use - to be utilized by replication, ILM transition
 // implementation on MinIO server
 type AdvancedPutOptions struct {
-	SourceVersionID   string
-	SourceETag        string
-	ReplicationStatus ReplicationStatus
-	SourceMTime       time.Time
+	SourceVersionID    string
+	SourceETag         string
+	ReplicationStatus  ReplicationStatus
+	SourceMTime        time.Time
+	ReplicationRequest bool
+	RetentionTimestamp time.Time
+	TaggingTimestamp   time.Time
+	LegalholdTimestamp time.Time
 }
 
 // PutObjectOptions represents options specified by user for PutObject call
@@ -80,6 +84,7 @@ type PutObjectOptions struct {
 	PartSize                uint64
 	LegalHold               LegalHoldStatus
 	SendContentMd5          bool
+	DisableContentSha256    bool
 	DisableMultipart        bool
 	Internal                AdvancedPutOptions
 }
@@ -152,6 +157,19 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 	if opts.Internal.SourceETag != "" {
 		header.Set(minIOBucketSourceETag, opts.Internal.SourceETag)
 	}
+	if opts.Internal.ReplicationRequest {
+		header.Set(minIOBucketReplicationRequest, "")
+	}
+	if !opts.Internal.LegalholdTimestamp.IsZero() {
+		header.Set(minIOBucketReplicationObjectLegalHoldTimestamp, opts.Internal.LegalholdTimestamp.Format(time.RFC3339Nano))
+	}
+	if !opts.Internal.RetentionTimestamp.IsZero() {
+		header.Set(minIOBucketReplicationObjectRetentionTimestamp, opts.Internal.RetentionTimestamp.Format(time.RFC3339Nano))
+	}
+	if !opts.Internal.TaggingTimestamp.IsZero() {
+		header.Set(minIOBucketReplicationTaggingTimestamp, opts.Internal.TaggingTimestamp.Format(time.RFC3339Nano))
+	}
+
 	if len(opts.UserTags) != 0 {
 		header.Set(amzTaggingHeader, s3utils.TagEncode(opts.UserTags))
 	}
@@ -197,15 +215,23 @@ func (a completedParts) Less(i, j int) bool { return a[i].PartNumber < a[j].Part
 //
 // You must have WRITE permissions on a bucket to create an object.
 //
-//  - For size smaller than 128MiB PutObject automatically does a
-//    single atomic Put operation.
-//  - For size larger than 128MiB PutObject automatically does a
-//    multipart Put operation.
+//  - For size smaller than 16MiB PutObject automatically does a
+//    single atomic PUT operation.
+//
+//  - For size larger than 16MiB PutObject automatically does a
+//    multipart upload operation.
+//
 //  - For size input as -1 PutObject does a multipart Put operation
 //    until input stream reaches EOF. Maximum object size that can
 //    be uploaded through this operation will be 5TiB.
-func (c Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64,
-	opts PutObjectOptions) (info UploadInfo, err error) {
+//
+//    WARNING: Passing down '-1' will use memory and these cannot
+//    be reused for best outcomes for PutObject(), pass the size always.
+//
+// NOTE: Upon errors during upload multipart operation is entirely aborted.
+func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64,
+	opts PutObjectOptions,
+) (info UploadInfo, err error) {
 	if objectSize < 0 && opts.DisableMultipart {
 		return UploadInfo{}, errors.New("object size must be provided with disable multipart upload")
 	}
@@ -218,7 +244,7 @@ func (c Client) PutObject(ctx context.Context, bucketName, objectName string, re
 	return c.putObjectCommon(ctx, bucketName, objectName, reader, objectSize, opts)
 }
 
-func (c Client) putObjectCommon(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
+func (c *Client) putObjectCommon(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
 	// Check for largest object size allowed.
 	if size > int64(maxMultipartPutObjectSize) {
 		return UploadInfo{}, errEntityTooLarge(size, maxMultipartPutObjectSize, bucketName, objectName)
@@ -252,7 +278,7 @@ func (c Client) putObjectCommon(ctx context.Context, bucketName, objectName stri
 	return c.putObjectMultipartStream(ctx, bucketName, objectName, reader, size, opts)
 }
 
-func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName, objectName string, reader io.Reader, opts PutObjectOptions) (info UploadInfo, err error) {
+func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName, objectName string, reader io.Reader, opts PutObjectOptions) (info UploadInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
 		return UploadInfo{}, err
@@ -269,7 +295,7 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 	var complMultipartUpload completeMultipartUpload
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, _, err := optimalPartInfo(-1, opts.PartSize)
+	totalPartsCount, partSize, _, err := OptimalPartInfo(-1, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -319,7 +345,10 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 
 		// Proceed to upload the part.
 		objPart, uerr := c.uploadPart(ctx, bucketName, objectName, uploadID, rd, partNumber,
-			md5Base64, "", int64(length), opts.ServerSideEncryption)
+			md5Base64, "", int64(length),
+			opts.ServerSideEncryption,
+			!opts.DisableContentSha256,
+		)
 		if uerr != nil {
 			return UploadInfo{}, uerr
 		}
@@ -356,7 +385,7 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload)
+	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, PutObjectOptions{})
 	if err != nil {
 		return UploadInfo{}, err
 	}

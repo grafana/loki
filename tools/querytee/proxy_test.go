@@ -2,9 +2,10 @@ package querytee
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,9 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testRoutes = []Route{
+var testReadRoutes = []Route{
 	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: &testComparator{}},
 }
+
+var testWriteRoutes = []Route{}
 
 type testComparator struct{}
 
@@ -27,7 +30,7 @@ func (testComparator) Compare(expected, actual []byte) error { return nil }
 func Test_NewProxy(t *testing.T) {
 	cfg := ProxyConfig{}
 
-	p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)
+	p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
 	assert.Equal(t, errMinBackends, err)
 	assert.Nil(t, p)
 }
@@ -164,7 +167,7 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				cfg.CompareResponses = true
 			}
 
-			p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)
+			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
 			require.NoError(t, err)
 			require.NotNil(t, p)
 			defer p.Stop() //nolint:errcheck
@@ -176,7 +179,7 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			require.NoError(t, err)
 
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err)
 
 			assert.Equal(t, testData.expectedStatus, res.StatusCode)
@@ -313,7 +316,7 @@ func TestProxy_Passthrough(t *testing.T) {
 				PassThroughNonRegisteredRoutes: true,
 			}
 
-			p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)
+			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
 			require.NoError(t, err)
 			require.NotNil(t, p)
 			defer p.Stop() //nolint:errcheck
@@ -327,7 +330,7 @@ func TestProxy_Passthrough(t *testing.T) {
 				require.NoError(t, err)
 
 				defer res.Body.Close()
-				body, err := ioutil.ReadAll(res.Body)
+				body, err := io.ReadAll(res.Body)
 				require.NoError(t, err)
 
 				assert.Equal(t, query.expectedStatusCode, res.StatusCode)
@@ -350,5 +353,49 @@ func mockQueryResponse(path string, status int, res string) http.HandlerFunc {
 		if status == http.StatusOK {
 			_, _ = w.Write([]byte(res))
 		}
+	}
+}
+
+func TestFilterReadDisabledBackend(t *testing.T) {
+	urlMustParse := func(urlStr string) *url.URL {
+		u, err := url.Parse(urlStr)
+		require.NoError(t, err)
+		return u
+	}
+
+	backends := []*ProxyBackend{
+		NewProxyBackend("test1", urlMustParse("http:/test1"), time.Second, true),
+		NewProxyBackend("test2", urlMustParse("http:/test2"), time.Second, false),
+		NewProxyBackend("test3", urlMustParse("http:/test3"), time.Second, false),
+		NewProxyBackend("test4", urlMustParse("http:/test4"), time.Second, false),
+	}
+	for name, tc := range map[string]struct {
+		disableReadProxyCfg string
+		expectedBackends    []*ProxyBackend
+	}{
+		"nothing disabled": {
+			expectedBackends: backends,
+		},
+		"test2 disabled": {
+			disableReadProxyCfg: "test2",
+			expectedBackends:    []*ProxyBackend{backends[0], backends[2], backends[3]},
+		},
+		"test2 and test4 disabled": {
+			disableReadProxyCfg: "test2, test4",
+			expectedBackends:    []*ProxyBackend{backends[0], backends[2]},
+		},
+		"all secondary disabled": {
+			disableReadProxyCfg: "test2, test4,test3",
+			expectedBackends:    []*ProxyBackend{backends[0]},
+		},
+		"disabling primary should not be filtered out": {
+			disableReadProxyCfg: "test1",
+			expectedBackends:    backends,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			filteredBackends := filterReadDisabledBackends(backends, tc.disableReadProxyCfg)
+			require.Equal(t, tc.expectedBackends, filteredBackends)
+		})
 	}
 }

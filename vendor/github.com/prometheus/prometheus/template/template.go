@@ -16,6 +16,7 @@ package template
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	html_template "html/template"
 	"math"
@@ -28,7 +29,6 @@ import (
 	"time"
 
 	"github.com/grafana/regexp"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -45,6 +45,8 @@ var (
 		Name: "prometheus_template_text_expansions_total",
 		Help: "The total number of template text expansions.",
 	})
+
+	errNaNOrInf = errors.New("value is NaN or Inf")
 )
 
 func init() {
@@ -108,6 +110,10 @@ func convertToFloat(i interface{}) (float64, error) {
 	case int:
 		return float64(v), nil
 	case uint:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case uint64:
 		return float64(v), nil
 	default:
 		return 0, fmt.Errorf("can't convert %T to float", v)
@@ -175,7 +181,7 @@ func NewTemplateExpander(
 				return html_template.HTML(text)
 			},
 			"match":     regexp.MatchString,
-			"title":     strings.Title,
+			"title":     strings.Title, // nolint:staticcheck
 			"toUpper":   strings.ToUpper,
 			"toLower":   strings.ToLower,
 			"graphLink": strutil.GraphLinkForExpression,
@@ -189,6 +195,21 @@ func NewTemplateExpander(
 				host, _, err := net.SplitHostPort(hostPort)
 				if err != nil {
 					return hostPort
+				}
+				return host
+			},
+			"stripDomain": func(hostPort string) string {
+				host, port, err := net.SplitHostPort(hostPort)
+				if err != nil {
+					host = hostPort
+				}
+				ip := net.ParseIP(host)
+				if ip != nil {
+					return hostPort
+				}
+				host = strings.Split(host, ".")[0]
+				if port != "" {
+					return net.JoinHostPort(host, port)
 				}
 				return host
 			},
@@ -296,15 +317,24 @@ func NewTemplateExpander(
 				if err != nil {
 					return "", err
 				}
-				if math.IsNaN(v) || math.IsInf(v, 0) {
+
+				tm, err := floatToTime(v)
+				switch {
+				case errors.Is(err, errNaNOrInf):
 					return fmt.Sprintf("%.4g", v), nil
+				case err != nil:
+					return "", err
 				}
-				timestamp := v * 1e9
-				if timestamp > math.MaxInt64 || timestamp < math.MinInt64 {
-					return "", fmt.Errorf("%v cannot be represented as a nanoseconds timestamp since it overflows int64", v)
+
+				return fmt.Sprint(tm), nil
+			},
+			"toTime": func(i interface{}) (*time.Time, error) {
+				v, err := convertToFloat(i)
+				if err != nil {
+					return nil, err
 				}
-				t := model.TimeFromUnixNano(int64(timestamp)).Time().UTC()
-				return fmt.Sprint(t), nil
+
+				return floatToTime(v)
 			},
 			"pathPrefix": func() string {
 				return externalURL.Path
@@ -356,7 +386,7 @@ func (te Expander) Expand() (result string, resultErr error) {
 			var ok bool
 			resultErr, ok = r.(error)
 			if !ok {
-				resultErr = errors.Errorf("panic expanding template %v: %v", te.name, r)
+				resultErr = fmt.Errorf("panic expanding template %v: %v", te.name, r)
 			}
 		}
 		if resultErr != nil {
@@ -370,12 +400,12 @@ func (te Expander) Expand() (result string, resultErr error) {
 	tmpl.Option(te.options...)
 	tmpl, err := tmpl.Parse(te.text)
 	if err != nil {
-		return "", errors.Wrapf(err, "error parsing template %v", te.name)
+		return "", fmt.Errorf("error parsing template %v: %w", te.name, err)
 	}
 	var buffer bytes.Buffer
 	err = tmpl.Execute(&buffer, te.data)
 	if err != nil {
-		return "", errors.Wrapf(err, "error executing template %v", te.name)
+		return "", fmt.Errorf("error executing template %v: %w", te.name, err)
 	}
 	return buffer.String(), nil
 }
@@ -387,7 +417,7 @@ func (te Expander) ExpandHTML(templateFiles []string) (result string, resultErr 
 			var ok bool
 			resultErr, ok = r.(error)
 			if !ok {
-				resultErr = errors.Errorf("panic expanding template %s: %v", te.name, r)
+				resultErr = fmt.Errorf("panic expanding template %s: %v", te.name, r)
 			}
 		}
 	}()
@@ -403,18 +433,18 @@ func (te Expander) ExpandHTML(templateFiles []string) (result string, resultErr 
 	})
 	tmpl, err := tmpl.Parse(te.text)
 	if err != nil {
-		return "", errors.Wrapf(err, "error parsing template %v", te.name)
+		return "", fmt.Errorf("error parsing template %v: %w", te.name, err)
 	}
 	if len(templateFiles) > 0 {
 		_, err = tmpl.ParseFiles(templateFiles...)
 		if err != nil {
-			return "", errors.Wrapf(err, "error parsing template files for %v", te.name)
+			return "", fmt.Errorf("error parsing template files for %v: %w", te.name, err)
 		}
 	}
 	var buffer bytes.Buffer
 	err = tmpl.Execute(&buffer, te.data)
 	if err != nil {
-		return "", errors.Wrapf(err, "error executing template %v", te.name)
+		return "", fmt.Errorf("error executing template %v: %w", te.name, err)
 	}
 	return buffer.String(), nil
 }
@@ -426,4 +456,16 @@ func (te Expander) ParseTest() error {
 		return err
 	}
 	return nil
+}
+
+func floatToTime(v float64) (*time.Time, error) {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil, errNaNOrInf
+	}
+	timestamp := v * 1e9
+	if timestamp > math.MaxInt64 || timestamp < math.MinInt64 {
+		return nil, fmt.Errorf("%v cannot be represented as a nanoseconds timestamp since it overflows int64", v)
+	}
+	t := model.TimeFromUnixNano(int64(timestamp)).Time().UTC()
+	return &t, nil
 }

@@ -2,30 +2,37 @@ syntax = "proto3";
 
 package ingesterpb;
 
-option go_package = "github.com/grafana/loki/pkg/ingester/client";
-
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "pkg/logproto/metrics.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logproto/metrics.proto";
 
+option go_package = "github.com/grafana/loki/pkg/ingester/client";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 service Ingester {
-  rpc Push(logproto.WriteRequest) returns (logproto.WriteResponse) {};
-  rpc Query(QueryRequest) returns (QueryResponse) {};
-  rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
-  rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {};
+  rpc Push(logproto.WriteRequest) returns (logproto.WriteResponse) {}
 
-  rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
-  rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
-  rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
-  rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
-  rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
-  rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
+  rpc Query(QueryRequest) returns (QueryResponse) {}
+
+  rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {}
+
+  rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {}
+
+  rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {}
+
+  rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {}
+
+  rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {}
+
+  rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {}
+
+  rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {}
+
+  rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {}
 
   // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
-  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
+  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {}
 }
 
 message ReadRequest {
@@ -110,8 +117,7 @@ message MetricsForLabelMatchersResponse {
   repeated logproto.Metric metric = 1;
 }
 
-message MetricsMetadataRequest {
-}
+message MetricsMetadataRequest {}
 
 message MetricsMetadataResponse {
   repeated logproto.MetricMetadata metadata = 1;
@@ -120,7 +126,10 @@ message MetricsMetadataResponse {
 message TimeSeriesChunk {
   string from_ingester_id = 1;
   string user_id = 2;
-  repeated logproto.LegacyLabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacyLabelPair labels = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+  ];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
 }
 
@@ -131,8 +140,7 @@ message Chunk {
   bytes data = 4;
 }
 
-message TransferChunksResponse {
-}
+message TransferChunksResponse {}
 
 message LabelMatchers {
   repeated LabelMatcher matchers = 1;

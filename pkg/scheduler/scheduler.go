@@ -120,7 +120,7 @@ type connectedFrontend struct {
 
 type Config struct {
 	MaxOutstandingPerTenant int               `yaml:"max_outstanding_requests_per_tenant"`
-	QuerierForgetDelay      time.Duration     `yaml:"-"`
+	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
 	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
@@ -129,9 +129,7 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
-	// Loki doesn't have query shuffle sharding yet for which this config is intended
-	// use the default value of 0 until someday when this config may be needed.
-	cfg.QuerierForgetDelay = 0
+	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query scheduler create a ring and the frontend and frontend_worker use this ring to get the addresses of the query schedulers. If frontend_address and scheduler_address are not present in the config this value will be toggle by Loki to true")
 	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
@@ -679,13 +677,13 @@ func (s *Scheduler) running(ctx context.Context) error {
 
 func (s *Scheduler) setRunState(isInSet bool) {
 	if isInSet {
-		if s.shouldRun.CAS(false, true) {
+		if s.shouldRun.CompareAndSwap(false, true) {
 			// Value was swapped, meaning this was a state change from stopped to running.
 			level.Info(s.log).Log("msg", "this scheduler is in the ReplicationSet, will now accept requests.")
 			s.schedulerRunning.Set(1)
 		}
 	} else {
-		if s.shouldRun.CAS(true, false) {
+		if s.shouldRun.CompareAndSwap(true, false) {
 			// Value was swapped, meaning this was a state change from running to stopped,
 			// we need to send shutdown to all the connected frontends.
 			level.Info(s.log).Log("msg", "this scheduler is no longer in the ReplicationSet, disconnecting frontends, canceling queries and no longer accepting requests.")

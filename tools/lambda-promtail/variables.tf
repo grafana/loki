@@ -35,13 +35,26 @@ variable "password" {
   default     = ""
 }
 
+variable "bearer_token" {
+  type        = string
+  description = "The bearer token, necessary if target endpoint requires it."
+  sensitive   = true
+  default     = ""
+}
+
+variable "tenant_id" {
+  type        = string
+  description = "Tenant ID to be added when writing logs from lambda-promtail."
+  default     = ""
+}
+
 variable "keep_stream" {
   type        = string
   description = "Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail."
   default     = "false"
 }
 
-variable "extra_labels"{
+variable "extra_labels" {
   type = string
   description = "Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail."
   default = ""
@@ -56,11 +69,17 @@ variable "batch_size" {
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."
-  default     = [""]
+  default     = []
 }
 
 variable "lambda_vpc_security_groups" {
   type        = list(string)
   description = "List of security group IDs associated with the Lambda function."
-  default     = [""]
+  default     = []
+}
+
+variable "kms_key_arn" {
+  type        = string
+  description = "kms key arn for encryp env vars."
+  default     = ""
 }

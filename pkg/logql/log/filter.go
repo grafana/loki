@@ -43,7 +43,7 @@ func (n notFilter) Filter(line []byte) bool {
 
 func (n notFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, n.Filter(line)
 		},
 	}
@@ -87,7 +87,7 @@ func (a andFilter) Filter(line []byte) bool {
 
 func (a andFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
 	}
@@ -164,7 +164,7 @@ func (a andFilters) Filter(line []byte) bool {
 
 func (a andFilters) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
 	}
@@ -205,7 +205,7 @@ func (a orFilter) Filter(line []byte) bool {
 
 func (a orFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
 	}
@@ -235,7 +235,7 @@ func (r regexpFilter) Filter(line []byte) bool {
 
 func (r regexpFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, r.Filter(line)
 		},
 	}
@@ -299,7 +299,7 @@ func containsLower(line, substr []byte) bool {
 
 func (l containsFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, l.Filter(line)
 		},
 	}
@@ -346,7 +346,7 @@ func (f containsAllFilter) Filter(line []byte) bool {
 
 func (f containsAllFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, f.Filter(line)
 		},
 	}
@@ -471,6 +471,16 @@ func simplifyAlternate(reg *syntax.Regexp) (Filterer, bool) {
 // Anything else is rejected.
 func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 	clearCapture(reg.Sub...)
+	// remove empty match as we don't need them for filtering
+	i := 0
+	for _, r := range reg.Sub {
+		if r.Op == syntax.OpEmptyMatch {
+			continue
+		}
+		reg.Sub[i] = r
+		i++
+	}
+	reg.Sub = reg.Sub[:i]
 	// we support only simplication of concat operation with 3 sub expressions.
 	// for instance .*foo.*bar contains 4 subs (.*+foo+.*+bar) and can't be simplified.
 	if len(reg.Sub) > 3 {

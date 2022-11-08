@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
 
@@ -68,17 +68,17 @@ func RegisterMetricCollectors() {
 }
 
 // Collect takes metrics based on the spec
-func Collect(spec *lokiv1beta1.LokiStackSpec, stackName string) {
+func Collect(spec *lokiv1.LokiStackSpec, stackName string) {
 	defaultSpec := manifests.DefaultLokiStackSpec(spec.Size)
-	sizes := []lokiv1beta1.LokiStackSizeType{lokiv1beta1.SizeOneXSmall, lokiv1beta1.SizeOneXMedium}
+	sizes := []lokiv1.LokiStackSizeType{lokiv1.SizeOneXSmall, lokiv1.SizeOneXMedium}
 
 	for _, size := range sizes {
 		var (
-			globalRate                float64 = 0
-			tenantRate                float64 = 0
-			isUsingSize                       = false
-			isUsingTenantLimits               = false
-			isUsingCustomGlobalLimits         = false
+			globalRate                float64
+			tenantRate                float64
+			isUsingSize               = false
+			isUsingTenantLimits       = false
+			isUsingCustomGlobalLimits = false
 		)
 
 		if spec.Size == size {
@@ -106,14 +106,14 @@ func Collect(spec *lokiv1beta1.LokiStackSpec, stackName string) {
 	}
 }
 
-func setDeploymentMetric(size lokiv1beta1.LokiStackSizeType, identifier string, active bool) {
+func setDeploymentMetric(size lokiv1.LokiStackSizeType, identifier string, active bool) {
 	deploymentMetric.With(prometheus.Labels{
 		"size":     string(size),
 		"stack_id": identifier,
 	}).Set(boolValue(active))
 }
 
-func setUserDefinedLimitsMetric(size lokiv1beta1.LokiStackSizeType, identifier string, limitType UserDefinedLimitsType, active bool) {
+func setUserDefinedLimitsMetric(size lokiv1.LokiStackSizeType, identifier string, limitType UserDefinedLimitsType, active bool) {
 	userDefinedLimitsMetric.With(prometheus.Labels{
 		"size":     string(size),
 		"stack_id": identifier,
@@ -121,14 +121,14 @@ func setUserDefinedLimitsMetric(size lokiv1beta1.LokiStackSizeType, identifier s
 	}).Set(boolValue(active))
 }
 
-func setGlobalStreamLimitMetric(size lokiv1beta1.LokiStackSizeType, identifier string, rate float64) {
+func setGlobalStreamLimitMetric(size lokiv1.LokiStackSizeType, identifier string, rate float64) {
 	globalStreamLimitMetric.With(prometheus.Labels{
 		"size":     string(size),
 		"stack_id": identifier,
 	}).Set(rate)
 }
 
-func setAverageTenantStreamLimitMetric(size lokiv1beta1.LokiStackSizeType, identifier string, rate float64) {
+func setAverageTenantStreamLimitMetric(size lokiv1.LokiStackSizeType, identifier string, rate float64) {
 	averageTenantStreamLimitMetric.With(prometheus.Labels{
 		"size":     string(size),
 		"stack_id": identifier,
@@ -142,7 +142,7 @@ func boolValue(value bool) float64 {
 	return 0
 }
 
-func streamRate(tenantLimits map[string]lokiv1beta1.LimitsTemplateSpec, ingesters int32) float64 {
+func streamRate(tenantLimits map[string]lokiv1.LimitsTemplateSpec, ingesters int32) float64 {
 	var tenants, tenantStreamLimit int32 = 0, 0
 
 	for _, tenant := range tenantLimits {

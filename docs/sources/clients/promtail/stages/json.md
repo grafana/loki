@@ -11,7 +11,7 @@ The `json` stage is a parsing stage that reads the log line as JSON and accepts
 ```yaml
 json:
   # Set of key/value pairs of JMESPath expressions. The key will be
-  # the key in the extracted data while the expression will the value,
+  # the key in the extracted data while the expression will be the value,
   # evaluated as a JMESPath from the source data.
   #
   # Literal JMESPath expressions can be done by wrapping a key in
@@ -22,6 +22,10 @@ json:
 
   # Name from extracted data to parse. If empty, uses the log message.
   [source: <string>]
+
+  # When true, then any lines that cannot be successfully parsed as valid JSON objects
+  # will be dropped instead of being sent to Loki.
+  [drop_malformed: <bool> | default = false]
 ```
 
 This stage uses the Go JSON unmarshaler, which means non-string types like

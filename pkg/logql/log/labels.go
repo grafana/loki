@@ -69,6 +69,8 @@ type BaseLabelsBuilder struct {
 	// nolint:structcheck
 	// https://github.com/golangci/golangci-lint/issues/826
 	err string
+	// nolint:structcheck
+	errDetails string
 
 	groups            []string
 	parserKeyHints    ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
@@ -81,6 +83,8 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
+	baseMap       map[string]string
+	buf           labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
 
@@ -132,6 +136,7 @@ func (b *LabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
+	b.errDetails = ""
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
@@ -154,6 +159,19 @@ func (b *LabelsBuilder) GetErr() string {
 // HasErr tells if the error label has been set.
 func (b *LabelsBuilder) HasErr() bool {
 	return b.err != ""
+}
+
+func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
+	b.errDetails = desc
+	return b
+}
+
+func (b *LabelsBuilder) GetErrorDetails() string {
+	return b.errDetails
+}
+
+func (b *LabelsBuilder) HasErrorDetails() bool {
+	return b.errDetails != ""
 }
 
 // BaseHas returns the base labels have the given key
@@ -210,19 +228,40 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
-func (b *LabelsBuilder) Labels() labels.Labels {
+func (b *LabelsBuilder) labels() labels.Labels {
+	b.buf = b.UnsortedLabels(b.buf)
+	sort.Sort(b.buf)
+	return b.buf
+}
+
+func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
+	if b.err != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+	}
+	if b.errDetails != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
+	}
+	return buf
+}
+
+func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels) labels.Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
-		if b.err == "" {
-			return b.base
+		if buf == nil {
+			buf = make(labels.Labels, 0, len(b.base)+1)
+		} else {
+			buf = buf[:0]
 		}
-		res := append(b.base.Copy(), labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-		sort.Sort(res)
-		return res
+		buf = append(buf, b.base...)
+		return b.appendErrors(buf)
 	}
 
 	// In the general case, labels are removed, modified or moved
 	// rather than added.
-	res := make(labels.Labels, 0, len(b.base))
+	if buf == nil {
+		buf = make(labels.Labels, 0, len(b.base)+len(b.add)+1)
+	} else {
+		buf = buf[:0]
+	}
 Outer:
 	for _, l := range b.base {
 		for _, n := range b.del {
@@ -235,14 +274,26 @@ Outer:
 				continue Outer
 			}
 		}
-		res = append(res, l)
+		buf = append(buf, l)
 	}
-	res = append(res, b.add...)
-	if b.err != "" {
-		res = append(res, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-	}
-	sort.Sort(res)
+	buf = append(buf, b.add...)
+	return b.appendErrors(buf)
+}
 
+func (b *LabelsBuilder) Map() map[string]string {
+	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
+		if b.baseMap == nil {
+			b.baseMap = b.base.Map()
+		}
+		return b.baseMap
+	}
+	b.buf = b.UnsortedLabels(b.buf)
+	// todo should we also cache maps since limited by the result ?
+	// Maps also don't create a copy of the labels.
+	res := make(map[string]string, len(b.buf))
+	for _, l := range b.buf {
+		res[l.Name] = l.Value
+	}
 	return res
 }
 
@@ -253,15 +304,15 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
 		return b.currentResult
 	}
-	return b.toResult(b.Labels())
+	return b.toResult(b.labels())
 }
 
-func (b *BaseLabelsBuilder) toResult(lbs labels.Labels) LabelsResult {
-	hash := b.hasher.Hash(lbs)
+func (b *BaseLabelsBuilder) toResult(buf labels.Labels) LabelsResult {
+	hash := b.hasher.Hash(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
-	res := NewLabelsResult(lbs, hash)
+	res := NewLabelsResult(buf.Copy(), hash)
 	b.resultCache[hash] = res
 	return res
 }
@@ -295,7 +346,11 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 }
 
 func (b *LabelsBuilder) withResult() LabelsResult {
-	res := make(labels.Labels, 0, len(b.groups))
+	if b.buf == nil {
+		b.buf = make(labels.Labels, 0, len(b.groups))
+	} else {
+		b.buf = b.buf[:0]
+	}
 Outer:
 	for _, g := range b.groups {
 		for _, n := range b.del {
@@ -305,26 +360,30 @@ Outer:
 		}
 		for _, la := range b.add {
 			if g == la.Name {
-				res = append(res, la)
+				b.buf = append(b.buf, la)
 				continue Outer
 			}
 		}
 		for _, l := range b.base {
 			if g == l.Name {
-				res = append(res, l)
+				b.buf = append(b.buf, l)
 				continue Outer
 			}
 		}
 	}
-	return b.toResult(res)
+	return b.toResult(b.buf)
 }
 
 func (b *LabelsBuilder) withoutResult() LabelsResult {
-	size := len(b.base) + len(b.add) - len(b.del) - len(b.groups)
-	if size < 0 {
-		size = 0
+	if b.buf == nil {
+		size := len(b.base) + len(b.add) - len(b.del) - len(b.groups)
+		if size < 0 {
+			size = 0
+		}
+		b.buf = make(labels.Labels, 0, size)
+	} else {
+		b.buf = b.buf[:0]
 	}
-	res := make(labels.Labels, 0, size)
 Outer:
 	for _, l := range b.base {
 		for _, n := range b.del {
@@ -342,7 +401,7 @@ Outer:
 				continue Outer
 			}
 		}
-		res = append(res, l)
+		b.buf = append(b.buf, l)
 	}
 OuterAdd:
 	for _, la := range b.add {
@@ -351,10 +410,10 @@ OuterAdd:
 				continue OuterAdd
 			}
 		}
-		res = append(res, la)
+		b.buf = append(b.buf, la)
 	}
-	sort.Sort(res)
-	return b.toResult(res)
+	sort.Sort(b.buf)
+	return b.toResult(b.buf)
 }
 
 func (b *LabelsBuilder) toBaseGroup() LabelsResult {
@@ -363,9 +422,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = b.base.WithoutLabels(b.groups...)
+		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels(nil)
 	} else {
-		lbs = b.base.WithLabels(b.groups...)
+		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels(nil)
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res

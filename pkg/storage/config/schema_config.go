@@ -25,6 +25,7 @@ const (
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
+	StorageTypeBOS            = "bos"
 	StorageTypeBoltDB         = "boltdb"
 	StorageTypeCassandra      = "cassandra"
 	StorageTypeInMemory       = "inmemory"
@@ -35,10 +36,15 @@ const (
 	StorageTypeGCPColumnKey   = "gcp-columnkey"
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
+	StorageTypeLocal          = "local"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
+	TSDBType          = "tsdb"
+
+	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
+	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
 )
 
 var (
@@ -50,8 +56,35 @@ var (
 
 	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
 	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 )
+
+// TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
+// Both Start and End are inclusive.
+type TableRange struct {
+	Start, End   int64
+	PeriodConfig *PeriodConfig
+}
+
+// TableRanges represents a list of table ranges for multiple schemas.
+type TableRanges []TableRange
+
+// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
+func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+}
+
+func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
+	for _, r := range t {
+		if r.Start <= tableNumber && tableNumber <= r.End {
+			return r.PeriodConfig
+		}
+	}
+
+	return nil
+}
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
@@ -78,6 +111,16 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	// call VersionAsInt after unmarshaling to errcheck schema version and populate PeriodConfig.schemaInt
 	_, err = cfg.VersionAsInt()
 	return err
+}
+
+// GetIndexTableNumberRange returns the table number range calculated based on
+// the configured schema start date, index table period and the given schemaEndDate
+func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
+	return TableRange{
+		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		PeriodConfig: cfg,
+	}
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
@@ -146,12 +189,14 @@ func (cfg *SchemaConfig) Validate() error {
 	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType &&
+		cfg.Configs[activePCIndex].IndexTables.Period != ObjectStorageIndexRequiredPeriod && len(cfg.Configs)-1 == activePCIndex {
 		return errCurrentBoltdbShipperNon24Hours
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType &&
+		cfg.Configs[activePCIndex+1].IndexTables.Period != ObjectStorageIndexRequiredPeriod) {
 		return errUpcomingBoltdbShipperNon24Hours
 	}
 
@@ -184,15 +229,28 @@ func ActivePeriodConfig(configs []PeriodConfig) int {
 	return i
 }
 
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []PeriodConfig) bool {
+func usingForPeriodConfigs(configs []PeriodConfig, fn func(PeriodConfig) bool) bool {
 	activePCIndex := ActivePeriodConfig(configs)
-	if configs[activePCIndex].IndexType == BoltDBShipperType ||
-		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == BoltDBShipperType) {
+
+	if fn(configs[activePCIndex]) ||
+		(len(configs)-1 > activePCIndex && fn(configs[activePCIndex+1])) {
 		return true
 	}
 
 	return false
+}
+
+func UsingObjectStorageIndex(configs []PeriodConfig) bool {
+	fn := func(cfg PeriodConfig) bool {
+		switch cfg.IndexType {
+		case BoltDBShipperType, TSDBType:
+			return true
+		default:
+			return false
+		}
+	}
+
+	return usingForPeriodConfigs(configs, fn)
 }
 
 func defaultRowShards(schema string) uint32 {
@@ -247,6 +305,10 @@ func (cfg PeriodConfig) validate() error {
 	validateError := validateChunks(cfg)
 	if validateError != nil {
 		return validateError
+	}
+
+	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
+		return errTSDBNon24HoursIndexPeriod
 	}
 
 	// Ensure the tables period is a multiple of the bucket period

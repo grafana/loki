@@ -22,7 +22,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -30,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
@@ -134,8 +134,9 @@ type Writer struct {
 	fingerprintOffsets FingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
-	lastSeries labels.Labels
-	lastRef    storage.SeriesRef
+	lastSeries     labels.Labels
+	lastSeriesHash uint64
+	lastRef        storage.SeriesRef
 
 	crc32 hash.Hash
 
@@ -436,13 +437,22 @@ func (w *Writer) writeMeta() error {
 }
 
 // AddSeries adds the series one at a time along with its chunks.
-func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...ChunkMeta) error {
+// Requires a specific fingerprint to be passed in the case where the "desired"
+// fingerprint differs from what labels.Hash() produces. For example,
+// multitenant TSDBs embed a tenant label, but the actual series has no such
+// label and so the derived fingerprint differs.
+func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks ...ChunkMeta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
 
-	labelHash := lset.Hash()
-	lastHash := w.lastSeries.Hash()
+	// Put the supplied fingerprint instead of the calculated hash.
+	// This allows us to have a synthetic label (__loki_tenant__) in
+	// the pre-compacted TSDBs which map to fingerprints (and chunks)
+	// without this label in storage.
+	labelHash := uint64(fp)
+
+	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
 	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
@@ -525,15 +535,19 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 
 	w.buf2.PutHash(w.crc32)
 
-	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
-		return errors.Wrap(err, "write series data")
-	}
-
 	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
 	if ref%fingerprintInterval == 0 {
-		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{uint64(ref), labelHash})
+		// series references are the 16-byte aligned offsets
+		// Do NOT ask me how long I debugged this particular bit >:O
+		sRef := w.f.pos / 16
+		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{sRef, labelHash})
+	}
+
+	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
+		return errors.Wrap(err, "write series data")
 	}
 
 	return nil
@@ -598,7 +612,7 @@ func (w *Writer) finishSymbols() error {
 	}
 
 	// Load in the symbol table efficiently for the rest of the index writing.
-	w.symbols, err = NewSymbols(realByteSlice(w.symbolFile.Bytes()), FormatV2, int(w.toc.Symbols))
+	w.symbols, err = NewSymbols(RealByteSlice(w.symbolFile.Bytes()), FormatV2, int(w.toc.Symbols))
 	if err != nil {
 		return errors.Wrap(err, "read symbols")
 	}
@@ -617,7 +631,7 @@ func (w *Writer) writeLabelIndices() error {
 	}
 	defer f.Close()
 
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.fPO.pos)))
 	cnt := w.cntPO
 	current := []byte{}
 	values := []uint32{}
@@ -787,7 +801,7 @@ func (w *Writer) writePostingsOffsetTable() error {
 			f.Close()
 		}
 	}()
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.fPO.pos)))
 	cnt := w.cntPO
 	for d.Err() == nil && cnt > 0 {
 		w.buf1.Reset()
@@ -848,7 +862,9 @@ func (w *Writer) writeFingerprintOffsetsTable() error {
 
 	// write length
 	ln := w.buf1.Len()
-	if ln > math.MaxUint32 {
+	// TODO(owen-d): can remove the uint32 cast in the future
+	// Had to uint32 wrap these for arm32 builds, which we'll remove in the future.
+	if uint32(ln) > uint32(math.MaxUint32) {
 		return errors.Errorf("fingerprint offset size exceeds 4 bytes: %d", ln)
 	}
 
@@ -905,7 +921,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 	// Write out the special all posting.
 	offsets := []uint32{}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
 	d.Skip(int(w.toc.Series))
 	for d.Len() > 0 {
 		d.ConsumePadding()
@@ -951,7 +967,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		// Label name -> label value -> positions.
 		postings := map[uint32]map[uint32][]uint32{}
 
-		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
+		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
 		d.Skip(int(w.toc.Series))
 		for d.Len() > 0 {
 			d.ConsumePadding()
@@ -1167,24 +1183,24 @@ type ByteSlice interface {
 	Range(start, end int) []byte
 }
 
-type realByteSlice []byte
+type RealByteSlice []byte
 
-func (b realByteSlice) Len() int {
+func (b RealByteSlice) Len() int {
 	return len(b)
 }
 
-func (b realByteSlice) Range(start, end int) []byte {
+func (b RealByteSlice) Range(start, end int) []byte {
 	return b[start:end]
 }
 
-func (b realByteSlice) Sub(start, end int) ByteSlice {
+func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
-	return newReader(b, ioutil.NopCloser(nil))
+	return newReader(b, io.NopCloser(nil))
 }
 
 // NewFileReader returns a new index reader against the given index file.
@@ -1193,7 +1209,7 @@ func NewFileReader(path string) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(realByteSlice(f.Bytes()), f)
+	r, err := newReader(RealByteSlice(f.Bytes()), f)
 	if err != nil {
 		return nil, tsdb_errors.NewMulti(
 			err,
@@ -1307,7 +1323,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		r.nameSymbols[off] = k
 	}
 
-	r.fingerprintOffsets, err = ReadFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
+	r.fingerprintOffsets, err = readFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading fingerprint offsets")
 	}
@@ -1320,6 +1336,10 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 // Version returns the file format version of the underlying index.
 func (r *Reader) Version() int {
 	return r.version
+}
+
+func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
+	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
 }
 
 // Range marks a byte range.
@@ -1522,7 +1542,7 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 	return d.Err()
 }
 
-func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
+func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	cnt := d.Be32()
 	res := make(FingerprintOffsets, 0, int(cnt))
@@ -1567,8 +1587,6 @@ func (r *Reader) SymbolTableSize() uint64 {
 }
 
 // SortedLabelValues returns value tuples that exist for the given label name.
-// It is not safe to use the return value beyond the lifetime of the byte slice
-// passed into the Reader.
 func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	values, err := r.LabelValues(name, matchers...)
 	if err == nil && r.version == FormatV1 {
@@ -1578,8 +1596,6 @@ func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]
 }
 
 // LabelValues returns value tuples that exist for the given label name.
-// It is not safe to use the return value beyond the lifetime of the byte slice
-// passed into the Reader.
 // TODO(replay): Support filtering by matchers
 func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
@@ -1623,7 +1639,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 		} else {
 			d.Skip(skip)
 		}
-		s := yoloString(d.UvarintBytes()) // Label value.
+		s := string(d.UvarintBytes()) // Label value.
 		values = append(values, s)
 		if s == lastVal {
 			break

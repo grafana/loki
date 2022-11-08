@@ -40,38 +40,42 @@ type validationContext struct {
 	maxLabelNameLength     int
 	maxLabelValueLength    int
 
+	incrementDuplicateTimestamps bool
+
 	userID string
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
 	return validationContext{
-		userID:                 userID,
-		rejectOldSample:        v.RejectOldSamples(userID),
-		rejectOldSampleMaxAge:  now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
-		creationGracePeriod:    now.Add(v.CreationGracePeriod(userID)).UnixNano(),
-		maxLineSize:            v.MaxLineSize(userID),
-		maxLineSizeTruncate:    v.MaxLineSizeTruncate(userID),
-		maxLabelNamesPerSeries: v.MaxLabelNamesPerSeries(userID),
-		maxLabelNameLength:     v.MaxLabelNameLength(userID),
-		maxLabelValueLength:    v.MaxLabelValueLength(userID),
+		userID:                       userID,
+		rejectOldSample:              v.RejectOldSamples(userID),
+		rejectOldSampleMaxAge:        now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
+		creationGracePeriod:          now.Add(v.CreationGracePeriod(userID)).UnixNano(),
+		maxLineSize:                  v.MaxLineSize(userID),
+		maxLineSizeTruncate:          v.MaxLineSizeTruncate(userID),
+		maxLabelNamesPerSeries:       v.MaxLabelNamesPerSeries(userID),
+		maxLabelNameLength:           v.MaxLabelNameLength(userID),
+		maxLabelValueLength:          v.MaxLabelValueLength(userID),
+		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
 	}
 }
 
-// ValidateEntry returns an error if the entry is invalid
+// ValidateEntry returns an error if the entry is invalid and report metrics for invalid entries accordingly.
 func (v Validator) ValidateEntry(ctx validationContext, labels string, entry logproto.Entry) error {
 	ts := entry.Timestamp.UnixNano()
-
-	// Makes time string on the error message formatted consistently.
-	formatedEntryTime := entry.Timestamp.Format(timeFormat)
-	formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
+	validation.LineLengthHist.Observe(float64(len(entry.Line)))
 
 	if ctx.rejectOldSample && ts < ctx.rejectOldSampleMaxAge {
+		// Makes time string on the error message formatted consistently.
+		formatedEntryTime := entry.Timestamp.Format(timeFormat)
+		formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
 		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > ctx.creationGracePeriod {
+		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
 		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)

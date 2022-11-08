@@ -20,13 +20,15 @@ import (
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
+const versionFlag = "version"
+
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
 // for interacting with the config file or the application directly.
 // ConfigWrapper implements cfg.DynamicCloneable, allowing configuration to be dynamically set based
 // on the logic in ApplyDynamicConfig, which receives values set in config file
 type ConfigWrapper struct {
 	Config          `yaml:",inline"`
-	PrintVersion    bool
+	printVersion    bool
 	VerifyConfig    bool
 	PrintConfig     bool
 	ListTargets     bool
@@ -35,14 +37,23 @@ type ConfigWrapper struct {
 	ConfigExpandEnv bool
 }
 
+func PrintVersion(args []string) bool {
+	for _, a := range args {
+		if a == "-"+versionFlag {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.PrintVersion, "version", false, "Print this builds version information")
+	f.BoolVar(&c.printVersion, versionFlag, false, "Print this builds version information")
 	f.BoolVar(&c.VerifyConfig, "verify-config", false, "Verify config file and exits")
 	f.BoolVar(&c.PrintConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
 	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
 	f.BoolVar(&c.LogConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
-	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
+	f.StringVar(&c.ConfigFile, "config.file", "config.yaml,config/config.yaml", "configuration file to load, can be a comma separated list of paths, first existing file will be used")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
@@ -99,8 +110,12 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if len(r.SchemaConfig.Configs) > 0 && config.UsingBoltdbShipper(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults)
+		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+		}
+
+		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
 		applyFIFOCacheConfig(r)
@@ -110,6 +125,27 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		return nil
 	}
+}
+
+func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodConfig) bool) int {
+	for i := len(configs) - 1; i >= 0; i-- {
+		if predicate(configs[i]) {
+			return i
+		}
+	}
+	return len(configs)
+}
+
+func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
+	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
+		return p.IndexType == config.BoltDBShipperType
+	})
+}
+
+func lastTSDBConfig(configs []config.PeriodConfig) int {
+	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
+		return p.IndexType == config.TSDBType
+	})
 }
 
 // applyInstanceConfigs apply to Loki components instance-related configurations under the common
@@ -449,6 +485,16 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.BOS, defaults.StorageConfig.BOSStorageConfig) {
+		configsFound++
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "bos"
+			r.Ruler.StoreConfig.BOS = r.Common.Storage.BOS
+			r.StorageConfig.BOSStorageConfig = r.Common.Storage.BOS
+			r.CompactorConfig.SharedStoreType = config.StorageTypeBOS
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.Swift, defaults.StorageConfig.Swift) {
 		configsFound++
 
@@ -472,16 +518,14 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
-	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
 
 	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -497,6 +541,29 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 	}
 }
 
+func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
+
+	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
+		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
+	}
+
+	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
+		cfg.CompactorConfig.SharedStoreType = period.ObjectType
+	}
+
+	if cfg.Common.PathPrefix != "" {
+		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
+
+		if cfg.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory == "" {
+			cfg.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = fmt.Sprintf("%s/tsdb-shipper-active", prefix)
+		}
+
+		if cfg.StorageConfig.TSDBShipperConfig.CacheLocation == "" {
+			cfg.StorageConfig.TSDBShipperConfig.CacheLocation = fmt.Sprintf("%s/tsdb-shipper-cache", prefix)
+		}
+	}
+}
+
 // applyFIFOCacheConfig turns on FIFO cache for the chunk store and for the query range results,
 // but only if no other cache storage is configured (redis or memcache).
 //
@@ -504,12 +571,12 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 // (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
-	if !cache.IsRedisSet(chunkCacheConfig) && !cache.IsMemcacheSet(chunkCacheConfig) {
+	if !cache.IsCacheConfigured(chunkCacheConfig) {
 		r.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = true
 	}
 
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
-	if !cache.IsRedisSet(resultsCacheConfig) && !cache.IsMemcacheSet(resultsCacheConfig) {
+	if !cache.IsCacheConfigured(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
 		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
 		// so instead we will override them here.

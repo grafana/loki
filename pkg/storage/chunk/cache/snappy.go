@@ -6,6 +6,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type snappyCache struct {
@@ -46,4 +48,8 @@ func (s *snappyCache) Fetch(ctx context.Context, keys []string) ([]string, [][]b
 
 func (s *snappyCache) Stop() {
 	s.next.Stop()
+}
+
+func (c *snappyCache) GetCacheType() stats.CacheType {
+	return c.next.GetCacheType()
 }

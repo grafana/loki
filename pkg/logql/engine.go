@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,12 +29,13 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
-	queryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	QueryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "logql",
 		Name:      "query_duration_seconds",
 		Help:      "LogQL query timings",
@@ -96,22 +99,22 @@ type Querier interface {
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
+	// TODO: remove this after next release.
 	// Timeout for queries execution
 	Timeout time.Duration `yaml:"timeout"`
+
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution.")
+	// TODO: remove this configuration after next release.
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
 func (opts *EngineOpts) applyDefault() {
-	if opts.Timeout == 0 {
-		opts.Timeout = 5 * time.Minute
-	}
 	if opts.MaxLookBackPeriod == 0 {
 		opts.MaxLookBackPeriod = 30 * time.Second
 	}
@@ -119,23 +122,24 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
+	Timeout   time.Duration
 	logger    log.Logger
-	timeout   time.Duration
 	evaluator Evaluator
 	limits    Limits
 }
 
 // NewEngine creates a new LogQL Engine.
 func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
+	queryTimeout := opts.Timeout
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
 		logger:    logger,
-		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
+		Timeout:   queryTimeout,
 	}
 }
 
@@ -143,14 +147,14 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
-		record: true,
-		limits: ng.limits,
+		record:  true,
+		limits:  ng.limits,
+		timeout: ng.Timeout,
 	}
 }
 
@@ -162,12 +166,26 @@ type Query interface {
 
 type query struct {
 	logger    log.Logger
-	timeout   time.Duration
 	params    Params
 	parse     func(context.Context, string) (syntax.Expr, error)
 	limits    Limits
+	timeout   time.Duration
 	evaluator Evaluator
 	record    bool
+}
+
+func (q *query) resultLength(res promql_parser.Value) int {
+	switch r := res.(type) {
+	case promql.Vector:
+		return len(r)
+	case promql.Matrix:
+		return r.TotalSamples()
+	case logqlmodel.Streams:
+		return int(r.Lines())
+	default:
+		// for `scalar` or `string` or any other return type, we just return `0` as result length.
+		return 0
+	}
 }
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
@@ -175,19 +193,26 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
+	if GetRangeType(q.params) == InstantType {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query())
+	} else {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+	}
+
 	rangeType := GetRangeType(q.params)
-	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
+	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
 	// records query statistics
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
+	metadataCtx, ctx := metadata.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(log))
 
 	status := "200"
@@ -202,17 +227,29 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	}
 
 	if q.record {
-		RecordMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
 	}
 
 	return logqlmodel.Result{
 		Data:       data,
 		Statistics: statResult,
+		Headers:    metadataCtx.Headers(),
 	}, err
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	ctx, cancel := context.WithTimeout(ctx, q.timeout)
+	queryTimeout := q.timeout
+	if q.timeout == 0 {
+		queryTimeout = time.Minute * 5
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
+			return nil, err
+		}
+		queryTimeout = q.limits.QueryTimeout(userID) + time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
 	expr, err := q.parse(ctx, q.params.Query())
@@ -243,6 +280,9 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_parser.Value, error) {
 	if lit, ok := expr.(*syntax.LiteralExpr); ok {
 		return q.evalLiteral(ctx, lit)
+	}
+	if vec, ok := expr.(*syntax.VectorExpr); ok {
+		return q.evalVector(ctx, vec)
 	}
 
 	expr, err := optimizeSampleExpr(expr)
@@ -328,6 +368,23 @@ func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.Value(),
+	}
+
+	if GetRangeType(q.params) == InstantType {
+		return s, nil
+	}
+
+	return PopulateMatrixFromScalar(s, q.params), nil
+}
+
+func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_parser.Value, error) {
+	value, err := expr.Value()
+	if err != nil {
+		return nil, err
+	}
+	s := promql.Scalar{
+		T: q.params.Start().UnixNano() / int64(time.Millisecond),
+		V: value,
 	}
 
 	if GetRangeType(q.params) == InstantType {

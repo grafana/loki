@@ -13,8 +13,8 @@ simplifies the operation and significantly lowers the cost of Loki.
 Until Loki 2.0, index data was stored in a separate index.
 
 Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call Single Store Loki.
-This index type only requires one store, the object store, for both the index and chunks. 
-More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}). 
+This index type only requires one store, the object store, for both the index and chunks.
+More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
 
 Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
 
@@ -35,6 +35,11 @@ The file system is the simplest backend for chunks, although it's also susceptib
 ### S3
 
 S3 is AWS's hosted object store. It is a good candidate for a managed object store, especially when you're already running on AWS, and is production safe.
+
+### Azure Blob Storage
+
+Blob Storage is Microsoft Azure's hosted object store. It is a good candidate for a managed object store, especially when you're already running on Azure, and is production safe.
+You can authenticate Blob Storage access by using a storage account name and key or by using a Service Principal.
 
 ### Notable Mentions
 
@@ -197,20 +202,23 @@ schema_config:
         period: 24h
 ```
 
-### AWS deployment (S3+DynamoDB)
+### AWS deployment (S3 Single Store)
 
 ```yaml
 storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
+    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+    shared_store: s3
   aws:
     s3: s3://<access_key>:<uri-encoded-secret-access-key>@<region>
     bucketnames: <bucket1,bucket2>
-    dynamodb:
-      dynamodb_url: dynamodb://<access_key>:<uri-encoded-secret-access-key>@<region>
 
 schema_config:
   configs:
     - from: 2020-07-01
-      store: aws
+      store: boltdb-shipper
       object_store: aws
       schema: v11
       index:
@@ -288,6 +296,8 @@ schema_config:
 
 ### Azure Storage Account
 
+#### Using account name and key
+
 ```yaml
 schema_config:
   configs:
@@ -300,14 +310,51 @@ schema_config:
     store: boltdb-shipper
 storage_config:
   azure:
+    # Your Azure storage account name
+    account_name: <account-name>
     # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
     account_key: <account-key>
-    # Your azure account name
-    account_name: <account-name>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <container-name>
+    use_managed_identity: <true|false>
+    # Providing a user assigned ID will override use_managed_identity
+    user_assigned_id: <user-assigned-identity-id>
+    request_timeout: 0
+    # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container & blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
+    endpoint_suffix: <endpoint-suffix>
+  boltdb_shipper:
+    active_index_directory: /data/loki/boltdb-shipper-active
+    cache_location: /data/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: azure
+  filesystem:
+    directory: /data/loki/chunks
+```
+
+#### Using a service principal
+
+```yaml
+schema_config:
+  configs:
+  - from: "2020-12-11"
+    index:
+      period: 24h
+      prefix: index_
+    object_store: azure
+    schema: v11
+    store: boltdb-shipper
+storage_config:
+  azure:
+    use_service_principal: true
+    # Azure tenant ID used to authenticate through Azure OAuth
+    tenant_id : <tenant-id>
+    # Azure Service Principal ID
+    client_id: <client-id>
+    # Azure Service Principal secret key
+    client_secret: <client-secret>
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
     container_name: <container-name>
     request_timeout: 0
-    use_managed_identity: <true|false>
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache

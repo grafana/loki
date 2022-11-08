@@ -43,6 +43,7 @@ The following are supported for the chunks:
 - [Amazon S3](https://aws.amazon.com/s3)
 - [Google Cloud Storage](https://cloud.google.com/storage/)
 - [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Baidu Object Storage](https://cloud.baidu.com/product/bos.html)
 
 ## Cloud Storage Permissions
 
@@ -56,6 +57,35 @@ When using S3 as object storage, the following permissions are needed:
 - `s3:DeleteObject` (if running the Single Store (boltdb-shipper) compactor)
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
+
+The following policy sets these permissions
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "LokiStorage",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::<account_ID>"
+                ]
+            },
+            "Action": [
+                "s3:ListBucket",
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::<bucket_name>",
+                "arn:aws:s3:::<bucket_name>/*"
+            ]
+        }
+    ]
+}
+```
 
 ### DynamoDB
 

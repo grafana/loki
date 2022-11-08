@@ -1,6 +1,7 @@
 package file
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -8,8 +9,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/hpcloud/tail"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
@@ -34,9 +39,11 @@ type tailer struct {
 	posquit chan struct{}
 	posdone chan struct{}
 	done    chan struct{}
+
+	decoder *encoding.Decoder
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -81,6 +88,16 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 		done:      make(chan struct{}),
 	}
 
+	if encoding != "" {
+		level.Info(tailer.logger).Log("msg", "Will decode messages", "from", encoding, "to", "UTF8")
+		encoder, err := ianaindex.IANA.Encoding(encoding)
+		if err != nil {
+			return nil, errors.Wrap(err, "error doing IANA encoding")
+		}
+		decoder := encoder.NewDecoder()
+		tailer.decoder = decoder
+	}
+
 	go tailer.readLines()
 	go tailer.updatePosition()
 	metrics.filesActive.Add(1.)
@@ -103,7 +120,7 @@ func (t *tailer) updatePosition() {
 	for {
 		select {
 		case <-positionWait.C:
-			err := t.markPositionAndSize()
+			err := t.MarkPositionAndSize()
 			if err != nil {
 				level.Error(t.logger).Log("msg", "position timer: error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
 				err := t.tail.Stop()
@@ -149,19 +166,31 @@ func (t *tailer) readLines() {
 			continue
 		}
 
+		var text string
+		if t.decoder != nil {
+			var err error
+			text, err = t.convertToUTF8(line.Text)
+			if err != nil {
+				level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
+				t.metrics.encodingFailures.WithLabelValues(t.path).Inc()
+				text = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
+			}
+		} else {
+			text = line.Text
+		}
+
 		t.metrics.readLines.WithLabelValues(t.path).Inc()
 		entries <- api.Entry{
 			Labels: model.LabelSet{},
 			Entry: logproto.Entry{
 				Timestamp: line.Time,
-				Line:      line.Text,
+				Line:      text,
 			},
 		}
-
 	}
 }
 
-func (t *tailer) markPositionAndSize() error {
+func (t *tailer) MarkPositionAndSize() error {
 	// Lock this update as there are 2 timers calling this routine, the sync in filetarget and the positions sync in this file.
 	t.posAndSizeMtx.Lock()
 	defer t.posAndSizeMtx.Unlock()
@@ -187,7 +216,7 @@ func (t *tailer) markPositionAndSize() error {
 	return nil
 }
 
-func (t *tailer) stop() {
+func (t *tailer) Stop() {
 	// stop can be called by two separate threads in filetarget, to avoid a panic closing channels more than once
 	// we wrap the stop in a sync.Once.
 	t.stopOnce.Do(func() {
@@ -196,7 +225,7 @@ func (t *tailer) stop() {
 		<-t.posdone
 
 		// Save the current position before shutting down tailer
-		err := t.markPositionAndSize()
+		err := t.MarkPositionAndSize()
 		if err != nil {
 			level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
 		}
@@ -213,8 +242,17 @@ func (t *tailer) stop() {
 	})
 }
 
-func (t *tailer) isRunning() bool {
+func (t *tailer) IsRunning() bool {
 	return t.running.Load()
+}
+
+func (t *tailer) convertToUTF8(text string) (string, error) {
+	res, _, err := transform.String(t.decoder, text)
+	if err != nil {
+		return "", errors.Wrap(err, "error decoding text")
+	}
+
+	return res, nil
 }
 
 // cleanupMetrics removes all metrics exported by this tailer
@@ -224,4 +262,8 @@ func (t *tailer) cleanupMetrics() {
 	t.metrics.readLines.DeleteLabelValues(t.path)
 	t.metrics.readBytes.DeleteLabelValues(t.path)
 	t.metrics.totalBytes.DeleteLabelValues(t.path)
+}
+
+func (t *tailer) Path() string {
+	return t.path
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -21,7 +22,8 @@ const (
 )
 
 type DownstreamHandler struct {
-	next queryrangebase.Handler
+	limits Limits
+	next   queryrangebase.Handler
 }
 
 func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
@@ -54,8 +56,19 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 // from creating an unreasonably large number of goroutines, such as
 // the case of a query like `a / a / a / a / a ..etc`, which could try
 // to shard each leg, quickly dispatching an unreasonable number of goroutines.
-func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
+// In the future, it's probably better to replace this with a channel based API
+// so we don't have to do all this ugly edge case handling/accounting
+func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer {
 	p := DefaultDownstreamConcurrency
+
+	// We may increase parallelism above the default,
+	// ensure we don't end up bottlenecking here.
+	if user, err := tenant.TenantID(ctx); err == nil {
+		if x := h.limits.MaxQueryParallelism(user); x > 0 {
+			p = x
+		}
+	}
+
 	locks := make(chan struct{}, p)
 	for i := 0; i < p; i++ {
 		locks <- struct{}{}
@@ -208,6 +221,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       streams,
+			Headers:    resp.GetHeaders(),
 		}, nil
 
 	case *LokiPromResponse:
@@ -218,11 +232,13 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			return logqlmodel.Result{
 				Statistics: r.Statistics,
 				Data:       sampleStreamToVector(r.Response.Data.Result),
+				Headers:    resp.GetHeaders(),
 			}, nil
 		}
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
+			Headers:    resp.GetHeaders(),
 		}, nil
 
 	default:

@@ -14,8 +14,7 @@ config + scrape_config {
     _config+:: { namespace: $._config.namespace },
   },
 
-  local policyRule = k.rbac.v1beta1.policyRule,
-
+  local policyRule = k.rbac.v1.policyRule,
 
   promtail_rbac:
     namespaced_k.util.rbac($._config.promtail_cluster_role_name, [

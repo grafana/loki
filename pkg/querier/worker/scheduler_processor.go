@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
-	dskit_middleware "github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
@@ -21,8 +20,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
@@ -129,15 +126,11 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				logger = util_log.WithContext(ctx, sp.log)
 			)
 
-			start := time.Now()
-			tenant, _ := tenant.TenantID(ctx)
 			sp.metrics.inflightRequests.Inc()
-			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "op", "enqueue")
 
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 
 			sp.metrics.inflightRequests.Dec()
-			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "op", "dequeue", "duration", time.Since(start))
 
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
@@ -194,7 +187,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 	opts, err := sp.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.metrics.frontendClientRequestDuration),
+		middleware.UnaryClientInstrumentInterceptor(sp.metrics.frontendClientRequestDuration),
 	}, nil)
 	if err != nil {
 		return nil, err

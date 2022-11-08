@@ -26,6 +26,11 @@ const (
 	DropletOneMinuteLoadAverage         = "v1/insights/droplet/load_1"
 	DropletFiveMinuteLoadAverage        = "v1/insights/droplet/load_5"
 	DropletFifteenMinuteLoadAverage     = "v1/insights/droplet/load_15"
+
+	LoadBalancerCPUUtilizationPercent        = "v1/insights/lbaas/avg_cpu_utilization_percent"
+	LoadBalancerConnectionUtilizationPercent = "v1/insights/lbaas/connection_utilization_percent"
+	LoadBalancerDropletHealth                = "v1/insights/lbaas/droplet_health"
+	LoadBalancerTLSUtilizationPercent        = "v1/insights/lbaas/tls_connections_per_second_utilization_percent"
 )
 
 // MonitoringService is an interface for interfacing with the

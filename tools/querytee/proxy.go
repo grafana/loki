@@ -28,6 +28,7 @@ type ProxyConfig struct {
 	PreferredBackend               string
 	BackendReadTimeout             time.Duration
 	CompareResponses               bool
+	DisableBackendReadProxy        string
 	ValueComparisonTolerance       float64
 	UseRelativeError               bool
 	PassThroughNonRegisteredRoutes bool
@@ -40,6 +41,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
+	f.StringVar(&cfg.DisableBackendReadProxy, "proxy.disable-backend-read", "", "Comma separated list of non-primary backend hostnames to disable their read proxy. Typically used for temporarily not passing any read requests to specified backends.")
 	f.Float64Var(&cfg.ValueComparisonTolerance, "proxy.value-comparison-tolerance", 0.000001, "The tolerance to apply when comparing floating point values in the responses. 0 to disable tolerance and require exact match (not recommended).")
 	f.BoolVar(&cfg.UseRelativeError, "proxy.compare-use-relative-error", false, "Use relative error tolerance when comparing floating point values.")
 	f.DurationVar(&cfg.SkipRecentSamples, "proxy.compare-skip-recent-samples", 60*time.Second, "The window from now to skip comparing samples. 0 to disable.")
@@ -54,11 +56,12 @@ type Route struct {
 }
 
 type Proxy struct {
-	cfg      ProxyConfig
-	backends []*ProxyBackend
-	logger   log.Logger
-	metrics  *ProxyMetrics
-	routes   []Route
+	cfg         ProxyConfig
+	backends    []*ProxyBackend
+	logger      log.Logger
+	metrics     *ProxyMetrics
+	readRoutes  []Route
+	writeRoutes []Route
 
 	// The HTTP server used to run the proxy service.
 	srv         *http.Server
@@ -68,7 +71,7 @@ type Proxy struct {
 	done sync.WaitGroup
 }
 
-func NewProxy(cfg ProxyConfig, logger log.Logger, routes []Route, registerer prometheus.Registerer) (*Proxy, error) {
+func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Route, registerer prometheus.Registerer) (*Proxy, error) {
 	if cfg.CompareResponses && cfg.PreferredBackend == "" {
 		return nil, fmt.Errorf("when enabling comparison of results -backend.preferred flag must be set to hostname of preferred backend")
 	}
@@ -78,10 +81,11 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, routes []Route, registerer pro
 	}
 
 	p := &Proxy{
-		cfg:     cfg,
-		logger:  logger,
-		metrics: NewProxyMetrics(registerer),
-		routes:  routes,
+		cfg:         cfg,
+		logger:      logger,
+		metrics:     NewProxyMetrics(registerer),
+		readRoutes:  readRoutes,
+		writeRoutes: writeRoutes,
 	}
 
 	// Parse the backend endpoints (comma separated).
@@ -133,13 +137,22 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, routes []Route, registerer pro
 		}
 	}
 
-	if cfg.CompareResponses && len(p.backends) != 2 {
-		return nil, fmt.Errorf("when enabling comparison of results number of backends should be 2 exactly")
+	if cfg.CompareResponses && len(p.backends) < 2 {
+		return nil, fmt.Errorf("when enabling comparison of results number of backends should be at least 2")
 	}
 
 	// At least 2 backends are suggested
 	if len(p.backends) < 2 {
 		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfil the purpose of the proxy and compare results.")
+	}
+
+	if cfg.DisableBackendReadProxy != "" {
+		readDisabledBackendHosts := strings.Split(p.cfg.DisableBackendReadProxy, ",")
+		for _, host := range readDisabledBackendHosts {
+			if host == cfg.PreferredBackend {
+				return nil, fmt.Errorf("the preferred backend cannot be disabled for reading")
+			}
+		}
 	}
 
 	return p, nil
@@ -159,13 +172,17 @@ func (p *Proxy) Start() error {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// register routes
-	for _, route := range p.routes {
+	// register read routes
+	for _, route := range p.readRoutes {
 		var comparator ResponsesComparator
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}
-		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, comparator))
+		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator))
+	}
+
+	for _, route := range p.writeRoutes {
+		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil))
 	}
 
 	if p.cfg.PassThroughNonRegisteredRoutes {
@@ -217,4 +234,26 @@ func (p *Proxy) Endpoint() string {
 	}
 
 	return p.srvListener.Addr().String()
+}
+
+func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg string) []*ProxyBackend {
+	readEnabledBackends := make([]*ProxyBackend, 0, len(backends))
+	readDisabledBackendNames := strings.Split(disableReadProxyCfg, ",")
+	for _, b := range backends {
+		if !b.preferred {
+			readDisabled := false
+			for _, h := range readDisabledBackendNames {
+				if strings.TrimSpace(h) == b.name {
+					readDisabled = true
+					break
+				}
+			}
+			if readDisabled {
+				continue
+			}
+		}
+		readEnabledBackends = append(readEnabledBackends, b)
+	}
+
+	return readEnabledBackends
 }

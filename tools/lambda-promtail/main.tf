@@ -43,6 +43,24 @@ resource "aws_iam_role_policy" "logs" {
         "Resource" : [
           for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
         ]
+      },
+      {
+        "Action" : [
+          "kms:Decrypt",
+        ],
+        "Effect" : "Allow",
+        "Resource" : "arn:aws:kms:*:*:*",
+      },
+      {
+        "Action": [
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeInstances",
+          "ec2:AttachNetworkInterface"
+        ],
+        "Effect" : "Allow",
+        "Resource": "*",
       }
     ]
   })
@@ -66,6 +84,7 @@ resource "aws_lambda_function" "lambda_promtail" {
   image_uri     = var.lambda_promtail_image
   function_name = "lambda_promtail"
   role          = aws_iam_role.iam_for_lambda.arn
+  kms_key_arn   = var.kms_key_arn
 
   timeout      = 60
   memory_size  = 128
@@ -83,9 +102,11 @@ resource "aws_lambda_function" "lambda_promtail" {
       WRITE_ADDRESS = var.write_address
       USERNAME      = var.username
       PASSWORD      = var.password
+      BEARER_TOKEN  = var.bearer_token
       KEEP_STREAM   = var.keep_stream
       BATCH_SIZE    = var.batch_size
       EXTRA_LABELS  = var.extra_labels
+      TENANT_ID     = var.tenant_id
     }
   }
 

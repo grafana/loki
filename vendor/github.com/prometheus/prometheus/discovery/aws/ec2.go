@@ -15,6 +15,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -29,7 +30,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
@@ -57,6 +57,7 @@ const (
 	ec2LabelPrivateIP         = ec2Label + "private_ip"
 	ec2LabelPublicDNS         = ec2Label + "public_dns_name"
 	ec2LabelPublicIP          = ec2Label + "public_ip"
+	ec2LabelRegion            = ec2Label + "region"
 	ec2LabelSubnetID          = ec2Label + "subnet_id"
 	ec2LabelTag               = ec2Label + "tag_"
 	ec2LabelVPCID             = ec2Label + "vpc_id"
@@ -179,7 +180,7 @@ func (d *EC2Discovery) ec2Client(ctx context.Context) (*ec2.EC2, error) {
 		Profile: d.cfg.Profile,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "could not create aws session")
+		return nil, fmt.Errorf("could not create aws session: %w", err)
 	}
 
 	if d.cfg.RoleARN != "" {
@@ -242,6 +243,7 @@ func (d *EC2Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error
 
 				labels := model.LabelSet{
 					ec2LabelInstanceID: model.LabelValue(*inst.InstanceId),
+					ec2LabelRegion:     model.LabelValue(d.cfg.Region),
 				}
 
 				if r.OwnerId != nil {
@@ -328,10 +330,11 @@ func (d *EC2Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error
 		}
 		return true
 	}); err != nil {
-		if awsErr, ok := err.(awserr.Error); ok && (awsErr.Code() == "AuthFailure" || awsErr.Code() == "UnauthorizedOperation") {
+		var awsErr awserr.Error
+		if errors.As(err, &awsErr) && (awsErr.Code() == "AuthFailure" || awsErr.Code() == "UnauthorizedOperation") {
 			d.ec2 = nil
 		}
-		return nil, errors.Wrap(err, "could not describe instances")
+		return nil, fmt.Errorf("could not describe instances: %w", err)
 	}
 	return []*targetgroup.Group{tg}, nil
 }

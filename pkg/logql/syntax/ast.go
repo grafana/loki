@@ -409,6 +409,24 @@ func newLineFmtExpr(value string) *LineFmtExpr {
 	}
 }
 
+type DecolorizeExpr struct {
+	implicit
+}
+
+func newDecolorizeExpr() *DecolorizeExpr {
+	return &DecolorizeExpr{}
+}
+
+func (e *DecolorizeExpr) Shardable() bool { return true }
+
+func (e *DecolorizeExpr) Stage() (log.Stage, error) {
+	return log.NewDecolorizer()
+}
+func (e *DecolorizeExpr) String() string {
+	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
+}
+func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -616,20 +634,24 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpRangeTypeCount     = "count_over_time"
-	OpRangeTypeRate      = "rate"
-	OpRangeTypeBytes     = "bytes_over_time"
-	OpRangeTypeBytesRate = "bytes_rate"
-	OpRangeTypeAvg       = "avg_over_time"
-	OpRangeTypeSum       = "sum_over_time"
-	OpRangeTypeMin       = "min_over_time"
-	OpRangeTypeMax       = "max_over_time"
-	OpRangeTypeStdvar    = "stdvar_over_time"
-	OpRangeTypeStddev    = "stddev_over_time"
-	OpRangeTypeQuantile  = "quantile_over_time"
-	OpRangeTypeFirst     = "first_over_time"
-	OpRangeTypeLast      = "last_over_time"
-	OpRangeTypeAbsent    = "absent_over_time"
+	OpRangeTypeCount       = "count_over_time"
+	OpRangeTypeRate        = "rate"
+	OpRangeTypeRateCounter = "rate_counter"
+	OpRangeTypeBytes       = "bytes_over_time"
+	OpRangeTypeBytesRate   = "bytes_rate"
+	OpRangeTypeAvg         = "avg_over_time"
+	OpRangeTypeSum         = "sum_over_time"
+	OpRangeTypeMin         = "min_over_time"
+	OpRangeTypeMax         = "max_over_time"
+	OpRangeTypeStdvar      = "stdvar_over_time"
+	OpRangeTypeStddev      = "stddev_over_time"
+	OpRangeTypeQuantile    = "quantile_over_time"
+	OpRangeTypeFirst       = "first_over_time"
+	OpRangeTypeLast        = "last_over_time"
+	OpRangeTypeAbsent      = "absent_over_time"
+
+	//vector
+	OpTypeVector = "vector"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -659,8 +681,9 @@ const (
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"
 
-	OpFmtLine  = "line_format"
-	OpFmtLabel = "label_format"
+	OpFmtLine    = "line_format"
+	OpFmtLabel   = "label_format"
+	OpDecolorize = "decolorize"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
@@ -707,6 +730,7 @@ type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	Extractor() (SampleExtractor, error)
+	MatcherGroups() []MatcherRange
 	Expr
 }
 
@@ -753,6 +777,20 @@ func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.Left.Left
 }
 
+func (e *RangeAggregationExpr) MatcherGroups() []MatcherRange {
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}
+	}
+	return nil
+}
+
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
@@ -763,7 +801,9 @@ func (e RangeAggregationExpr) validate() error {
 	}
 	if e.Left.Unwrap != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
+			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -775,6 +815,10 @@ func (e RangeAggregationExpr) validate() error {
 	default:
 		return fmt.Errorf("invalid aggregation %s without unwrap", e.Operation)
 	}
+}
+
+func (e RangeAggregationExpr) Validate() error {
+	return e.validate()
 }
 
 // impls Stringer
@@ -847,8 +891,12 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		if params == nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
-		if p, err = strconv.Atoi(*params); err != nil {
+		p, err = strconv.Atoi(*params)
+		if err != nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
+		}
+		if p <= 0 {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0))
 		}
 
 	default:
@@ -865,6 +913,10 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		Grouping:  gr,
 		Params:    p,
 	}
+}
+
+func (e *VectorAggregationExpr) MatcherGroups() []MatcherRange {
+	return e.Left.MatcherGroups()
 }
 
 func (e *VectorAggregationExpr) Selector() LogSelectorExpr {
@@ -898,10 +950,16 @@ func canInjectVectorGrouping(vecOp, rangeOp string) bool {
 
 func (e *VectorAggregationExpr) String() string {
 	var params []string
-	if e.Params != 0 {
+	switch e.Operation {
+	// bottomK and topk can have first parameter as 0
+	case OpTypeBottomK, OpTypeTopK:
 		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
-	} else {
-		params = []string{e.Left.String()}
+	default:
+		if e.Params != 0 {
+			params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
+		} else {
+			params = []string{e.Left.String()}
+		}
 	}
 	return formatOperation(e.Operation, e.Grouping, params...)
 }
@@ -909,12 +967,19 @@ func (e *VectorAggregationExpr) String() string {
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
 	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
-		// count is shardable is labels are not mutated
+		if !e.Left.Shardable() {
+			return false
+		}
+		// count is shardable if labels are not mutated
 		// otherwise distinct values can be counted twice per shard
 		shardable := true
-		e.Walk(func(e interface{}) {
+		e.Left.Walk(func(e interface{}) {
 			switch e.(type) {
-			case *LabelParserExpr, LabelFmtExpr:
+			// LabelParserExpr is normally shardable, but not in this case.
+			// TODO(owen-d): I think LabelParserExpr is shardable
+			// for avg, but not for count. Let's refactor to make this
+			// cleaner. For now I'm disallowing sharding on both.
+			case *LabelParserExpr:
 				shardable = false
 			}
 		})
@@ -979,6 +1044,10 @@ type BinOpExpr struct {
 	RHS  SampleExpr
 	Op   string
 	Opts *BinOpOptions
+}
+
+func (e *BinOpExpr) MatcherGroups() []MatcherRange {
+	return append(e.SampleExpr.MatcherGroups(), e.RHS.MatcherGroups()...)
 }
 
 func (e *BinOpExpr) String() string {
@@ -1363,6 +1432,7 @@ func (e *LiteralExpr) Shardable() bool                         { return true }
 func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *LiteralExpr) MatcherGroups() []MatcherRange           { return nil }
 func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 func (e *LiteralExpr) Value() float64                          { return e.Val }
 
@@ -1415,6 +1485,10 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 
 func (e *LabelReplaceExpr) Selector() LogSelectorExpr {
 	return e.Left.Selector()
+}
+
+func (e *LabelReplaceExpr) MatcherGroups() []MatcherRange {
+	return e.Left.MatcherGroups()
 }
 
 func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
@@ -1487,3 +1561,72 @@ var shardableOps = map[string]bool{
 	OpTypeAdd: true,
 	OpTypeMul: true,
 }
+
+type MatcherRange struct {
+	Matchers         []*labels.Matcher
+	Interval, Offset time.Duration
+}
+
+func MatcherGroups(expr Expr) []MatcherRange {
+	switch e := expr.(type) {
+	case SampleExpr:
+		return e.MatcherGroups()
+	case LogSelectorExpr:
+		if xs := e.Matchers(); len(xs) > 0 {
+			return []MatcherRange{
+				{
+					Matchers: xs,
+				},
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+type VectorExpr struct {
+	Val float64
+	err error
+	implicit
+}
+
+func NewVectorExpr(scalar string) *VectorExpr {
+	n, err := strconv.ParseFloat(scalar, 64)
+	if err != nil {
+		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
+	}
+	return &VectorExpr{
+		Val: n,
+		err: err,
+	}
+}
+
+func (e *VectorExpr) Err() error {
+	return e.err
+}
+
+func (e *VectorExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpTypeVector)
+	sb.WriteString("(")
+	sb.WriteString(fmt.Sprintf("%f", e.Val))
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (e *VectorExpr) Value() (float64, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	return e.Val, nil
+}
+
+func (e *VectorExpr) Selector() LogSelectorExpr               { return e }
+func (e *VectorExpr) HasFilter() bool                         { return false }
+func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
+func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
+func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *VectorExpr) MatcherGroups() []MatcherRange           { return nil }
+func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }

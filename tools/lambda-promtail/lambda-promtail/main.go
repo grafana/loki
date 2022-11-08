@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/prometheus/common/model"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/prometheus/common/model"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -26,12 +27,12 @@ const (
 )
 
 var (
-	writeAddress                       *url.URL
-	username, password, extraLabelsRaw string
-	keepStream                         bool
-	batchSize                          int
-	s3Clients                          map[string]*s3.Client
-	extraLabels                        model.LabelSet
+	writeAddress                                              *url.URL
+	username, password, extraLabelsRaw, tenantID, bearerToken string
+	keepStream                                                bool
+	batchSize                                                 int
+	s3Clients                                                 map[string]*s3.Client
+	extraLabels                                               model.LabelSet
 )
 
 func setupArguments() {
@@ -60,6 +61,14 @@ func setupArguments() {
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
 	}
+
+	bearerToken = os.Getenv("BEARER_TOKEN")
+	// If username and password are set, bearer token is not allowed
+	if username != "" && bearerToken != "" {
+		panic("both username and bearerToken are not allowed")
+	}
+
+	tenantID = os.Getenv("TENANT_ID")
 
 	keep := os.Getenv("KEEP_STREAM")
 	// Anything other than case-insensitive 'true' is treated as 'false'.
@@ -106,8 +115,9 @@ func applyExtraLabels(labels model.LabelSet) model.LabelSet {
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var s3Event events.S3Event
 	var cwEvent events.CloudwatchLogsEvent
+	var kinesisEvent events.KinesisEvent
 
-	types := [...]interface{}{&s3Event, &cwEvent}
+	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -134,11 +144,13 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 		return err
 	}
 
-	switch event.(type) {
+	switch evt := event.(type) {
 	case *events.S3Event:
-		return processS3Event(ctx, event.(*events.S3Event))
+		return processS3Event(ctx, evt)
 	case *events.CloudwatchLogsEvent:
-		return processCWEvent(ctx, event.(*events.CloudwatchLogsEvent))
+		return processCWEvent(ctx, evt)
+	case *events.KinesisEvent:
+		return processKinesisEvent(ctx, evt)
 	}
 
 	return err

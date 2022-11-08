@@ -5,6 +5,9 @@ import (
 	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,20 +17,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	walVolumeName     = "wal"
-	configVolumeName  = "config"
-	storageVolumeName = "storage"
-	walDirectory      = "/tmp/wal"
-	dataDirectory     = "/tmp/loki"
-	secretDirectory   = "/etc/proxy/secrets"
-)
-
 // BuildDistributor returns a list of k8s objects for Loki Distributor
 func BuildDistributor(opts Options) ([]client.Object, error) {
 	deployment := NewDistributorDeployment(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureDistributorServiceMonitorPKI(deployment, opts.Name); err != nil {
+	if opts.Gates.HTTPEncryption {
+		if err := configureDistributorHTTPServicePKI(deployment, opts); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Gates.GRPCEncryption {
+		if err := configureDistributorGRPCServicePKI(deployment, opts); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&deployment.Spec.Template.Spec, caBundleName); err != nil {
 			return nil, err
 		}
 	}
@@ -42,6 +49,7 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 // NewDistributorDeployment creates a deployment object for a distributor
 func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -52,12 +60,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 							Name: lokiConfigMapName(opts.Name),
 						},
 					},
-				},
-			},
-			{
-				Name: storageVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 		},
@@ -99,17 +101,21 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 						ReadOnly:  false,
 						MountPath: config.LokiConfigMountDir,
 					},
-					{
-						Name:      storageVolumeName,
-						ReadOnly:  false,
-						MountPath: dataDirectory,
-					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
+				SecurityContext:          containerSecurityContext(),
 			},
 		},
+		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
+			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Distributor != nil {
@@ -118,7 +124,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	l := ComponentLabels(LabelDistributorComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -151,7 +157,8 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 
 // NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
 func NewDistributorGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelDistributorComponent, opts.Name)
+	serviceName := serviceNameDistributorGRPC(opts.Name)
+	labels := ComponentLabels(LabelDistributorComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -159,8 +166,8 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameDistributorGRPC(opts.Name),
-			Labels: l,
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -172,7 +179,7 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -180,8 +187,7 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 // NewDistributorHTTPService creates a k8s service for the distributor HTTP endpoint
 func NewDistributorHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameDistributorHTTP(opts.Name)
-	l := ComponentLabels(LabelDistributorComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelDistributorComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -189,9 +195,8 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -202,12 +207,34 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
 
-func configureDistributorServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameDistributorHTTP(stackName)
-	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameDistributorHTTP(opts.Name)
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+}
+
+func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	secretContainerSpec := corev1.Container{
+		Args: []string{
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
+			fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
+		},
+	}
+
+	if err := mergo.Merge(&deployment.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	serviceName := serviceNameDistributorGRPC(opts.Name)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

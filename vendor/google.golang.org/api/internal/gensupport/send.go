@@ -8,11 +8,35 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2"
 )
+
+// Use this error type to return an error which allows introspection of both
+// the context error and the error from the service.
+type wrappedCallErr struct {
+	ctxErr     error
+	wrappedErr error
+}
+
+func (e wrappedCallErr) Error() string {
+	return fmt.Sprintf("retry failed with %v; last error: %v", e.ctxErr, e.wrappedErr)
+}
+
+func (e wrappedCallErr) Unwrap() error {
+	return e.wrappedErr
+}
+
+// Is allows errors.Is to match the error from the call as well as context
+// sentinel errors.
+func (e wrappedCallErr) Is(target error) bool {
+	return errors.Is(e.ctxErr, target) || errors.Is(e.wrappedErr, target)
+}
 
 // SendRequest sends a single HTTP request using the given client.
 // If ctx is non-nil, it calls all hooks, then sends the request with
@@ -71,6 +95,9 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 
 	var resp *http.Response
 	var err error
+	attempts := 1
+	invocationID := uuid.New().String()
+	baseXGoogHeader := req.Header.Get("X-Goog-Api-Client")
 
 	// Loop to retry the request, up to the context deadline.
 	var pause time.Duration
@@ -90,12 +117,12 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 	for {
 		select {
 		case <-ctx.Done():
-			// If we got an error, and the context has been canceled,
-			// the context's error is probably more useful.
-			if err == nil {
-				err = ctx.Err()
+			// If we got an error and the context has been canceled, return an error acknowledging
+			// both the context cancelation and the service error.
+			if err != nil {
+				return resp, wrappedCallErr{ctx.Err(), err}
 			}
-			return resp, err
+			return resp, ctx.Err()
 		case <-time.After(pause):
 		}
 
@@ -104,11 +131,14 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 			// select is satisfied at the same time, Go will choose one arbitrarily.
 			// That can cause an operation to go through even if the context was
 			// canceled before.
-			if err == nil {
-				err = ctx.Err()
+			if err != nil {
+				return resp, wrappedCallErr{ctx.Err(), err}
 			}
-			return resp, err
+			return resp, ctx.Err()
 		}
+		invocationHeader := fmt.Sprintf("gccl-invocation-id/%s gccl-attempt-count/%d", invocationID, attempts)
+		xGoogHeader := strings.Join([]string{invocationHeader, baseXGoogHeader}, " ")
+		req.Header.Set("X-Goog-Api-Client", xGoogHeader)
 
 		resp, err = client.Do(req.WithContext(ctx))
 
@@ -123,6 +153,7 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 		if req.GetBody == nil || !errorFunc(status, err) {
 			break
 		}
+		attempts++
 		var errBody error
 		req.Body, errBody = req.GetBody()
 		if errBody != nil {
