@@ -79,7 +79,7 @@ func formatLine(cfg *scrapeconfig.WindowsEventsTargetConfig, event win_eventlog.
 		structuredEvent.EventData = string(event.EventData.InnerXML)
 	}
 	if !cfg.ExcludeUserData {
-		structuredEvent.UserData = string(event.EventData.InnerXML)
+		structuredEvent.UserData = string(event.UserData.InnerXML)
 	}
 	if !cfg.ExcludeEventMessage {
 		structuredEvent.Message = event.Message

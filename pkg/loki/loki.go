@@ -43,7 +43,6 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
@@ -75,7 +74,7 @@ type Config struct {
 	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
-	DeleteClient     deletion.Config          `yaml:"delete_client,omitempty"`
+	CompactorClient  compactor.ClientConfig   `yaml:"compactor_client,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
@@ -116,7 +115,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.DeleteClient.RegisterFlags(f)
+	c.CompactorClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
@@ -270,7 +269,6 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
-	embeddedcacheRingManager *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -503,7 +501,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
-	mm.RegisterModule(Embededcache, t.initEmbeddedCache, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -531,16 +528,15 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		Embededcache:             {RuntimeConfig, Server, MemberlistKV},
 		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, Embededcache, IndexGatewayRing},
+		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
-		QueryFrontendTripperware: {Server, Embededcache, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},

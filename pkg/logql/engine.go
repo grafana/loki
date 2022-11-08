@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -191,6 +192,12 @@ func (q *query) resultLength(res promql_parser.Value) int {
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
+
+	if GetRangeType(q.params) == InstantType {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query())
+	} else {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+	}
 
 	rangeType := GetRangeType(q.params)
 	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))

@@ -156,7 +156,7 @@ func Test_renderEntries(t *testing.T) {
 			Labels: model.LabelSet{"channel": "channel", "computer": "local", "job": "windows-events"},
 			Entry: logproto.Entry{
 				Timestamp: time.Unix(0, 1).UTC(),
-				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":20,"level":30,"task":40,"opCode":50,"keywords":"keywords","timeCreated":"1970-01-01T00:00:00.000000001Z","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"eventdata","event_data":"eventdata","message":"message"}`,
+				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":20,"level":30,"task":40,"opCode":50,"keywords":"keywords","timeCreated":"1970-01-01T00:00:00.000000001Z","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"userdata","event_data":"eventdata","message":"message"}`,
 			},
 		},
 	}, entries)
@@ -200,7 +200,7 @@ func Test_renderEntries_ExcludeEventMessage(t *testing.T) {
 			Labels: model.LabelSet{"channel": "channel", "computer": "local", "job": "windows-events"},
 			Entry: logproto.Entry{
 				Timestamp: time.Unix(0, 1).UTC(),
-				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":20,"level":30,"task":40,"opCode":50,"keywords":"keywords","timeCreated":"1970-01-01T00:00:00.000000001Z","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"eventdata","event_data":"eventdata"}`,
+				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":20,"level":30,"task":40,"opCode":50,"keywords":"keywords","timeCreated":"1970-01-01T00:00:00.000000001Z","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"userdata","event_data":"eventdata"}`,
 			},
 		},
 	}, entries)

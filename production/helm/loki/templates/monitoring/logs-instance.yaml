@@ -17,13 +17,14 @@ metadata:
 spec:
   clients:
     {{- include "loki.logsInstanceClient" $ | nindent 4}}
+    {{- with .clients}}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 
-  # Supply an empty namespace selector to look in all namespaces. Remove
-  # this to only look in the same namespace as the LogsInstance CR
-  podLogsNamespaceSelector: { }
+  podLogsNamespaceSelector: {}
 
   podLogsSelector:
     matchLabels:
-      instance: primary
+      {{- include "loki.selectorLabels" $ | nindent 6 }}
 {{- end -}}
 {{- end -}}

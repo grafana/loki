@@ -1184,7 +1184,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1249,6 +1249,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
+  "RequestHeaders": [],
+  "ResponseHeaders": [
+    "x-foo": "bar"
+  ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",
@@ -1917,6 +1921,12 @@ The optional `limits_config` block configures global limits for this instance of
 # log lines, rather than sending them to Loki. When false, exceeding the rate limit
 # causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
 [readline_rate_drop: <bool> | default = true]
+
+# Limits the max number of active streams.
+# Limiting the number of streams is useful as a mechanism to limit memory usage by Promtail, which helps
+# to avoid OOM scenarios.
+# 0 means it is disabled.
+[max_streams: <int> | default = 0]
 ```
 
 ## target_config

@@ -50,6 +50,7 @@ message StreamRate {
   uint64 streamHash = 1;
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
+  string tenant = 4;
 }
 
 message PushRequest {
@@ -130,10 +131,6 @@ message LabelRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = true
   ];
-}
-
-message RateLimitedStream {
-  string labels = 1;
 }
 
 message LabelResponse {

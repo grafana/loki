@@ -35,8 +35,14 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	objs := []client.Object{}
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&statefulSet.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
 
+	objs := []client.Object{}
 	if opts.Stack.Tenants != nil {
 		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode, opts.Name); err != nil {
 			return nil, err
@@ -157,7 +163,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -230,43 +236,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 }
 
-func configureRulerStatefulSetForMode(
-	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
-	stackName string,
-) error {
-	switch mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		caBundleName := signingCABundleName(stackName)
-		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
-		return openshift.ConfigureRulerStatefulSet(
-			ss,
-			BearerTokenFile,
-			caBundleName,
-			caBundleDir,
-			caFile,
-			monitorServerName,
-			rulerContainerName,
-		)
-	}
-
-	return nil
-}
-
-func configureRulerObjsForMode(opts Options) []client.Object {
-	openShiftObjs := []client.Object{}
-
-	switch opts.Stack.Tenants.Mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		// nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
-	}
-
-	return openShiftObjs
-}
-
 // NewRulerGRPCService creates a k8s service for the ruler GRPC endpoint
 func NewRulerGRPCService(opts Options) *corev1.Service {
 	serviceName := serviceNameRulerGRPC(opts.Name)
@@ -278,9 +247,8 @@ func NewRulerGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -308,9 +276,8 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -328,58 +295,45 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 
 func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameRulerHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
-	caBundleName := signingCABundleName(opts.Name)
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: caBundleName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: caBundleName,
-						},
-					},
-				},
-			},
-		},
-	}
-
 	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      caBundleName,
-				ReadOnly:  false,
-				MountPath: caBundleDir,
-			},
-		},
 		Args: []string{
-			// Enable GRPC over TLS for ruler client
-			"-ruler.client.tls-enabled=true",
-			fmt.Sprintf("-ruler.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ruler.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(opts.Name), opts.Namespace)),
-			// Enable GRPC over TLS for ingester client
-			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
+			// Enable HTTP over TLS for compactor delete client
+			"-boltdb.shipper.compactor.client.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
+			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(opts.Name), opts.Namespace)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cert-path=%s", lokiServerGRPCTLSCert()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-key-path=%s", lokiServerGRPCTLSKey()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
+			fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
+			// Enable GRPC over TLS for ruler client
+			"-ruler.client.tls-enabled=true",
+			fmt.Sprintf("-ruler.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
+			fmt.Sprintf("-ruler.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
+			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ruler.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
+			fmt.Sprintf("-ruler.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
+			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(opts.Name), opts.Namespace)),
 		},
-	}
-
-	if err := mergo.Merge(&sts.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
 	}
 
 	if err := mergo.Merge(&sts.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
@@ -388,6 +342,43 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
 
 	serviceName := serviceNameRulerGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
+}
+
+func configureRulerStatefulSetForMode(
+	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
+	stackName string,
+) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		bundleName := alertmanagerSigningCABundleName(ss.Name)
+		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
+		return openshift.ConfigureRulerStatefulSet(
+			ss,
+			bundleName,
+			BearerTokenFile,
+			alertmanagerUpstreamCADir(),
+			alertmanagerUpstreamCAPath(),
+			monitorServerName,
+			rulerContainerName,
+		)
+	}
+
+	return nil
+}
+
+func configureRulerObjsForMode(opts Options) []client.Object {
+	openShiftObjs := []client.Object{}
+
+	switch opts.Stack.Tenants.Mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
+	}
+
+	return openShiftObjs
 }
 
 func ruleVolumeItems(tenants map[string]TenantConfig) []corev1.KeyToPath {
