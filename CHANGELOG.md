@@ -83,6 +83,8 @@ Check the history of the branch FIXME.
 * [7212](https://github.com/grafana/loki/pull/7212) **Juneezee**: Replaces deprecated `io/ioutil` with `io` and `os`.
 * [7361](https://github.com/grafana/loki/pull/7361) **szczepad**: Renames metric `loki_log_messages_total` to `loki_internal_log_messages_total`
 * [7510](https://github.com/grafana/loki/pull/7510) **slim-bean**: Limited queries (queries without filter expressions) will now be split and sharded.
+* [5400](https://github.com/grafana/loki/pull/5400) **BenoitKnecht**: promtail/server: Disable profiling by default
+
 
 #### Promtail
 
@@ -421,7 +423,6 @@ Check the history of the branch `release-2.5.x`.
 ### Dependencies
 
 * Go Version:     1.17.8
-
 
 # 2.4.1 (2021/11/07)
 
