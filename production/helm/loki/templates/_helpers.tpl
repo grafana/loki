@@ -216,10 +216,12 @@ Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
 {{- if .Values.minio.enabled -}}
+type: "s3"
 s3:
   bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
 {{- else if eq .Values.loki.storage.type "s3" -}}
 {{- with .Values.loki.storage.s3 }}
+type: "s3"
 s3:
   {{- with .s3 }}
   s3: {{ . }}
@@ -242,6 +244,7 @@ s3:
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
+type: "gcs"
 gcs:
   bucket_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   chunk_buffer_size: {{ .chunkBufferSize }}
@@ -250,6 +253,24 @@ gcs:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Predicate function to determin if custom ruler config should be included */}}
+{{- define "loki.shouldIncludeRulerConfig" }}
+{{- or (not (empty .Values.loki.rulerConfig)) (.Values.minio.enabled) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
+{{- end }}
+
+{{/* Loki ruler config */}}
+{{- define "loki.rulerConfig" }}
+{{- if eq (include "loki.shouldIncludeRulerConfig" .) "true" }}
+ruler:
+{{- if (not (empty .Values.loki.rulerConfig)) }}
+{{- toYaml .Values.loki.rulerConfig | nindent 2}}
+{{- else }}
+  storage:
+  {{- include "loki.rulerStorageConfig" . | nindent 4}}
+{{- end }}
+{{- end }}
+{{- end }}
 
 {{/*
 Memcached Docker image
@@ -332,9 +353,9 @@ Create the service endpoint including port for MinIO.
 {{/* Determine the public host for the Loki cluster */}}
 {{- define "loki.host" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "%s.%s.svc.%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- $url := printf "%s.%s.svc.%s." (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
-  {{- $url = printf "%s.%s.svc.%s:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- end }}
 {{- printf "%s" $url -}}
 {{- end -}}

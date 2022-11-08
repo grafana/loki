@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,6 +23,8 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+const keySeparator = ":"
 
 type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
@@ -44,13 +47,19 @@ type ingesterClient struct {
 	client logproto.StreamDataClient
 }
 
+type expiringRate struct {
+	createdAt time.Time
+	rate      int64
+}
+
 type rateStore struct {
 	services.Service
 
 	ring            ring.ReadRing
 	clientPool      poolClientFactory
-	rates           map[uint64]int64
+	rates           map[string]expiringRate
 	rateLock        sync.RWMutex
+	rateKeepAlive   time.Duration
 	ingesterTimeout time.Duration
 	maxParallelism  int
 	limits          Limits
@@ -64,8 +73,10 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l 
 		clientPool:      cf,
 		maxParallelism:  cfg.MaxParallelism,
 		ingesterTimeout: cfg.IngesterReqTimeout,
+		rateKeepAlive:   10 * time.Minute,
 		limits:          l,
 		metrics:         newRateStoreMetrics(registerer),
+		rates:           make(map[string]expiringRate),
 	}
 
 	rateCollectionInterval := util.DurationWithJitter(cfg.StreamRateUpdateInterval, 0.2)
@@ -95,11 +106,28 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	streamRates := s.getRates(ctx, clients)
 	rates := s.aggregateByShard(streamRates)
 
-	s.metrics.streamCount.Set(float64(len(rates)))
-
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
-	s.rates = rates
+
+	for stream, rate := range rates {
+		s.rates[stream] = expiringRate{
+			rate:      rate,
+			createdAt: time.Now(),
+		}
+	}
+
+	var maxRate int64
+	for stream, rate := range s.rates {
+		if time.Since(rate.createdAt) > s.rateKeepAlive {
+			delete(s.rates, stream)
+			continue
+		}
+
+		maxRate = max(maxRate, rate.rate)
+	}
+
+	s.metrics.maxStreamRate.Set(float64(maxRate))
+	s.metrics.streamCount.Set(float64(len(s.rates)))
 
 	return nil
 }
@@ -120,22 +148,20 @@ func (s *rateStore) anyShardingEnabled() bool {
 	return false
 }
 
-func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate) map[uint64]int64 {
-	var maxRate int64
-	shardCount := make(map[uint64]int)
-	rates := make(map[uint64]int64)
+func (s *rateStore) aggregateByShard(streamRates map[string]*logproto.StreamRate) map[string]int64 {
+	shardCount := make(map[string]int)
+	rates := make(map[string]int64)
+
 	for _, sr := range streamRates {
-		shardCount[sr.StreamHashNoShard]++
+		key := key(sr.Tenant, sr.StreamHashNoShard)
+		shardCount[key]++
 
-		if _, ok := rates[sr.StreamHashNoShard]; ok {
-			rates[sr.StreamHashNoShard] += sr.Rate
-			maxRate = max(rates[sr.StreamHashNoShard], maxRate)
-
+		if _, ok := rates[key]; ok {
+			rates[key] += sr.Rate
 			continue
 		}
 
-		rates[sr.StreamHashNoShard] = sr.Rate
-		maxRate = max(rates[sr.StreamHashNoShard], maxRate)
+		rates[key] = sr.Rate
 	}
 
 	var maxShards int64
@@ -143,7 +169,6 @@ func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate
 		maxShards = max(maxShards, int64(v))
 	}
 
-	s.metrics.maxStreamRate.Set(float64(maxRate))
 	s.metrics.maxStreamShardCount.Set(float64(maxShards))
 	return rates
 }
@@ -155,7 +180,7 @@ func max(a, b int64) int64 {
 	return b
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[uint64]*logproto.StreamRate {
+func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]*logproto.StreamRate {
 	parallelClients := make(chan ingesterClient, len(clients))
 	responses := make(chan *logproto.StreamRatesResponse, len(clients))
 
@@ -186,9 +211,9 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[uint64]*logproto.StreamRate {
+func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]*logproto.StreamRate {
 	var maxRate int64
-	streamRates := make(map[uint64]*logproto.StreamRate)
+	streamRates := make(map[string]*logproto.StreamRate)
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
 		if resp == nil {
@@ -197,16 +222,18 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 
 		for j := 0; j < len(resp.StreamRates); j++ {
 			rate := resp.StreamRates[j]
+			key := key(rate.Tenant, rate.StreamHash)
+
 			maxRate = max(maxRate, rate.Rate)
 
-			if r, ok := streamRates[rate.StreamHash]; ok {
+			if r, ok := streamRates[key]; ok {
 				if r.Rate < rate.Rate {
-					streamRates[rate.StreamHash] = rate
+					streamRates[key] = rate
 				}
 				continue
 			}
 
-			streamRates[rate.StreamHash] = rate
+			streamRates[key] = rate
 		}
 	}
 
@@ -233,9 +260,13 @@ func (s *rateStore) getClients() ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(streamHash uint64) int64 {
+func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
-	return s.rates[streamHash]
+	return s.rates[key(tenant, streamHash)].rate
+}
+
+func key(tenant string, hash uint64) string {
+	return tenant + keySeparator + strconv.FormatUint(hash, 10)
 }

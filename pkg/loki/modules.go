@@ -350,7 +350,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 	}
-	if t.supportIndexDeleteRequest() {
+	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
 			toMerge,
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
@@ -660,7 +660,8 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig, t.cacheGenerationLoader,
+		t.Cfg.SchemaConfig,
+		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -679,7 +680,13 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 		if err != nil {
 			return nil, err
 		}
-		client, err = generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+
+		httpClient, err := compactor.NewCompactorHTTPClient(t.Cfg.CompactorClient)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err = generationnumber.NewGenNumberClient(compactorAddress, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -1112,7 +1119,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
-	if !t.supportIndexDeleteRequest() {
+	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
@@ -1121,7 +1128,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overri
 		return nil, err
 	}
 
-	httpClient, err := deletion.NewDeleteHTTPClient(t.Cfg.DeleteClient)
+	httpClient, err := compactor.NewCompactorHTTPClient(t.Cfg.CompactorClient)
 	if err != nil {
 		return nil, err
 	}

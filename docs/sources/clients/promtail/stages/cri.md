@@ -17,6 +17,7 @@ space-delimited values with the following components:
 
 1. `time`: The timestamp string of the log
 1. `stream`: Either stdout or stderr
+1. `flags`: CRI flags including F or P
 1. `log`: The contents of the log line
 
 No whitespace is permitted between the components. In the following example,
@@ -39,7 +40,7 @@ For the given pipeline:
 Given the following log line:
 
 ```
-"2019-04-30T02:12:41.8443515Z stdout xx message"
+"2019-04-30T02:12:41.8443515Z stdout F message"
 ```
 
 The following key-value pairs would be created in the set of extracted data:

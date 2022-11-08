@@ -409,6 +409,24 @@ func newLineFmtExpr(value string) *LineFmtExpr {
 	}
 }
 
+type DecolorizeExpr struct {
+	implicit
+}
+
+func newDecolorizeExpr() *DecolorizeExpr {
+	return &DecolorizeExpr{}
+}
+
+func (e *DecolorizeExpr) Shardable() bool { return true }
+
+func (e *DecolorizeExpr) Stage() (log.Stage, error) {
+	return log.NewDecolorizer()
+}
+func (e *DecolorizeExpr) String() string {
+	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
+}
+func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -663,8 +681,9 @@ const (
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"
 
-	OpFmtLine  = "line_format"
-	OpFmtLabel = "label_format"
+	OpFmtLine    = "line_format"
+	OpFmtLabel   = "label_format"
+	OpDecolorize = "decolorize"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
