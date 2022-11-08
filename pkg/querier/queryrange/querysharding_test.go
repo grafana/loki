@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -39,6 +41,9 @@ var (
 			Direction: logproto.BACKWARD,
 			Limit:     defaultReq().Limit,
 			Version:   1,
+			Headers: []definitions.PrometheusResponseHeader{
+				{Name: "Header", Values: []string{"value"}},
+			},
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -57,6 +62,9 @@ var (
 			Direction: logproto.BACKWARD,
 			Limit:     100,
 			Version:   1,
+			Headers: []definitions.PrometheusResponseHeader{
+				{Name: "Header", Values: []string{"value"}},
+			},
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -162,6 +170,10 @@ func Test_astMapper(t *testing.T) {
 
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
 	require.Nil(t, err)
+
+	require.Equal(t, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	}, resp.GetHeaders())
 
 	expected, err := LokiCodec.MergeResponse(lokiResps...)
 	sort.Sort(logproto.Streams(expected.(*LokiResponse).Data.Result))

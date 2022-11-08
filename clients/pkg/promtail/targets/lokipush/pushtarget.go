@@ -79,7 +79,7 @@ func (t *PushTarget) run() error {
 
 	// The logger registers a metric which will cause a duplicate registry panic unless we provide an empty registry
 	// The metric created is for counting log lines and isn't likely to be missed.
-	util_log.InitLogger(&t.config.Server, prometheus.NewRegistry())
+	util_log.InitLogger(&t.config.Server, prometheus.NewRegistry(), true, false)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
@@ -126,8 +126,8 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Apply relabeling
-		processed := relabel.Process(lb.Labels(), t.relabelConfig...)
-		if processed == nil || len(processed) == 0 {
+		processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
+		if len(processed) == 0 {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

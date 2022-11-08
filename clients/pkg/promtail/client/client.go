@@ -94,7 +94,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 	}, []string{HostLabel})
 
 	m.countersWithHost = []*prometheus.CounterVec{
-		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries,
+		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries, m.batchRetries,
 	}
 
 	streamLagLabelsMerged := []string{HostLabel, ClientLabel}
@@ -343,6 +343,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
 					return
 				}
+
+				//nolint:staticcheck
 				lblSet := make(prometheus.Labels)
 				for _, lbl := range c.streamLagLabels {
 					// label from streamLagLabels may not be found but we still need an empty value
@@ -355,6 +357,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					}
 					lblSet[lbl] = value
 				}
+
+				//nolint:staticcheck
 				if lblSet != nil {
 					// always set host
 					lblSet[HostLabel] = c.cfg.URL.Host

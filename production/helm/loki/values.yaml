@@ -84,6 +84,11 @@ loki:
     memberlist:
       join_members:
         - {{ include "loki.memberlist" . }}
+        {{- with .Values.migrate.fromDistributed }}
+        {{- if .enabled }}
+        - {{ .memberlistService }}
+        {{- end }}
+        {{- end }}
 
     {{- if .Values.loki.commonConfig}}
     common:
@@ -131,14 +136,7 @@ loki:
             period: 24h
     {{- end }}
 
-    ruler:
-      storage:
-      {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
-      {{- include "loki.rulerStorageConfig" . | nindent 4}}
-      {{- end }}
-    {{- with .Values.loki.rulerConfig}}
-    {{- toYaml . | nindent 2}}
-    {{- end }}
+    {{ include "loki.rulerConfig" . }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -167,6 +165,11 @@ loki:
 
     {{- with .Values.loki.compactor }}
     compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.analytics }}
+    analytics:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
@@ -253,12 +256,15 @@ loki:
   # --  Optional compactor configuration
   compactor: {}
 
+  # --  Optional analytics configuration
+  analytics: {}
+
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
 
   # Default verion of GEL to deploy
-  version: v1.5.0
+  version: v1.5.2
 
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
@@ -341,6 +347,8 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+    # -- Environment variables from secrets or configmaps to add to the tokengen pods
+    extraEnvFrom: []
 
   # -- Configuration for `provisioner` target
   provisioner:
@@ -412,7 +420,7 @@ enterprise:
 
         sendfile     on;
         tcp_nopush   on;
-        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }};
+        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
         {{- with .Values.gateway.nginxConfig.httpSnippet }}
         {{ . | nindent 2 }}
@@ -501,6 +509,16 @@ enterprise:
         }
       }
 
+# -- Options that may be necessary when performing a migration from another helm chart
+migrate:
+  # -- When migrating from a distributed chart like loki-distributed or enterprise-logs
+  fromDistributed:
+    # -- Set to true if migrating from a distributed helm chart
+    enabled: false
+    # -- If migrating from a distributed service, provide the distributed deployment's
+    # memberlist service DNS so the new deployment can join it's ring.
+    memberlistService: ""
+
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
   create: true
@@ -520,6 +538,28 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+
+# -- Section for configuring optional Helm test
+test:
+  enabled: true
+  # -- Address of the prometheus server to query for the test
+  prometheusAddress: "http://prometheus:9090"
+  # -- Number of times to retry the test before failing
+  timeout: 1m
+  # -- Additional labels for the test pods
+  labels: {}
+  # -- Additional annotations for test pods
+  annotations: {}
+  # -- Image to use for loki canary
+  image:
+    # -- The Docker registry
+    registry: docker.io
+    # -- Docker image repository
+    repository: grafana/loki-helm-test
+    # -- Overrides the image tag whose default is the chart's appVersion
+    tag: null
+    # -- Docker image pull policy
+    pullPolicy: IfNotPresent
 
 # Monitoring section determines which monitoring features to enable
 monitoring:
@@ -591,6 +631,16 @@ monitoring:
     scheme: http
     # -- ServiceMonitor will use these tlsConfig settings to make the health check requests
     tlsConfig: null
+    # -- If defined, will create a MetricsInstance for the Grafana Agent Operator.
+    metricsInstance:
+      # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
+      enabled: true
+      # -- MetricsInstance annotations
+      annotations: {}
+      # -- Additional MetricsInstance labels
+      labels: {}
+      # -- If defined a MetricsInstance will be created to remote write metrics.
+      remoteWrite: null
 
   # Self monitoring determines whether Loki should scrape it's own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
@@ -638,6 +688,8 @@ monitoring:
       annotations: {}
       # -- Additional LogsInstance labels
       labels: {}
+      # -- Additional clients for remote write
+      clients: null
 
     # The Loki canary pushes logs to and queries from this loki installation to test
     # that it's working correctly
@@ -1072,7 +1124,7 @@ gateway:
 
         sendfile     on;
         tcp_nopush   on;
-        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }};
+        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
         {{- with .Values.gateway.nginxConfig.httpSnippet }}
         {{ . | nindent 2 }}

@@ -822,7 +822,7 @@ func (s *BucketLifecycleRuleAction) MarshalJSON() ([]byte, error) {
 type BucketLifecycleRuleCondition struct {
 	// Age: Age of an object (in days). This condition is satisfied when an
 	// object reaches the specified age.
-	Age int64 `json:"age,omitempty"`
+	Age *int64 `json:"age,omitempty"`
 
 	// CreatedBefore: A date in RFC 3339 format with only the date part (for
 	// instance, "2013-01-15"). This condition is satisfied when an object

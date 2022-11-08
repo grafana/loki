@@ -36,6 +36,7 @@ const (
 	StageTypePack         = "pack"
 	StageTypeLabelAllow   = "labelallow"
 	StageTypeStaticLabels = "static_labels"
+	StageTypeDecolorize   = "decolorize"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -206,6 +207,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeStaticLabels:
 		s, err = newStaticLabelsStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeDecolorize:
+		s, err = newDecolorizeStage(cfg)
 		if err != nil {
 			return nil, err
 		}

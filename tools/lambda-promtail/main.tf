@@ -109,6 +109,7 @@ resource "aws_lambda_function" "lambda_promtail" {
       WRITE_ADDRESS = var.write_address
       USERNAME      = var.username
       PASSWORD      = var.password
+      BEARER_TOKEN  = var.bearer_token
       KEEP_STREAM   = var.keep_stream
       BATCH_SIZE    = var.batch_size
       EXTRA_LABELS  = var.extra_labels

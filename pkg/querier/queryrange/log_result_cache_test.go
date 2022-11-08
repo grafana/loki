@@ -29,6 +29,7 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 			cache.NewMockCache(),
 			nil,
 			nil,
+			nil,
 		)
 	)
 
@@ -67,6 +68,7 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 				splits: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
+			nil,
 			nil,
 			nil,
 		)
@@ -115,6 +117,7 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 			cache.NewMockCache(),
 			nil,
 			nil,
+			nil,
 		)
 	)
 
@@ -159,6 +162,7 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 				splits: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
+			nil,
 			nil,
 			nil,
 		)
@@ -228,6 +232,7 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 				splits: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
+			nil,
 			nil,
 			nil,
 		)
@@ -306,6 +311,7 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 				splits: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
+			nil,
 			nil,
 			nil,
 		)

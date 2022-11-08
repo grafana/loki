@@ -1,5 +1,5 @@
 {{- with .Values.monitoring.rules }}
-{{- if .enabled }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") .enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -17,10 +17,7 @@ metadata:
   namespace: {{ .namespace | default $.Release.Namespace }}
 spec:
   groups:
-  {{- include "loki.ruleGroupToYaml" ($.Files.Get "src/rules.yaml" | fromYaml).groups | indent 4 }}
-  {{- if .alerting }}
-  {{- include "loki.ruleGroupToYaml" ($.Files.Get "src/alerts.yaml" | fromYaml).groups | indent 4 }}
-  {{- end }}
+  {{- include "loki.ruleGroupToYaml" (tpl ($.Files.Get "src/rules.yaml.tpl") $ | fromYaml).groups | indent 4 }}
   {{- include "loki.ruleGroupToYaml" .additionalGroups | indent 4 }}
 {{- end }}
 {{- end }}

@@ -42,9 +42,11 @@ var (
 type EndpointSlice struct {
 	logger log.Logger
 
-	endpointSliceInf cache.SharedInformer
+	endpointSliceInf cache.SharedIndexInformer
 	serviceInf       cache.SharedInformer
 	podInf           cache.SharedInformer
+	nodeInf          cache.SharedInformer
+	withNodeMetadata bool
 
 	podStore           cache.Store
 	endpointSliceStore cache.Store
@@ -54,7 +56,7 @@ type EndpointSlice struct {
 }
 
 // NewEndpointSlice returns a new endpointslice discovery.
-func NewEndpointSlice(l log.Logger, svc, eps, pod cache.SharedInformer) *EndpointSlice {
+func NewEndpointSlice(l log.Logger, eps cache.SharedIndexInformer, svc, pod, node cache.SharedInformer) *EndpointSlice {
 	if l == nil {
 		l = log.NewNopLogger()
 	}
@@ -66,6 +68,8 @@ func NewEndpointSlice(l log.Logger, svc, eps, pod cache.SharedInformer) *Endpoin
 		serviceStore:       svc.GetStore(),
 		podInf:             pod,
 		podStore:           pod.GetStore(),
+		nodeInf:            node,
+		withNodeMetadata:   node != nil,
 		queue:              workqueue.NewNamed("endpointSlice"),
 	}
 
@@ -120,7 +124,36 @@ func NewEndpointSlice(l log.Logger, svc, eps, pod cache.SharedInformer) *Endpoin
 		},
 	})
 
+	if e.withNodeMetadata {
+		e.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(o interface{}) {
+				node := o.(*apiv1.Node)
+				e.enqueueNode(node.Name)
+			},
+			UpdateFunc: func(_, o interface{}) {
+				node := o.(*apiv1.Node)
+				e.enqueueNode(node.Name)
+			},
+			DeleteFunc: func(o interface{}) {
+				node := o.(*apiv1.Node)
+				e.enqueueNode(node.Name)
+			},
+		})
+	}
+
 	return e
+}
+
+func (e *EndpointSlice) enqueueNode(nodeName string) {
+	endpoints, err := e.endpointSliceInf.GetIndexer().ByIndex(nodeIndex, nodeName)
+	if err != nil {
+		level.Error(e.logger).Log("msg", "Error getting endpoints for node", "node", nodeName, "err", err)
+		return
+	}
+
+	for _, endpoint := range endpoints {
+		e.enqueue(endpoint)
+	}
 }
 
 func (e *EndpointSlice) enqueue(obj interface{}) {
@@ -136,7 +169,11 @@ func (e *EndpointSlice) enqueue(obj interface{}) {
 func (e *EndpointSlice) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 	defer e.queue.ShutDown()
 
-	if !cache.WaitForCacheSync(ctx.Done(), e.endpointSliceInf.HasSynced, e.serviceInf.HasSynced, e.podInf.HasSynced) {
+	cacheSyncs := []cache.InformerSynced{e.endpointSliceInf.HasSynced, e.serviceInf.HasSynced, e.podInf.HasSynced}
+	if e.withNodeMetadata {
+		cacheSyncs = append(cacheSyncs, e.nodeInf.HasSynced)
+	}
+	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		if ctx.Err() != context.Canceled {
 			level.Error(e.logger).Log("msg", "endpointslice informer unable to sync cache")
 		}
@@ -282,6 +319,10 @@ func (e *EndpointSlice) buildEndpointSlice(eps endpointSliceAdaptor) *targetgrou
 			target[model.LabelName(endpointSliceEndpointTopologyLabelPresentPrefix+ln)] = presentValue
 		}
 
+		if e.withNodeMetadata {
+			target = addNodeLabels(target, e.nodeInf, e.logger, ep.nodename())
+		}
+
 		pod := e.resolvePodRef(ep.targetRef())
 		if pod == nil {
 			// This target is not a Pod, so don't continue with Pod specific logic.
@@ -309,6 +350,7 @@ func (e *EndpointSlice) buildEndpointSlice(eps endpointSliceAdaptor) *targetgrou
 					ports := strconv.FormatUint(uint64(*port.port()), 10)
 
 					target[podContainerNameLabel] = lv(c.Name)
+					target[podContainerImageLabel] = lv(c.Image)
 					target[podContainerPortNameLabel] = lv(cport.Name)
 					target[podContainerPortNumberLabel] = lv(ports)
 					target[podContainerPortProtocolLabel] = lv(string(cport.Protocol))
@@ -357,6 +399,7 @@ func (e *EndpointSlice) buildEndpointSlice(eps endpointSliceAdaptor) *targetgrou
 				target := model.LabelSet{
 					model.AddressLabel:            lv(a),
 					podContainerNameLabel:         lv(c.Name),
+					podContainerImageLabel:        lv(c.Image),
 					podContainerPortNameLabel:     lv(cport.Name),
 					podContainerPortNumberLabel:   lv(ports),
 					podContainerPortProtocolLabel: lv(string(cport.Protocol)),

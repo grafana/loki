@@ -332,7 +332,7 @@ type ObjectStorageTLSSpec struct {
 	// +kubebuilder:validation:optional
 	// +kubebuilder:default:=service-ca.crt
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Key"
-	Key string `json:"caKey,omitempty"`
+	CAKey string `json:"caKey,omitempty"`
 	// CA is the name of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
 	//
@@ -462,6 +462,14 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Query Series"
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
+
+	// Timeout when querying ingesters or storage during the execution of a query request.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:="1m"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
+	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
@@ -753,6 +761,8 @@ const (
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
+	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
+	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
@@ -862,7 +872,9 @@ type LokiStackStatus struct {
 //
 // +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Ingress,v1},{Service,v1},{ServiceAccount,v1},{PersistentVolumeClaims,v1},{Route,v1},{ServiceMonitor,v1}}
 type LokiStack struct {
-	Spec              LokiStackSpec   `json:"spec,omitempty"`
+	// LokiStack CR spec field.
+	Spec LokiStackSpec `json:"spec,omitempty"`
+	// LokiStack CR spec Status.
 	Status            LokiStackStatus `json:"status,omitempty"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	metav1.TypeMeta   `json:",inline"`

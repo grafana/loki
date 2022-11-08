@@ -3,7 +3,10 @@
 
 package watch
 
-import "gopkg.in/tomb.v1"
+import (
+	"gopkg.in/tomb.v1"
+	"os"
+)
 
 // FileWatcher monitors file-level events.
 type FileWatcher interface {
@@ -17,4 +20,6 @@ type FileWatcher interface {
 	// In order to properly report truncations, ChangeEvents requires
 	// the caller to pass their current offset in the file.
 	ChangeEvents(*tomb.Tomb, int64) (*FileChanges, error)
+
+	SetFile(f *os.File)
 }

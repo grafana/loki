@@ -118,6 +118,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 }
 
 func (f *Frontend) starting(ctx context.Context) error {
+	f.subservicesWatcher = services.NewFailureWatcher()
 	f.subservicesWatcher.WatchManager(f.subservices)
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {

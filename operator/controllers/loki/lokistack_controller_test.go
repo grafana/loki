@@ -12,6 +12,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -74,63 +75,80 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 
 	// Require owned resources
 	type test struct {
-		obj          client.Object
-		index        int
-		featureGates configv1.FeatureGates
-		pred         builder.OwnsOption
+		obj           client.Object
+		index         int
+		ownCallsCount int
+		featureGates  configv1.FeatureGates
+		pred          builder.OwnsOption
 	}
 	table := []test{
 		{
-			obj:   &corev1.ConfigMap{},
-			index: 0,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &corev1.ConfigMap{},
+			index:         0,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &corev1.ServiceAccount{},
-			index: 1,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &corev1.Secret{},
+			index:         1,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &corev1.Service{},
-			index: 2,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &corev1.ServiceAccount{},
+			index:         2,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &appsv1.Deployment{},
-			index: 3,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &corev1.Service{},
+			index:         3,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &appsv1.StatefulSet{},
-			index: 4,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &appsv1.Deployment{},
+			index:         4,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &rbacv1.ClusterRole{},
-			index: 5,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &appsv1.StatefulSet{},
+			index:         5,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &rbacv1.ClusterRoleBinding{},
-			index: 6,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &rbacv1.ClusterRole{},
+			index:         6,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &rbacv1.Role{},
-			index: 7,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &rbacv1.ClusterRoleBinding{},
+			index:         7,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &rbacv1.RoleBinding{},
-			index: 8,
-			pred:  updateOrDeleteOnlyPred,
+			obj:           &rbacv1.Role{},
+			index:         8,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
+		},
+		{
+			obj:           &rbacv1.RoleBinding{},
+			index:         9,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
 		},
 		// The next two share the same index, because the
 		// controller either reconciles an Ingress (i.e. Kubernetes)
 		// or a Route (i.e. OpenShift).
 		{
-			obj:   &networkingv1.Ingress{},
-			index: 9,
+			obj:           &networkingv1.Ingress{},
+			index:         10,
+			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					GatewayRoute: false,
@@ -139,11 +157,23 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			pred: updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &routev1.Route{},
-			index: 9,
+			obj:           &routev1.Route{},
+			index:         10,
+			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					GatewayRoute: true,
+				},
+			},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:           &openshiftconfigv1.APIServer{},
+			index:         11,
+			ownCallsCount: 12,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					ClusterTLSPolicy: true,
 				},
 			},
 			pred: updateOrDeleteOnlyPred,
@@ -159,7 +189,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		require.NoError(t, err)
 
 		// Require Owns-Calls for all owned resources
-		require.Equal(t, 10, b.OwnsCallCount())
+		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount())
 
 		// Require Owns-call options to have delete predicate only
 		obj, opts := b.OwnsArgsForCall(tst.index)

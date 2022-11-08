@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.0
+    controller-gen.kubebuilder.io/version: v0.10.0
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.0.1
@@ -123,6 +123,11 @@ spec:
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
+                          queryTimeout:
+                            default: 1m
+                            description: Timeout when querying ingesters or storage
+                              during the execution of a query request.
+                            type: string
                         type: object
                       retention:
                         description: Retention defines how long logs are kept in storage.
@@ -231,6 +236,11 @@ spec:
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
+                            queryTimeout:
+                              default: 1m
+                              description: Timeout when querying ingesters or storage
+                                during the execution of a query request.
+                              type: string
                           type: object
                         retention:
                           description: Retention defines how long logs are kept in
@@ -341,6 +351,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                   selector:
                     description: A selector to select which LokiRules to mount for
                       loading alerting/recording rules from.
@@ -386,6 +397,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                 required:
                 - enabled
                 type: object
@@ -452,6 +464,12 @@ spec:
                     description: TLS configuration for reaching the object storage
                       endpoint.
                     properties:
+                      caKey:
+                        default: service-ca.crt
+                        description: Key is the data key of a ConfigMap containing
+                          a CA certificate. It needs to be in the same namespace as
+                          the LokiStack custom resource.
+                        type: string
                       caName:
                         description: CA is the name of a ConfigMap containing a CA
                           certificate. It needs to be in the same namespace as the
@@ -1173,8 +1191,8 @@ spec:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
                     use as an array at the field path .status.conditions.  For example,
-                    type FooStatus struct{ // Represents the observations of a foo's
-                    current state. // Known .status.conditions.type are: \"Available\",
+                    \n type FooStatus struct{ // Represents the observations of a
+                    foo's current state. // Known .status.conditions.type are: \"Available\",
                     \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
                     // +listType=map // +listMapKey=type Conditions []metav1.Condition
                     `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
@@ -1503,6 +1521,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                   selector:
                     description: A selector to select which LokiRules to mount for
                       loading alerting/recording rules from.
@@ -1548,6 +1567,7 @@ spec:
                           "value". The requirements are ANDed.
                         type: object
                     type: object
+                    x-kubernetes-map-type: atomic
                 required:
                 - enabled
                 type: object
@@ -2334,8 +2354,8 @@ spec:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
                     use as an array at the field path .status.conditions.  For example,
-                    type FooStatus struct{ // Represents the observations of a foo's
-                    current state. // Known .status.conditions.type are: \"Available\",
+                    \n type FooStatus struct{ // Represents the observations of a
+                    foo's current state. // Known .status.conditions.type are: \"Available\",
                     \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
                     // +listType=map // +listMapKey=type Conditions []metav1.Condition
                     `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"

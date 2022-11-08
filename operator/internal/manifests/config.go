@@ -16,6 +16,13 @@ import (
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := ConfigOptions(opt)
+
+	if opt.Stack.Tenants != nil {
+		if err := ConfigureOptionsForMode(&cfg, opt); err != nil {
+			return nil, "", err
+		}
+	}
+
 	c, rc, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
@@ -55,8 +62,6 @@ func ConfigOptions(opt Options) config.Options {
 	)
 
 	if rulerEnabled {
-		rulerEnabled = true
-
 		// Map alertmanager config from CRD to config options
 		if opt.Ruler.Spec != nil {
 			evalInterval = string(opt.Ruler.Spec.EvalutionInterval)
@@ -79,6 +84,11 @@ func ConfigOptions(opt Options) config.Options {
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
+		Compactor: config.Address{
+			FQDN:     fqdn(NewCompactorHTTPService(opt).GetName(), opt.Namespace),
+			Port:     httpPort,
+			Protocol: protocol,
+		},
 		FrontendWorker: config.Address{
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
@@ -143,6 +153,18 @@ func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerCon
 		c.ResendDelay = string(n.ResendDelay)
 	}
 
+	for _, cfg := range s.RelabelConfigs {
+		c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
+			SourceLabels: cfg.SourceLabels,
+			Separator:    cfg.Separator,
+			TargetLabel:  cfg.TargetLabel,
+			Regex:        cfg.Regex,
+			Modulus:      cfg.Modulus,
+			Replacement:  cfg.Replacement,
+			Action:       string(cfg.Action),
+		})
+	}
+
 	return c
 }
 
@@ -175,7 +197,7 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		for _, cfg := range cls.RelabelConfigs {
-			c.RelabelConfigs = append(c.RelabelConfigs, config.RemoteWriteRelabelConfig{
+			c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
 				SourceLabels: cfg.SourceLabels,
 				Separator:    cfg.Separator,
 				TargetLabel:  cfg.TargetLabel,

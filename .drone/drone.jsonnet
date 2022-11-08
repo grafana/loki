@@ -43,7 +43,7 @@ local gpg_passphrase = secret('gpg_passphrase', 'infra/data/ci/packages-publish/
 local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publish/gpg', 'private-key');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
+local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -446,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.23.0',
+    local build_image_tag = '0.24.2',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -480,6 +480,36 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
+  pipeline('helm-test-image') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      {
+        name: 'test-image',
+        image: 'plugins/docker',
+        when: onPRs + onPath('production/helm/loki/src/helm-test/**'),
+        settings: {
+          repo: 'grafana/loki-helm-test',
+          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
+          dry_run: true,
+        },
+      },
+      {
+        name: 'push-image',
+        image: 'plugins/docker',
+        when: onTagOrMain + onPath('production/helm/loki/src/helm-test/**'),
+        settings: {
+          repo: 'grafana/loki-helm-test',
+          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+          dry_run: false,
+        },
+      },
+    ],
+  },
   pipeline('check') {
     workspace: {
       base: '/src',
@@ -488,15 +518,20 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
-      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      run('clone-target-branch', commands=[
+        'cd ..',
+        'echo "cloning "$DRONE_TARGET_BRANCH ',
+        'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
+        'cd -',
+      ]) { depends_on: ['clone'], when: onPRs },
+      make('test', container=false) { depends_on: ['clone', 'clone-target-branch'] },
+      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
-        'old=../loki-main/test_results.txt',
+        'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
         'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
-      ]) { depends_on: ['test', 'test-main'] },
+      ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
       run('report-coverage', commands=[
         "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
         "body=$(jq -Rs '{body: . }' diff.txt)",
@@ -504,7 +539,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       ], env={
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
-      }) { depends_on: ['compare-coverage'] },
+      }) { depends_on: ['compare-coverage'], when: onPRs },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
@@ -529,6 +564,17 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         depends_on: ['clone'],
       },
       make('loki-mixin-check', container=false) {
+        depends_on: ['clone'],
+      },
+    ],
+  },
+  pipeline('documentation-checks') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      make('documentation-helm-reference-check', container=false) {
         depends_on: ['clone'],
       },
     ],
@@ -574,30 +620,44 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
+    local configFileName = 'updater-config.json',
     trigger+: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
       {
-        name: 'image-tag',
+        name: 'prepare-updater-config',
         image: 'alpine',
+        environment: {
+          RELEASE_BRANCH_REGEXP: '^release-([0-9\\.x]+)$',
+        },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
           'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
+          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'echo $RELEASE_NAME',
+          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE_NAME and RELEASE TAG
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
+          'sed -i "s/{{version}}/$RELEASE_TAG/g" %s' % configFileName,
         ],
+        settings: {
+          config_template: { from_secret: updater_config_template.name },
+        },
         depends_on: ['clone'],
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
         settings: {
           github_token: { from_secret: github_secret.name },
-          images_json: { from_secret: deploy_configuration.name },
-          docker_tag_file: '.tag',
+          config_file: configFileName,
         },
-        depends_on: ['clone', 'image-tag'],
+        depends_on: ['prepare-updater-config'],
       },
     ],
   },
@@ -711,7 +771,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   docker_password_secret,
   ecr_key,
   ecr_secret_key,
-  deploy_configuration,
+  updater_config_template,
   gpg_passphrase,
   gpg_private_key,
 ]

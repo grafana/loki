@@ -79,18 +79,23 @@
           config = { allowUnfree = true; };
         };
       in
-      with pkgs; {
+      {
         # The default package for 'nix build'. This makes sense if the
         # flake provides only one package or there is a clear "main"
         # package.
-        defaultPackage = loki;
+        defaultPackage = pkgs.loki;
 
-        packages = { inherit loki; };
+        packages = with pkgs; {
+          inherit
+            loki
+            loki-helm-test
+            loki-helm-test-docker;
+        };
 
         apps = {
           lint = {
             type = "app";
-            program = "${
+            program = with pkgs; "${
                 (writeShellScriptBin "lint.sh" ''
                   ${nixpkgs-fmt}/bin/nixpkgs-fmt --check ${self}/flake.nix ${self}/nix/*.nix
                   ${statix}/bin/statix check ${self}
@@ -114,10 +119,14 @@
             type = "app";
             program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
           };
+          loki-helm-test = {
+            type = "app";
+            program = with pkgs; "${loki-helm-test}/bin/helm-test";
+          };
         };
 
-        devShell = mkShell {
-          nativeBuildInputs = [
+        devShell = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
             gcc
             go
             systemd
