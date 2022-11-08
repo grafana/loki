@@ -19,11 +19,11 @@ Loki uses GitHub to manage reviews of pull requests:
    * It adds an important feature
    * It fixes an issue present in a previous release
    * It causes a change in operation that would be useful for an operator of Loki to know
-   * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with most relevant and important changes that end users of Loki care about.
+   * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with the most relevant and important changes that end users of Loki care about.
 1. Your PR documents upgrading steps under `docs/sources/upgrading/_index.md` if it changes:
    * Default configuration values
    * Metric names or label names
-   * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be getting used in building dashboards or alerts.
+   * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.
    * Configuration parameters
    * Any breaking changes to HTTP or gRPC API endpoints
    * Any other change that would require special attention or extra steps to upgrade

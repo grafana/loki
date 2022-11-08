@@ -43,8 +43,10 @@ type stream struct {
 	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	chunkMtx sync.RWMutex
 
-	labels       labels.Labels
-	labelsString string
+	labels           labels.Labels
+	labelsString     string
+	labelHash        uint64
+	labelHashNoShard uint64
 
 	// most recently pushed line. This is used to prevent duplicate pushes.
 	// It also determines chunk synchronization when unordered writes are disabled.
@@ -87,12 +89,15 @@ type entryWithError struct {
 }
 
 func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics) *stream {
+	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               labels,
 		labelsString:         labels.String(),
+		labelHash:            labels.Hash(),
+		labelHashNoShard:     hashNoShard,
 		tailers:              map[uint32]*tailer{},
 		metrics:              metrics,
 		tenant:               tenant,
@@ -395,7 +400,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		}
 	}
 
-	s.streamRateCalculator.Record(s.labels.Hash(), int64(totalBytes))
+	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }

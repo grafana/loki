@@ -341,27 +341,6 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) []*logproto.StreamRate {
-	rates := make([]*logproto.StreamRate, 0, i.streams.Len())
-
-	buf := make([]byte, 256)
-	_ = i.streams.ForEach(func(s *stream) (bool, error) {
-		var streamHashNoShard uint64
-		streamHashNoShard, buf = s.labels.HashWithoutLabels(buf, ShardLbName)
-		streamHash := s.labels.Hash()
-
-		rates = append(rates, &logproto.StreamRate{
-			StreamHash:        streamHash,
-			StreamHashNoShard: streamHashNoShard,
-			Rate:              i.streamRateCalculator.RateFor(streamHash),
-		})
-
-		return true, nil
-	})
-
-	return rates
-}
-
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
@@ -544,7 +523,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
-					key := stream.labels.Hash()
+					key := stream.labelHash
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
@@ -772,12 +751,7 @@ func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, erro
 }
 
 func isDone(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
+	return ctx.Err() != nil
 }
 
 // QuerierQueryServer is the GRPC server stream we use to send batch of entries.
@@ -811,7 +785,10 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 		stats.Reset()
@@ -832,8 +809,10 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
-
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 

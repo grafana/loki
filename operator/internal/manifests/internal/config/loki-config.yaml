@@ -120,6 +120,7 @@ limits_config:
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
+  query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
 {{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
   retention_period: {{.Days}}d
 {{- with .Streams }}
@@ -149,7 +150,6 @@ querier:
     timeout: 3m
   extra_query_delay: 0s
   query_ingesters_within: 3h
-  query_timeout: 1m
   tail_max_duration: 1h
   max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
 query_range:

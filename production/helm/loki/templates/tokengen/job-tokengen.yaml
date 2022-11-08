@@ -67,6 +67,10 @@ spec:
             {{- if .Values.enterprise.tokengen.env }}
               {{ toYaml .Values.enterprise.tokengen.env | nindent 12 }}
             {{- end }}
+          {{- with .Values.enterprise.tokengen.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       containers:
         - name: create-secret
           image: {{ include "loki.kubectlImage" . }}

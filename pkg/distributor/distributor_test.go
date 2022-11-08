@@ -20,9 +20,7 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -471,43 +469,13 @@ func Test_TruncateLogLines(t *testing.T) {
 func TestStreamShard(t *testing.T) {
 	// setup base stream.
 	baseStream := logproto.Stream{}
-	baseLabels := "{app='myapp', job='fizzbuzz'}"
+	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
 	baseStream.Hash = lbs.Hash()
 	baseStream.Labels = lbs.String()
 
-	// helper funcs
-	generateEntries := func(n int) []logproto.Entry {
-		var entries []logproto.Entry
-		for i := 0; i < n; i++ {
-			entries = append(entries, logproto.Entry{
-				Line:      fmt.Sprintf("log line %d", i),
-				Timestamp: time.Now(),
-			})
-		}
-		return entries
-	}
-	generateShardLabels := func(baseLabels string, idx int) labels.Labels {
-		// append a shard label to the given labels. The shard value will be 'idx'.
-		lbs, err := syntax.ParseLabels(baseLabels)
-		require.NoError(t, err)
-		lbs = append(lbs, labels.Label{Name: ingester.ShardLbName, Value: fmt.Sprintf("%d", idx)})
-		return lbs
-	}
-
 	totalEntries := generateEntries(100)
-
-	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "stream_sharding_failures",
-			Help:      "Total number of failures when sharding a stream",
-		}, []string{
-			"reason",
-		},
-	)
-
 	desiredRate := loki_flagext.ByteSize(300)
 
 	for _, tc := range []struct {
@@ -515,173 +483,60 @@ func TestStreamShard(t *testing.T) {
 		entries    []logproto.Entry
 		streamSize int
 
-		wantDerivedStream []streamTracker
+		wantDerivedStreamSize int
 	}{
 		{
-			name:              "zero shard because no entries",
-			entries:           nil,
-			streamSize:        50,
-			wantDerivedStream: []streamTracker{{stream: baseStream}},
+			name:                  "zero shard because no entries",
+			entries:               nil,
+			streamSize:            50,
+			wantDerivedStreamSize: 1,
 		},
 		{
-			name:       "one shard with one entry",
-			streamSize: 1,
-			entries:    totalEntries[0:1],
-			wantDerivedStream: []streamTracker{
-				{
-					stream: logproto.Stream{
-						Entries: []logproto.Entry{totalEntries[0]},
-						Labels:  baseStream.Labels,
-						Hash:    baseStream.Hash,
-					},
-				},
-			},
+			name:                  "one shard with one entry",
+			streamSize:            1,
+			entries:               totalEntries[0:1],
+			wantDerivedStreamSize: 1,
 		},
 		{
-			name:       "two shards with 3 entries",
-			streamSize: desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
-			entries:    totalEntries[0:3],
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:1],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				}, // shard 2.
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[1:3],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "two shards with 3 entries",
+			streamSize:            desiredRate.Val() + 1, // pass the desired rate by 1 byte to force two shards.
+			entries:               totalEntries[0:3],
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:       "two shards with 5 entries",
-			entries:    totalEntries[0:5],
-			streamSize: desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:2],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				}, // shard 2.
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[2:5],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "two shards with 5 entries",
+			entries:               totalEntries[0:5],
+			streamSize:            desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:       "one shard with 20 entries",
-			entries:    totalEntries[0:20],
-			streamSize: 1,
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:20],
-						Labels:  baseStream.Labels,
-						Hash:    baseStream.Hash,
-					},
-				},
-			},
+			name:                  "one shard with 20 entries",
+			entries:               totalEntries[0:20],
+			streamSize:            1,
+			wantDerivedStreamSize: 1,
 		},
 		{
-			name:       "two shards with 20 entries",
-			entries:    totalEntries[0:20],
-			streamSize: desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:10],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				}, // shard 2.
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[10:20],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "two shards with 20 entries",
+			entries:               totalEntries[0:20],
+			streamSize:            desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:       "four shards with 20 entries",
-			entries:    totalEntries[0:20],
-			streamSize: 1 + (desiredRate.Val() * 3), // force 4 shards.
-			wantDerivedStream: []streamTracker{
-				{ // shard 1.
-					stream: logproto.Stream{
-						Entries: totalEntries[0:5],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				},
-				{ // shard 2.
-					stream: logproto.Stream{
-						Entries: totalEntries[5:10],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-				{ // shard 3.
-					stream: logproto.Stream{
-						Entries: totalEntries[10:15],
-						Labels:  generateShardLabels(baseLabels, 2).String(),
-						Hash:    generateShardLabels(baseLabels, 2).Hash(),
-					},
-				},
-				{ // shard 4.
-					stream: logproto.Stream{
-						Entries: totalEntries[15:20],
-						Labels:  generateShardLabels(baseLabels, 3).String(),
-						Hash:    generateShardLabels(baseLabels, 3).Hash(),
-					},
-				},
-			},
+			name:                  "four shards with 20 entries",
+			entries:               totalEntries[0:20],
+			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
+			wantDerivedStreamSize: 4,
 		},
 		{
-			name:       "size for four shards with 2 entries, ends up with 4 shards ",
-			streamSize: 1 + (desiredRate.Val() * 3), // force 4 shards.
-			entries:    totalEntries[0:2],
-			wantDerivedStream: []streamTracker{
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[0:1],
-						Labels:  generateShardLabels(baseLabels, 0).String(),
-						Hash:    generateShardLabels(baseLabels, 0).Hash(),
-					},
-				},
-				{
-					stream: logproto.Stream{
-						Entries: totalEntries[1:2],
-						Labels:  generateShardLabels(baseLabels, 1).String(),
-						Hash:    generateShardLabels(baseLabels, 1).Hash(),
-					},
-				},
-			},
+			name:                  "size for four shards with 2 entries, ends up with 4 shards ",
+			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
+			entries:               totalEntries[0:2],
+			wantDerivedStreamSize: 2,
 		},
 		{
-			name:    "four shards with 1 entry, ends up with 1 shard only",
-			entries: totalEntries[0:1],
-			wantDerivedStream: []streamTracker{
-				{
-					stream: logproto.Stream{ // when only one shard we don't even add the stream_shard label.
-						Labels:  baseStream.Labels,
-						Hash:    baseStream.Hash,
-						Entries: totalEntries[0:1],
-					},
-				},
-			},
+			name:                  "four shards with 1 entry, ends up with 1 shard only",
+			entries:               totalEntries[0:1],
+			wantDerivedStreamSize: 1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -698,16 +553,90 @@ func TestStreamShard(t *testing.T) {
 			require.NoError(t, err)
 
 			d := Distributor{
-				rateStore:              &fakeRateStore{},
-				streamShardingFailures: shardingFailureMetric,
-				validator:              validator,
-				streamShardCount:       prometheus.NewCounter(prometheus.CounterOpts{}),
+				rateStore:        &fakeRateStore{},
+				validator:        validator,
+				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+				shardTracker:     NewShardTracker(),
 			}
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
-			require.Equal(t, tc.wantDerivedStream, derivedStreams)
+			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
+
+			for _, s := range derivedStreams {
+				// Generate sorted labels
+				lbls, err := syntax.ParseLabels(s.stream.Labels)
+				require.NoError(t, err)
+
+				require.Equal(t, lbls.Hash(), s.stream.Hash)
+				require.Equal(t, lbls.String(), s.stream.Labels)
+			}
 		})
 	}
+}
+
+func TestStreamShardAcrossCalls(t *testing.T) {
+	// setup base stream.
+	baseStream := logproto.Stream{}
+	baseLabels := "{app='myapp'}"
+	lbs, err := syntax.ParseLabels(baseLabels)
+	require.NoError(t, err)
+	baseStream.Hash = lbs.Hash()
+	baseStream.Labels = lbs.String()
+	baseStream.Entries = generateEntries(2)
+
+	streamRate := loki_flagext.ByteSize(400).Val()
+
+	distributorLimits := &validation.Limits{}
+	flagext.DefaultValues(distributorLimits)
+	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(100)
+
+	overrides, err := validation.NewOverrides(*distributorLimits, nil)
+	require.NoError(t, err)
+
+	validator, err := NewValidator(overrides)
+	require.NoError(t, err)
+
+	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
+		d := Distributor{
+			rateStore:        &fakeRateStore{},
+			validator:        validator,
+			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+			shardTracker:     NewShardTracker(),
+		}
+
+		_, derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		require.Len(t, derivedStreams, 2)
+
+		for i, s := range derivedStreams {
+			require.Len(t, s.stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.NoError(t, err)
+
+			require.Equal(t, lbls[0].Value, fmt.Sprint(i))
+		}
+
+		_, derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		require.Len(t, derivedStreams, 2)
+
+		for i, s := range derivedStreams {
+			require.Len(t, s.stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.NoError(t, err)
+
+			require.Equal(t, lbls[0].Value, fmt.Sprint(i+2))
+		}
+	})
+}
+
+func generateEntries(n int) []logproto.Entry {
+	var entries []logproto.Entry
+	for i := 0; i < n; i++ {
+		entries = append(entries, logproto.Entry{
+			Line:      fmt.Sprintf("log line %d", i),
+			Timestamp: time.Now(),
+		})
+	}
+	return entries
 }
 
 func BenchmarkShardStream(b *testing.B) {
@@ -717,32 +646,12 @@ func BenchmarkShardStream(b *testing.B) {
 	require.NoError(b, err)
 	stream.Hash = lbs.Hash()
 	stream.Labels = lbs.String()
-	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "stream_sharding_failures",
-			Help:      "Total number of failures when sharding a stream",
-		}, []string{
-			"reason",
-		},
-	)
 
-	// helper funcs
-	generateEntries := func(n int) []logproto.Entry {
-		var entries []logproto.Entry
-		for i := 0; i < n; i++ {
-			entries = append(entries, logproto.Entry{
-				Line:      fmt.Sprintf("log line %d", i),
-				Timestamp: time.Now(),
-			})
-		}
-		return entries
-	}
 	allEntries := generateEntries(25000)
 
 	desiredRate := 3000
 	distributorBuilder := func(shards int) *Distributor {
-		d := &Distributor{streamShardingFailures: shardingFailureMetric}
+		d := &Distributor{}
 		// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
 		d.rateStore = &fakeRateStore{rate: int64(desiredRate*shards - 1)}
 		return d
@@ -877,16 +786,6 @@ func TestShardCalculation(t *testing.T) {
 }
 
 func TestShardCountFor(t *testing.T) {
-	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "test_shard_count_for",
-			Help:      "Total number of failures when sharding a stream",
-		}, []string{
-			"reason",
-		},
-	)
-
 	for _, tc := range []struct {
 		name        string
 		stream      *logproto.Stream
@@ -905,15 +804,6 @@ func TestShardCountFor(t *testing.T) {
 			wantStreamSize: 2, // in bytes
 			wantShards:     1,
 			wantErr:        false,
-		},
-		{
-			name:           "0 entries, return 0 shards always",
-			stream:         &logproto.Stream{Hash: 1},
-			rate:           0,
-			desiredRate:    3, // in bytes
-			wantStreamSize: 2, // in bytes
-			wantShards:     0,
-			wantErr:        true,
 		},
 		{
 			// although in this scenario we have enough size to be sharded, we can't divide the number of entries between the ingesters
@@ -973,10 +863,9 @@ func TestShardCountFor(t *testing.T) {
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
-				streamShardingFailures: shardingFailureMetric,
-				rateStore:              &fakeRateStore{tc.rate},
+				rateStore: &fakeRateStore{tc.rate},
 			}
-			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, limits.ShardStreams)
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
@@ -1247,6 +1136,6 @@ type fakeRateStore struct {
 	rate int64
 }
 
-func (s *fakeRateStore) RateFor(_ uint64) int64 {
+func (s *fakeRateStore) RateFor(_ string, _ uint64) int64 {
 	return s.rate
 }
