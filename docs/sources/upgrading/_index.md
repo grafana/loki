@@ -32,6 +32,18 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Promtail
+
+#### The go build tag `promtail_journal_enabled` was introduced
+
+The go build tag `promtail_journal_enabled` should be passed to include Journal support to the promtail binary.
+If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
+
+```shell
+go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+```
+Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
+
 ## 2.7.0
 
 ### Loki
