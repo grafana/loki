@@ -306,6 +306,7 @@ clean:
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
 	rm -rf cmd/logql-analyzer/logql-analyzer
+	$(MAKE) -BC clients/cmd/fluentd $@
 	go clean ./...
 
 #########
@@ -446,15 +447,16 @@ fluent-bit-test:
 # fluentd plugin #
 ##################
 fluentd-plugin:
-	gem install bundler --version 2.3.4
-	bundle config silence_root_warning true
-	bundle config set --local path clients/cmd/fluentd/vendor/bundle
-	bundle install --gemfile=clients/cmd/fluentd/Gemfile
+	$(MAKE) -BC clients/cmd/fluentd $@
+
+fluentd-plugin-push:
+	$(MAKE) -BC clients/cmd/fluentd $@
 
 fluentd-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
 
 fluentd-push:
+fluentd-image-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 fluentd-test: LOKI_URL ?= http://loki:3100
