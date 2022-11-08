@@ -14,6 +14,8 @@ const (
 
 	// The intent is for a per-second rate so this is hard coded
 	updateInterval = time.Second
+
+	kilobyte = int64(1000)
 )
 
 // stripeLock is taken from ruler/storage/wal/series.go
@@ -35,7 +37,7 @@ type StreamRateCalculator struct {
 
 func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
-		size:     defaultStripeSize,
+		size: defaultStripeSize,
 		// Lookup pattern: tenant -> fingerprint -> rate
 		samples:  make([]map[string]map[uint64]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),
@@ -70,21 +72,25 @@ func (c *StreamRateCalculator) updateRates() {
 
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
-
 		tenantRates := c.samples[i]
+		c.samples[i] = make(map[string]map[uint64]logproto.StreamRate)
+		c.locks[i].Unlock()
+
 		for _, tenant := range tenantRates {
 			for _, streamRate := range tenant {
+				if streamRate.Rate < 1*kilobyte {
+					continue
+				}
 				rates = append(rates, logproto.StreamRate{
 					Tenant:            streamRate.Tenant,
 					StreamHash:        streamRate.StreamHash,
 					StreamHashNoShard: streamRate.StreamHashNoShard,
 					Rate:              streamRate.Rate,
 				})
+
+				c.Record(streamRate.Tenant, streamRate.StreamHash, streamRate.StreamHashNoShard, int(streamRate.Rate)/2)
 			}
 		}
-
-		c.samples[i] = make(map[string]map[uint64]logproto.StreamRate)
-		c.locks[i].Unlock()
 	}
 
 	c.rateLock.Lock()
