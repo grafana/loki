@@ -47,6 +47,8 @@ const (
 
 	defaultPerStreamRateLimit  = 3 << 20 // 3MB
 	defaultPerStreamBurstLimit = 5 * defaultPerStreamRateLimit
+
+	DefaultPerTenantQueryTimeout = "1m"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -195,7 +197,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
-	_ = l.QueryTimeout.Set("1m")
+	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
 
 	_ = l.MaxQueryLookback.Set("0s")
