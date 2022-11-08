@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.3.3
+
+- [BUGFIX] Add missing label `prometheus.io/service-monitor: "false"` to single-binary headless service
+
 ## 3.3.2
 
 - [BUGFIX] Fixed indentation in single-binary pdb template
