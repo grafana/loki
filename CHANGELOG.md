@@ -21,6 +21,7 @@
 ##### Fixes
 
 ##### Changes
+* [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
 
 #### Fluent Bit
 
