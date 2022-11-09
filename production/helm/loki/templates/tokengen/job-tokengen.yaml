@@ -38,9 +38,7 @@ spec:
         {{- toYaml .Values.enterprise.tokengen.securityContext | nindent 8 }}
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
       initContainers:
         - name: loki
