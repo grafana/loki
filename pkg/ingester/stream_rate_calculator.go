@@ -14,6 +14,11 @@ const (
 
 	// The intent is for a per-second rate so this is hard coded
 	updateInterval = time.Second
+
+	// The factor used to weight the moving average. Must be in the range [0, 1.0].
+	// A larger factor weights recent samples more heavily while a smaller
+	// factor weights historic samples more heavily.
+	smoothingFactor = .7
 )
 
 // stripeLock is taken from ruler/storage/wal/series.go
@@ -35,7 +40,7 @@ type StreamRateCalculator struct {
 
 func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
-		size:     defaultStripeSize,
+		size: defaultStripeSize,
 		// Lookup pattern: tenant -> fingerprint -> rate
 		samples:  make([]map[string]map[uint64]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),
@@ -66,31 +71,79 @@ func (c *StreamRateCalculator) updateLoop() {
 }
 
 func (c *StreamRateCalculator) updateRates() {
-	rates := make([]logproto.StreamRate, 0, c.size)
+	rates := c.rates()
+	samples := c.currentSamplesPerTenant()
+	samples = updateSamples(rates, samples)
+
+	updatedRates := make([]logproto.StreamRate, 0, c.size)
+	for _, tenantRates := range samples {
+		for _, streamRates := range tenantRates {
+			updatedRates = append(updatedRates, streamRates)
+		}
+	}
+
+	c.rateLock.Lock()
+	defer c.rateLock.Unlock()
+
+	c.allRates = updatedRates
+}
+
+func (c *StreamRateCalculator) rates() []logproto.StreamRate {
+	c.rateLock.RLock()
+	defer c.rateLock.RUnlock()
+
+	return append([]logproto.StreamRate(nil), c.allRates...)
+}
+
+func (c *StreamRateCalculator) currentSamplesPerTenant() map[string]map[uint64]logproto.StreamRate {
+	rates := make(map[string]map[uint64]logproto.StreamRate, c.size)
 
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
 
-		tenantRates := c.samples[i]
-		for _, tenant := range tenantRates {
-			for _, streamRate := range tenant {
-				rates = append(rates, logproto.StreamRate{
+		for tenantID, tenant := range c.samples[i] {
+			existingRates := ratesForTenant(rates, tenantID)
+
+			for streamHash, streamRate := range tenant {
+				existingRates[streamHash] = logproto.StreamRate{
 					Tenant:            streamRate.Tenant,
 					StreamHash:        streamRate.StreamHash,
 					StreamHashNoShard: streamRate.StreamHashNoShard,
 					Rate:              streamRate.Rate,
-				})
+				}
 			}
+
+			rates[tenantID] = existingRates
 		}
 
 		c.samples[i] = make(map[string]map[uint64]logproto.StreamRate)
 		c.locks[i].Unlock()
 	}
 
-	c.rateLock.Lock()
-	defer c.rateLock.Unlock()
+	return rates
+}
 
-	c.allRates = rates
+func updateSamples(rates []logproto.StreamRate, samples map[string]map[uint64]logproto.StreamRate) map[string]map[uint64]logproto.StreamRate {
+	for _, streamRate := range rates {
+		tenantRates := ratesForTenant(samples, streamRate.Tenant)
+
+		if rate, ok := tenantRates[streamRate.StreamHash]; ok {
+			rate.Rate = weightedMovingAverage(rate.Rate, streamRate.Rate)
+			tenantRates[streamRate.StreamHash] = rate
+		} else {
+			streamRate.Rate = weightedMovingAverage(0, streamRate.Rate)
+			tenantRates[streamRate.StreamHash] = streamRate
+		}
+
+		samples[streamRate.Tenant] = tenantRates
+	}
+
+	return samples
+}
+
+func weightedMovingAverage(next, last int64) int64 {
+	// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+	return int64((smoothingFactor * float64(next)) + ((1 - smoothingFactor) * float64(last)))
 }
 
 func (c *StreamRateCalculator) Rates() []logproto.StreamRate {
@@ -106,7 +159,7 @@ func (c *StreamRateCalculator) Record(tenant string, streamHash, streamHashNoSha
 	c.locks[i].Lock()
 	defer c.locks[i].Unlock()
 
-	tenantMap := c.getTenant(i, tenant)
+	tenantMap := c.tenantMapFromSamples(i, tenant)
 	streamRate := tenantMap[streamHash]
 	streamRate.StreamHash = streamHash
 	streamRate.StreamHashNoShard = streamHashNoShard
@@ -117,8 +170,40 @@ func (c *StreamRateCalculator) Record(tenant string, streamHash, streamHashNoSha
 	c.samples[i][tenant] = tenantMap
 }
 
-func (c *StreamRateCalculator) getTenant(idx uint64, tenant string) map[uint64]logproto.StreamRate {
+func (c *StreamRateCalculator) Remove(tenant string, streamHash uint64) {
+	i := streamHash & uint64(c.size-1)
+
+	c.locks[i].Lock()
+	tenantMap := c.tenantMapFromSamples(i, tenant)
+	delete(tenantMap, streamHash)
+	c.samples[i][tenant] = tenantMap
+	c.locks[i].Unlock()
+
+	c.rateLock.Lock()
+	defer c.rateLock.Unlock()
+
+	idx := -1
+	for i, rate := range c.allRates {
+		if rate.Tenant == tenant && rate.StreamHash == streamHash {
+			idx = i
+			break
+		}
+	}
+
+	if idx >= 0 {
+		c.allRates = append(c.allRates[:idx], c.allRates[idx+1:]...)
+	}
+}
+
+func (c *StreamRateCalculator) tenantMapFromSamples(idx uint64, tenant string) map[uint64]logproto.StreamRate {
 	if t, ok := c.samples[idx][tenant]; ok {
+		return t
+	}
+	return make(map[uint64]logproto.StreamRate)
+}
+
+func ratesForTenant(rates map[string]map[uint64]logproto.StreamRate, tenant string) map[uint64]logproto.StreamRate {
+	if t, ok := rates[tenant]; ok {
 		return t
 	}
 	return make(map[uint64]logproto.StreamRate)
