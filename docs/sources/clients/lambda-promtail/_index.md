@@ -30,7 +30,13 @@ In an effort to make deployment of lambda-promtail as simple as possible, we've 
 
 Terraform:
 ```
+## use cloudwatch log group
 terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2"]' -var 'bucket_names=["bucket-a", "bucket-b"]' -var 'batch_size=131072'
+```
+
+```
+## use kinesis data stream
+terraform apply -var "<ecr-repo>:<tag>" -var "write_address=https://your-loki-url/loki/api/v1/push" -var "password=<basic-auth-pw>" -var "username=<basic-auth-username>" -var 'kinesis_stream_name=["kinesis-stream-01", "kinesis-stream-02"]' -var 'extra_labels="name1,value1,name2,value2"' -var "tenant_id=<value>"
 ```
 
 The first few lines of `main.tf` define the AWS region to deploy to.

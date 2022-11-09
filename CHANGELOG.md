@@ -407,6 +407,7 @@ to include only the most relevant.
 
 #### Lambda-Promtail
 * [5065](https://github.com/grafana/loki/pull/5065) **AndreZiviani**: lambda-promtail: Add ability to ingest logs from S3
+* [7632](https://github.com/grafana/loki/pull/7632) **changhyuni**: lambda-promtail: Add kinesis data stream to use in terraform
 
 #### Fluent Bit
 * [5223](https://github.com/grafana/loki/pull/5223) **cyriltovena**: fluent-bit: Attempt to unmarshal nested json.
