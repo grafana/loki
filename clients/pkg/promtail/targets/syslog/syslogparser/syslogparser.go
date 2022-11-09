@@ -8,6 +8,7 @@ import (
 	"github.com/influxdata/go-syslog/v3"
 	"github.com/influxdata/go-syslog/v3/nontransparent"
 	"github.com/influxdata/go-syslog/v3/octetcounting"
+	"github.com/influxdata/go-syslog/v3/rfc5424"
 )
 
 // ParseStream parses a rfc5424 syslog stream from the given Reader, calling
@@ -32,4 +33,11 @@ func ParseStream(r io.Reader, callback func(res *syslog.Result), maxMessageLengt
 	}
 
 	return nil
+}
+
+// ParseBytes parses an rfc5424 syslog message from the given bytestring,
+// returning the parsed message or an error.
+func ParseBytes(bytes []byte) (syslog.Message, error) {
+	parser := rfc5424.NewParser()
+	return parser.Parse(bytes)
 }

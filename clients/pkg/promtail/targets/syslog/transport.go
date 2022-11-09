@@ -347,17 +347,11 @@ func (t *UDPTransport) acceptPackets() {
 		addr net.Addr
 		err  error
 	)
-	streams := make(map[string]*ConnPipe)
 	buf := make([]byte, t.maxMessageLength())
 
 	for {
 		if !t.Ready() {
 			level.Info(t.logger).Log("msg", "syslog server shutting down", "protocol", protocolUDP, "err", t.ctx.Err())
-			for _, stream := range streams {
-				if err = stream.Close(); err != nil {
-					level.Error(t.logger).Log("msg", "failed to close pipe", "err", err)
-				}
-			}
 			return
 		}
 		n, addr, err = t.udpConn.ReadFrom(buf)
@@ -365,43 +359,24 @@ func (t *UDPTransport) acceptPackets() {
 			level.Warn(t.logger).Log("msg", "failed to read packets", "addr", addr, "err", err)
 			continue
 		}
-
-		// `streams` is not being used because of the `stream.PipeWriter.Close()` added below;
-		// if the closed streams were persisted, they would immediately error the next time a packet came in from the same address.
-		stream := NewConnPipe(addr)
 		t.openConnections.Add(1)
-		go t.handleRcv(stream)
-
-		if _, err := stream.Write(buf[:n]); err != nil {
-			level.Warn(t.logger).Log("msg", "failed to write to stream", "addr", addr, "err", err)
-		}
-		// The underlying `go-syslog` stream-based parser requires a newline after every message, even if it's the only message before EOF.
-		// (another way would be to *prepend* an octet count...)
-		if _, err := stream.Write([]byte("\n")); err != nil {
-			level.Warn(t.logger).Log("msg", "failed to write to stream", "addr", addr, "err", err)
-		}
-		// Finally, messages don't seem to emit from the parser even when it does see newlines,
-		// so we do need to explicitly close the stream.
-		if err := stream.PipeWriter.Close(); err != nil {
-			level.Warn(t.logger).Log("msg", "failed to close UDP PipeWriter", "addr", addr, "err", err)
-		}
+		// Make a copy of the message, because the buffer's about to be
+		// overwritten on the next read.
+		bytes := append([]byte{}, buf[:n]...)
+		go t.handleRcv(bytes, addr)
 	}
 }
 
-func (t *UDPTransport) handleRcv(c *ConnPipe) {
+func (t *UDPTransport) handleRcv(bytes []byte, addr net.Addr) {
 	defer t.openConnections.Done()
 
-	lbs := t.connectionLabels(c.addr.String())
-	err := syslogparser.ParseStream(c, func(result *syslog.Result) {
-		if err := result.Error; err != nil {
-			t.handleMessageError(err)
-		} else {
-			t.handleMessage(lbs.Copy(), result.Message)
-		}
-	}, t.maxMessageLength())
-
+	lbs := t.connectionLabels(addr.String())
+	msg, err := syslogparser.ParseBytes(bytes)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
+		t.handleMessageError(err)
+	} else {
+		t.handleMessage(lbs.Copy(), msg)
 	}
 }
 
