@@ -175,13 +175,13 @@ func TestIndexGatewayRingMode_when_TargetIsLegacyReadOrBackend(t *testing.T) {
 		{
 			name:   "leagcy read",
 			target: Read,
-			transformer: func(cfg *Config) {
-				cfg.LegacyReadTarget = true
-			},
 		},
 		{
 			name:   "backend",
 			target: Backend,
+			transformer: func(cfg *Config) {
+				cfg.LegacyReadTarget = false
+			},
 		},
 	} {
 		t.Run(fmt.Sprintf("IndexGateway always set to ring mode when running as part of %s", tc.name), func(t *testing.T) {
@@ -202,8 +202,9 @@ func TestIndexGatewayRingMode_when_TargetIsLegacyReadOrBackend(t *testing.T) {
 	}
 
 	type indexModeTestCase struct {
-		name   string
-		target string
+		name        string
+		target      string
+		transformer func(cfg *Config)
 	}
 
 	for _, tc := range []indexModeTestCase{
@@ -212,13 +213,16 @@ func TestIndexGatewayRingMode_when_TargetIsLegacyReadOrBackend(t *testing.T) {
 			target: IndexGateway,
 		},
 		{
-			name:   "read",
+			name:   "new read target",
 			target: Read,
+			transformer: func(cfg *Config) {
+				cfg.LegacyReadTarget = false
+			},
 		},
 	} {
 		t.Run(fmt.Sprintf("When target is %s", tc.name), func(t *testing.T) {
 			t.Run("IndexGateway config respects configured simple mode", func(t *testing.T) {
-				cfg := minimalWorkingConfig(t, dir, IndexGatewayRing)
+				cfg := minimalWorkingConfig(t, dir, IndexGatewayRing, tc.transformer)
 				cfg.IndexGateway.Mode = indexgateway.SimpleMode
 				c, err := New(cfg)
 				require.NoError(t, err)
@@ -300,7 +304,9 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 	})
 
 	t.Run("IndexGateway client is enabled when running new read target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Read)
+		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
+			cfg.LegacyReadTarget = false
+		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
@@ -321,7 +327,9 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 	})
 
 	t.Run("IndexGateway client is disabled when running backend target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Backend)
+		cfg := minimalWorkingConfig(t, dir, Backend, func(cfg *Config) {
+			cfg.LegacyReadTarget = false
+		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
