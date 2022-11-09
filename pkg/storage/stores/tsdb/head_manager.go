@@ -135,8 +135,7 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 			indices = append(indices, m.activeHeads)
 		}
 
-		return NewMultiIndex(indices...)
-
+		return NewMultiIndex(IndexSlice(indices)), nil
 	})
 
 	return m
@@ -238,7 +237,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
 	b.Del(labels.MetricName)
-	ls = b.Labels()
+	ls = b.Labels(nil)
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()

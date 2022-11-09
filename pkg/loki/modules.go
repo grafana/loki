@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -35,7 +37,6 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -72,7 +73,6 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
-	Embededcache             string = "embedded-cache"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -200,50 +200,11 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		return
 	}
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
+	}
 	return t.ring, nil
-}
-
-func (t *Loki) initEmbeddedCache() (_ services.Service, err error) {
-	if !t.Cfg.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
-		return nil, nil
-	}
-
-	groupCacheConfig := cache.GroupCacheConfig{
-		Enabled:           true,
-		Ring:              t.Cfg.Common.EmbeddedCacheConfig.Ring,
-		MaxSizeMB:         t.Cfg.Common.EmbeddedCacheConfig.MaxSizeMB,
-		ListenPort:        t.Cfg.Common.EmbeddedCacheConfig.ListenPort,
-		HeartbeatInterval: t.Cfg.Common.EmbeddedCacheConfig.HeartbeatInterval,
-		HeartbeatTimeout:  t.Cfg.Common.EmbeddedCacheConfig.HeartbeatTimeout,
-		WriteByteTimeout:  t.Cfg.Common.EmbeddedCacheConfig.WriteByteTimeout,
-	}
-
-	groupCacheConfig.Ring.ListenPort = groupCacheConfig.ListenPort
-
-	rm, err := cache.NewGroupcacheRingManager(groupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, gerrors.Wrap(err, "new embedded-cache ring manager")
-	}
-
-	t.embeddedcacheRingManager = rm
-	t.Server.HTTP.Path("/embedded-cache/ring").Methods("GET", "POST").Handler(t.embeddedcacheRingManager)
-
-	gc, err := cache.NewGroupCache(rm, groupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
-
-	groupConfig := cache.GroupConfig{
-		MaxSizeMB: t.Cfg.QueryRange.CacheConfig.EmbeddedCache.MaxSizeMB,
-	}
-
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Cache = gc.NewGroup(
-		t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.Prefix+"groupcache",
-		&groupConfig,
-		stats.ResultCache,
-	)
-
-	return t.embeddedcacheRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
@@ -342,6 +303,10 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+	}
+
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
 	return t.distributor, nil
@@ -385,10 +350,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 	}
-	if t.supportIndexDeleteRequest() {
+	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
 			toMerge,
-			serverutil.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 		)
 	}
 	httpMiddleware := middleware.Merge(toMerge...)
@@ -695,7 +660,8 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig, t.cacheGenerationLoader,
+		t.Cfg.SchemaConfig,
+		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -714,7 +680,13 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 		if err != nil {
 			return nil, err
 		}
-		client, err = generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+
+		httpClient, err := compactor.NewCompactorHTTPClient(t.Cfg.CompactorClient)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err = generationnumber.NewGenNumberClient(compactorAddress, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -928,8 +900,12 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
-
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
+
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET").Handler(t.ruler)
+		}
+
 		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
@@ -984,11 +960,12 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	if t.Cfg.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
-		t.Cfg.Common.EmbeddedCacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	}
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/memberlist").Methods("GET").Handler(t.MemberlistKV)
+	}
 
 	return t.MemberlistKV, nil
 }
@@ -1020,6 +997,10 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET").Handler(t.compactor)
+	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler))
@@ -1079,6 +1060,11 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.indexGatewayRingManager = rm
 
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET").Handler(t.indexGatewayRingManager)
+	}
+
 	return t.indexGatewayRingManager, nil
 }
 
@@ -1094,6 +1080,11 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
 	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
 	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(s)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET").Handler(s)
+	}
+
 	t.queryScheduler = s
 	return s, nil
 }
@@ -1128,7 +1119,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
-	if !t.supportIndexDeleteRequest() {
+	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
@@ -1137,10 +1128,12 @@ func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overri
 		return nil, err
 	}
 
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConns = 250
-	transport.MaxIdleConnsPerHost = 250
-	client, err := deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second, Transport: transport}, t.deleteClientMetrics, clientType)
+	httpClient, err := compactor.NewCompactorHTTPClient(t.Cfg.CompactorClient)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := deletion.NewDeleteRequestsClient(compactorAddress, httpClient, t.deleteClientMetrics, clientType)
 	if err != nil {
 		return nil, err
 	}

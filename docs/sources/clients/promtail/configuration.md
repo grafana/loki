@@ -108,6 +108,9 @@ scrape_configs:
 
 # Configures additional promtail configurations.
 [options: <options_config>]
+
+# Configures tracing support
+[tracing: <tracing_config>]
 ```
 
 ## server
@@ -117,6 +120,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 ```yaml
 # Disable the HTTP and GRPC server.
 [disable: <boolean> | default = false]
+
+# Enable the /debug/fgprof and /debug/pprof endpoints for profiling.
+[profiling_enabled: <boolean> | default = false]
 
 # HTTP server listen host
 [http_listen_address: <string>]
@@ -964,6 +970,11 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
+# than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
+# and respond with a 503 HTTP status code.
+[push_timeout: <duration>|  default = 0 (no timeout)]
+
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
@@ -1083,7 +1094,7 @@ The list of labels below are discovered when consuming kafka:
 - `__meta_kafka_partition`: The partition id where the message has been read.
 - `__meta_kafka_member_id`: The consumer group member id.
 - `__meta_kafka_group_id`: The consumer group id.
-- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'. 
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 
@@ -1149,7 +1160,7 @@ zone_id: <string>
 # The quantity of workers that will pull logs.
 [workers: <int> | default = 3]
 
-# The type list of fields to fetch for logs. 
+# The type list of fields to fetch for logs.
 # Supported values: default, minimal, extended, all.
 [fields_type: <string> | default = default]
 
@@ -1173,7 +1184,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1238,6 +1249,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
+  "RequestHeaders": [],
+  "ResponseHeaders": [
+    "x-foo": "bar"
+  ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",
@@ -1874,13 +1889,13 @@ These labels can be used during relabeling. For instance, the following configur
 
 ```yaml
 scrape_configs:
-  - job_name: flog_scrape 
+  - job_name: flog_scrape
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
         filters:
           - name: name
-            values: [flog] 
+            values: [flog]
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
@@ -1906,6 +1921,12 @@ The optional `limits_config` block configures global limits for this instance of
 # log lines, rather than sending them to Loki. When false, exceeding the rate limit
 # causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
 [readline_rate_drop: <bool> | default = true]
+
+# Limits the max number of active streams.
+# Limiting the number of streams is useful as a mechanism to limit memory usage by Promtail, which helps
+# to avoid OOM scenarios.
+# 0 means it is disabled.
+[max_streams: <int> | default = 0]
 ```
 
 ## target_config
@@ -1928,6 +1949,15 @@ sync_period: "10s"
 # on writes to Loki; be mindful about using too many labels,
 # as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
+```
+
+## tracing_config
+
+The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# When true, 
+[enabled: <boolean> | default = false]
 ```
 
 ## Example Docker Config

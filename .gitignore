@@ -15,6 +15,7 @@ cmd/loki/loki-debug
 clients/cmd/promtail/promtail-debug
 clients/cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
+cmd/loki-canary-test/loki-canary-test
 clients/cmd/fluent-bit/out_grafana_loki.so
 clients/cmd/fluent-bit/out_grafana_loki.h
 cmd/migrate/migrate

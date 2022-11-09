@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,8 +29,13 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
+)
+
+const (
+	DefaultEngineTimeout = 5 * time.Minute
 )
 
 var (
@@ -107,7 +114,7 @@ type EngineOpts struct {
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// TODO: remove this configuration after next release.
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", DefaultEngineTimeout, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
@@ -149,9 +156,8 @@ func (ng *Engine) Query(params Params) Query {
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
-		record:  true,
-		limits:  ng.limits,
-		timeout: ng.Timeout,
+		record: true,
+		limits: ng.limits,
 	}
 }
 
@@ -166,7 +172,6 @@ type query struct {
 	params    Params
 	parse     func(context.Context, string) (syntax.Expr, error)
 	limits    Limits
-	timeout   time.Duration
 	evaluator Evaluator
 	record    bool
 }
@@ -190,6 +195,12 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
+	if GetRangeType(q.params) == InstantType {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query())
+	} else {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+	}
+
 	rangeType := GetRangeType(q.params)
 	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
@@ -197,6 +208,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	// records query statistics
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
+	metadataCtx, ctx := metadata.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
@@ -223,20 +235,13 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	return logqlmodel.Result{
 		Data:       data,
 		Statistics: statResult,
+		Headers:    metadataCtx.Headers(),
 	}, err
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	queryTimeout := q.timeout
-	if q.timeout == 0 {
-		queryTimeout = time.Minute * 5
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			level.Warn(q.logger).Log("msg", fmt.Sprintf("couldn't fetch tenantID to evaluate query timeout, using default value of %s", queryTimeout), "err", err)
-			return nil, err
-		}
-		queryTimeout = q.limits.QueryTimeout(userID) + time.Second
-	}
+	userID, _ := tenant.TenantID(ctx)
+	queryTimeout := q.limits.QueryTimeout(userID)
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()

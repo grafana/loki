@@ -82,6 +82,13 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
+	for _, o := range opts {
+		// todo (callum) I don't understand why I needed to add this check
+		if o == nil {
+			continue
+		}
+		o(promtail)
+	}
 	err := promtail.reg.Register(reloadSuccessTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadSuccessTotal :%w", err)
@@ -89,13 +96,6 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 	err = promtail.reg.Register(reloadFailTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadFailTotal :%w", err)
-	}
-	for _, o := range opts {
-		// todo (callum) I don't understand why I needed to add this check
-		if o == nil {
-			continue
-		}
-		o(promtail)
 	}
 	err = promtail.reloadConfig(&cfg)
 	if err != nil {
@@ -120,7 +120,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
-	level.Info(p.logger).Log("msg", "Reloading configuration file", "newConf.hash", md5.New().Sum([]byte(newConf)))
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "md5sum", fmt.Sprintf("%x", md5.Sum([]byte(newConf))))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}

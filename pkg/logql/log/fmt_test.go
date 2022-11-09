@@ -573,3 +573,21 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 		})
 	}
 }
+
+func TestDecolorizer(t *testing.T) {
+	var decolorizer, _ = NewDecolorizer()
+	tests := []struct {
+		name     string
+		src      []byte
+		expected []byte
+	}{
+		{"uncolored text remains the same", []byte("sample text"), []byte("sample text")},
+		{"colored text loses color", []byte("\033[0;32mgreen\033[0m \033[0;31mred\033[0m"), []byte("green red")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var result, _ = decolorizer.Process(0, tt.src, nil)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}

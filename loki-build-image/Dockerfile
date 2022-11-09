@@ -4,14 +4,14 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/maintaining/release-loki-build-image.md
 
-FROM alpine:3.16.2 as helm
+# Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
+FROM golang:1.19.2 as helm
 ARG HELM_VER="v3.2.3"
-
-RUN apk add --no-cache curl && \
-    curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
+RUN curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
     tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
     mv /tmp/linux-amd64/helm /usr/bin/helm && \
     rm -rf /tmp/linux-amd64 /tmp/helm-$HELM_VER.tgz
+RUN GO111MODULE=on go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.11.0
 
 FROM alpine:3.16.2 as lychee
 ARG LYCHEE_VER="0.7.0"
@@ -79,6 +79,7 @@ RUN apt-get update && \
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
+COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=buf /usr/bin/buf /usr/bin/buf
