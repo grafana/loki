@@ -22,7 +22,6 @@ func TestSimpleScalable_Legacy_IngestQuery(t *testing.T) {
 		tRead = clu.AddComponent(
 			"read",
 			"-target=read",
-			"-legacy-read-mode=true",
 		)
 		tWrite = clu.AddComponent(
 			"write",
