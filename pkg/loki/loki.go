@@ -71,7 +71,6 @@ type Config struct {
 	UseBufferedLogger bool `yaml:"use_buffered_logger"`
 	UseSyncLogger     bool `yaml:"use_sync_logger"`
 
-	// TODO(trevorwhitney): remove this with Loki 3.0
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty"`
 
 	Common              common.Config               `yaml:"common,omitempty"`
@@ -117,7 +116,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
 	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
-	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", false, "Set to true to enable the legacy read mode. This will be removed in Loki 3.0.")
+	//TODO(trevorwhitney): flip this to false with Loki 3.0
+	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
+		"The default will be flipped to false in the next Loki release.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
