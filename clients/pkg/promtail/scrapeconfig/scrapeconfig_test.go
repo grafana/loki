@@ -139,4 +139,6 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+
+	require.NotZero(t, len(config.PipelineStages))
 }
