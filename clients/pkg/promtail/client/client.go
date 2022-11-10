@@ -94,7 +94,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 	}, []string{HostLabel})
 
 	m.countersWithHost = []*prometheus.CounterVec{
-		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries,
+		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries, m.batchRetries,
 	}
 
 	streamLagLabelsMerged := []string{HostLabel, ClientLabel}
