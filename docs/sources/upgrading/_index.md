@@ -118,7 +118,7 @@ The name of this metric was changed to `loki_internal_log_messages_total` to red
 
 #### Usage Report  / Telemetry config has changed named
 
-The `usage_report` config for configuring if and how annonymous usage statistics are reported back to Grafana has changes from `usage_report` to `analytics`.
+The configuration for anonymous usage statistics reporting to Grafana has changed from `usage_report` to `analytics`.
 
 #### TLS `cipher_suites` and `tls_min_version` have moved
 
