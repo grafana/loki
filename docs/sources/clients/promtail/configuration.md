@@ -431,9 +431,10 @@ The Docker stage is just a convenience wrapper for this definition:
 
 ```yaml
 - json:
-    output: log
-    stream: stream
-    timestamp: time
+    expressions:
+      output: log
+      stream: stream
+      timestamp: time
 - labels:
     stream:
 - timestamp:
