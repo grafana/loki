@@ -116,6 +116,26 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 
 The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
 
+#### Usage Report  / Telemetry config has changed named
+
+The configuration for anonymous usage statistics reporting to Grafana has changed from `usage_report` to `analytics`.
+
+#### TLS `cipher_suites` and `tls_min_version` have moved
+
+These were previously configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example: `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
+
+#### Querier `query_timeout` default changed
+
+The previous default value for `querier.query_timeout` of `1m` has changed to `0s`.
+
+#### `ruler.storage.configdb` has been removed
+
+ConfigDB was disallowed as a Ruler storage option back in 2.0. The config struct has finally been removed.
+
+#### `ruler.remote_write.client` has been removed
+
+Can no longer specify a remote write client for the ruler.
+
 ### Promtail
 
 #### `gcp_push_target_parsing_errors_total` has a new `reason` label
