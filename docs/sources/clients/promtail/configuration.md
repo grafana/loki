@@ -931,6 +931,9 @@ You can add additional labels with the `labels` property.
 # Allows to exclude the xml event data.
 [exclude_event_data: <bool> | default = false]
 
+# Allows to exclude the human-friendly event message.
+[exclude_event_message: <bool> | default = false]
+
 # Allows to exclude the user data of each windows event.
 [exclude_user_data: <bool> | default = false]
 
