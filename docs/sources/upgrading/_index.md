@@ -27,7 +27,7 @@ diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config graf
 
 the `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
 
-Alternatively, if using `nix`, you can run `nix run .#diff-config` from the root of the repository to compare config changes between your locally check out repo and the lastest released version.
+Alternatively, if using `nix`, you can run `nix run .#diff-config` from the root of the Loki repository to compare config changes between your locally checked out version and the lastest released version.
 
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
