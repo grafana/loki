@@ -120,7 +120,7 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 		// Create __param_<name> labels from query parameters
 		params := r.URL.Query()
 		for k, v := range params {
-			lb.Set(fmt.Sprintf("__param_%s", k), strings.Join(v, ","))
+			lb.Set(fmt.Sprintf("__heroku_drain_param_%s", k), strings.Join(v, ","))
 		}
 
 		tenantIDHeaderValue := r.Header.Get("X-Scope-OrgID")
