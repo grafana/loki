@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -19,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog/syslogparser"
@@ -296,6 +298,58 @@ var (
 	fmtNewline       = func(s string) string { return s + "\n" }
 )
 
+
+// A fake client for benchmarking. This is based on the `fake` client but it
+// doesn't save any of the data received.
+// The API is a little weird because it's using a WaitGroup. The number of
+// messages to wait for needs to be given before any messages are received.
+// Then Wait() will block until that many messages are received. Doing those in
+// the wrong order could make the WaitGroup panic.
+type FastNopClient struct{
+	message_counter sync.WaitGroup
+	entries chan api.Entry
+}
+
+func NewFastNopClient() *FastNopClient {
+	c := &FastNopClient{
+		entries: make(chan api.Entry),
+	}
+	go func() {
+		for range c.entries {
+			c.message_counter.Done()
+		}
+	}()
+	return c
+}
+
+func (c *FastNopClient) Stop() {
+	close(c.entries)
+}
+
+func (c *FastNopClient) IncreaseCounter(n int) {
+	c.message_counter.Add(n)
+}
+
+func (c *FastNopClient) Wait(timeout time.Duration, b *testing.B) {
+	timer := time.NewTimer(timeout)
+	success := make(chan int)
+	go func() {
+		c.message_counter.Wait()
+		success <- 0
+	}()
+	select {
+	case <-timer.C:
+		b.Fatal("test timed out")
+	case <-success:
+		timer.Stop()
+	}
+}
+
+func (c *FastNopClient) Chan() chan<- api.Entry {
+	return c.entries
+}
+
+
 func Benchmark_SyslogTarget(b *testing.B) {
 	for _, tt := range []struct {
 		name       string
@@ -307,7 +361,7 @@ func Benchmark_SyslogTarget(b *testing.B) {
 	} {
 		tt := tt
 		b.Run(tt.name, func(b *testing.B) {
-			client := fake.New(func() {})
+			client := NewFastNopClient()
 
 			metrics := NewMetrics(nil)
 			tgt, _ := NewSyslogTarget(metrics, log.NewNopLogger(), client, []*relabel.Config{}, &scrapeconfig.SyslogTargetConfig{
@@ -324,6 +378,7 @@ func Benchmark_SyslogTarget(b *testing.B) {
 			require.Eventually(b, tgt.Ready, time.Second, 10*time.Millisecond)
 
 			addr := tgt.ListenAddress().String()
+			c, _ := net.Dial(tt.protocol, addr)
 
 			messages := []string{
 				`<165>1 2022-04-08T22:14:10.001Z host1 app - id1 [custom@32473 exkey="1"] An application event log entry...`,
@@ -338,19 +393,17 @@ func Benchmark_SyslogTarget(b *testing.B) {
 				`<165>1 2022-04-08T22:14:19.001Z host2 app - id10 [custom@32473 exkey="1"] An application event log entry...`,
 			}
 
+			client.IncreaseCounter(b.N * len(messages))
+
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			c, _ := net.Dial(tt.protocol, addr)
 			for n := 0; n < b.N; n++ {
 				_ = writeMessagesToStream(c, messages, tt.formatFunc)
 			}
+			client.Wait(8 * time.Second, b)
+			b.StopTimer()
+
 			c.Close()
-
-			require.Eventuallyf(b, func() bool {
-				return len(client.Received()) == len(messages)*b.N
-			}, 15*time.Second, time.Second, "expected: %d got:%d", len(messages)*b.N, len(client.Received()))
-
 		})
 	}
 }
