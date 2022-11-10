@@ -30,14 +30,15 @@ pipeline_stages:
   - regex:
       expr: "./*"
   - json:
-      timestamp:
-        source: time
-        format: RFC3339
-      labels:
-        stream:
-          source: json_key_name.json_sub_key_name
-      output:
-        source: log
+      expressions:
+        timestamp:
+          source: time
+          format: RFC3339
+        labels:
+          stream:
+            source: json_key_name.json_sub_key_name
+        output:
+          source: log
 job_name: kubernetes-pods-name
 kubernetes_sd_configs:
 - role: pod
