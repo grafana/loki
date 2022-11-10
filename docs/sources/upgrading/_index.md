@@ -126,7 +126,7 @@ These were previoulsy configurable under `server.http_tls_config` and `server.gr
 
 #### Querier `query_timeout` default changed
 
-The previous default of `querier.query_timeout` of `1m` has changed to `0s`;
+The previous default value for `querier.query_timeout` of `1m` has changed to `0s`.
 
 #### `ruler.storage.configdb` has been removed
 
