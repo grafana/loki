@@ -69,7 +69,6 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.E
 		logger:    ng.logger,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
-		timeout:   ng.opts.Timeout,
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},

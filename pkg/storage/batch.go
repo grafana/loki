@@ -716,6 +716,10 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				index[key] = chk
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
+			if ctx.Err() != nil {
+				errChan <- nil
+				return
+			}
 			if err != nil {
 				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
