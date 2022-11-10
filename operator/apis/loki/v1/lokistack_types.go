@@ -462,6 +462,14 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Query Series"
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
+
+	// Timeout when querying ingesters or storage during the execution of a query request.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:="1m"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
+	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.

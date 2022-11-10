@@ -14,7 +14,7 @@
 
 module-sets:
   stable-v1:
-    version: v1.9.0
+    version: v1.10.0
     modules:
       - go.opentelemetry.io/otel
       - go.opentelemetry.io/otel/bridge/opentracing

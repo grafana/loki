@@ -1,3 +1,16 @@
+## 1.0.0 (2022-08-29)
+
+UPGRADE NOTES + PROMISE OF COMPATIBILITY
+
+* Introducing Gophercloud v1! Like for every other release so far, all clients will upgrade automatically with `go get -d github.com/gophercloud/gophercloud` unless the dependency is pinned in `go.mod`.
+* Gophercloud v1 comes with a promise of compatibility: no breaking changes are expected to merge before v2.0.0.
+
+IMPROVEMENTS
+
+* Added `compute.v2/extensions/services.Delete` [GH-2427](https://github.com/gophercloud/gophercloud/pull/2427)
+* Added support for `standard-attr-revisions` to `networking/v2/networks`, `networking/v2/ports`, and `networking/v2/subnets` [GH-2437](https://github.com/gophercloud/gophercloud/pull/2437)
+* Added `updated_at` and `created_at` fields to `networking/v2/ports.Port` [GH-2445](https://github.com/gophercloud/gophercloud/pull/2445)
+
 ## 0.25.0 (May 30, 2022)
 
 BREAKING CHANGES
