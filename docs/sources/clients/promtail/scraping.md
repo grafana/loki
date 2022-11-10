@@ -53,9 +53,9 @@ There are different types of labels present in Promtail:
 - The `__path__` label is a special label which Promtail uses after discovery to
   figure out where the file to read is located. Wildcards are allowed, for example `/var/log/*.log` to get all files with a `log` extension in the specified directory, and `/var/log/**/*.log` for matching files and directories recursively. For a full list of options check out the docs for the [library](https://github.com/bmatcuk/doublestar) Promtail uses.
 
-- The `__path_exclude__` label is another special label Promtail uses after
-  discovery, to exclude a subset of the files discovered using `__path__` from
-  being read in the current scrape_config block. It uses the same
+- The `__path_exclude__` label is another special label Promtail uses after 
+  discovery, to exclude a subset of the files discovered using `__path__` from 
+  being read in the current scrape_config block. It uses the same 
   [library](https://github.com/bmatcuk/doublestar) to enable usage of
   wildcards and glob patterns.
 
@@ -254,7 +254,7 @@ When Promtail receives GCP logs, various internal labels are made available for 
 When configuring the GCP Log push target, Promtail will start an HTTP server listening on port `8080`, as configured in the `server`
 section. This server exposes the single endpoint `POST /gcp/api/v1/push`, responsible for receiving logs from GCP.
 
-For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed
+For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed 
 as part of a larger orchestration service like Kubernetes, which can handle HTTPS traffic through an ingress, or it can be hosted behind
 a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured](../gcplog-cloud)
 to send logs to Promtail.
@@ -269,7 +269,7 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
 
-In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are
+In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are 
 transformed to `message_id` and `incoming_ts` through `relabel_configs`. All other internal labels, for example some other attribute,
 will be dropped by the target if not transformed.
 
@@ -458,7 +458,7 @@ The [server](../configuration.md#server) section configures the HTTP server crea
 `labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
 the timestamp received from Heroku.
 
-Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening.
+Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening. 
 Follow the steps in [Heroku HTTPS Drain docs](https://devcenter.heroku.com/articles/log-drains#https-drains) for using the Heroku CLI
 with a command like the following:
 
@@ -483,7 +483,6 @@ And then in a relabel_config:
     relabel_configs:
       - source_labels: ['__heroku_drain_param_app_name']
         target_label: 'app'
-
 ```
 
 It also supports `relabeling` and `pipeline` stages just like other targets.
