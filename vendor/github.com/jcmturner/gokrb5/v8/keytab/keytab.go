@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 	"unsafe"
@@ -93,7 +93,7 @@ func (kt *Keytab) GetEncryptionKey(princName types.PrincipalName, realm string, 
 		}
 	}
 	if len(key.KeyValue) < 1 {
-		return key, 0, fmt.Errorf("matching key not found in keytab. Looking for %v realm: %v kvno: %v etype: %v", princName.NameString, realm, kvno, etype)
+		return key, 0, fmt.Errorf("matching key not found in keytab. Looking for %q realm: %v kvno: %v etype: %v", princName.PrincipalNameString(), realm, kvno, etype)
 	}
 	return key, kv, nil
 }
@@ -170,7 +170,7 @@ func newPrincipal() principal {
 // Load a Keytab file into a Keytab type.
 func Load(ktPath string) (*Keytab, error) {
 	kt := new(Keytab)
-	b, err := ioutil.ReadFile(ktPath)
+	b, err := os.ReadFile(ktPath)
 	if err != nil {
 		return kt, err
 	}

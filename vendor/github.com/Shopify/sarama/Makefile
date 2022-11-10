@@ -1,12 +1,15 @@
 default: fmt get update test lint
 
 GO       := go
+GOBIN    := $(shell pwd)/bin
 GOBUILD  := CGO_ENABLED=0 $(GO) build $(BUILD_FLAG)
-GOTEST   := $(GO) test -gcflags='-l' -p 3 -v -race -timeout 10m -coverprofile=profile.out -covermode=atomic
+GOTEST   := $(GO) test -v -race -coverprofile=profile.out -covermode=atomic
 
 FILES    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -not -name '*_test.go')
 TESTS    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -name '*_test.go')
 
+$(GOBIN)/tparse:
+	GOBIN=$(GOBIN) go install github.com/mfridman/tparse@v0.11.1
 get:
 	$(GO) get ./...
 	$(GO) mod verify
@@ -23,9 +26,14 @@ fmt:
 lint:
 	GOFLAGS="-tags=functional" golangci-lint run
 
-test:
-	$(GOTEST) ./...
-
+test: $(GOBIN)/tparse
+	$(GOTEST) -timeout 2m -json ./... \
+		| tee output.json | $(GOBIN)/tparse -follow -all
+	[ -z "$${GITHUB_STEP_SUMMARY}" ] \
+		|| NO_COLOR=1 $(GOBIN)/tparse -format markdown -file output.json -all >"$${GITHUB_STEP_SUMMARY:-/dev/null}"
 .PHONY: test_functional
-test_functional:
-	$(GOTEST) -tags=functional ./...
+test_functional: $(GOBIN)/tparse
+	$(GOTEST) -timeout 15m -tags=functional -json ./... \
+		| tee output.json | $(GOBIN)/tparse -follow -all
+	[ -z "$${GITHUB_STEP_SUMMARY:-}" ] \
+		|| NO_COLOR=1 $(GOBIN)/tparse -format markdown -file output.json -all >"$${GITHUB_STEP_SUMMARY:-/dev/null}"

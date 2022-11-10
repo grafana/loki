@@ -98,6 +98,10 @@ func (t *TopicError) Error() string {
 	return text
 }
 
+func (t *TopicError) Unwrap() error {
+	return t.Err
+}
+
 func (t *TopicError) encode(pe packetEncoder, version int16) error {
 	pe.putInt16(int16(t.Err))
 

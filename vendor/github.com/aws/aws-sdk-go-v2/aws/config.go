@@ -3,13 +3,14 @@ package aws
 import (
 	"net/http"
 
+	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
 )
 
 // HTTPClient provides the interface to provide custom HTTPClients. Generally
 // *http.Client is sufficient for most use cases. The HTTPClient should not
-// follow redirects.
+// follow 301 or 302 redirects.
 type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
@@ -25,10 +26,22 @@ type Config struct {
 	// information on AWS regions.
 	Region string
 
-	// The credentials object to use when signing requests. Defaults to a
-	// chain of credential providers to search for credentials in environment
-	// variables, shared credential file, and EC2 Instance Roles.
+	// The credentials object to use when signing requests.
+	// Use the LoadDefaultConfig to load configuration from all the SDK's supported
+	// sources, and resolve credentials using the SDK's default credential chain.
 	Credentials CredentialsProvider
+
+	// The Bearer Authentication token provider to use for authenticating API
+	// operation calls with a Bearer Authentication token. The API clients and
+	// operation must support Bearer Authentication scheme in order for the
+	// token provider to be used. API clients created with NewFromConfig will
+	// automatically be configured with this option, if the API client support
+	// Bearer Authentication.
+	//
+	// The SDK's config.LoadDefaultConfig can automatically populate this
+	// option for external configuration options such as SSO session.
+	// https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
+	BearerAuthTokenProvider smithybearer.TokenProvider
 
 	// The HTTP Client the SDK's API clients will use to invoke HTTP requests.
 	// The SDK defaults to a BuildableClient allowing API clients to create

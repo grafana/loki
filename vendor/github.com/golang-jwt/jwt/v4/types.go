@@ -53,9 +53,23 @@ func (date NumericDate) MarshalJSON() (b []byte, err error) {
 	if TimePrecision < time.Second {
 		prec = int(math.Log10(float64(time.Second) / float64(TimePrecision)))
 	}
-	f := float64(date.Truncate(TimePrecision).UnixNano()) / float64(time.Second)
+	truncatedDate := date.Truncate(TimePrecision)
 
-	return []byte(strconv.FormatFloat(f, 'f', prec, 64)), nil
+	// For very large timestamps, UnixNano would overflow an int64, but this
+	// function requires nanosecond level precision, so we have to use the
+	// following technique to get round the issue:
+	// 1. Take the normal unix timestamp to form the whole number part of the
+	//    output,
+	// 2. Take the result of the Nanosecond function, which retuns the offset
+	//    within the second of the particular unix time instance, to form the
+	//    decimal part of the output
+	// 3. Concatenate them to produce the final result
+	seconds := strconv.FormatInt(truncatedDate.Unix(), 10)
+	nanosecondsOffset := strconv.FormatFloat(float64(truncatedDate.Nanosecond())/float64(time.Second), 'f', prec, 64)
+
+	output := append([]byte(seconds), []byte(nanosecondsOffset)[1:]...)
+
+	return output, nil
 }
 
 // UnmarshalJSON is an implementation of the json.RawMessage interface and deserializses a

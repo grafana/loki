@@ -9,9 +9,9 @@ import (
 // representation of a list of values of a fixed type. A serialized array might
 // look like the following:
 //
-//     ListName.member.1=foo
-//     &ListName.member.2=bar
-//     &Listname.member.3=baz
+//	ListName.member.1=foo
+//	&ListName.member.2=bar
+//	&Listname.member.3=baz
 type Array struct {
 	// The query values to add the array to.
 	values url.Values

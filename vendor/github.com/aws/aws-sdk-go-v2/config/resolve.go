@@ -21,9 +21,15 @@ import (
 // This should be used as the first resolver in the slice of resolvers when
 // resolving external configuration.
 func resolveDefaultAWSConfig(ctx context.Context, cfg *aws.Config, cfgs configs) error {
+	var sources []interface{}
+	for _, s := range cfgs {
+		sources = append(sources, s)
+	}
+
 	*cfg = aws.Config{
-		Credentials: aws.AnonymousCredentials{},
-		Logger:      logging.NewStandardLogger(os.Stderr),
+		Credentials:   aws.AnonymousCredentials{},
+		Logger:        logging.NewStandardLogger(os.Stderr),
+		ConfigSources: sources,
 	}
 	return nil
 }

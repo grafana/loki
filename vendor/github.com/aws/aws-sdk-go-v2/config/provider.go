@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
 )
@@ -184,6 +185,73 @@ func getCredentialsCacheOptionsProvider(ctx context.Context, configs configs) (
 	}
 	return
 }
+
+// bearerAuthTokenProviderProvider provides access to the bearer authentication
+// token external configuration value.
+type bearerAuthTokenProviderProvider interface {
+	getBearerAuthTokenProvider(context.Context) (smithybearer.TokenProvider, bool, error)
+}
+
+// getBearerAuthTokenProvider searches the config sources for a
+// bearerAuthTokenProviderProvider and returns the value if found. Returns an
+// error if a provider fails before a value is found.
+func getBearerAuthTokenProvider(ctx context.Context, configs configs) (p smithybearer.TokenProvider, found bool, err error) {
+	for _, cfg := range configs {
+		if provider, ok := cfg.(bearerAuthTokenProviderProvider); ok {
+			p, found, err = provider.getBearerAuthTokenProvider(ctx)
+			if err != nil || found {
+				break
+			}
+		}
+	}
+	return
+}
+
+// bearerAuthTokenCacheOptionsProvider is an interface for retrieving a function for
+// setting the smithy-go auth/bearer#TokenCacheOptions.
+type bearerAuthTokenCacheOptionsProvider interface {
+	getBearerAuthTokenCacheOptions(context.Context) (func(*smithybearer.TokenCacheOptions), bool, error)
+}
+
+// getBearerAuthTokenCacheOptionsProvider is an interface for retrieving a function for
+// setting the smithy-go auth/bearer#TokenCacheOptions.
+func getBearerAuthTokenCacheOptions(ctx context.Context, configs configs) (
+	f func(*smithybearer.TokenCacheOptions), found bool, err error,
+) {
+	for _, config := range configs {
+		if p, ok := config.(bearerAuthTokenCacheOptionsProvider); ok {
+			f, found, err = p.getBearerAuthTokenCacheOptions(ctx)
+			if err != nil || found {
+				break
+			}
+		}
+	}
+	return
+}
+
+// ssoTokenProviderOptionsProvider is an interface for retrieving a function for
+// setting the SDK's credentials/ssocreds#SSOTokenProviderOptions.
+type ssoTokenProviderOptionsProvider interface {
+	getSSOTokenProviderOptions(context.Context) (func(*ssocreds.SSOTokenProviderOptions), bool, error)
+}
+
+// getSSOTokenProviderOptions is an interface for retrieving a function for
+// setting the SDK's credentials/ssocreds#SSOTokenProviderOptions.
+func getSSOTokenProviderOptions(ctx context.Context, configs configs) (
+	f func(*ssocreds.SSOTokenProviderOptions), found bool, err error,
+) {
+	for _, config := range configs {
+		if p, ok := config.(ssoTokenProviderOptionsProvider); ok {
+			f, found, err = p.getSSOTokenProviderOptions(ctx)
+			if err != nil || found {
+				break
+			}
+		}
+	}
+	return
+}
+
+// ssoTokenProviderOptionsProvider
 
 // processCredentialOptions is an interface for retrieving a function for setting
 // the processcreds.Options.

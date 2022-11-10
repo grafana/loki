@@ -8,17 +8,23 @@ type JoinGroupResponse struct {
 	GroupProtocol string
 	LeaderId      string
 	MemberId      string
-	Members       map[string][]byte
+	Members       []GroupMember
+}
+
+type GroupMember struct {
+	MemberId        string
+	GroupInstanceId *string
+	Metadata        []byte
 }
 
 func (r *JoinGroupResponse) GetMembers() (map[string]ConsumerGroupMemberMetadata, error) {
 	members := make(map[string]ConsumerGroupMemberMetadata, len(r.Members))
-	for id, bin := range r.Members {
+	for _, member := range r.Members {
 		meta := new(ConsumerGroupMemberMetadata)
-		if err := decode(bin, meta); err != nil {
+		if err := decode(member.Metadata, meta, nil); err != nil {
 			return nil, err
 		}
-		members[id] = *meta
+		members[member.MemberId] = *meta
 	}
 	return members, nil
 }
@@ -44,12 +50,16 @@ func (r *JoinGroupResponse) encode(pe packetEncoder) error {
 		return err
 	}
 
-	for memberId, memberMetadata := range r.Members {
-		if err := pe.putString(memberId); err != nil {
+	for _, member := range r.Members {
+		if err := pe.putString(member.MemberId); err != nil {
 			return err
 		}
-
-		if err := pe.putBytes(memberMetadata); err != nil {
+		if r.Version >= 5 {
+			if err := pe.putNullableString(member.GroupInstanceId); err != nil {
+				return err
+			}
+		}
+		if err := pe.putBytes(member.Metadata); err != nil {
 			return err
 		}
 	}
@@ -97,11 +107,19 @@ func (r *JoinGroupResponse) decode(pd packetDecoder, version int16) (err error) 
 		return nil
 	}
 
-	r.Members = make(map[string][]byte)
+	r.Members = make([]GroupMember, n)
 	for i := 0; i < n; i++ {
 		memberId, err := pd.getString()
 		if err != nil {
 			return err
+		}
+
+		var groupInstanceId *string = nil
+		if r.Version >= 5 {
+			groupInstanceId, err = pd.getNullableString()
+			if err != nil {
+				return err
+			}
 		}
 
 		memberMetadata, err := pd.getBytes()
@@ -109,7 +127,7 @@ func (r *JoinGroupResponse) decode(pd packetDecoder, version int16) (err error) 
 			return err
 		}
 
-		r.Members[memberId] = memberMetadata
+		r.Members[i] = GroupMember{MemberId: memberId, GroupInstanceId: groupInstanceId, Metadata: memberMetadata}
 	}
 
 	return nil
@@ -129,6 +147,8 @@ func (r *JoinGroupResponse) headerVersion() int16 {
 
 func (r *JoinGroupResponse) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 3, 4, 5:
+		return V2_3_0_0
 	case 2:
 		return V0_11_0_0
 	case 1:

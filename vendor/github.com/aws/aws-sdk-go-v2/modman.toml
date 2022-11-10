@@ -1,7 +1,8 @@
 
 [dependencies]
-  "github.com/aws/smithy-go" = "v1.11.1"
-  "github.com/google/go-cmp" = "v0.5.7"
+  "github.com/aws/aws-sdk-go" = "v1.44.28"
+  "github.com/aws/smithy-go" = "v1.13.4"
+  "github.com/google/go-cmp" = "v0.5.8"
   "github.com/jmespath/go-jmespath" = "v0.4.0"
   "golang.org/x/net" = "v0.0.0-20220127200216-cd36cc0744dd"
 
@@ -9,6 +10,9 @@
 
   [modules."."]
     metadata_package = "aws"
+
+  [modules.codegen]
+    no_tag = true
 
   [modules."example/service/dynamodb/createTable"]
     no_tag = true

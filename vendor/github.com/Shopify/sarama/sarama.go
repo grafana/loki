@@ -68,12 +68,15 @@ Consumer related metrics:
 	| Name                                      | Type       | Description                                                                          |
 	+-------------------------------------------+------------+--------------------------------------------------------------------------------------+
 	| consumer-batch-size                       | histogram  | Distribution of the number of messages in a batch                                    |
+	| consumer-fetch-rate                       | meter      | Fetch requests/second sent to all brokers                                            |
+	| consumer-fetch-rate-for-broker-<broker>   | meter      | Fetch requests/second sent to a given broker                                         |
+	| consumer-fetch-rate-for-topic-<topic>     | meter      | Fetch requests/second sent for a given topic                                         |
+	| consumer-fetch-response-size              | histogram  | Distribution of the fetch response size in bytes                                     |
 	| consumer-group-join-total-<GroupID>       | counter    | Total count of consumer group join attempts                                          |
 	| consumer-group-join-failed-<GroupID>      | counter    | Total count of consumer group join failures                                          |
 	| consumer-group-sync-total-<GroupID>       | counter    | Total count of consumer group sync attempts                                          |
 	| consumer-group-sync-failed-<GroupID>      | counter    | Total count of consumer group sync failures                                          |
 	+-------------------------------------------+------------+--------------------------------------------------------------------------------------+
-
 */
 package sarama
 
@@ -116,13 +119,13 @@ type StdLogger interface {
 type debugLogger struct{}
 
 func (d *debugLogger) Print(v ...interface{}) {
-	Logger.Print(v)
+	Logger.Print(v...)
 }
 func (d *debugLogger) Printf(format string, v ...interface{}) {
-	Logger.Printf(format, v)
+	Logger.Printf(format, v...)
 }
 func (d *debugLogger) Println(v ...interface{}) {
-	Logger.Println(v)
+	Logger.Println(v...)
 }
 
 // DebugLogger is the instance of a StdLogger that Sarama writes more verbose

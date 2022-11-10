@@ -22,7 +22,7 @@ package zap
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 
@@ -42,7 +42,7 @@ type Logger struct {
 
 	development bool
 	addCaller   bool
-	onFatal     zapcore.CheckWriteAction // default is WriteThenFatal
+	onFatal     zapcore.CheckWriteHook // default is WriteThenFatal
 
 	name        string
 	errorOutput zapcore.WriteSyncer
@@ -85,7 +85,7 @@ func New(core zapcore.Core, options ...Option) *Logger {
 func NewNop() *Logger {
 	return &Logger{
 		core:        zapcore.NewNopCore(),
-		errorOutput: zapcore.AddSync(ioutil.Discard),
+		errorOutput: zapcore.AddSync(io.Discard),
 		addStack:    zapcore.FatalLevel + 1,
 		clock:       zapcore.DefaultClock,
 	}
@@ -105,6 +105,19 @@ func NewProduction(options ...Option) (*Logger, error) {
 // It's a shortcut for NewDevelopmentConfig().Build(...Option).
 func NewDevelopment(options ...Option) (*Logger, error) {
 	return NewDevelopmentConfig().Build(options...)
+}
+
+// Must is a helper that wraps a call to a function returning (*Logger, error)
+// and panics if the error is non-nil. It is intended for use in variable
+// initialization such as:
+//
+//	var logger = zap.Must(zap.NewProduction())
+func Must(logger *Logger, err error) *Logger {
+	if err != nil {
+		panic(err)
+	}
+
+	return logger
 }
 
 // NewExample builds a Logger that's designed for use in zap's testable
@@ -175,6 +188,14 @@ func (log *Logger) With(fields ...Field) *Logger {
 // applications, Check can help avoid allocating a slice to hold fields.
 func (log *Logger) Check(lvl zapcore.Level, msg string) *zapcore.CheckedEntry {
 	return log.check(lvl, msg)
+}
+
+// Log logs a message at the specified level. The message includes any fields
+// passed at the log site, as well as any fields accumulated on the logger.
+func (log *Logger) Log(lvl zapcore.Level, msg string, fields ...Field) {
+	if ce := log.check(lvl, msg); ce != nil {
+		ce.Write(fields...)
+	}
 }
 
 // Debug logs a message at DebugLevel. The message includes any fields passed
@@ -285,18 +306,27 @@ func (log *Logger) check(lvl zapcore.Level, msg string) *zapcore.CheckedEntry {
 	// Set up any required terminal behavior.
 	switch ent.Level {
 	case zapcore.PanicLevel:
-		ce = ce.Should(ent, zapcore.WriteThenPanic)
+		ce = ce.After(ent, zapcore.WriteThenPanic)
 	case zapcore.FatalLevel:
 		onFatal := log.onFatal
-		// Noop is the default value for CheckWriteAction, and it leads to
-		// continued execution after a Fatal which is unexpected.
-		if onFatal == zapcore.WriteThenNoop {
+		// nil or WriteThenNoop will lead to continued execution after
+		// a Fatal log entry, which is unexpected. For example,
+		//
+		//   f, err := os.Open(..)
+		//   if err != nil {
+		//     log.Fatal("cannot open", zap.Error(err))
+		//   }
+		//   fmt.Println(f.Name())
+		//
+		// The f.Name() will panic if we continue execution after the
+		// log.Fatal.
+		if onFatal == nil || onFatal == zapcore.WriteThenNoop {
 			onFatal = zapcore.WriteThenFatal
 		}
-		ce = ce.Should(ent, onFatal)
+		ce = ce.After(ent, onFatal)
 	case zapcore.DPanicLevel:
 		if log.development {
-			ce = ce.Should(ent, zapcore.WriteThenPanic)
+			ce = ce.After(ent, zapcore.WriteThenPanic)
 		}
 	}
 

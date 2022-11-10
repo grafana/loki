@@ -3,3 +3,4 @@ README.md merge=union
 go.sum merge=union
 plugins/inputs/all/all.go merge=union
 plugins/outputs/all/all.go merge=union
+**/testdata/** test eol=lf

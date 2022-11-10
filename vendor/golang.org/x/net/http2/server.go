@@ -143,7 +143,7 @@ type Server struct {
 }
 
 func (s *Server) initialConnRecvWindowSize() int32 {
-	if s.MaxUploadBufferPerConnection > initialWindowSize {
+	if s.MaxUploadBufferPerConnection >= initialWindowSize {
 		return s.MaxUploadBufferPerConnection
 	}
 	return 1 << 20

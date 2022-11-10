@@ -90,7 +90,7 @@ func (r *Attempt) HandleFinalize(ctx context.Context, in smithymiddle.FinalizeIn
 		out, attemptResult, releaseRetryToken, err = r.handleAttempt(attemptCtx, attemptInput, releaseRetryToken, next)
 		attemptClockSkew, _ = awsmiddle.GetAttemptSkew(attemptResult.ResponseMetadata)
 
-		// AttempResult Retried states that the attempt was not successful, and
+		// AttemptResult Retried states that the attempt was not successful, and
 		// should be retried.
 		shouldRetry := attemptResult.Retried
 

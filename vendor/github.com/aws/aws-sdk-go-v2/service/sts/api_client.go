@@ -512,6 +512,9 @@ func (c presignConverter) convertToPresignMiddleware(stack *middleware.Stack, op
 	if err != nil {
 		return err
 	}
+	if err = smithyhttp.AddNoPayloadDefaultContentTypeRemover(stack); err != nil {
+		return err
+	}
 	// convert request to a GET request
 	err = query.AddAsGetRequestMiddleware(stack)
 	if err != nil {

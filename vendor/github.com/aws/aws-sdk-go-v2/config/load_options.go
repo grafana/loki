@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
 )
@@ -27,6 +28,9 @@ type LoadOptions struct {
 
 	// Credentials object to use when signing requests.
 	Credentials aws.CredentialsProvider
+
+	// Token provider for authentication operations with bearer authentication.
+	BearerAuthTokenProvider smithybearer.TokenProvider
 
 	// HTTPClient the SDK's API clients will use to invoke HTTP requests.
 	HTTPClient HTTPClient
@@ -127,6 +131,14 @@ type LoadOptions struct {
 	// CredentialsCacheOptions is a function for setting the
 	// aws.CredentialsCacheOptions
 	CredentialsCacheOptions func(*aws.CredentialsCacheOptions)
+
+	// BearerAuthTokenCacheOptions is a function for setting the smithy-go
+	// auth/bearer#TokenCacheOptions
+	BearerAuthTokenCacheOptions func(*smithybearer.TokenCacheOptions)
+
+	// SSOTokenProviderOptions is a function for setting the
+	// credentials/ssocreds.SSOTokenProviderOptions
+	SSOTokenProviderOptions func(*ssocreds.SSOTokenProviderOptions)
 
 	// ProcessCredentialOptions is a function for setting
 	// the processcreds.Options
@@ -447,6 +459,73 @@ func (o LoadOptions) getCredentialsCacheOptions(ctx context.Context) (func(*aws.
 func WithCredentialsCacheOptions(v func(*aws.CredentialsCacheOptions)) LoadOptionsFunc {
 	return func(o *LoadOptions) error {
 		o.CredentialsCacheOptions = v
+		return nil
+	}
+}
+
+// getBearerAuthTokenProvider returns the credentials value
+func (o LoadOptions) getBearerAuthTokenProvider(ctx context.Context) (smithybearer.TokenProvider, bool, error) {
+	if o.BearerAuthTokenProvider == nil {
+		return nil, false, nil
+	}
+
+	return o.BearerAuthTokenProvider, true, nil
+}
+
+// WithBearerAuthTokenProvider is a helper function to construct functional options
+// that sets Credential provider value on config's LoadOptions. If credentials
+// provider is set to nil, the credentials provider value will be ignored.
+// If multiple WithBearerAuthTokenProvider calls are made, the last call overrides
+// the previous call values.
+func WithBearerAuthTokenProvider(v smithybearer.TokenProvider) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.BearerAuthTokenProvider = v
+		return nil
+	}
+}
+
+// getBearerAuthTokenCacheOptionsProvider returns the wrapped function to set smithybearer.TokenCacheOptions
+func (o LoadOptions) getBearerAuthTokenCacheOptions(ctx context.Context) (func(*smithybearer.TokenCacheOptions), bool, error) {
+	if o.BearerAuthTokenCacheOptions == nil {
+		return nil, false, nil
+	}
+
+	return o.BearerAuthTokenCacheOptions, true, nil
+}
+
+// WithBearerAuthTokenCacheOptions is a helper function to construct functional options
+// that sets a function to modify the TokenCacheOptions the smithy-go
+// auth/bearer#TokenCache will be configured with, if the TokenCache is used by
+// the configuration loader.
+//
+// If multiple WithBearerAuthTokenCacheOptions calls are made, the last call overrides
+// the previous call values.
+func WithBearerAuthTokenCacheOptions(v func(*smithybearer.TokenCacheOptions)) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.BearerAuthTokenCacheOptions = v
+		return nil
+	}
+}
+
+// getSSOTokenProviderOptionsProvider returns the wrapped function to set smithybearer.TokenCacheOptions
+func (o LoadOptions) getSSOTokenProviderOptions(ctx context.Context) (func(*ssocreds.SSOTokenProviderOptions), bool, error) {
+	if o.SSOTokenProviderOptions == nil {
+		return nil, false, nil
+	}
+
+	return o.SSOTokenProviderOptions, true, nil
+}
+
+// WithSSOTokenProviderOptions is a helper function to construct functional
+// options that sets a function to modify the SSOtokenProviderOptions the SDK's
+// credentials/ssocreds#SSOProvider will be configured with, if the
+// SSOTokenProvider is used by the configuration loader.
+//
+// If multiple WithSSOTokenProviderOptions calls are made, the last call overrides
+// the previous call values.
+func WithSSOTokenProviderOptions(v func(*ssocreds.SSOTokenProviderOptions)) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.SSOTokenProviderOptions = v
 		return nil
 	}
 }

@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package hclog
@@ -10,7 +11,7 @@ import (
 )
 
 // setColorization will mutate the values of this logger
-// to approperately configure colorization options. It provides
+// to appropriately configure colorization options. It provides
 // a wrapper to the output stream on Windows systems.
 func (l *intLogger) setColorization(opts *LoggerOptions) {
 	switch opts.Color {
@@ -26,8 +27,12 @@ func (l *intLogger) setColorization(opts *LoggerOptions) {
 		isTerm := isUnixTerm || isCygwinTerm
 		if !isTerm {
 			l.writer.color = ColorOff
+			l.headerColor = ColorOff
 			return
 		}
-		l.writer.w = colorable.NewColorable(fi)
+
+		if l.headerColor == ColorOff {
+			l.writer.w = colorable.NewColorable(fi)
+		}
 	}
 }

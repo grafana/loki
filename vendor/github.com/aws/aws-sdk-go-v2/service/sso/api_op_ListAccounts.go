@@ -14,7 +14,8 @@ import (
 // Lists all AWS accounts assigned to the user. These AWS accounts are assigned by
 // the administrator of the account. For more information, see Assign User Access
 // (https://docs.aws.amazon.com/singlesignon/latest/userguide/useraccess.html#assignusers)
-// in the AWS SSO User Guide. This operation returns a paginated response.
+// in the IAM Identity Center User Guide. This operation returns a paginated
+// response.
 func (c *Client) ListAccounts(ctx context.Context, params *ListAccountsInput, optFns ...func(*Options)) (*ListAccountsOutput, error) {
 	if params == nil {
 		params = &ListAccountsInput{}
@@ -35,7 +36,7 @@ type ListAccountsInput struct {
 	// The token issued by the CreateToken API call. For more information, see
 	// CreateToken
 	// (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html)
-	// in the AWS SSO OIDC API Reference Guide.
+	// in the IAM Identity Center OIDC API Reference Guide.
 	//
 	// This member is required.
 	AccessToken *string

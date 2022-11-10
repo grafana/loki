@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-
 // DecodePaddingAllowed will switch the codec used for decoding JWTs respectively. Note that the JWS RFC7515
 // states that the tokens will utilize a Base64url encoding with no padding. Unfortunately, some implementations
 // of JWT are producing non-standard tokens, and thus require support for decoding. Note that this is a global

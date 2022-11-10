@@ -26,6 +26,11 @@ import (
 // (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html)
 // and Comparing the Amazon Web Services STS API operations
 // (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html#stsapi_comparison)
+// in the IAM User Guide. No permissions are required for users to perform this
+// operation. The purpose of the sts:GetSessionToken operation is to authenticate
+// the user using MFA. You cannot use policies to control authentication
+// operations. For more information, see Permissions for GetSessionToken
+// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_getsessiontoken.html)
 // in the IAM User Guide. Session Duration The GetSessionToken operation must be
 // called by using the long-term Amazon Web Services security credentials of the
 // Amazon Web Services account root user or an IAM user. Credentials that are

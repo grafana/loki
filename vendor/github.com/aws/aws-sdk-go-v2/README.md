@@ -7,7 +7,7 @@
 
 The v2 SDK requires a minimum version of `Go 1.15`.
 
-Checkout out the [release notes](https://github.com/aws/aws-sdk-go-v2/blob/main/CHANGELOG.md) for information about the latest bug
+Check out the [release notes](https://github.com/aws/aws-sdk-go-v2/blob/main/CHANGELOG.md) for information about the latest bug
 fixes, updates, and features added to the SDK.
 
 Jump To:
@@ -107,7 +107,7 @@ This SDK implements AWS service APIs. For general issues regarding the AWS servi
 
 If you encounter a bug with the AWS SDK for Go we would like to hear about it.
 Search the [existing issues][Issues] and see
-if others are also experiencing the issue before opening a new issue. Please
+if others are also experiencing the same issue before opening a new issue. Please
 include the version of AWS SDK for Go, Go language, and OS you’re using. Please
 also include reproduction case when appropriate.
 
@@ -128,6 +128,8 @@ The v2 SDK will use GitHub [Issues] to track feature requests and issues with th
 
 [SDK Developer Guide](https://aws.github.io/aws-sdk-go-v2/docs/) - Use this document to learn how to get started and
 use the AWS SDK for Go V2.
+
+[SDK Migration Guide](https://aws.github.io/aws-sdk-go-v2/docs/migrating/) - Use this document to learn how to migrate to V2 from the AWS SDK for Go.
 
 [SDK API Reference Documentation](https://pkg.go.dev/mod/github.com/aws/aws-sdk-go-v2) - Use this
 document to look up all API operation input and output parameters for AWS

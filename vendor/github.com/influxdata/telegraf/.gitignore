@@ -3,5 +3,15 @@
 /telegraf
 /telegraf.exe
 /telegraf.gz
+/tools/package_lxd_test/package_lxd_test
+/tools/license_checker/license_checker*
+/tools/readme_config_includer/generator*
+/tools/custom_builder/custom_builder*
 /vendor
 .DS_Store
+process.yml
+/.vscode
+/*.toml
+/*.conf
+resource.syso
+versioninfo.json
