@@ -132,6 +132,50 @@
             type = "app";
             program = with pkgs; "${loki-helm-test}/bin/helm-test";
           };
+
+          diff-config =
+            let
+              previousVersion = "2.6.1";
+              previousVersionBranch = "v${previousVersion}";
+              previousSource = pkgs.fetchFromGitHub {
+                owner = "grafana";
+                repo = "loki";
+                rev = previousVersionBranch;
+                sha256 = "sha256-6g0tzI6ZW+wwbPrNTdj0t2H0/M8+M9ioJl6iPL0mAtY=";
+              };
+
+              loki-old =
+                pkgs.loki.overrideAttrs (old: rec {
+                  version = previousVersion;
+                  src = previousSource;
+                  doCheck = false;
+
+                  configurePhase = with pkgs; ''
+                    patchShebangs tools
+
+                    substituteInPlace Makefile \
+                      --replace "SHELL = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail" \
+                      --replace "IMAGE_TAG := \$(shell ./tools/image-tag)" "IMAGE_TAG := ${previousVersion}" \
+                      --replace "GIT_REVISION := \$(shell git rev-parse --short HEAD)" "GIT_REVISION := ${previousVersionBranch}" \
+                      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := ${previousVersionBranch}" \
+                  '';
+                });
+
+              loki = pkgs.loki.overrideAttrs (old: rec {
+                doCheck = false;
+              });
+            in
+            {
+              type = "app";
+              program = with pkgs; "${(writeShellScriptBin "diff-config" ''
+              ${diffutils}/bin/diff --color=always --side-by-side \
+                <(${loki-old}/bin/loki -config.file ${previousSource}/cmd/loki/loki-local-config.yaml -print-config-stderr 2>&1 \
+                | sed '/Starting Loki/q') \
+                <(${loki}/bin/loki -config.file ${self}/cmd/loki/loki-local-config.yaml -print-config-stderr 2>&1 \
+                | sed '/Starting Loki/q') \
+                | ${less}/bin/less -R
+            '')}/bin/diff-config";
+            };
         };
 
         devShell = pkgs.mkShell {
