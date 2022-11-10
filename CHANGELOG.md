@@ -2,6 +2,44 @@
 
 ### All Changes
 
+#### Loki
+
+##### Enhancements
+
+* [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
+
+##### Fixes
+
+##### Changes
+
+#### Promtail
+
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+
+##### Enhancements
+
+##### Fixes
+
+##### Changes
+* [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
+
+#### Fluent Bit
+
+#### Loki Canary
+
+#### Jsonnet
+
+### Notes
+
+This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+
+Check the history of the branch FIXME.
+
+### Dependencies
+
+* Go Version: 1.19
+
 ## 2.7.0
 
 #### Loki
@@ -82,9 +120,9 @@
 
 ### Notes
 
-This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+This release was created from a branch starting at commit `706c22e9e40b0156031f214b63dc6ed4e210abc1` but it may also contain backported changes from main.
 
-Check the history of the branch FIXME.
+Check the history of the branch `release-2.7.x`.
 
 ### Dependencies
 
