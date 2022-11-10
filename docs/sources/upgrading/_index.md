@@ -122,7 +122,7 @@ The configuration for anonymous usage statistics reporting to Grafana has change
 
 #### TLS `cipher_suites` and `tls_min_version` have moved
 
-These were previoulsy configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now only configurable under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
+These were previously configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example: `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
 
 #### Querier `query_timeout` default changed
 
