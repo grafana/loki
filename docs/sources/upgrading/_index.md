@@ -116,6 +116,10 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 
 The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
 
+#### Usage Report  / Telemetry config has changed named
+
+The `usage_report` config for configuring if and how annonymous usage statistics are reported back to Grafana has changes from `usage_report` to `analytics`.
+
 #### TLS `cipher_suites` and `tls_min_version` have moved
 
 These were previoulsy configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now only configurable under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
