@@ -15,13 +15,6 @@ variable "cluster_name" {
   type = string
 }
 
-/*
--var oidc_id="$(aws eks describe-cluster --name <cluster_name> --query 'cluster.identity.oidc.issuer' --output text | sed -e 's/^https:\/\///')"
-*/
-variable "oidc_id" {
-  type = string
-}
-
 variable "namespace" {
   description = "Namespace of Loki installation"
   type        = string

@@ -4,6 +4,14 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_eks_cluster" "current" {
+  name = var.cluster_name
+}
+
+locals {
+  oidc_id = replace(data.aws_eks_cluster.current.identity[0].oidc[0].issuer, "https://", "")
+}
+
 data "aws_iam_policy_document" "oidc" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
@@ -11,19 +19,19 @@ data "aws_iam_policy_document" "oidc" {
 
     condition {
       test     = "StringEquals"
-      variable = "${var.oidc_id}:sub"
+      variable = "${local.oidc_id}:sub"
       values   = ["system:serviceaccount:${var.namespace}:${var.serviceaccount}"]
     }
 
     condition {
       test     = "StringEquals"
-      variable = "${var.oidc_id}:aud"
+      variable = "${local.oidc_id}:aud"
       values   = ["sts.amazonaws.com"]
     }
 
     principals {
       identifiers = [
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${var.oidc_id}"
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${local.oidc_id}"
       ]
       type        = "Federated"
     }
