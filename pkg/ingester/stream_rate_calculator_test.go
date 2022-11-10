@@ -52,13 +52,13 @@ func TestStreamRateCalculator(t *testing.T) {
 		calc.updateRates()
 		rates = calc.Rates()
 		require.Len(t, rates, 1)
-		require.Equal(t, int64(3000), rates[0].Rate)
+		require.Equal(t, int64(3400), rates[0].Rate)
 
 		calc.Record("tenant 1", 1, 1, 10000)
 		calc.updateRates()
 		rates = calc.Rates()
 		require.Len(t, rates, 1)
-		require.Equal(t, int64(7900), rates[0].Rate)
+		require.Equal(t, int64(7756), rates[0].Rate)
 	})
 }
 
