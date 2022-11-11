@@ -142,6 +142,10 @@ Can no longer specify a remote write client for the ruler.
 
 The `gcp_push_target_parsing_errors_total` GCP Push Target metrics has been added a new label named `reason`. This includes detail on what might have caused the parsing to fail.
 
+#### Windows event logs: now correctly includes `user_data`
+
+The contents of the `user_data` field was erroneously set to the same value as `event_data` in previous versions. This was fixed in [#7461](https://github.com/grafana/loki/pull/7461) and log queries relying on this broken behaviour may be impacted.
+
 ## 2.6.0
 
 ### Loki
