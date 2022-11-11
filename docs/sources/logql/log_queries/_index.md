@@ -415,7 +415,7 @@ The **logfmt** parser can operate in two modes:
     at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
     ```
 
-    will get these labels extracted:
+    will result in having the following labels extracted:
 
     ```kv
     "at" => "info"
@@ -438,7 +438,7 @@ The **logfmt** parser can operate in two modes:
     
     And rename `fwd` to `fwd_ip`:
     ```kv
-    "host_address" => "grafana.net"
+    "host" => "grafana.net"
     "fwd_ip" => "124.133.124.161"
     ```
 

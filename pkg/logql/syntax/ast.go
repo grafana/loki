@@ -590,23 +590,23 @@ func newLogfmtExpressionParser(expressions []log.LogfmtExpression) *LogfmtExpres
 	}
 }
 
-func (j *LogfmtExpressionParser) Shardable() bool { return true }
+func (l *LogfmtExpressionParser) Shardable() bool { return true }
 
-func (j *LogfmtExpressionParser) Walk(f WalkFn) { f(j) }
+func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
 
-func (j *LogfmtExpressionParser) Stage() (log.Stage, error) {
-	return log.NewLogfmtExpressionParser(j.Expressions)
+func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
+	return log.NewLogfmtExpressionParser(l.Expressions)
 }
 
-func (j *LogfmtExpressionParser) String() string {
+func (l *LogfmtExpressionParser) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
-	for i, exp := range j.Expressions {
+	for i, exp := range l.Expressions {
 		sb.WriteString(exp.Identifier)
 		sb.WriteString("=")
 		sb.WriteString(strconv.Quote(exp.Expression))
 
-		if i+1 != len(j.Expressions) {
+		if i+1 != len(l.Expressions) {
 			sb.WriteString(",")
 		}
 	}

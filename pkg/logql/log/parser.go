@@ -374,6 +374,16 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		return line, true
 	}
 
+	// If there are no expressions, extract common labels
+	// and add the suffix "_extracted"
+	if len(l.expressions) == 0 {
+		for _, v := range lbs.currentResult.Labels() {
+			lbs.Set(v.Name+"_extracted", v.Value)
+			lbs.Del(v.Name)
+		}
+		return line, true
+	}
+
 	// Create a map of every renamed label and its original name
 	// in order to retrieve it later in the extraction phase
 	keys := make(map[string]string, len(l.expressions))
@@ -394,7 +404,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 			if lbs.BaseHas(sanitized) {
 				sanitized = sanitized + duplicateSuffix
-				lbs.Set(sanitized, string(l.dec.Value()))
+				//lbs.Set(sanitized, string(l.dec.Value()))
 			}
 			return sanitized, true
 		})
