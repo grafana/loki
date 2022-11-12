@@ -278,6 +278,16 @@ bool
 More details: <a href="https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html">https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html</a></p>
 </td>
 </tr>
+<tr>
+<td>
+<code>clusterProxy</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>ClusterProxy enables usage of the proxy variables set in the proxy resource.
+More details: <a href="https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy">https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy</a></p>
 </tbody>
 </table>
 
