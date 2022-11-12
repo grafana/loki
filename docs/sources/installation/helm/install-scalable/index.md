@@ -62,7 +62,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
           insecure: false
       ```
 
-      Consult the [Reference](../reference) for configuring otehr storage providers.
+      Consult the [Reference](../reference) for configuring other storage providers.
 
     - Define the AWS S3 credentials in the file.
 

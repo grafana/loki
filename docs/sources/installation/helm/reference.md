@@ -1315,6 +1315,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.querier</td>
+			<td>object</td>
+			<td>Optional querier configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.query_scheduler</td>
 			<td>object</td>
 			<td>Additional query scheduler config</td>

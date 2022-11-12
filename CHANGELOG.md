@@ -38,7 +38,7 @@ Check the history of the branch FIXME.
 
 ### Dependencies
 
-* Go Version:     FIXME
+* Go Version: 1.19
 
 ## 2.7.0
 
@@ -126,9 +126,9 @@ Check the history of the branch FIXME.
 
 ### Notes
 
-This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+This release was created from a branch starting at commit `706c22e9e40b0156031f214b63dc6ed4e210abc1` but it may also contain backported changes from main.
 
-Check the history of the branch FIXME.
+Check the history of the branch `release-2.7.x`.
 
 ### Dependencies
 

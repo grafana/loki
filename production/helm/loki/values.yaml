@@ -173,6 +173,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.querier }}
+    querier:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
 
@@ -258,6 +263,9 @@ loki:
 
   # --  Optional analytics configuration
   analytics: {}
+
+  # --  Optional querier configuration
+  querier: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
