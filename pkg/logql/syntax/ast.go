@@ -23,6 +23,7 @@ type Expr interface {
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
 	Walkable
 	fmt.Stringer
+	Pretty(level int) string
 }
 
 func Clone(e Expr) (Expr, error) {
@@ -32,7 +33,8 @@ func Clone(e Expr) (Expr, error) {
 // implicit holds default implementations
 type implicit struct{}
 
-func (implicit) logQLExpr() {}
+func (implicit) logQLExpr()          {}
+func (implicit) Pretty(_ int) string { return "" }
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
@@ -658,7 +660,7 @@ const (
 	OpTypeAnd    = "and"
 	OpTypeUnless = "unless"
 
-	// binops - operations
+	// binops - arithmetic
 	OpTypeAdd = "+"
 	OpTypeSub = "-"
 	OpTypeMul = "*"
