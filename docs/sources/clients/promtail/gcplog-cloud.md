@@ -5,7 +5,15 @@ title: Cloud setup GCP Logs
 
 This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
 
-This document assumes, that reader have `gcloud` installed and have required permissions(as mentioned in #[Roles and Permission] section)
+This document assumes, that reader have `gcloud` installed and have required permissions(as mentioned in [Roles and Permission](#roles-and-permission) section).
+
+There's two flavours of how to configure this:
+- Pull-based subscription: Promtail pulls log entries from a GCP PubSub topic
+- Push-based subscription: GCP sends log entries to a web server that Promtail listens
+
+Overall, the setup between GCP, Promtail and Loki will look like the following:
+
+<img src="../gcp-logs-diagram.png" width="1200px"/>
 
 ## Roles and Permission
 
@@ -75,6 +83,8 @@ gcloud pubsub topics add-iam-policy-binding cloud-logs \
 
 ## Create Pubsub subscription for Grafana Loki
 
+### Pull
+
 We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume log messages.
 
 ```bash
@@ -91,6 +101,127 @@ $ gcloud pubsub subscriptions create cloud-logs --topic=projects/my-project/topi
 ```
 
 For more fine grained options, refer to the `gcloud pubsub subscriptions --help`
+
+### Push
+
+Since GCP PubSub push subscriptions is a rather new service, one needs to grant Google a permission in some cases. First, check the date the GCP project was created on:
+
+```bash
+> gcloud projects describe $GCP_PROJECT_ID
+
+createTime: 'some date'
+...
+projectId: $GCP_PROJECT_ID
+projectNumber: '$GCP_PROJECT_NUMBER'
+```
+
+If the `createTime` is later than **April 8, 2021**, skip the following step. Otherwise, you [need to grant](https://cloud.google.com/pubsub/docs/push#configure_for_push_authentication) the `iam.serviceAccountTokenCreator` role to a Google-managed service account:
+```bash
+PUBSUB_SERVICE_ACCOUNT="service-${GCP_PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+ --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}"\
+ --role='roles/iam.serviceAccountTokenCreator'
+```
+
+Having configured Promtail with the [GCP Logs Push target](./#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
+the push subscription.
+
+```bash
+gcloud pubsub subscriptions create cloud-logs \
+--topic=$TOPIC_ID \
+--push-endpoint=$HTTPS_PUSH_ENDPOINT_URI
+```
+
+## Setup using Terraform
+
+You also have the option of creating the required resources for GCP Log collection with terraform. First, the following snippet will add the resources needed for both `pull` and `push` flavours.
+
+How to use Terraform is outside the scope of this guide. You can find [this tutorial](https://developer.hashicorp.com/terraform/tutorials/gcp-get-started/google-cloud-platform-build) on how to work with Terraform and GCP useful.
+
+```terraform
+// Provider module
+provider "google" {
+  project = "$GCP_PROJECT_ID"
+}
+
+// Topic
+resource "google_pubsub_topic" "main" {
+  name = "cloud-logs"
+}
+
+// Log sink
+variable "inclusion_filter" {
+  type        = string
+  description = "Optional GCP Logs query which can filter logs being routed to the pub/sub topic and promtail"
+}
+
+resource "google_logging_project_sink" "main" {
+  name                   = "cloud-logs"
+  destination            = "pubsub.googleapis.com/${google_pubsub_topic.main.id}"
+  filter                 = var.inclusion_filter
+  unique_writer_identity = true
+}
+
+resource "google_pubsub_topic_iam_binding" "log-writer" {
+  topic = google_pubsub_topic.main.name
+  role  = "roles/pubsub.publisher"
+  members = [
+    google_logging_project_sink.main.writer_identity,
+  ]
+}
+```
+
+Then, another snippet needs to be added depending on whether the `pull` or `push` flavour is chosen.
+
+### Pull
+
+The following snippet configures a subscription to the pub/sub topic which Promtail will subscribe to.
+
+```terraform
+// Subscription
+resource "google_pubsub_subscription" "main" {
+  name  = "cloud-logs"
+  topic = google_pubsub_topic.main.name
+}
+```
+
+Then, to create the new resources run the snippet below after filling in the required variables.
+
+```bash
+terraform apply \
+    -var="inclusion_filter=<GCP Logs query of what logs to include>"
+```
+
+### Push
+
+The following snippet configures a push subscription to the pub/sub topic which will forward logs to Promtail.
+
+```terraform
+// Subscription
+variable "push_endpoint_url" {
+  type        = string
+  description = "Public URL where Promtail is hosted."
+}
+
+resource "google_pubsub_subscription" "main" {
+  name  = "cloud-logs"
+  topic = google_pubsub_topic.main.name
+  push_config {
+    push_endpoint = var.push_endpoint_url
+    attributes = {
+      x-goog-version = "v1"
+    }
+  }
+}
+```
+
+Then, to create the new resources run the snippet below after filling in the required variables.
+
+```bash
+terraform apply \
+    -var="push_endpoint_url=<Promtail public URL>" \
+    -var="inclusion_filter=<GCP Logs query of what logs to include>"
+```
 
 ## ServiceAccount for Promtail
 

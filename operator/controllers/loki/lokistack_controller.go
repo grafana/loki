@@ -77,7 +77,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;secrets;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
@@ -85,7 +85,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers,verbs=patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxy,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -110,11 +110,33 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	if r.FeatureGates.BuiltInCertManagement.Enabled {
+		err = handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+		if res, derr := handleDegradedError(ctx, r.Client, req, err); derr != nil {
+			return res, derr
+		}
+	}
 
+	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	if res, derr := handleDegradedError(ctx, r.Client, req, err); derr != nil {
+		return res, derr
+	}
+
+	err = status.Refresh(ctx, r.Client, req)
+	if err != nil {
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: time.Second,
+		}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request, err error) (ctrl.Result, error) {
 	var degraded *status.DegradedError
 	if errors.As(err, &degraded) {
-		err = status.SetDegradedCondition(ctx, r.Client, req, degraded.Message, degraded.Reason)
+		err = status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
 		if err != nil {
 			return ctrl.Result{
 				Requeue:      true,
@@ -135,14 +157,6 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}, err
 	}
 
-	err = status.Refresh(ctx, r.Client, req)
-	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
-	}
-
 	return ctrl.Result{}, nil
 }
 
@@ -156,6 +170,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	bld = bld.
 		For(&lokiv1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
+		Owns(&corev1.Secret{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.ServiceAccount{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Service{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
@@ -177,6 +192,10 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 
 	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
 		bld = bld.Owns(&openshiftconfigv1.APIServer{}, updateOrDeleteOnlyPred)
+	}
+
+	if r.FeatureGates.OpenShift.ClusterProxy {
+		bld = bld.Owns(&openshiftconfigv1.Proxy{}, updateOrDeleteOnlyPred)
 	}
 
 	return bld.Complete(r)

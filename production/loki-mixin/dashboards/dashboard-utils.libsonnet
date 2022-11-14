@@ -189,7 +189,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
   containerMemoryWorkingSetPanel(title, containerName)::
-    self.memoryWorkingSetPanel(title, 'container="%s"' % containerName),
+    self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
   goHeapInUsePanel(title, jobName)::
     $.panel(title) +

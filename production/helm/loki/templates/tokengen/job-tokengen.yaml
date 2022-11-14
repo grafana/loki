@@ -38,9 +38,7 @@ spec:
         {{- toYaml .Values.enterprise.tokengen.securityContext | nindent 8 }}
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
       initContainers:
         - name: loki
@@ -67,6 +65,10 @@ spec:
             {{- if .Values.enterprise.tokengen.env }}
               {{ toYaml .Values.enterprise.tokengen.env | nindent 12 }}
             {{- end }}
+          {{- with .Values.enterprise.tokengen.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       containers:
         - name: create-secret
           image: {{ include "loki.kubectlImage" . }}

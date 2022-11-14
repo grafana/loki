@@ -123,6 +123,11 @@ spec:
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
+                          queryTimeout:
+                            default: 1m
+                            description: Timeout when querying ingesters or storage
+                              during the execution of a query request.
+                            type: string
                         type: object
                       retention:
                         description: Retention defines how long logs are kept in storage.
@@ -231,6 +236,11 @@ spec:
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
+                            queryTimeout:
+                              default: 1m
+                              description: Timeout when querying ingesters or storage
+                                during the execution of a query request.
+                              type: string
                           type: object
                         retention:
                           description: Retention defines how long logs are kept in
@@ -282,6 +292,27 @@ spec:
                 - Managed
                 - Unmanaged
                 type: string
+              proxy:
+                description: Proxy defines the spec for the object proxy to configure
+                  cluster proxy information.
+                properties:
+                  httpProxy:
+                    description: HTTPProxy configures the HTTP_PROXY/http_proxy env
+                      variable.
+                    type: string
+                  httpsProxy:
+                    description: HTTPSProxy configures the HTTPS_PROXY/https_proxy
+                      env variable.
+                    type: string
+                  noProxy:
+                    description: NoProxy configures the NO_PROXY/no_proxy env variable.
+                    type: string
+                  readVarsFromEnv:
+                    default: false
+                    description: ReadVarsFromEnv defines a flag to use Operator-lib
+                      provides a helper function
+                    type: boolean
+                type: object
               replicationFactor:
                 default: 1
                 description: ReplicationFactor defines the policy for log stream replication.

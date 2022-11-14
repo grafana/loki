@@ -5,7 +5,7 @@ go 1.19
 require (
 	cloud.google.com/go/bigtable v1.3.0
 	cloud.google.com/go/pubsub v1.25.0
-	cloud.google.com/go/storage v1.23.0
+	cloud.google.com/go/storage v1.27.0
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.14.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.21
@@ -77,7 +77,7 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.1.12
+	github.com/pierrec/lz4/v4 v4.1.17
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
 	github.com/prometheus/client_model v0.2.0
@@ -86,7 +86,7 @@ require (
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
-	github.com/sony/gobreaker v0.4.1
+	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.2
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-io/thanos v0.28.0
@@ -102,7 +102,7 @@ require (
 	golang.org/x/sync v0.0.0-20220907140024-f12130a52804
 	golang.org/x/sys v0.0.0-20220919091848-fb04ddd9f9c8
 	golang.org/x/time v0.0.0-20220920022843-2ce7c2934d45
-	google.golang.org/api v0.96.0
+	google.golang.org/api v0.97.0
 	google.golang.org/grpc v1.49.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
@@ -113,9 +113,7 @@ require (
 )
 
 require (
-	github.com/grafana/groupcache_exporter v0.0.0-20220629095919-59a8c6428a43
 	github.com/heroku/x v0.0.50
-	github.com/mailgun/groupcache/v2 v2.3.2
 	github.com/prometheus/alertmanager v0.24.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20220715165016-ce338803bc1e
@@ -200,7 +198,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.5.1 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
-	github.com/googleapis/go-type-adapters v1.0.0 // indirect
 	github.com/gophercloud/gophercloud v1.0.0 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

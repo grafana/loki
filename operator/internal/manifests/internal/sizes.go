@@ -223,6 +223,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
 					MaxQuerySeries:          500,
+					QueryTimeout:            "1m",
 				},
 			},
 		},
@@ -261,7 +262,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
 					// Custom for 1x.small
-					IngestionRate:             10,
+					IngestionRate:             15,
 					IngestionBurstSize:        20,
 					MaxGlobalStreamsPerTenant: 10000,
 					// Defaults from Loki docs
@@ -275,6 +276,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
 					MaxQuerySeries:          500,
+					QueryTimeout:            "1m",
 				},
 			},
 		},
@@ -313,7 +315,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
 					// Custom for 1x.medium
-					IngestionRate:             10,
+					IngestionRate:             50,
 					IngestionBurstSize:        20,
 					MaxGlobalStreamsPerTenant: 25000,
 					// Defaults from Loki docs
@@ -327,6 +329,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxEntriesLimitPerQuery: 5000,
 					MaxChunksPerQuery:       2000000,
 					MaxQuerySeries:          500,
+					QueryTimeout:            "1m",
 				},
 			},
 		},

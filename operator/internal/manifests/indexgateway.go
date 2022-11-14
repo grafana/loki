@@ -36,6 +36,13 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&statefulSet.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -108,6 +115,8 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
+	podSpec = addProxyEnvVar(opts.Stack.Proxy, podSpec)
+
 	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
 		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
 			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
@@ -121,7 +130,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -183,9 +192,8 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -213,9 +221,8 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -233,7 +240,7 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 
 func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
 }
 
 func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {

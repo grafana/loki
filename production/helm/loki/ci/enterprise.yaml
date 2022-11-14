@@ -23,3 +23,9 @@ write:
   persistence:
     enabled: true
     size: 100Mi
+monitoring:
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+test:
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local.:9090"

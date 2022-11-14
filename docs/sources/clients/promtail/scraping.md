@@ -254,6 +254,11 @@ When Promtail receives GCP logs, various internal labels are made available for 
 When configuring the GCP Log push target, Promtail will start an HTTP server listening on port `8080`, as configured in the `server`
 section. This server exposes the single endpoint `POST /gcp/api/v1/push`, responsible for receiving logs from GCP.
 
+For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed 
+as part of a larger orchestration service like Kubernetes, which can handle HTTPS traffic through an ingress, or it can be hosted behind
+a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured](../gcplog-cloud)
+to send logs to Promtail.
+
 It also supports `relabeling` and `pipeline` stages.
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):

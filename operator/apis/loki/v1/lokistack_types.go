@@ -323,6 +323,35 @@ type LokiTemplateSpec struct {
 	Ruler *LokiComponentSpec `json:"ruler,omitempty"`
 }
 
+// ClusterProxy is the Proxy configuration when the cluster is behind a Proxy.
+type ClusterProxy struct {
+	// HTTPProxy configures the HTTP_PROXY/http_proxy env variable.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="HTTPProxy"
+	HTTPProxy string `json:"httpProxy,omitempty"`
+	// HTTPSProxy configures the HTTPS_PROXY/https_proxy env variable.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="HTTPSProxy"
+	HTTPSProxy string `json:"httpsProxy,omitempty"`
+	// NoProxy configures the NO_PROXY/no_proxy env variable.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="NoProxy"
+	NoProxy string `json:"noProxy,omitempty"`
+	// ReadVarsFromEnv defines a flag to use Operator-lib provides a helper function
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +kubebuilder:default:=false
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="ReadVarsFromEnv"
+	ReadVarsFromEnv bool `json:"readVarsFromEnv,omitempty"`
+}
+
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
 type ObjectStorageTLSSpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
@@ -462,6 +491,14 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Query Series"
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
+
+	// Timeout when querying ingesters or storage during the execution of a query request.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:="1m"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
+	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
@@ -658,6 +695,13 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:StorageClass",displayName="Storage Class Name"
 	StorageClassName string `json:"storageClassName"`
 
+	// Proxy defines the spec for the object proxy to configure cluster proxy information.
+	//
+	// +optional
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
+	Proxy *ClusterProxy `json:"proxy"`
+
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +optional
@@ -753,6 +797,8 @@ const (
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
+	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
+	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
@@ -862,7 +908,9 @@ type LokiStackStatus struct {
 //
 // +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Ingress,v1},{Service,v1},{ServiceAccount,v1},{PersistentVolumeClaims,v1},{Route,v1},{ServiceMonitor,v1}}
 type LokiStack struct {
-	Spec              LokiStackSpec   `json:"spec,omitempty"`
+	// LokiStack CR spec field.
+	Spec LokiStackSpec `json:"spec,omitempty"`
+	// LokiStack CR spec Status.
 	Status            LokiStackStatus `json:"status,omitempty"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	metav1.TypeMeta   `json:",inline"`

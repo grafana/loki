@@ -325,7 +325,7 @@ ring:
     # reading and writing.
     # CLI flag: -distributor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
-    
+
   rate_store:
     # The max number of concurrent requests to make to ingester stream apis
     # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -625,7 +625,7 @@ remote_write:
 
   # Deprecated: Use `clients` instead
   # Configure remote write client.
-  [client: <remote_write_client_config>] 
+  [client: <remote_write_client_config>]
 
   # Configure remote write clients.
   # A map with remote client id as key.
@@ -1846,7 +1846,8 @@ the index to a backing cache store.
 <span style="background-color:#f3f973;">The memcached configuration variable addresses is experimental.</span>
 
 ```yaml
-# Enable in-memory cache.
+# NOTE: `fifocache` is deprecated. Use `embedded-cache` instead.
+# Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean>]
 
@@ -1855,6 +1856,20 @@ the index to a backing cache store.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration>]
 
+# Configures embedded cache settings.
+embedded-cache:
+  # Whether embedded cache is enabled.
+  # CLI flag: -<prefix>.embeddec-cache.enabled
+  [enabled: <bool> | default = false]
+
+  # Maximum memory size of the cache in MB.
+  # CLI flag: -<prefix>.embedded-cache.max-size-mb
+  [max_size_mb: <int> | default = 100]
+
+  # The time to live for items in the cache before they get purged.
+  # CLI flag: -<prefix>.embedded-cache.ttl
+  [ttl: <duration> | default = 1hr]
+
 # Configures the background cache when memcached is used.
 background:
   # How many goroutines to use to write back to memcached.
@@ -1862,7 +1877,7 @@ background:
   [writeback_goroutines: <int> | default = 10]
 
   # How many chunks to buffer for background write back to memcached.
-  # CLI flagL -<prefix>.background.write-back-buffer
+  # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> = 10000]
 
 # Configures memcached settings.
@@ -2308,6 +2323,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
+# Ruler alertmanager configuration per tenant.
+[ruler_alertmanager_config: <alertmanager_config>]
+
 # Retention to apply for the store, if the retention is enable on the compactor side.
 # CLI flag: -store.retention
 [retention_period: <duration> | default = 744h]
@@ -2370,7 +2388,7 @@ shard_streams:
   [enabled: <boolean> | default = false]
 
   # Enable logging when sharding streams because logging on the read path may
-  # impact performance. When disabled, stream sharding will emit no logs 
+  # impact performance. When disabled, stream sharding will emit no logs
   # regardless of log level
   #
   # CLI flag: -shard-streams.logging-enabled
@@ -2454,9 +2472,9 @@ shard_streams:
 # sign every remote write request.
 [ruler_remote_write_sigv4_config:  <sigv4_config>]
 
-# Configures global and per-tenant limits for remote write clients. 
+# Configures global and per-tenant limits for remote write clients.
 # A map with remote client id as key.
-ruler_remote_write_config:  
+ruler_remote_write_config:
   [<string>: <remote_write_client_config>]
 
 # Limit queries that can be sharded.
@@ -2503,6 +2521,56 @@ sign every remote write request.
 
 # AWS Role ARN, an alternative to using AWS API keys.
 [role_arn: <string>]
+```
+
+## alertmanager_config
+
+The `alertmanager_config` block configures the alertmanager for the ruler alerts.
+
+```yaml
+# Comma-separated list of Alertmanager URLs to send notifications to.
+# Each Alertmanager URL is treated as a separate group in the configuration.
+# Multiple Alertmanagers in HA per group can be supported by using DNS
+# resolution via -ruler.alertmanager-discovery.
+[alertmanager_url: <string> | default = ""]
+
+
+alertmanager_client:
+  # Sets the `Authorization` header on every remote write request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  [basic_auth_username: <string>]
+  [basic_auth_password: <secret>]
+
+  # Optional `Authorization` header configuration.
+  authorization:
+    # Sets the authentication type.
+    [type: <string> | default: Bearer]
+    # Sets the credentials. It is mutually exclusive with
+    # `credentials_file`.
+    [credentials: <secret>]
+    # Sets the credentials to the credentials read from the configured file.
+    # It is mutually exclusive with `credentials`.
+    [credentials_file: <filename>]
+
+# Use DNS SRV records to discover Alertmanager hosts.
+[enable_alertmanager_discovery: <boolean> | default = false]
+
+# How long to wait between refreshing DNS resolutions of Alertmanager hosts.
+[alertmanager_refresh_interval: <duration> | default = 1m]
+
+# If enabled, then requests to Alertmanager use the v2 API.
+[enable_alertmanager_v2: <boolean> | default = false]
+
+# List of alert relabel configs
+alert_relabel_configs:
+  [- <relabel_config> ...]
+
+# Capacity of the queue for notifications to be sent to the Alertmanager.
+[notification_queue_capacity: <int> | default = 10000]
+
+# HTTP timeout duration when sending notifications to the Alertmanager.
+[notification_timeout: <duration> | default = 10s]
 ```
 
 ## remote_write_client_config
@@ -2842,17 +2910,6 @@ This way, one doesn't have to replicate configuration in multiple places.
 # Address and port number where the compactor API is served.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
-
-# Groupcache is an in-process, distributed cache that behaves similarly to memcached but is built-in to Loki
-groupcache:
-  # Enable groupcache
-  # CLI flag: -common.groupcache.enabled
-  [enabled: <boolean>: default = false]
-  # Set the maximum available memory to use for each groupcache group
-  # NOTE: there are 3 caches (result, chunk, and index query), so the maximum used memory will be *triple* the value specified here.
-  # CLI flag: -common.groupcache.capacity-per-cache-mb
-  [capacity_per_cache_mb: <int>: default = 100]
-```
 
 ## analytics
 
