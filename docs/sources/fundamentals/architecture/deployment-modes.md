@@ -5,7 +5,7 @@ weight: 20
 # Deployment modes
 
 As an application, 
-Loki is built out of many component microservices,
+Loki is built out of many microservices component,
 and is designed to run as a horizontally-scalable distributed system.
 Loki's unique design compiles the code of the entire distributed system into
 a single binary or Docker image.
