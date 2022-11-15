@@ -803,3 +803,7 @@ func Test_PostFilter_OverlappingChunks(t *testing.T) {
 	require.Equal(t, "1", it.Entry().Line)
 	require.False(t, it.Next())
 }
+
+func TestCICD(t *testing.T) {
+	//TODO just trigger test
+}
