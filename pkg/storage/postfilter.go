@@ -137,7 +137,13 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	for i := 0; i < min(c.maxParallelPipelineChunk, len(chunks)); i++ {
 		go func() {
 			for cnk := range queuedChunks {
+				if ctx.Err() != nil {
+					errors <- ctx.Err()
+				}
 				cnkWithKey, err := c.pipelineExecChunk(ctx, cnk, postFilterLogSelector, s)
+				if ctx.Err() != nil {
+					errors <- ctx.Err()
+				}
 				if err != nil {
 					errors <- err
 				} else {
@@ -208,6 +214,9 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	headChunkLine := int64(0)
 	decompressedLines := int64(0)
 	for iterator.Next() {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		entry := iterator.Entry()
 		//reset line after post filter.
 		//entry.Line = iterator.ProcessLine()
