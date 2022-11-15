@@ -121,6 +121,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 # Disable the HTTP and GRPC server.
 [disable: <boolean> | default = false]
 
+# Enable the /debug/fgprof and /debug/pprof endpoints for profiling.
+[profiling_enabled: <boolean> | default = false]
+
 # HTTP server listen host
 [http_listen_address: <string>]
 
@@ -428,9 +431,10 @@ The Docker stage is just a convenience wrapper for this definition:
 
 ```yaml
 - json:
-    output: log
-    stream: stream
-    timestamp: time
+    expressions:
+      output: log
+      stream: stream
+      timestamp: time
 - labels:
     stream:
 - timestamp:
@@ -927,6 +931,9 @@ You can add additional labels with the `labels` property.
 # Allows to exclude the xml event data.
 [exclude_event_data: <bool> | default = false]
 
+# Allows to exclude the human-friendly event message.
+[exclude_event_message: <bool> | default = false]
+
 # Allows to exclude the user data of each windows event.
 [exclude_user_data: <bool> | default = false]
 
@@ -1091,7 +1098,7 @@ The list of labels below are discovered when consuming kafka:
 - `__meta_kafka_partition`: The partition id where the message has been read.
 - `__meta_kafka_member_id`: The consumer group member id.
 - `__meta_kafka_group_id`: The consumer group id.
-- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'. 
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 
@@ -1157,7 +1164,7 @@ zone_id: <string>
 # The quantity of workers that will pull logs.
 [workers: <int> | default = 3]
 
-# The type list of fields to fetch for logs. 
+# The type list of fields to fetch for logs.
 # Supported values: default, minimal, extended, all.
 [fields_type: <string> | default = default]
 
@@ -1886,13 +1893,13 @@ These labels can be used during relabeling. For instance, the following configur
 
 ```yaml
 scrape_configs:
-  - job_name: flog_scrape 
+  - job_name: flog_scrape
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
         filters:
           - name: name
-            values: [flog] 
+            values: [flog]
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'

@@ -764,12 +764,7 @@ func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, erro
 }
 
 func isDone(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
+	return ctx.Err() != nil
 }
 
 // QuerierQueryServer is the GRPC server stream we use to send batch of entries.
@@ -803,7 +798,10 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 		stats.Reset()
@@ -845,8 +843,11 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		sendSpan, _ := spanlogger.New(ctx, "instance.queryServer.SendBatch")
 		sendSpan.Span.LogFields(otlog.Int("batch.Series.size", len(batch.Series)))
-		if err := queryServer.Send(batch); err != nil {
-			sendSpan.Span.Finish()
+
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 		sendSpan.Span.Finish()

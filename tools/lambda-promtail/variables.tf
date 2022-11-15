@@ -83,3 +83,9 @@ variable "kms_key_arn" {
   description = "kms key arn for encryp env vars."
   default     = ""
 }
+
+variable "kinesis_stream_name" {
+  type        = list(string)
+  description = "Enter kinesis name if kinesis stream is configured as event source in lambda."
+  default     = []
+}

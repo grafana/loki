@@ -1,5 +1,10 @@
 ## Main
 
+- [7617](https://github.com/grafana/loki/pull/7617) **Red-GV**: Modify ingestionRate for respective shirt size
+- [7592](https://github.com/grafana/loki/pull/7592) **aminesnow**: Update API docs generation using gen-crd-api-reference-docs
+- [7448](https://github.com/grafana/loki/pull/7448) **periklis**: Add TLS support for compactor delete client
+- [7596](https://github.com/grafana/loki/pull/7596) **periklis**: Fix fresh-installs with built-in cert management enabled
+- [7064](https://github.com/grafana/loki/pull/7064) **periklis**: Add support for built-in cert management
 - [7471](https://github.com/grafana/loki/pull/7471) **aminesnow**: Expose and migrate query_timeout in limits config
 - [7437](https://github.com/grafana/loki/pull/7437) **aminesnow**: Fix Custom TLS profile setting for LokiStack on OpenShift
 - [7415](https://github.com/grafana/loki/pull/7415) **aminesnow**: Add alert relabel config

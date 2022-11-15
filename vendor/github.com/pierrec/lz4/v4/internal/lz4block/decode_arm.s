@@ -110,12 +110,12 @@ copyLiteralFinish:
 	MOVB.NE   tmp2, -1(dst)
 
 copyLiteralDone:
-	CMP src, srcend
-	BEQ end
-
 	// Initial part of match length.
 	// This frees up the token register for reuse as offset.
 	AND $15, token, len
+
+	CMP src, srcend
+	BEQ end
 
 	// Read offset.
 	ADD.S $2, src
@@ -213,6 +213,8 @@ copyMatchDone:
 	BNE loop
 
 end:
+	CMP  $0, len
+	BNE  corrupt
 	SUB  dstorig, dst, tmp1
 	MOVW tmp1, ret+36(FP)
 	RET

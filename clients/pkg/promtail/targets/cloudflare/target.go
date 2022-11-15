@@ -158,6 +158,9 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 			level.Warn(t.logger).Log("msg", "failed iterating over logs, out of cloudflare range, not retrying", "err", err, "start", start, "end", end, "retries", backoff.NumRetries())
 			return nil
 		} else if err != nil {
+			if it != nil {
+				it.Close()
+			}
 			errs.Add(err)
 			backoff.Wait()
 			continue

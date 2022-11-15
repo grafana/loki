@@ -115,6 +115,7 @@ func (cfg *Config) Validate() error {
 
 func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, *gocql.ClusterConfig, error) {
 	level.Warn(util_log.Logger).Log("msg", "Cassandra create session", "name", name, "reg", reg)
+
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
@@ -338,26 +339,13 @@ func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
 // BatchWrite implement chunk.IndexClient.
 func (s *StorageClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	err := s.batchWrite(ctx, batch)
-	if err != nil {
-		fmt.Println(time.Now(), " - cassandra BatchWrite fail,err:", err, ",errors.Cause(err):", errors.Cause(err))
-	}
-	//
 	if errors.Cause(err) == gocql.ErrNoConnections {
-		fmt.Println(time.Now(), " - cassandra BatchWrite fail,do reconnect,err:", err, ",errors.Cause(err):", errors.Cause(err))
 		connectErr := s.reconnectWriteSession()
 		if connectErr != nil {
-			fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect fail,connectErr:", connectErr)
-			return errors.Wrap(err, "BatchWrite BatchWrite reconnect fail")
+			return errors.Wrap(err, "StorageClient BatchWrite reconnect fail")
 		}
-		fmt.Println(time.Now(), " - cassandra BatchWrite fail,do reconnect success,connectErr:", connectErr)
 		// retry after reconnect
 		err = s.batchWrite(ctx, batch)
-		if err != nil {
-			fmt.Println(time.Now(), " - cassandra BatchWrite retry fail ,do reconnect success,err:", err)
-			return err
-		}
-		fmt.Println(time.Now(), " - cassandra BatchWrite retry success ,do reconnect success,err:", err)
-
 	}
 	return err
 }
@@ -431,7 +419,7 @@ func (s *StorageClient) query(ctx context.Context, query index.Query, callback i
 		// retry after reconnect
 		err = s.queryExec(ctx, query, callback)
 	}
-	return errors.Wrap(err, "query index fail")
+	return err
 }
 
 func (s *StorageClient) queryExec(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
@@ -593,25 +581,13 @@ func (s *ObjectClient) reconnectReadSession() error {
 // PutChunks implements chunk.ObjectClient.
 func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	err := s.putChunks(ctx, chunks)
-	if err != nil {
-		fmt.Println(time.Now(), " - cassandra PutChunks fail,err:", err, ",errors.Cause(err):", errors.Cause(err))
-	}
-	//
 	if errors.Cause(err) == gocql.ErrNoConnections {
-		fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect,err:", err, ",errors.Cause(err):", errors.Cause(err))
 		connectErr := s.reconnectWriteSession()
 		if connectErr != nil {
-			fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect fail,connectErr:", connectErr)
 			return errors.Wrap(err, "ObjectClient BatchWrite reconnect fail")
 		}
-		fmt.Println(time.Now(), " - cassandra PutChunks fail,do reconnect success,connectErr:", connectErr)
 		// retry after reconnect
 		err = s.putChunks(ctx, chunks)
-		if err != nil {
-			fmt.Println(time.Now(), " - cassandra PutChunks retry fail ,do reconnect success,err:", err)
-			return err
-		}
-		fmt.Println(time.Now(), " - cassandra PutChunks retry success ,do reconnect success,err:", err)
 	}
 	return err
 }
@@ -678,7 +654,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 		// retry after reconnect
 		result, err = s.getChunkExec(ctx, decodeContext, input)
 	}
-	return result, errors.Wrap(err, "get chunk fail")
+	return result, err
 }
 
 func (s *ObjectClient) getChunkExec(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {

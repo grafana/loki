@@ -325,7 +325,7 @@ ring:
     # reading and writing.
     # CLI flag: -distributor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
-    
+
   rate_store:
     # The max number of concurrent requests to make to ingester stream apis
     # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -625,7 +625,7 @@ remote_write:
 
   # Deprecated: Use `clients` instead
   # Configure remote write client.
-  [client: <remote_write_client_config>] 
+  [client: <remote_write_client_config>]
 
   # Configure remote write clients.
   # A map with remote client id as key.
@@ -1846,7 +1846,8 @@ the index to a backing cache store.
 <span style="background-color:#f3f973;">The memcached configuration variable addresses is experimental.</span>
 
 ```yaml
-# Enable in-memory cache.
+# NOTE: `fifocache` is deprecated. Use `embedded-cache` instead.
+# Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean>]
 
@@ -1855,6 +1856,20 @@ the index to a backing cache store.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration>]
 
+# Configures embedded cache settings.
+embedded-cache:
+  # Whether embedded cache is enabled.
+  # CLI flag: -<prefix>.embeddec-cache.enabled
+  [enabled: <bool> | default = false]
+
+  # Maximum memory size of the cache in MB.
+  # CLI flag: -<prefix>.embedded-cache.max-size-mb
+  [max_size_mb: <int> | default = 100]
+
+  # The time to live for items in the cache before they get purged.
+  # CLI flag: -<prefix>.embedded-cache.ttl
+  [ttl: <duration> | default = 1hr]
+
 # Configures the background cache when memcached is used.
 background:
   # How many goroutines to use to write back to memcached.
@@ -1862,7 +1877,7 @@ background:
   [writeback_goroutines: <int> | default = 10]
 
   # How many chunks to buffer for background write back to memcached.
-  # CLI flagL -<prefix>.background.write-back-buffer
+  # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> = 10000]
 
 # Configures memcached settings.
@@ -2373,7 +2388,7 @@ shard_streams:
   [enabled: <boolean> | default = false]
 
   # Enable logging when sharding streams because logging on the read path may
-  # impact performance. When disabled, stream sharding will emit no logs 
+  # impact performance. When disabled, stream sharding will emit no logs
   # regardless of log level
   #
   # CLI flag: -shard-streams.logging-enabled
@@ -2457,9 +2472,9 @@ shard_streams:
 # sign every remote write request.
 [ruler_remote_write_sigv4_config:  <sigv4_config>]
 
-# Configures global and per-tenant limits for remote write clients. 
+# Configures global and per-tenant limits for remote write clients.
 # A map with remote client id as key.
-ruler_remote_write_config:  
+ruler_remote_write_config:
   [<string>: <remote_write_client_config>]
 
 # Limit queries that can be sharded.

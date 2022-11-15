@@ -2,6 +2,45 @@
 
 ### All Changes
 
+#### Loki
+
+##### Enhancements
+
+* [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
+* [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
+
+##### Fixes
+
+##### Changes
+
+#### Promtail
+
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+
+##### Enhancements
+
+##### Fixes
+
+##### Changes
+* [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
+
+#### Fluent Bit
+
+#### Loki Canary
+
+#### Jsonnet
+
+### Notes
+
+This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+
+Check the history of the branch FIXME.
+
+### Dependencies
+
+* Go Version: 1.19
+
 ## 2.7.0
 
 #### Loki
@@ -24,8 +63,10 @@
 * [7264](https://github.com/grafana/loki/pull/7264) **bboreham**: Chunks: decode varints directly from byte buffer, for speed.
 * [7263](https://github.com/grafana/loki/pull/7263) **bboreham**: Dependencies: klauspost/compress package to v1.15.11; improves performance.
 * [7270](https://github.com/grafana/loki/pull/7270) **wilfriedroset**: Add support for `username` to redis cache configuration.
+* [6952](https://github.com/grafana/loki/pull/6952) **DylanGuedes**: Experimental: Introduce a new feature named stream sharding.
 
 ##### Fixes
+* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
 * [7426](https://github.com/grafana/loki/pull/7426) **periklis**: Add missing compactor delete client tls client config
 * [7238](https://github.com/grafana/loki/pull/7328) **periklis**: Fix internal server bootstrap for query frontend
 * [7288](https://github.com/grafana/loki/pull/7288) **ssncferreira**: Fix query mapping in AST mapper `rangemapper` to support the new `VectorExpr` expression.
@@ -45,6 +86,8 @@
 * [7212](https://github.com/grafana/loki/pull/7212) **Juneezee**: Replaces deprecated `io/ioutil` with `io` and `os`.
 * [7361](https://github.com/grafana/loki/pull/7361) **szczepad**: Renames metric `loki_log_messages_total` to `loki_internal_log_messages_total`
 * [7510](https://github.com/grafana/loki/pull/7510) **slim-bean**: Limited queries (queries without filter expressions) will now be split and sharded.
+* [5400](https://github.com/grafana/loki/pull/5400) **BenoitKnecht**: promtail/server: Disable profiling by default
+
 
 #### Promtail
 
@@ -58,10 +101,13 @@
 * [6656](https://github.com/grafana/loki/pull/6656) **carlospeon**: Allow promtail to add matches to the journal reader
 * [7401](https://github.com/grafana/loki/pull/7401) **thepalbi**: Add timeout to GCP Logs push target
 * [7414](https://github.com/grafana/loki/pull/7414) **thepalbi**: Add basic tracing support
+* [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
 
 ##### Fixes
+* [7394](https://github.com/grafana/loki/pull/7394) **liguozhong**: Fix issue with the Cloudflare target that caused it to stop working after it received an error in the logpull request as explained in issue https://github.com/grafana/loki/issues/6150
 * [6766](https://github.com/grafana/loki/pull/6766) **kavirajk**: fix(logql): Make `LabelSampleExtractor` ignore processing the line if it doesn't contain that specific label. Fixes unwrap behavior explained in the issue https://github.com/grafana/loki/issues/6713
 * [7016](https://github.com/grafana/loki/pull/7016) **chodges15**: Fix issue with dropping logs when a file based SD target's labels are updated
+* [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
 ##### Changes
 * **quodlibetor**: Change Docker target discovery log level from `Error` to `Info`
@@ -81,9 +127,9 @@
 
 ### Notes
 
-This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+This release was created from a branch starting at commit `706c22e9e40b0156031f214b63dc6ed4e210abc1` but it may also contain backported changes from main.
 
-Check the history of the branch FIXME.
+Check the history of the branch `release-2.7.x`.
 
 ### Dependencies
 
@@ -363,6 +409,7 @@ to include only the most relevant.
 
 #### Lambda-Promtail
 * [5065](https://github.com/grafana/loki/pull/5065) **AndreZiviani**: lambda-promtail: Add ability to ingest logs from S3
+* [7632](https://github.com/grafana/loki/pull/7632) **changhyuni**: lambda-promtail: Add kinesis data stream to use in terraform
 
 #### Fluent Bit
 * [5223](https://github.com/grafana/loki/pull/5223) **cyriltovena**: fluent-bit: Attempt to unmarshal nested json.
@@ -381,7 +428,6 @@ Check the history of the branch `release-2.5.x`.
 ### Dependencies
 
 * Go Version:     1.17.8
-
 
 # 2.4.1 (2021/11/07)
 

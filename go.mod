@@ -77,7 +77,7 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.1.12
+	github.com/pierrec/lz4/v4 v4.1.17
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
 	github.com/prometheus/client_model v0.2.0
@@ -86,7 +86,7 @@ require (
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
-	github.com/sony/gobreaker v0.4.1
+	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.2
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-io/thanos v0.28.0

@@ -353,6 +353,22 @@ func trunc(c int, s string) string {
 	return s
 }
 
+type Decolorizer struct{}
+
+// RegExp to select ANSI characters courtesy of https://github.com/acarl005/stripansi
+const ansiPattern = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+
+var ansiRegex = regexp.MustCompile(ansiPattern)
+
+func NewDecolorizer() (*Decolorizer, error) {
+	return &Decolorizer{}, nil
+}
+
+func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return ansiRegex.ReplaceAll(line, []byte{}), true
+}
+func (Decolorizer) RequiredLabelNames() []string { return []string{} }
+
 // substring creates a substring of the given string.
 //
 // If start is < 0, this calls string[:end].

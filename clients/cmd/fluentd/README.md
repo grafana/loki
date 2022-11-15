@@ -82,6 +82,15 @@ The expected output is:
 ]
 ```
 
+## Build and publish gem
+
+To build and publish a gem to
+[rubygems](https://rubygems.org/gems/fluent-plugin-grafana-loki) you first need
+to update the version in the `fluent-plugin-grafana-loki.gemspec` file.
+Then update the `VERSION` variable in the `Makefile` to match the new version number.
+Create a PR with the changes against the `main` branch und run `make
+fluentd-plugin-push` from the root of the project once the PR has been merged.
+
 ## Copyright
 
 * Copyright(c) 2018- Grafana Labs

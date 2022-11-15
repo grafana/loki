@@ -1315,6 +1315,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.querier</td>
+			<td>object</td>
+			<td>Optional querier configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.query_scheduler</td>
 			<td>object</td>
 			<td>Additional query scheduler config</td>
@@ -1978,7 +1987,7 @@ null
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance.annotations</td>
 			<td>object</td>
-			<td>MerticsInstance annotations</td>
+			<td>MetricsInstance annotations</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1996,7 +2005,7 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance.labels</td>
 			<td>object</td>
-			<td>Additional MatricsInstance labels</td>
+			<td>Additional MetricsInstance labels</td>
 			<td><pre lang="json">
 {}
 </pre>

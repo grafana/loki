@@ -51,7 +51,7 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := c.reconnectTableSession()
 		if connectErr != nil {
-			return nil, errors.Wrap(err, "ObjectClient getChunk reconnect fail")
+			return nil, errors.Wrap(err, "tableClient ListTables reconnect fail")
 		}
 		// retry after reconnect
 		result, err = c.listTables()
@@ -77,13 +77,14 @@ func (c *tableClient) CreateTable(ctx context.Context, desc config.TableDesc) er
 	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := c.reconnectTableSession()
 		if connectErr != nil {
-			return errors.Wrap(err, "ObjectClient createTable reconnect fail")
+			return errors.Wrap(err, "tableClient CreateTable reconnect fail")
 		}
 		// retry after reconnect
 		err = c.createTable(ctx, desc)
 	}
 	return err
 }
+
 func (c *tableClient) createTable(ctx context.Context, desc config.TableDesc) error {
 	query := c.getCreateTableQuery(&desc)
 	err := c.session.Query(query).WithContext(ctx).Exec()
@@ -96,7 +97,8 @@ func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	if errors.Cause(err) == gocql.ErrNoConnections {
 		connectErr := c.reconnectTableSession()
 		if connectErr != nil {
-			return errors.Wrap(err, "ObjectClient deleteTable reconnect fail")
+
+			return errors.Wrap(err, "tableClient DeleteTable reconnect fail")
 		}
 		// retry after reconnect
 		err = c.deleteTable(ctx, name)

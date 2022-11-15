@@ -173,6 +173,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.querier }}
+    querier:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
 
@@ -258,6 +263,9 @@ loki:
 
   # --  Optional analytics configuration
   analytics: {}
+
+  # --  Optional querier configuration
+  querier: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
@@ -635,9 +643,9 @@ monitoring:
     metricsInstance:
       # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
       enabled: true
-      # -- MerticsInstance annotations
+      # -- MetricsInstance annotations
       annotations: {}
-      # -- Additional MatricsInstance labels
+      # -- Additional MetricsInstance labels
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null

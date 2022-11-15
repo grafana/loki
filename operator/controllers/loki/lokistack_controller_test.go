@@ -178,6 +178,17 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			},
 			pred: updateOrDeleteOnlyPred,
 		},
+		{
+			obj:           &openshiftconfigv1.Proxy{},
+			index:         11,
+			ownCallsCount: 12,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					ClusterProxy: true,
+				},
+			},
+			pred: updateOrDeleteOnlyPred,
+		},
 	}
 	for _, tst := range table {
 		b := &k8sfakes.FakeBuilder{}

@@ -270,6 +270,25 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:Managed
         - urn:alm:descriptor:com.tectonic.ui:select:Unmanaged
+      - description: Proxy defines the spec for the object proxy to configure cluster
+          proxy information.
+        displayName: Cluster Proxy
+        path: proxy
+      - description: HTTPProxy configures the HTTP_PROXY/http_proxy env variable.
+        displayName: HTTPProxy
+        path: proxy.httpProxy
+      - description: HTTPSProxy configures the HTTPS_PROXY/https_proxy env variable.
+        displayName: HTTPSProxy
+        path: proxy.httpsProxy
+      - description: NoProxy configures the NO_PROXY/no_proxy env variable.
+        displayName: NoProxy
+        path: proxy.noProxy
+      - description: ReadVarsFromEnv defines a flag to use Operator-lib provides a
+          helper function
+        displayName: ReadVarsFromEnv
+        path: proxy.readVarsFromEnv
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: ReplicationFactor defines the policy for log stream replication.
         displayName: Replication Factor
         path: replicationFactor
