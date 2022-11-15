@@ -11,7 +11,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.write.service.type }}
   ports:
     - name: http-metrics
       port: 3100
