@@ -487,14 +487,7 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			log, ctx := spanlogger.New(req.Context(), call)
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
-				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-				return
-			}
-
-			// Enforce the query timeout while querying backends
+			userID, _ := tenant.TenantID(ctx)
 			queryTimeout := q.limits.QueryTimeout(userID)
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
 			if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
