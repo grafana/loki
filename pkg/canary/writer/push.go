@@ -63,7 +63,7 @@ func NewPush(
 	cfg config.HTTPClientConfig,
 	labelName, labelValue string,
 	streamName, streamValue string,
-	useTls bool,
+	useTLS bool,
 	tlsCfg *tls.Config,
 	caFile string,
 	username, password string,
@@ -91,7 +91,7 @@ func NewPush(
 		scheme = "https"
 	}
 
-	if useTls {
+	if useTLS {
 		scheme = "https"
 	}
 
