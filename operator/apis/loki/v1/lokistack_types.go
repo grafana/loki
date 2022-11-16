@@ -693,7 +693,7 @@ type LokiStackSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
-	Proxy *ClusterProxy `json:"proxy"`
+	Proxy *ClusterProxy `json:"proxy,omitempty"`
 
 	// ReplicationFactor defines the policy for log stream replication.
 	//
