@@ -25,8 +25,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -64,6 +66,7 @@ var (
 		},
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
+	globalMapHandler = handler.EnqueueRequestsFromMapFunc(state.GetLokiStackEvents)
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -97,7 +100,7 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ok, err := state.IsManaged(ctx, req, r.Client)
+	ok, err := state.IsManaged(ctx, req, r.Client, r.Log)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
@@ -109,6 +112,9 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Stop requeueing for unmanaged LokiStack custom resources
 		return ctrl.Result{}, nil
 	}
+
+	// keep track of the fact that we processed this for future events and for mapping
+	state.RegisterLokiStackNamespacedName(r.Log, req)
 
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
 		err = handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
@@ -163,6 +169,17 @@ func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request,
 // SetupWithManager sets up the controller with the Manager.
 func (r *LokiStackReconciler) SetupWithManager(mgr manager.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr)
+
+	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
+		// Watch for updates to the global apiserver config.
+		b = b.Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, globalMapHandler, builder.WithPredicates(predicate.Funcs{
+			UpdateFunc:  func(e event.UpdateEvent) bool { return true },
+			DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+			CreateFunc:  func(e event.CreateEvent) bool { return true },
+			GenericFunc: func(e event.GenericEvent) bool { return false },
+		}))
+	}
+
 	return r.buildController(k8s.NewCtrlBuilder(b))
 }
 
@@ -188,10 +205,6 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
 	} else {
 		bld = bld.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)
-	}
-
-	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
-		bld = bld.Owns(&openshiftconfigv1.APIServer{}, updateOrDeleteOnlyPred)
 	}
 
 	if r.FeatureGates.OpenShift.ClusterProxy {

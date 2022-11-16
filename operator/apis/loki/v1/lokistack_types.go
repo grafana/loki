@@ -908,9 +908,9 @@ type LokiStackStatus struct {
 //
 // +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Ingress,v1},{Service,v1},{ServiceAccount,v1},{PersistentVolumeClaims,v1},{Route,v1},{ServiceMonitor,v1}}
 type LokiStack struct {
-	// LokiStack CR spec field.
+	// LokiStackSpec defines the desired state of LokiStack
 	Spec LokiStackSpec `json:"spec,omitempty"`
-	// LokiStack CR spec Status.
+	// LokiStackStatus defines the observed state of LokiStack
 	Status            LokiStackStatus `json:"status,omitempty"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	metav1.TypeMeta   `json:",inline"`

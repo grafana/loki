@@ -39,7 +39,7 @@ type CertRotationReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	managed, err := state.IsManaged(ctx, req, r.Client)
+	managed, err := state.IsManaged(ctx, req, r.Client, r.Log)
 	if err != nil {
 		return ctrl.Result{
 			Requeue: true,
