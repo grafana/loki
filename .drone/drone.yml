@@ -1203,19 +1203,19 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
-  - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
-    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" | sed "s/\./-/g" || echo "next")
+  - export RELEASE_TAG=$(cat .tag)
+  - export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG
+    | grep -oE "([0-9]+\.[0-9]+)" | sed "s/\./-/g" | sed "s/$/-x/" || echo "next")
   - echo $RELEASE_NAME
-  - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
   - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
+  - cat updater-config.json
   depends_on:
   - clone
   environment:
-    RELEASE_BRANCH_REGEXP: ^release-([0-9\.x]+)$
+    RELEASE_TAG_REGEXP: ^([0-9]+\.[0-9]+\.[0-9]+)$
   image: alpine
   name: prepare-updater-config
   settings:
@@ -1610,6 +1610,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 7103f179cdc3517cf3ddb2d31c3ead90a400dd5416558ef4cccf5d54063cc923
+hmac: dabdcd6c70862e27138d18737c729fcaac8b9ade194183567fe693f8d91e1d20
 
 ...
