@@ -292,7 +292,6 @@ spec:
                     type: string
                 type: object
               replicationFactor:
-                default: 1
                 description: ReplicationFactor defines the policy for log stream replication.
                 format: int32
                 minimum: 1
