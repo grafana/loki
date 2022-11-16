@@ -52,12 +52,22 @@ var (
 	})
 	updateOrDeleteOnlyPred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// Update only if generation or annotations change, filter out anything else.
-			// We only need to check generation or annotations change here, because it is only
-			// updated on spec changes. On the other hand RevisionVersion
-			// changes also on status changes. We want to omit reconciliation
-			// for status updates for now.
-			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+			switch e.ObjectOld.(type) {
+			case *openshiftconfigv1.Proxy:
+				// Update on any change of the RevisionVersion to capture
+				// status updates for the proxy object. On OpenShift the
+				// proxy status indicates that values for httpProxy/httpsProxy/noProxy
+				// are valid after considering the readiness probes to access
+				// the public net through these proxies.
+				return true
+			default:
+				// Update only if generation change, filter out anything else.
+				// We only need to check generation change here, because it is only
+				// updated on spec changes. On the other hand RevisionVersion
+				// changes also on status changes. We want to omit reconciliation
+				// for status updates for now.
+				return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+			}
 		},
 		CreateFunc: func(e event.CreateEvent) bool { return false },
 		DeleteFunc: func(e event.DeleteEvent) bool {
