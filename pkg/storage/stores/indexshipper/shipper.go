@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -48,9 +49,8 @@ type IndexShipper interface {
 	// ForEach lets us iterates through each index file in a table for a specific user.
 	// On the write path, it would iterate on the files given to the shipper for uploading, until they eventually get dropped from local disk.
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
-	// Note: The index files would be locked until the passed ctx is cancelled to avoid making any changes to the index
-	// while it is being queried.
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	Stop()
 }
 
@@ -177,12 +177,32 @@ func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, ca
 	}
 
 	if s.uploadsManager != nil {
-		if err := s.uploadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
+		if err := s.uploadsManager.ForEach(tableName, userID, callback); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	if s.downloadsManager != nil {
+		g.Go(func() error {
+			return s.downloadsManager.ForEachConcurrent(ctx, tableName, userID, callback)
+		})
+	}
+
+	if s.uploadsManager != nil {
+		g.Go(func() error {
+			// NB: uploadsManager doesn't yet implement ForEachConcurrent
+			return s.uploadsManager.ForEach(tableName, userID, callback)
+		})
+	}
+
+	return g.Wait()
 }
 
 func (s *indexShipper) Stop() {

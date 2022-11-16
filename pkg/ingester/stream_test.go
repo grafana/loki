@@ -61,6 +61,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 					{Name: "foo", Value: "bar"},
 				},
 				true,
+				NewStreamRateCalculator(),
 				NilMetrics,
 			)
 
@@ -107,6 +108,7 @@ func TestPushDeduplication(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -136,6 +138,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -230,6 +233,7 @@ func TestUnorderedPush(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -326,6 +330,7 @@ func TestPushRateLimit(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -359,6 +364,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -391,6 +397,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -441,7 +448,7 @@ func Benchmark_PushStream(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 

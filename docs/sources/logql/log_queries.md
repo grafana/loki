@@ -183,13 +183,23 @@ log stream selectors have been applied.
 
 Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
+
+### Removing color codes
+
+Line filter expressions support stripping ANSI sequences (color codes) from
+the line:
+
+```
+{job="example"} | decolorize
+```
+
 ### Label filter expression
 
 Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
-For example with `cluster="namespace"` the cluster is the label identifier, the operation is `=` and the value is "namespace". The label identifier is always on the right side of the operation.
+For example with `cluster="namespace"` the cluster is the label identifier, the operation is `=` and the value is "namespace". The label identifier is always on the left side of the operation.
 
 We support multiple **value** types which are automatically inferred from the query input.
 

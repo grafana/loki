@@ -1,0 +1,25 @@
+$ go test -bench=BenchmarkProfilerGoroutines
+goos: darwin
+goarch: amd64
+pkg: github.com/felixge/fgprof
+BenchmarkProfilerGoroutines/1_goroutines-8         	  43431	    26860 ns/op
+BenchmarkProfilerGoroutines/2_goroutines-8         	  42590	    27648 ns/op
+BenchmarkProfilerGoroutines/4_goroutines-8         	  40725	    28694 ns/op
+BenchmarkProfilerGoroutines/8_goroutines-8         	  37874	    31067 ns/op
+BenchmarkProfilerGoroutines/16_goroutines-8        	  32778	    37302 ns/op
+BenchmarkProfilerGoroutines/32_goroutines-8        	  25447	    47171 ns/op
+BenchmarkProfilerGoroutines/64_goroutines-8        	  17937	    66803 ns/op
+BenchmarkProfilerGoroutines/128_goroutines-8       	  11138	   108283 ns/op
+BenchmarkProfilerGoroutines/256_goroutines-8       	   5232	   191830 ns/op
+BenchmarkProfilerGoroutines/512_goroutines-8       	   2848	   351686 ns/op
+BenchmarkProfilerGoroutines/1024_goroutines-8      	   1611	   681412 ns/op
+BenchmarkProfilerGoroutines/2048_goroutines-8      	    846	  1396125 ns/op
+BenchmarkProfilerGoroutines/4096_goroutines-8      	    358	  3286943 ns/op
+BenchmarkProfilerGoroutines/8192_goroutines-8      	    153	  7813804 ns/op
+BenchmarkProfilerGoroutines/16384_goroutines-8     	     70	 16440643 ns/op
+BenchmarkProfilerGoroutines/32768_goroutines-8     	     33	 34101649 ns/op
+BenchmarkProfilerGoroutines/65536_goroutines-8     	     16	 68460458 ns/op
+BenchmarkProfilerGoroutines/131072_goroutines-8    	      8	134481118 ns/op
+BenchmarkProfilerGoroutines/262144_goroutines-8    	      4	270522885 ns/op
+BenchmarkProfilerGoroutines/524288_goroutines-8    	      2	567821104 ns/op
+BenchmarkProfilerGoroutines/1048576_goroutines-8   	      1	1202184643 ns/op

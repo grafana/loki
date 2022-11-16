@@ -2,6 +2,8 @@ package util
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"runtime/debug"
 	"unsafe"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
+const maxStackSize = 8 * 1024
 const sep = "\xff"
 
 func BuildIndexFileName(tableName, uploader, dbName string) string {
@@ -48,6 +51,7 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			logPanic(r)
 			res.err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
 		}
 
@@ -84,4 +88,11 @@ func GetUnsafeBytes(s string) []byte {
 
 func GetUnsafeString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
+}
+
+func logPanic(p interface{}) {
+	stack := make([]byte, maxStackSize)
+	stack = stack[:runtime.Stack(stack, true)]
+	// keep a multiline stack
+	fmt.Fprintf(os.Stderr, "panic: %v\n%s", p, stack)
 }

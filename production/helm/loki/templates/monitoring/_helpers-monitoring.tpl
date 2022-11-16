@@ -8,7 +8,7 @@ Client definition for LogsInstance
   {{- $url = printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- else if .Values.gateway.enabled -}}
   {{- $url = printf "http://%s.%s.svc.%s/loki/api/v1/push" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
-{{- end }}
+{{- end -}}
 - url: {{ $url }}
   externalLabels:
     cluster: {{ include "loki.fullname" . }}

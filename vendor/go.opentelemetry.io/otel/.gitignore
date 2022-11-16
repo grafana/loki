@@ -11,6 +11,7 @@ coverage.*
 gen/
 
 /example/fib/fib
+/example/fib/traces.txt
 /example/jaeger/jaeger
 /example/namedtracer/namedtracer
 /example/opencensus/opencensus

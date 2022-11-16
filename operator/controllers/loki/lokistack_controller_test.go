@@ -85,55 +85,61 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:           &corev1.ConfigMap{},
 			index:         0,
-			ownCallsCount: 10,
+			ownCallsCount: 11,
+			pred:          updateOrDeleteOnlyPred,
+		},
+		{
+			obj:           &corev1.Secret{},
+			index:         1,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &corev1.ServiceAccount{},
-			index:         1,
-			ownCallsCount: 10,
+			index:         2,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &corev1.Service{},
-			index:         2,
-			ownCallsCount: 10,
+			index:         3,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &appsv1.Deployment{},
-			index:         3,
-			ownCallsCount: 10,
+			index:         4,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &appsv1.StatefulSet{},
-			index:         4,
-			ownCallsCount: 10,
+			index:         5,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.ClusterRole{},
-			index:         5,
-			ownCallsCount: 10,
+			index:         6,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.ClusterRoleBinding{},
-			index:         6,
-			ownCallsCount: 10,
+			index:         7,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.Role{},
-			index:         7,
-			ownCallsCount: 10,
+			index:         8,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.RoleBinding{},
-			index:         8,
-			ownCallsCount: 10,
+			index:         9,
+			ownCallsCount: 11,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		// The next two share the same index, because the
@@ -141,8 +147,8 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		// or a Route (i.e. OpenShift).
 		{
 			obj:           &networkingv1.Ingress{},
-			index:         9,
-			ownCallsCount: 10,
+			index:         10,
+			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					GatewayRoute: false,
@@ -152,8 +158,8 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		},
 		{
 			obj:           &routev1.Route{},
-			index:         9,
-			ownCallsCount: 10,
+			index:         10,
+			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					GatewayRoute: true,
@@ -163,11 +169,22 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		},
 		{
 			obj:           &openshiftconfigv1.APIServer{},
-			index:         10,
-			ownCallsCount: 11,
+			index:         11,
+			ownCallsCount: 12,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterTLSPolicy: true,
+				},
+			},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:           &openshiftconfigv1.Proxy{},
+			index:         11,
+			ownCallsCount: 12,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					ClusterProxy: true,
 				},
 			},
 			pred: updateOrDeleteOnlyPred,

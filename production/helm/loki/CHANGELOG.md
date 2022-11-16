@@ -11,7 +11,27 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-## 3.2.1 
+## 3.3.3
+
+- [BUGFIX] Add missing label `prometheus.io/service-monitor: "false"` to single-binary headless service
+
+## 3.3.2
+
+- [BUGFIX] Fixed indentation in single-binary pdb template
+
+## 3.3.1
+
+- [BUGFIX] Fix invalid ruler config when filesystem storage is being used
+
+## 3.3.0
+
+- [CHANGE] Remove ServiceMonitor and PrometheusRule CRD
+
+## 3.2.2
+
+- [CHANGE] Add envFrom section to the tokengen job
+
+## 3.2.1
 
 - [BUGFIX] Fixed k8s selectors in k8s Service for single-binary mode.
 
@@ -27,7 +47,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Default minio replicas to 1 node with 2 drives. The old config used the default, which was 16 nodes with 1 drive each.
 - [BUGFIX] Minio subchart values `accessKey` and `secretKey` were removed in the new chart and replaced with `rootUser` and `rootPassword`.
-- [Cahnge] The tokengen job no longer creates a `grafana-token`, as the base64 encoding was not working in a Grafana Enterprise GEL plugin installation.
+- [CHANGE] The tokengen job no longer creates a `grafana-token`, as the base64 encoding was not working in a Grafana Enterprise GEL plugin installation.
 
 ## 3.0.0
 

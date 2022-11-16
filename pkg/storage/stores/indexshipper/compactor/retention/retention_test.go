@@ -208,7 +208,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
 	labelsBuilder.Set(labels.MetricName, "logs")
-	metric := labelsBuilder.Labels()
+	metric := labelsBuilder.Labels(nil)
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
 

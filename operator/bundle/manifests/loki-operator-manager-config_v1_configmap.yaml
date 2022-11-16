@@ -26,6 +26,16 @@ data:
       #
       httpEncryption: true
       grpcEncryption: true
+      builtInCertManagement:
+        enabled: true
+        # CA certificate validity: 5 years
+        caValidity: 43830h
+        # CA certificate refresh at 80% of validity
+        caRefresh: 35064h
+        # Target certificate validity: 90d
+        certValidity: 2160h
+        # Target certificate refresh at 80% of validity
+        certRefresh: 1728h
       #
       # Component feature gates
       #
@@ -47,6 +57,7 @@ data:
         gatewayRoute: true
         ruleExtendedValidation: true
         clusterTLSPolicy: true
+        clusterProxy: true
 kind: ConfigMap
 metadata:
   labels:

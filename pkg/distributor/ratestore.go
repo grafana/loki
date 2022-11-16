@@ -3,10 +3,11 @@ package distributor
 import (
 	"context"
 	"flag"
+	"strconv"
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/weaveworks/common/instrument"
 
@@ -16,14 +17,14 @@ import (
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+const keySeparator = ":"
 
 type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
@@ -38,7 +39,7 @@ type RateStoreConfig struct {
 func (cfg *RateStoreConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MaxParallelism, prefix+".max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
 	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
-	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", time.Second, "Timeout for communication between distributors and ingesters when updating rates")
+	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", 500*time.Millisecond, "Timeout for communication between distributors and any given ingester when updating rates")
 }
 
 type ingesterClient struct {
@@ -46,52 +47,41 @@ type ingesterClient struct {
 	client logproto.StreamDataClient
 }
 
-type overrides interface {
-	AllByUserID() map[string]*validation.Limits
+type expiringRate struct {
+	createdAt time.Time
+	rate      int64
 }
 
 type rateStore struct {
 	services.Service
 
-	ring                   ring.ReadRing
-	clientPool             poolClientFactory
-	rates                  map[uint64]int64
-	rateLock               sync.RWMutex
-	rateCollectionInterval time.Duration
-	ingesterTimeout        time.Duration
-	maxParallelism         int
-	rateRefreshFailures    *prometheus.CounterVec
-	refreshDuration        *instrument.HistogramCollector
-	overrides              overrides
+	ring            ring.ReadRing
+	clientPool      poolClientFactory
+	rates           map[string]expiringRate
+	rateLock        sync.RWMutex
+	rateKeepAlive   time.Duration
+	ingesterTimeout time.Duration
+	maxParallelism  int
+	limits          Limits
+
+	metrics *ratestoreMetrics
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, o overrides, registerer prometheus.Registerer) *rateStore { //nolint
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
-		ring:                   r,
-		clientPool:             cf,
-		rateCollectionInterval: cfg.StreamRateUpdateInterval,
-		maxParallelism:         cfg.MaxParallelism,
-		ingesterTimeout:        cfg.IngesterReqTimeout,
-		overrides:              o,
-		rateRefreshFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "rate_store_refresh_failures_total",
-			Help:      "The total number of failed attempts to refresh the distributor's view of stream rates",
-		}, []string{"source"}),
-		refreshDuration: instrument.NewHistogramCollector(
-			promauto.With(registerer).NewHistogramVec(
-				prometheus.HistogramOpts{
-					Namespace: "loki",
-					Name:      "rate_store_refresh_duration_seconds",
-					Help:      "Time spent refreshing the rate store",
-					Buckets:   prometheus.DefBuckets,
-				}, instrument.HistogramCollectorBuckets,
-			),
-		),
+		ring:            r,
+		clientPool:      cf,
+		maxParallelism:  cfg.MaxParallelism,
+		ingesterTimeout: cfg.IngesterReqTimeout,
+		rateKeepAlive:   10 * time.Minute,
+		limits:          l,
+		metrics:         newRateStoreMetrics(registerer),
+		rates:           make(map[string]expiringRate),
 	}
 
+	rateCollectionInterval := util.DurationWithJitter(cfg.StreamRateUpdateInterval, 0.2)
 	s.Service = services.
-		NewTimerService(s.rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
+		NewTimerService(rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
 		WithName("rate store")
 
 	return s
@@ -102,14 +92,14 @@ func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
 		return nil
 	}
 
-	return instrument.CollectedRequest(ctx, "GetAllStreamRates", s.refreshDuration, instrument.ErrorCode, s.updateAllRates)
+	return instrument.CollectedRequest(ctx, "GetAllStreamRates", s.metrics.refreshDuration, instrument.ErrorCode, s.updateAllRates)
 }
 
 func (s *rateStore) updateAllRates(ctx context.Context) error {
 	clients, err := s.getClients()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting ingester clients", "err", err)
-		s.rateRefreshFailures.WithLabelValues("ring").Inc()
+		s.metrics.rateRefreshFailures.WithLabelValues("ring").Inc()
 		return nil // Don't fail the service because we have an error getting the clients once
 	}
 
@@ -118,19 +108,39 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
-	s.rates = rates
+
+	for stream, rate := range rates {
+		s.rates[stream] = expiringRate{
+			rate:      rate,
+			createdAt: time.Now(),
+		}
+	}
+
+	var maxRate int64
+	for stream, rate := range s.rates {
+		if time.Since(rate.createdAt) > s.rateKeepAlive {
+			delete(s.rates, stream)
+			continue
+		}
+
+		maxRate = max(maxRate, rate.rate)
+	}
+
+	s.metrics.maxStreamRate.Set(float64(maxRate))
+	s.metrics.streamCount.Set(float64(len(s.rates)))
 
 	return nil
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
-	limits := s.overrides.AllByUserID()
+	limits := s.limits.AllByUserID()
 	if limits == nil {
-		return false
+		// There aren't any tenant limits, check the default
+		return s.limits.ShardStreams("fake").Enabled
 	}
 
-	for _, l := range limits {
-		if l.ShardStreams.Enabled {
+	for user := range limits {
+		if s.limits.ShardStreams(user).Enabled {
 			return true
 		}
 	}
@@ -138,20 +148,39 @@ func (s *rateStore) anyShardingEnabled() bool {
 	return false
 }
 
-func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate) map[uint64]int64 {
-	rates := make(map[uint64]int64)
+func (s *rateStore) aggregateByShard(streamRates map[string]*logproto.StreamRate) map[string]int64 {
+	shardCount := make(map[string]int)
+	rates := make(map[string]int64)
+
 	for _, sr := range streamRates {
-		if _, ok := rates[sr.StreamHashNoShard]; ok {
-			rates[sr.StreamHashNoShard] += sr.Rate
+		key := key(sr.Tenant, sr.StreamHashNoShard)
+		shardCount[key]++
+
+		if _, ok := rates[key]; ok {
+			rates[key] += sr.Rate
 			continue
 		}
 
-		rates[sr.StreamHashNoShard] = sr.Rate
+		rates[key] = sr.Rate
 	}
+
+	var maxShards int64
+	for _, v := range shardCount {
+		maxShards = max(maxShards, int64(v))
+	}
+
+	s.metrics.maxStreamShardCount.Set(float64(maxShards))
 	return rates
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[uint64]*logproto.StreamRate {
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]*logproto.StreamRate {
 	parallelClients := make(chan ingesterClient, len(clients))
 	responses := make(chan *logproto.StreamRatesResponse, len(clients))
 
@@ -164,7 +193,7 @@ func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[
 	}
 	close(parallelClients)
 
-	return ratesPerStream(responses, len(clients))
+	return s.ratesPerStream(responses, len(clients))
 }
 
 func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan ingesterClient, responses chan *logproto.StreamRatesResponse) {
@@ -174,7 +203,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 		resp, err := c.client.GetStreamRates(ctx, &logproto.StreamRatesRequest{})
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "unable to get stream rates", "err", err)
-			s.rateRefreshFailures.WithLabelValues(c.addr).Inc()
+			s.metrics.rateRefreshFailures.WithLabelValues(c.addr).Inc()
 		}
 
 		responses <- resp
@@ -182,8 +211,9 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[uint64]*logproto.StreamRate {
-	streamRates := make(map[uint64]*logproto.StreamRate)
+func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]*logproto.StreamRate {
+	var maxRate int64
+	streamRates := make(map[string]*logproto.StreamRate)
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
 		if resp == nil {
@@ -192,18 +222,22 @@ func ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses
 
 		for j := 0; j < len(resp.StreamRates); j++ {
 			rate := resp.StreamRates[j]
+			key := key(rate.Tenant, rate.StreamHash)
 
-			if r, ok := streamRates[rate.StreamHash]; ok {
+			maxRate = max(maxRate, rate.Rate)
+
+			if r, ok := streamRates[key]; ok {
 				if r.Rate < rate.Rate {
-					streamRates[rate.StreamHash] = rate
+					streamRates[key] = rate
 				}
 				continue
 			}
 
-			streamRates[rate.StreamHash] = rate
+			streamRates[key] = rate
 		}
 	}
 
+	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
 	return streamRates
 }
 
@@ -226,9 +260,13 @@ func (s *rateStore) getClients() ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(streamHash uint64) int64 {
+func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
-	return s.rates[streamHash]
+	return s.rates[key(tenant, streamHash)].rate
+}
+
+func key(tenant string, hash uint64) string {
+	return tenant + keySeparator + strconv.FormatUint(hash, 10)
 }

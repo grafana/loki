@@ -2,9 +2,6 @@ package openshift
 
 import (
 	"fmt"
-	"path"
-	"regexp"
-	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
@@ -39,8 +36,6 @@ var (
 	networkTenants = []string{
 		tenantNetwork,
 	}
-
-	logsEndpointRe = regexp.MustCompile(`.*logs..*.endpoint.*`)
 )
 
 // GetTenants return the slice of all supported tenants for a specified mode
@@ -62,110 +57,18 @@ func GetTenants(mode lokiv1.ModeType) []string {
 func ConfigureGatewayDeployment(
 	d *appsv1.Deployment,
 	mode lokiv1.ModeType,
-	gwContainerName string,
-	secretVolumeName, tlsDir, certFile, keyFile string,
-	caBundleVolumeName, caDir, caFile string,
-	withTLS, withCertSigningService bool,
-	secretName, serverName string,
-	gatewayHTTPPort int,
-	minTLSVersion string,
-	ciphers string,
+	secretVolumeName, tlsDir string,
+	minTLSVersion, ciphers string,
+	withTLS bool,
 ) error {
-	var gwIndex int
-	for i, c := range d.Spec.Template.Spec.Containers {
-		if c.Name == gwContainerName {
-			gwIndex = i
-			break
-		}
-	}
-
-	gwContainer := d.Spec.Template.Spec.Containers[gwIndex].DeepCopy()
-	gwArgs := gwContainer.Args
-	gwVolumes := d.Spec.Template.Spec.Volumes
-
-	if withCertSigningService {
-		for i, a := range gwArgs {
-			if logsEndpointRe.MatchString(a) {
-				gwContainer.Args[i] = strings.Replace(a, "http", "https", 1)
-			}
-		}
-
-		gwArgs = append(gwArgs, fmt.Sprintf("--logs.tls.ca-file=%s/%s", caDir, caFile))
-
-		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      caBundleVolumeName,
-			ReadOnly:  true,
-			MountPath: caDir,
-		})
-
-		gwVolumes = append(gwVolumes, corev1.Volume{
-			Name: caBundleVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					DefaultMode: &defaultConfigMapMode,
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: caBundleVolumeName,
-					},
-				},
-			},
-		})
-	}
-
-	for i, a := range gwArgs {
-		if strings.HasPrefix(a, "--web.healthchecks.url=") {
-			gwArgs[i] = fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort)
-			break
-		}
-	}
-
-	certFilePath := path.Join(tlsDir, certFile)
-	keyFilePath := path.Join(tlsDir, keyFile)
-	caFilePath := path.Join(caDir, caFile)
-	gwArgs = append(gwArgs,
-		"--tls.client-auth-type=NoClientCert",
-		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
-		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
-		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
-		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName))
-
-	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
-	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
-
-	// Create and mount TLS secrets volumes if not already created.
-	if !withTLS {
-		gwVolumes = append(gwVolumes, corev1.Volume{
-			Name: secretVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: secretName,
-				},
-			},
-		})
-
-		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      secretVolumeName,
-			ReadOnly:  true,
-			MountPath: tlsDir,
-		})
-
-		// Add TLS profile info args since openshift gateway always uses TLS.
-		gwArgs = append(gwArgs,
-			fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
-			fmt.Sprintf("--tls.cipher-suites=%s", ciphers))
-	}
-
-	gwContainer.Args = gwArgs
-
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
-			*gwContainer,
-			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, certFile, keyFile, minTLSVersion, ciphers, withTLS),
+			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS),
 		},
-		Volumes: gwVolumes,
 	}
 
-	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
 	}
 
@@ -198,13 +101,15 @@ func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS boo
 	var opaEndpoint monitoringv1.Endpoint
 
 	if withTLS {
+		bearerTokenSecret := sm.Spec.Endpoints[0].BearerTokenSecret
 		tlsConfig := sm.Spec.Endpoints[0].TLSConfig
+
 		opaEndpoint = monitoringv1.Endpoint{
-			Port:            opaMetricsPortName,
-			Path:            "/metrics",
-			Scheme:          "https",
-			BearerTokenFile: bearerTokenFile,
-			TLSConfig:       tlsConfig,
+			Port:              opaMetricsPortName,
+			Path:              "/metrics",
+			Scheme:            "https",
+			BearerTokenSecret: bearerTokenSecret,
+			TLSConfig:         tlsConfig,
 		}
 	} else {
 		opaEndpoint = monitoringv1.Endpoint{
@@ -225,66 +130,11 @@ func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS boo
 	return nil
 }
 
-// ConfigureQueryFrontendDeployment configures use of TLS when enabled.
-func ConfigureQueryFrontendDeployment(
-	d *appsv1.Deployment,
-	proxyURL string,
-	qfContainerName string,
-	caBundleVolumeName, caDir, caFile string,
-) error {
-	var qfIdx int
-	for i, c := range d.Spec.Template.Spec.Containers {
-		if c.Name == qfContainerName {
-			qfIdx = i
-			break
-		}
-	}
-
-	containerSpec := corev1.Container{
-		Args: []string{
-			fmt.Sprintf("-frontend.tail-proxy-url=%s", proxyURL),
-			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      caBundleVolumeName,
-				ReadOnly:  true,
-				MountPath: caDir,
-			},
-		},
-	}
-
-	p := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: caBundleVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: caBundleVolumeName,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[qfIdx], containerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to add tls config args")
-	}
-
-	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to add tls volumes")
-	}
-
-	return nil
-}
-
 // ConfigureRulerStatefulSet configures the ruler to use the cluster monitoring alertmanager.
 func ConfigureRulerStatefulSet(
 	ss *appsv1.StatefulSet,
-	token, caBundleVolumeName, caDir, caFile string,
+	alertmanagerCABundleName string,
+	token, caDir, caPath string,
 	monitorServerName, rulerContainerName string,
 ) error {
 	var rulerIndex int
@@ -295,19 +145,45 @@ func ConfigureRulerStatefulSet(
 		}
 	}
 
+	secretVolumeSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: alertmanagerCABundleName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						DefaultMode: &defaultConfigMapMode,
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: alertmanagerCABundleName,
+						},
+					},
+				},
+			},
+		},
+	}
+
 	rulerContainer := ss.Spec.Template.Spec.Containers[rulerIndex].DeepCopy()
 
 	rulerContainer.Args = append(rulerContainer.Args,
-		fmt.Sprintf("-ruler.alertmanager-client.tls-ca-path=%s/%s", caDir, caFile),
+		fmt.Sprintf("-ruler.alertmanager-client.tls-ca-path=%s", caPath),
 		fmt.Sprintf("-ruler.alertmanager-client.tls-server-name=%s", monitorServerName),
 		fmt.Sprintf("-ruler.alertmanager-client.credentials-file=%s", token),
 	)
+
+	rulerContainer.VolumeMounts = append(rulerContainer.VolumeMounts, corev1.VolumeMount{
+		Name:      alertmanagerCABundleName,
+		ReadOnly:  true,
+		MountPath: caDir,
+	})
 
 	p := corev1.PodSpec{
 		ServiceAccountName: ss.GetName(),
 		Containers: []corev1.Container{
 			*rulerContainer,
 		},
+	}
+
+	if err := mergo.Merge(&ss.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge volumes")
 	}
 
 	if err := mergo.Merge(&ss.Spec.Template.Spec, p, mergo.WithOverride); err != nil {

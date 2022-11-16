@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
@@ -44,7 +45,6 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
@@ -71,6 +71,7 @@ type Config struct {
 	InternalServer    internalserver.Config    `yaml:"internal_server,omitempty"`
 	Distributor       distributor.Config       `yaml:"distributor,omitempty"`
 	Querier           querier.Config           `yaml:"querier,omitempty"`
+	CompactorClient   compactor.ClientConfig   `yaml:"compactor_client,omitempty"`
 	IngesterClient    client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester          ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig     storage.Config           `yaml:"storage_config,omitempty"`
@@ -90,10 +91,6 @@ type Config struct {
 	QueryScheduler    scheduler.Config         `yaml:"query_scheduler"`
 	UsageReport       usagestats.Config        `yaml:"analytics"`
 	RemoteReadConfigs []remote.ReadConfig      `yaml:"remote_read,omitempty"`
-	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
-	//				 These are only here to allow us to test the new functionality.
-	UseBufferedLogger bool `yaml:"use_buffered_logger"`
-	UseSyncLogger     bool `yaml:"use_sync_logger"`
 }
 
 // RegisterFlags registers flag.
@@ -109,13 +106,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
 		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
-	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
-	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
+	c.CompactorClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
@@ -221,6 +217,64 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := AdjustForTimeoutsMigration(c); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AdjustForTimeoutsMigration will adjust Loki timeouts configuration to be in accordance with the next major release.
+//
+// We're preparing to unify the querier:engine:timeout and querier:query_timeout into a single timeout named limits_config:query_timeout.
+// The migration encompasses of:
+// - If limits_config:query_timeout is explicitly configured, use it everywhere as it is a new configuration and by
+// configuring it, users are expressing that they're willing of using it.
+// - If none are explicitly configured, use the default engine:timeout everywhere as it is longer than the default limits_config:query_timeout
+// and otherwise users would start to experience shorter timeouts without expecting it.
+// - If only the querier:engine:timeout was explicitly configured, warn the user and use it everywhere.
+func AdjustForTimeoutsMigration(c *Config) error {
+	engineTimeoutIsDefault := c.Querier.Engine.Timeout == logql.DefaultEngineTimeout
+	perTenantTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
+	if engineTimeoutIsDefault && perTenantTimeoutIsDefault {
+		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
+			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+		}
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"per-tenant timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default per-tenant timeout (%q).",
+				c.Querier.Engine.Timeout.String(),
+				c.LimitsConfig.QueryTimeout.String(),
+			),
+		)
+		return nil
+	}
+
+	if !perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"using configured per-tenant timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
+				c.LimitsConfig.QueryTimeout.String(),
+				c.Querier.Engine.Timeout.String(),
+			),
+		)
+		return nil
+	}
+
+	if perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
+			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+		}
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"using configured engine timeout (%q) as the default (can be overridden per-tenant in the limits_config). Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
+				c.Querier.Engine.Timeout.String(),
+				c.LimitsConfig.QueryTimeout.String(),
+			),
+		)
+		return nil
+	}
+
 	return nil
 }
 
@@ -269,7 +323,6 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
-	embeddedcacheRingManager *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -502,7 +555,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
-	mm.RegisterModule(Embededcache, t.initEmbeddedCache, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -530,16 +582,15 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		Embededcache:             {RuntimeConfig, Server, MemberlistKV},
 		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, Embededcache, IndexGatewayRing},
+		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
-		QueryFrontendTripperware: {Server, Embededcache, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
@@ -572,23 +623,24 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.InternalServer.Enable {
-		depsToUpdate := []string{Distributor, Ingester, Querier, QueryFrontendTripperware, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
-
-		for _, dep := range depsToUpdate {
-			var idx int
-			for i, v := range deps[dep] {
+		for key, ds := range deps {
+			idx := -1
+			for i, v := range ds {
 				if v == Server {
 					idx = i
 					break
 				}
 			}
 
-			lhs := deps[dep][0 : idx+1]
-			rhs := deps[dep][idx+2:]
+			if idx == -1 {
+				continue
+			}
 
-			deps[dep] = append(lhs, InternalServer)
-			deps[dep] = append(deps[dep], rhs...)
+			a := append(ds[:idx+1], ds[idx:]...)
+			a[idx] = InternalServer
+			deps[key] = a
 		}
+
 	}
 
 	for mod, targets := range deps {

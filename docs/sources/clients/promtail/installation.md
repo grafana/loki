@@ -8,8 +8,8 @@ or there is a Helm chart to install it in a Kubernetes cluster.
 
 ## Binary
 
-Every release includes binaries for Promtail which can be found on the
-[Releases page](https://github.com/grafana/loki/releases).
+Every Grafana Loki release includes binaries for Promtail which can be found on the
+[Releases page](https://github.com/grafana/loki/releases) as part of the release assets. 
 
 ## Docker
 
