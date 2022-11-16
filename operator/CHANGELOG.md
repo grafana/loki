@@ -1,5 +1,6 @@
 ## Main
 
+- [7682](https://github.com/grafana/loki/pull/7682) **periklis**: Refactor cluster proxy to use configv1.Proxy on OpenShift
 - [7617](https://github.com/grafana/loki/pull/7617) **Red-GV**: Modify ingestionRate for respective shirt size
 - [7592](https://github.com/grafana/loki/pull/7592) **aminesnow**: Update API docs generation using gen-crd-api-reference-docs
 - [7448](https://github.com/grafana/loki/pull/7448) **periklis**: Add TLS support for compactor delete client
