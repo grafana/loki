@@ -708,7 +708,7 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum:=1
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
-	ReplicationFactor int32 `json:"replicationFactor"`
+	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
 
 	// Rules defines the spec for the ruler component
 	//
