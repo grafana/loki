@@ -18,6 +18,86 @@ This Document contains the types introduced by the Loki Operator to be consumed 
 </div>
 <b>Resource Types:</b>
 
+## BuiltInCertManagement { #config-loki-grafana-com-v1-BuiltInCertManagement }
+<p>
+(<em>Appears on:</em><a href="#config-loki-grafana-com-v1-FeatureGates">FeatureGates</a>)
+</p>
+<div>
+<p>BuiltInCertManagement is the configuration for the built-in facility to generate and rotate
+TLS client and serving certificates for all LokiStack services and internal clients except
+for the lokistack-gateway.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>enabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Enabled defines to flag to enable/disable built-in certificate management feature gate.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>caValidity</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CACertValidity defines the total duration of the CA certificate validity.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>caRefresh</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CACertRefresh defines the duration of the CA certificate validity until a rotation
+should happen. It can be set up to 80% of CA certificate validity or equal to the
+CA certificate validity. Latter should be used only for rotating only when expired.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>certValidity</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CertValidity defines the total duration of the validity for all LokiStack certificates.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>certRefresh</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CertRefresh defines the duration of the certificate validity until a rotation
+should happen. It can be set up to 80% of certificate validity or equal to the
+certificate validity. Latter should be used only for rotating only when expired.
+The refresh is applied to all LokiStack certificates at once.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## FeatureGates { #config-loki-grafana-com-v1-FeatureGates }
 <p>
 (<em>Appears on:</em><a href="#config-loki-grafana-com-v1-ProjectConfig">ProjectConfig</a>)
@@ -95,6 +175,28 @@ bool
 <td>
 <p>GRPCEncryption enables TLS encryption for all GRPC LokiStack services.
 Each GRPC service requires a secret named as the service with the following data:
+- <code>tls.crt</code>: The TLS server side certificate.
+- <code>tls.key</code>: The TLS key for server-side encryption.
+In addition each service requires a configmap named as the LokiStack CR with the
+suffix <code>-ca-bundle</code>, e.g. <code>lokistack-dev-ca-bundle</code> and the following data:
+- <code>service-ca.crt</code>: The CA signing the service certificate in <code>tls.crt</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>builtInCertManagement</code><br/>
+<em>
+<a href="#config-loki-grafana-com-v1-BuiltInCertManagement">
+BuiltInCertManagement
+</a>
+</em>
+</td>
+<td>
+<p>BuiltInCertManagement enables the built-in facility for generating and rotating
+TLS client and serving certificates for all LokiStack services and internal clients except
+for the lokistack-gateway, In detail all internal Loki HTTP and GRPC communication is lifted
+to require mTLS. For the lokistack-gateay you need to provide a secret with or use the <code>ServingCertsService</code>
+on OpenShift:
 - <code>tls.crt</code>: The TLS server side certificate.
 - <code>tls.key</code>: The TLS key for server-side encryption.
 In addition each service requires a configmap named as the LokiStack CR with the
@@ -235,7 +337,7 @@ bool
 </em>
 </td>
 <td>
-<p>ServingCertsService enables OpenShift service-ca annotations on Services
+<p>ServingCertsService enables OpenShift service-ca annotations on the lokistack-gateway service only
 to use the in-platform CA and generate a TLS cert/key pair per service for
 in-cluster data-in-transit encryption.
 More details: <a href="https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html">https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html</a></p>
@@ -288,6 +390,8 @@ bool
 <td>
 <p>ClusterProxy enables usage of the proxy variables set in the proxy resource.
 More details: <a href="https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy">https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy</a></p>
+</td>
+</tr>
 </tbody>
 </table>
 
