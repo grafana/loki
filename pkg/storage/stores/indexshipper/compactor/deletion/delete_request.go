@@ -60,7 +60,7 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 
 	f := p.ForStream(labels).ProcessString
 	return func(s string) bool {
-		result, _, skip := f(0, s)
+		result, _, _, skip := f(0, s)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++

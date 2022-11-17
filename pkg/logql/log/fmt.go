@@ -388,7 +388,6 @@ func NewTimestampFormatter(tmpl string) (*TimestampFormatter, error) {
 	return lf, nil
 }
 
-// TODO:@liguozhong complete timestamp format here.
 func (lf *TimestampFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	lf.buf.Reset()
 	lf.currentLine = line
