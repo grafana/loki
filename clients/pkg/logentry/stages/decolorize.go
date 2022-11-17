@@ -17,7 +17,7 @@ func (m *decolorizeStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			decolorizedLine, _ := decolorizer.Process(
+			decolorizedLine, _, _ := decolorizer.Process(
 				e.Timestamp.Unix(),
 				[]byte(e.Entry.Line),
 				nil,
