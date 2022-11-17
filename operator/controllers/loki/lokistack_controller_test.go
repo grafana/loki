@@ -78,7 +78,6 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		obj               client.Object
 		index             int
 		ownCallsCount     int
-		watchesCallsCount int
 		featureGates      configv1.FeatureGates
 		pred              builder.OwnsOption
 	}
