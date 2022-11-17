@@ -3093,7 +3093,7 @@ func Test_PipelineCombined(t *testing.T) {
 	p, err := expr.Pipeline()
 	require.Nil(t, err)
 	sp := p.ForStream(labels.Labels{})
-	line, lbs, matches := sp.Process(0, []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`))
+	line, lbs, _, matches := sp.Process(0, []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`))
 	require.True(t, matches)
 	require.Equal(
 		t,
@@ -3122,7 +3122,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		line, lbs, matches = sp.Process(0, in)
+		line, lbs, _, matches = sp.Process(0, in)
 	}
 	require.True(b, matches)
 	require.Equal(
@@ -3151,7 +3151,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v, lbs, matches = sp.Process(0, in)
+		v, lbs, _, matches = sp.Process(0, in)
 	}
 	require.True(b, matches)
 	require.Equal(

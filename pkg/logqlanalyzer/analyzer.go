@@ -119,7 +119,7 @@ func (p streamPipelineAnalyzer) AnalyzeLine(line string) []StageAnalysisRecord {
 		})
 	}
 	stream := log.NewStreamPipeline(stageRecorders, p.origin.LabelsBuilder().ForLabels(p.streamLabels, p.streamLabels.Hash()))
-	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
+	_, _, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
 	return records
 }
 
@@ -130,11 +130,11 @@ type StageAnalysisRecorder struct {
 	records    []StageAnalysisRecord
 }
 
-func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBuilder) ([]byte, bool) {
+func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBuilder) ([]byte, int64, bool) {
 	lineBefore := unsafeGetString(line)
 	labelsBefore := lbs.UnsortedLabels(nil)
 
-	lineResult, ok := s.origin.Process(ts, line, lbs)
+	lineResult, ts, ok := s.origin.Process(ts, line, lbs)
 
 	s.records[s.stageIndex] = StageAnalysisRecord{
 		Processed:    true,
@@ -144,7 +144,7 @@ func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBui
 		LineAfter:    unsafeGetString(lineResult),
 		FilteredOut:  !ok,
 	}
-	return lineResult, ok
+	return lineResult, ts, ok
 }
 func (s StageAnalysisRecorder) RequiredLabelNames() []string {
 	return s.origin.RequiredLabelNames()

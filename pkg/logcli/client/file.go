@@ -237,7 +237,7 @@ func newFileIterator(
 
 	processLine := func(line string) {
 		ts := time.Now()
-		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line)
+		parsedLine, parsedLabels, _, matches := pipeline.ProcessString(ts.UnixNano(), line)
 		if !matches {
 			return
 		}
