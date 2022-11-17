@@ -5,8 +5,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // Builder is a controller-runtime interface used internally. It copies function from
@@ -16,6 +18,7 @@ import (
 type Builder interface {
 	For(object client.Object, opts ...builder.ForOption) Builder
 	Owns(object client.Object, opts ...builder.OwnsOption) Builder
+	Watches(src source.Source, handler handler.EventHandler, opts ...builder.WatchesOption) Builder
 	WithEventFilter(p predicate.Predicate) Builder
 	WithOptions(options controller.Options) Builder
 	WithLogConstructor(logConstructor func(*reconcile.Request) logr.Logger) Builder
@@ -40,6 +43,10 @@ func (b *ctrlBuilder) For(object client.Object, opts ...builder.ForOption) Build
 
 func (b *ctrlBuilder) Owns(object client.Object, opts ...builder.OwnsOption) Builder {
 	return &ctrlBuilder{bld: b.bld.Owns(object, opts...)}
+}
+
+func (b *ctrlBuilder) Watches(src source.Source, handler handler.EventHandler, opts ...builder.WatchesOption) Builder {
+	return &ctrlBuilder{bld: b.bld.Watches(src, handler, opts...)}
 }
 
 func (b *ctrlBuilder) WithEventFilter(p predicate.Predicate) Builder {

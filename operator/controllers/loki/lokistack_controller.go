@@ -5,17 +5,20 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/status"
-	routev1 "github.com/openshift/api/route/v1"
-
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -50,11 +53,21 @@ var (
 	updateOrDeleteOnlyPred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			switch e.ObjectOld.(type) {
-			case *appsv1.Deployment:
-			case *appsv1.StatefulSet:
+			case *openshiftconfigv1.Proxy:
+				// Update on any change of the RevisionVersion to capture
+				// status updates for the proxy object. On OpenShift the
+				// proxy status indicates that values for httpProxy/httpsProxy/noProxy
+				// are valid after considering the readiness probes to access
+				// the public net through these proxies.
 				return true
+			default:
+				// Update only if generation change, filter out anything else.
+				// We only need to check generation change here, because it is only
+				// updated on spec changes. On the other hand RevisionVersion
+				// changes also on status changes. We want to omit reconciliation
+				// for status updates for now.
+				return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
 			}
-			return false
 		},
 		CreateFunc: func(e event.CreateEvent) bool { return false },
 		DeleteFunc: func(e event.DeleteEvent) bool {
@@ -191,12 +204,36 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	}
 
 	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
-		bld = bld.Owns(&openshiftconfigv1.APIServer{}, updateOrDeleteOnlyPred)
+		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	if r.FeatureGates.OpenShift.ClusterProxy {
-		bld = bld.Owns(&openshiftconfigv1.Proxy{}, updateOrDeleteOnlyPred)
+		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	return bld.Complete(r)
+}
+
+func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler {
+	ctx := context.TODO()
+	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.Client.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error getting LokiStack resources in event handler")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: stack.Namespace,
+					Name:      stack.Name,
+				},
+			})
+		}
+
+		r.Log.Info("Enqueued requests for all LokiStacks because of global resource change", "count", len(requests), "kind", obj.GetObjectKind())
+		return requests
+	})
 }
