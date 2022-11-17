@@ -180,7 +180,6 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 
 		// Require Owns-Calls for all owned resources
 		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount())
-		require.Equal(t, tst.watchesCallsCount, b.WatchesCallCount())
 
 		// Require Owns-call options to have delete predicate only
 		obj, opts := b.OwnsArgsForCall(tst.index)
