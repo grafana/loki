@@ -39,6 +39,10 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewDistributorGRPCService(opts),

@@ -343,13 +343,6 @@ type ClusterProxy struct {
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="NoProxy"
 	NoProxy string `json:"noProxy,omitempty"`
-	// ReadVarsFromEnv defines a flag to use Operator-lib provides a helper function
-	//
-	// +optional
-	// +kubebuilder:validation:optional
-	// +kubebuilder:default:=false
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="ReadVarsFromEnv"
-	ReadVarsFromEnv bool `json:"readVarsFromEnv,omitempty"`
 }
 
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
@@ -698,9 +691,9 @@ type LokiStackSpec struct {
 	// Proxy defines the spec for the object proxy to configure cluster proxy information.
 	//
 	// +optional
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
-	Proxy *ClusterProxy `json:"proxy"`
+	Proxy *ClusterProxy `json:"proxy,omitempty"`
 
 	// ReplicationFactor defines the policy for log stream replication.
 	//

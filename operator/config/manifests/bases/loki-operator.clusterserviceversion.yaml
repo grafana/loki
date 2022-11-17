@@ -283,12 +283,6 @@ spec:
       - description: NoProxy configures the NO_PROXY/no_proxy env variable.
         displayName: NoProxy
         path: proxy.noProxy
-      - description: ReadVarsFromEnv defines a flag to use Operator-lib provides a
-          helper function
-        displayName: ReadVarsFromEnv
-        path: proxy.readVarsFromEnv
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: ReplicationFactor defines the policy for log stream replication.
         displayName: Replication Factor
         path: replicationFactor

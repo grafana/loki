@@ -152,6 +152,17 @@ func CreateOrUpdateLokiStack(
 			if err != nil {
 				return err
 			}
+
+			if stack.Spec.Proxy == nil {
+				// If the LokiStack has no proxy set but there is a cluster-wide proxy setting,
+				// set the LokiStack proxy to that.
+				ocpProxy, proxyErr := openshift.GetProxy(ctx, k)
+				if proxyErr != nil {
+					return proxyErr
+				}
+
+				stack.Spec.Proxy = ocpProxy
+			}
 		default:
 			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
 			if err != nil {
@@ -213,7 +224,6 @@ func CreateOrUpdateLokiStack(
 			ll.Error(err, "failed to check OCP AlertManager")
 			return err
 		}
-
 	}
 
 	certRotationRequiredAt := ""
