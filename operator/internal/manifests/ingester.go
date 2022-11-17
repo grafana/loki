@@ -45,6 +45,10 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
@@ -126,8 +130,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
-
-	podSpec = addProxyEnvVar(opts.Stack.Proxy, podSpec)
 
 	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
 		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,

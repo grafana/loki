@@ -307,11 +307,6 @@ spec:
                   noProxy:
                     description: NoProxy configures the NO_PROXY/no_proxy env variable.
                     type: string
-                  readVarsFromEnv:
-                    default: false
-                    description: ReadVarsFromEnv defines a flag to use Operator-lib
-                      provides a helper function
-                    type: boolean
                 type: object
               replicationFactor:
                 description: ReplicationFactor defines the policy for log stream replication.

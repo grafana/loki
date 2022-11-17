@@ -6,12 +6,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-
-	"github.com/ViaQ/logerr/v2/log"
-	"github.com/go-logr/logr"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
@@ -24,6 +23,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 var (
@@ -167,10 +167,43 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			},
 			pred: updateOrDeleteOnlyPred,
 		},
+	}
+	for _, tst := range table {
+		b := &k8sfakes.FakeBuilder{}
+		b.ForReturns(b)
+		b.OwnsReturns(b)
+		b.WatchesReturns(b)
+
+		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
+		err := c.buildController(b)
+		require.NoError(t, err)
+
+		// Require Owns-Calls for all owned resources
+		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount())
+
+		// Require Owns-call options to have delete predicate only
+		obj, opts := b.OwnsArgsForCall(tst.index)
+		require.Equal(t, tst.obj, obj)
+		require.Equal(t, tst.pred, opts[0])
+	}
+}
+
+func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
+	k := &k8sfakes.FakeClient{}
+
+	// Require owned resources
+	type test struct {
+		index             int
+		watchesCallsCount int
+		featureGates      configv1.FeatureGates
+		src               source.Source
+		pred              builder.OwnsOption
+	}
+	table := []test{
 		{
-			obj:           &openshiftconfigv1.APIServer{},
-			index:         11,
-			ownCallsCount: 12,
+			src:               &source.Kind{Type: &openshiftconfigv1.APIServer{}},
+			index:             0,
+			watchesCallsCount: 1,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterTLSPolicy: true,
@@ -179,9 +212,9 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			pred: updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &openshiftconfigv1.Proxy{},
-			index:         11,
-			ownCallsCount: 12,
+			src:               &source.Kind{Type: &openshiftconfigv1.Proxy{}},
+			index:             0,
+			watchesCallsCount: 1,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterProxy: true,
@@ -194,17 +227,17 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		b := &k8sfakes.FakeBuilder{}
 		b.ForReturns(b)
 		b.OwnsReturns(b)
+		b.WatchesReturns(b)
 
 		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
 		err := c.buildController(b)
 		require.NoError(t, err)
 
-		// Require Owns-Calls for all owned resources
-		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount())
+		// Require Watches-calls for all watches resources
+		require.Equal(t, tst.watchesCallsCount, b.WatchesCallCount())
 
-		// Require Owns-call options to have delete predicate only
-		obj, opts := b.OwnsArgsForCall(tst.index)
-		require.Equal(t, tst.obj, obj)
+		src, _, opts := b.WatchesArgsForCall(tst.index)
+		require.Equal(t, tst.src, src)
 		require.Equal(t, tst.pred, opts[0])
 	}
 }
