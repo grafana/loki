@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -362,9 +363,12 @@ type TimestampFormatter struct {
 	currentTs   int64
 }
 
-// NewTimestampFormatter creates a new formatter that can format multiple labels at once.
-// Either by renaming or using text template.
-// It is not allowed to reformat the same label twice within the same formatter.
+// NewTimestampFormatter creates a new formatter that Extract the timestamp in the log through logql.
+// for example:
+// {log_type="system_log"}|="1ac5d591-43a9-4349-a678-c91f7cc0b48d"
+// |regexp `(?P<event_time>.*?) \[`
+// |label_format event_timestemp=`{{ toDate "2006-01-02 15:04:05" .event_time }}`
+// |timestamp_format `{{.event_timestemp}}
 func NewTimestampFormatter(tmpl string) (*TimestampFormatter, error) {
 	lf := &TimestampFormatter{
 		buf: bytes.NewBuffer(make([]byte, 4096)),
@@ -376,7 +380,7 @@ func NewTimestampFormatter(tmpl string) (*TimestampFormatter, error) {
 		return lf.currentTs
 	})
 
-	t, err := template.New("line").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
+	t, err := template.New("timestamp").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %w", err)
 	}
@@ -395,7 +399,16 @@ func (lf *TimestampFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder)
 		lbs.SetErrorDetails(err.Error())
 		return line, ts, true
 	}
-	return lf.buf.Bytes(), ts, true
+
+	timeFormat := lf.buf.String()
+	extractTimestamp, err := strconv.ParseInt(timeFormat, 10, 64)
+	if err != nil {
+		lbs.SetErr(errTemplateFormat)
+		lbs.SetErrorDetails(fmt.Errorf("error extract entry timestamp :%w", err).Error())
+		return line, ts, true
+	}
+	fmt.Println("extractTimestamp:", extractTimestamp)
+	return line, extractTimestamp, true
 }
 
 func (lf *TimestampFormatter) RequiredLabelNames() []string {

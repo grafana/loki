@@ -12,12 +12,12 @@ import (
 
 func TestNoopPipeline(t *testing.T) {
 	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
-	l, lbr, matches := NewNoopPipeline().ForStream(lbs).Process(0, []byte(""))
+	l, lbr, _, matches := NewNoopPipeline().ForStream(lbs).Process(0, []byte(""))
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
-	ls, lbr, matches := NewNoopPipeline().ForStream(lbs).ProcessString(0, "")
+	ls, lbr, _, matches := NewNoopPipeline().ForStream(lbs).ProcessString(0, "")
 	require.Equal(t, "", ls)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
 	require.Equal(t, true, matches)
@@ -29,22 +29,22 @@ func TestPipeline(t *testing.T) {
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		newMustLineFormatter("lbs {{.foo}}"),
 	})
-	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"))
+	l, lbr, _, matches := p.ForStream(lbs).Process(0, []byte("line"))
 	require.Equal(t, []byte("lbs bar"), l)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
-	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line")
+	ls, lbr, _, matches := p.ForStream(lbs).ProcessString(0, "line")
 	require.Equal(t, "lbs bar", ls)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
-	l, lbr, matches = p.ForStream(labels.Labels{}).Process(0, []byte("line"))
+	l, lbr, _, matches = p.ForStream(labels.Labels{}).Process(0, []byte("line"))
 	require.Equal(t, []byte(nil), l)
 	require.Equal(t, nil, lbr)
 	require.Equal(t, false, matches)
 
-	ls, lbr, matches = p.ForStream(labels.Labels{}).ProcessString(0, "line")
+	ls, lbr, _, matches = p.ForStream(labels.Labels{}).ProcessString(0, "line")
 	require.Equal(t, "", ls)
 	require.Equal(t, nil, lbr)
 	require.Equal(t, false, matches)
@@ -74,10 +74,10 @@ func TestFilteringPipeline(t *testing.T) {
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, matches := p.ForStream(test.inputStreamLabels).Process(test.ts, []byte(test.line))
+			_, _, _, matches := p.ForStream(test.inputStreamLabels).Process(test.ts, []byte(test.line))
 			require.Equal(t, test.ok, matches)
 
-			_, _, matches = p.ForStream(test.inputStreamLabels).ProcessString(test.ts, test.line)
+			_, _, _, matches = p.ForStream(test.inputStreamLabels).ProcessString(test.ts, test.line)
 			require.Equal(t, test.ok, matches)
 		})
 	}
@@ -118,12 +118,12 @@ func (p *stubStreamPipeline) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
-	return nil, nil, true
+func (p *stubStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, int64, bool) {
+	return nil, nil, ts, true
 }
 
-func (p *stubStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
-	return "", nil, true
+func (p *stubStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, int64, bool) {
+	return "", nil, ts, true
 }
 
 var (
@@ -168,13 +168,13 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("pipeline bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resLine, resLbs, resMatches = sp.Process(0, line)
+			resLine, resLbs, _, resMatches = sp.Process(0, line)
 		}
 	})
 	b.Run("pipeline string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resLineString, resLbs, resMatches = sp.ProcessString(0, lineString)
+			resLineString, resLbs, _, resMatches = sp.ProcessString(0, lineString)
 		}
 	})
 
@@ -184,13 +184,13 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.Process(0, line)
+			resSample, resLbs, _, resMatches = ex.Process(0, line)
 		}
 	})
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.ProcessString(0, lineString)
+			resSample, resLbs, _, resMatches = ex.ProcessString(0, lineString)
 		}
 	})
 
@@ -201,13 +201,13 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.Process(0, line)
+			resSample, resLbs, _, resMatches = ex.Process(0, line)
 		}
 	})
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.ProcessString(0, lineString)
+			resSample, resLbs, _, resMatches = ex.ProcessString(0, lineString)
 		}
 	})
 }
@@ -240,7 +240,7 @@ func jsonBenchmark(b *testing.B, parser Stage) {
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resMatches = sp.Process(0, line)
+		resLine, resLbs, _, resMatches = sp.Process(0, line)
 
 		if !resMatches {
 			b.Fatalf("resulting line not ok: %s\n", line)
@@ -263,7 +263,7 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 	b.ResetTimer()
 	sp := p.ForStream(labels.Labels{})
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resMatches = sp.Process(0, line)
+		resLine, resLbs, _, resMatches = sp.Process(0, line)
 
 		if !resMatches {
 			b.Fatalf("resulting line not ok: %s\n", line)

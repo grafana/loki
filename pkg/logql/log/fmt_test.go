@@ -348,7 +348,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			sort.Sort(tt.wantLbs)
 			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			builder.Reset()
-			outLine, _ := tt.fmter.Process(tt.ts, tt.in, builder)
+			outLine, _, _ := tt.fmter.Process(tt.ts, tt.in, builder)
 			require.Equal(t, tt.want, outLine)
 			require.Equal(t, tt.wantLbs, builder.LabelsResult().Labels())
 		})
@@ -456,7 +456,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
 			builder.Reset()
-			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
+			_, _, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})
@@ -586,8 +586,25 @@ func TestDecolorizer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var result, _ = decolorizer.Process(0, tt.src, nil)
+			var result, _, _ = decolorizer.Process(0, tt.src, nil)
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestTimestampFormatter(t *testing.T) {
+	entryTimestamp := int64(789)
+	eventTimestamp := "567"
+	expectedTimestamp := int64(567)
+
+	eventTimeLabel := "event_timestemp"
+	logqlTimestampVal := "{{." + eventTimeLabel + "}}"
+	lbs := labels.Labels{{Name: eventTimeLabel, Value: eventTimestamp}, {Name: "bar", Value: "blop"}}
+	line := []byte("2022-11-15 02:49:52 [INFO] /controller.go:actionLoop:309 approached target: 2")
+	builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	builder.Reset()
+
+	var timestampFormatter, _ = NewTimestampFormatter(logqlTimestampVal)
+	var _, ts, _ = timestampFormatter.Process(entryTimestamp, line, builder)
+	require.Equal(t, ts, expectedTimestamp)
 }
