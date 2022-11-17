@@ -1009,7 +1009,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		ts := e.t
+		var ts int64
 		newLine, parsedLbs, ts, matches := pipeline.ProcessString(e.t, e.s)
 		if !matches {
 			return
@@ -1061,7 +1061,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		ts := e.t
+		var ts int64
 		value, parsedLabels, ts, ok := extractor.ProcessString(e.t, e.s)
 		if !ok {
 			continue
@@ -1315,7 +1315,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		ts := e.currTs
+		var ts int64
 		val, labels, ts, ok := e.extractor.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
