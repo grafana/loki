@@ -51,6 +51,10 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		objs = configureRulerObjsForMode(opts)
 	}
 
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	return append(objs,
 		statefulSet,
 		NewRulerGRPCService(opts),
