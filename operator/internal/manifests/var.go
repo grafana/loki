@@ -3,11 +3,8 @@ package manifests
 import (
 	"fmt"
 	"path"
-	"strings"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
-	"github.com/operator-framework/operator-lib/proxy"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -530,56 +527,4 @@ func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
 	}
 
 	return &context
-}
-
-func addProxyEnvVar(clusterProxy *lokiv1.ClusterProxy, podSpec corev1.PodSpec) corev1.PodSpec {
-	if clusterProxy == nil {
-		return podSpec
-	}
-
-	podSpec = resetProxyVar(podSpec, "HTTP_PROXY")
-	podSpec = resetProxyVar(podSpec, "HTTPS_PROXY")
-	podSpec = resetProxyVar(podSpec, "NO_PROXY")
-	if clusterProxy.ReadVarsFromEnv {
-		for i, container := range podSpec.Containers {
-			podSpec.Containers[i].Env = append(container.Env, proxy.ReadProxyVarsFromEnv()...)
-		}
-	} else {
-		for i, container := range podSpec.Containers {
-			podSpec.Containers[i].Env = append(container.Env,
-				corev1.EnvVar{
-					Name:  "HTTP_PROXY",
-					Value: clusterProxy.HTTPProxy,
-				},
-				corev1.EnvVar{
-					Name:  "HTTPS_PROXY",
-					Value: clusterProxy.HTTPSProxy,
-				},
-				corev1.EnvVar{
-					Name:  "NO_PROXY",
-					Value: clusterProxy.NoProxy,
-				})
-		}
-	}
-	return podSpec
-}
-
-func resetProxyVar(podSpec corev1.PodSpec, name string) corev1.PodSpec {
-	for i, container := range podSpec.Containers {
-		found, index := getEnvVar(name, container.Env)
-		if found {
-			podSpec.Containers[i].Env = append(podSpec.Containers[i].Env[:index], podSpec.Containers[i].Env[index+1:]...)
-		}
-	}
-	return podSpec
-}
-
-// getEnvVar matches the given name with the envvar name
-func getEnvVar(name string, envVars []corev1.EnvVar) (bool, int) {
-	for i, env := range envVars {
-		if env.Name == name || env.Name == strings.ToLower(name) {
-			return true, i
-		}
-	}
-	return false, 0
 }

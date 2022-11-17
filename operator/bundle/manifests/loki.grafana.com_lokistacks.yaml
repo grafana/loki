@@ -52,7 +52,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: LokiStackSpec defines the desired state of LokiStack
+            description: LokiStack CR spec field.
             properties:
               limits:
                 description: Limits defines the limits to be applied to log stream
@@ -307,14 +307,8 @@ spec:
                   noProxy:
                     description: NoProxy configures the NO_PROXY/no_proxy env variable.
                     type: string
-                  readVarsFromEnv:
-                    default: false
-                    description: ReadVarsFromEnv defines a flag to use Operator-lib
-                      provides a helper function
-                    type: boolean
                 type: object
               replicationFactor:
-                default: 1
                 description: ReplicationFactor defines the policy for log stream replication.
                 format: int32
                 minimum: 1
@@ -1135,7 +1129,7 @@ spec:
             - storageClassName
             type: object
           status:
-            description: LokiStackStatus defines the observed state of LokiStack
+            description: LokiStack CR spec Status.
             properties:
               components:
                 description: Components provides summary of all Loki pod status grouped
