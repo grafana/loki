@@ -2683,6 +2683,22 @@ func constantValue(t int64) generator {
 	}
 }
 
+func constantString(t int64, line string) generator {
+	return func(i int64) logData {
+		return logData{
+			Entry: logproto.Entry{
+				Timestamp: time.Unix(i, 0),
+				Line:      line,
+			},
+			Sample: logproto.Sample{
+				Timestamp: time.Unix(i, 0).UnixNano(),
+				Hash:      uint64(i),
+				Value:     float64(t),
+			},
+		}
+	}
+}
+
 // nolint
 func incValue(val int64) generator {
 	return func(i int64) logData {

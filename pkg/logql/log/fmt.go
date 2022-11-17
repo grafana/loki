@@ -407,7 +407,6 @@ func (lf *TimestampFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder)
 		lbs.SetErrorDetails(fmt.Errorf("error extract entry timestamp :%w", err).Error())
 		return line, ts, true
 	}
-	fmt.Println("extractTimestamp:", extractTimestamp)
 	return line, extractTimestamp, true
 }
 
