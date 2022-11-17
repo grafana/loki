@@ -22,6 +22,7 @@ const (
 var (
 	_ Stage = &LineFormatter{}
 	_ Stage = &LabelsFormatter{}
+	_ Stage = &TimestampFormatter{}
 
 	// Available map of functions for the text template engine.
 	functionMap = template.FuncMap{
@@ -141,7 +142,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
-func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	lf.buf.Reset()
 	lf.currentLine = line
 	lf.currentTs = ts
@@ -149,9 +150,9 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
-		return line, true
+		return line, ts, true
 	}
-	return lf.buf.Bytes(), true
+	return lf.buf.Bytes(), ts, true
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -301,7 +302,7 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	lf.currentLine = l
 	lf.currentTs = ts
 
@@ -326,7 +327,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 		}
 		lbs.Set(f.Name, lf.buf.String())
 	}
-	return l, true
+	return l, ts, true
 }
 
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
@@ -353,6 +354,54 @@ func trunc(c int, s string) string {
 	return s
 }
 
+type TimestampFormatter struct {
+	*template.Template
+	buf *bytes.Buffer
+
+	currentLine []byte
+	currentTs   int64
+}
+
+// NewTimestampFormatter creates a new formatter that can format multiple labels at once.
+// Either by renaming or using text template.
+// It is not allowed to reformat the same label twice within the same formatter.
+func NewTimestampFormatter(tmpl string) (*TimestampFormatter, error) {
+	lf := &TimestampFormatter{
+		buf: bytes.NewBuffer(make([]byte, 4096)),
+	}
+
+	functions := addLineAndTimestampFunctions(func() string {
+		return unsafeGetString(lf.currentLine)
+	}, func() int64 {
+		return lf.currentTs
+	})
+
+	t, err := template.New("line").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid line template: %w", err)
+	}
+	lf.Template = t
+	return lf, nil
+}
+
+// TODO:@liguozhong complete timestamp format here.
+func (lf *TimestampFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
+	lf.buf.Reset()
+	lf.currentLine = line
+	lf.currentTs = ts
+
+	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
+		lbs.SetErr(errTemplateFormat)
+		lbs.SetErrorDetails(err.Error())
+		return line, ts, true
+	}
+	return lf.buf.Bytes(), ts, true
+}
+
+func (lf *TimestampFormatter) RequiredLabelNames() []string {
+	return uniqueString(listNodeFields([]parse.Node{lf.Root}))
+}
+
 type Decolorizer struct{}
 
 // RegExp to select ANSI characters courtesy of https://github.com/acarl005/stripansi
@@ -364,8 +413,8 @@ func NewDecolorizer() (*Decolorizer, error) {
 	return &Decolorizer{}, nil
 }
 
-func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-	return ansiRegex.ReplaceAll(line, []byte{}), true
+func (Decolorizer) Process(ts int64, line []byte, _ *LabelsBuilder) ([]byte, int64, bool) {
+	return ansiRegex.ReplaceAll(line, []byte{}), ts, true
 }
 func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 

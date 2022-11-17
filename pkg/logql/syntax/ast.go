@@ -439,6 +439,28 @@ func (e *LineFmtExpr) String() string {
 	return fmt.Sprintf("%s %s %s", OpPipe, OpFmtLine, strconv.Quote(e.Value))
 }
 
+type TimestampFmtExpr struct {
+	Value string
+	implicit
+}
+
+func newTimestampFmtExpr(value string) *TimestampFmtExpr {
+	return &TimestampFmtExpr{
+		Value: value,
+	}
+}
+func (e *TimestampFmtExpr) Shardable() bool { return true }
+
+func (e *TimestampFmtExpr) Walk(f WalkFn) { f(e) }
+
+func (e *TimestampFmtExpr) Stage() (log.Stage, error) {
+	return log.NewTimestampFormatter(e.Value)
+}
+
+func (e *TimestampFmtExpr) String() string {
+	return fmt.Sprintf("%s %s %s", OpPipe, OpFmtTimestamp, strconv.Quote(e.Value))
+}
+
 type LabelFmtExpr struct {
 	Formats []log.LabelFmt
 
@@ -681,9 +703,10 @@ const (
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"
 
-	OpFmtLine    = "line_format"
-	OpFmtLabel   = "label_format"
-	OpDecolorize = "decolorize"
+	OpFmtTimestamp = "timestamp_format"
+	OpFmtLine      = "line_format"
+	OpFmtLabel     = "label_format"
+	OpDecolorize   = "decolorize"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"

@@ -34,8 +34,8 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutate the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte) (float64, LabelsResult, bool)
-	ProcessString(ts int64, line string) (float64, LabelsResult, bool)
+	Process(ts int64, line []byte) (float64, LabelsResult, int64, bool)
+	ProcessString(ts int64, line string) (float64, LabelsResult, int64, bool)
 }
 
 type lineSampleExtractor struct {
@@ -80,20 +80,20 @@ type streamLineSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, int64, bool) {
 	// short circuit.
 	if l.Stage == NoopStage {
-		return l.LineExtractor(line), l.builder.GroupedLabels(), true
+		return l.LineExtractor(line), l.builder.GroupedLabels(), ts, true
 	}
 	l.builder.Reset()
-	line, ok := l.Stage.Process(ts, line, l.builder)
+	line, ts, ok := l.Stage.Process(ts, line, l.builder)
 	if !ok {
-		return 0, nil, false
+		return 0, nil, ts, false
 	}
-	return l.LineExtractor(line), l.builder.GroupedLabels(), true
+	return l.LineExtractor(line), l.builder.GroupedLabels(), ts, true
 }
 
-func (l *streamLineSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, int64, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
 	return l.Process(ts, unsafeGetBytes(line))
 }
@@ -168,12 +168,12 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, int64, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
-	line, ok := l.preStage.Process(ts, line, l.builder)
+	line, ts, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
-		return 0, nil, false
+		return 0, nil, ts, false
 	}
 	// convert the label value.
 	var v float64
@@ -181,7 +181,7 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 	if stringValue == "" {
 		// NOTE: It's totally fine for log line to not have this particular label.
 		// See Issue: https://github.com/grafana/loki/issues/6713
-		return 0, nil, false
+		return 0, nil, ts, false
 	}
 
 	var err error
@@ -192,13 +192,13 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 	}
 
 	// post filters
-	if _, ok = l.postFilter.Process(ts, line, l.builder); !ok {
-		return 0, nil, false
+	if _, ts, ok = l.postFilter.Process(ts, line, l.builder); !ok {
+		return 0, nil, ts, false
 	}
-	return v, l.builder.GroupedLabels(), true
+	return v, l.builder.GroupedLabels(), ts, true
 }
 
-func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, int64, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
 	return l.Process(ts, unsafeGetBytes(line))
 }
@@ -247,30 +247,30 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, int64, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.Process(ts, line)
+		_, _, _, matches := filter.pipeline.Process(ts, line)
 		if matches { //When the filter matches, don't run the next step
-			return 0, nil, false
+			return 0, nil, ts, false
 		}
 	}
 
 	return sp.extractor.Process(ts, line)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, int64, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		_, _, _, matches := filter.pipeline.ProcessString(ts, line)
 		if matches { //When the filter matches, don't run the next step
-			return 0, nil, false
+			return 0, nil, ts, false
 		}
 	}
 

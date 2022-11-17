@@ -236,7 +236,7 @@ func (hb *unorderedHeadBlock) Iterator(
 		mint,
 		maxt,
 		func(ts int64, line string) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
+			newLine, parsedLbs, ts, matches := pipeline.ProcessString(ts, line)
 			if !matches {
 				return nil
 			}
@@ -285,7 +285,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		mint,
 		maxt,
 		func(ts int64, line string) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line)
+			value, parsedLabels, ts, ok := extractor.ProcessString(ts, line)
 			if !ok {
 				return nil
 			}

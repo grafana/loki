@@ -1009,7 +1009,8 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
+		ts := e.t
+		newLine, parsedLbs, ts, matches := pipeline.ProcessString(e.t, e.s)
 		if !matches {
 			return
 		}
@@ -1024,7 +1025,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			streams[labels] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: time.Unix(0, e.t),
+			Timestamp: time.Unix(0, ts),
 			Line:      newLine,
 		})
 	}
@@ -1060,7 +1061,8 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
+		ts := e.t
+		value, parsedLabels, ts, ok := extractor.ProcessString(e.t, e.s)
 		if !ok {
 			continue
 		}
@@ -1080,7 +1082,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		}
 
 		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
+			Timestamp: ts,
 			Value:     value,
 			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
 		})
@@ -1282,11 +1284,11 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
+		newLine, lbs, timestamp, matches := e.pipeline.Process(e.currTs, e.currLine)
 		if !matches {
 			continue
 		}
-		e.cur.Timestamp = time.Unix(0, e.currTs)
+		e.cur.Timestamp = time.Unix(0, timestamp)
 		e.cur.Line = string(newLine)
 		e.currLabels = lbs
 		return true
@@ -1313,14 +1315,15 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
+		ts := e.currTs
+		val, labels, ts, ok := e.extractor.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
 		}
 		e.currLabels = labels
 		e.cur.Value = val
 		e.cur.Hash = xxhash.Sum64(e.currLine)
-		e.cur.Timestamp = e.currTs
+		e.cur.Timestamp = ts
 		return true
 	}
 	return false

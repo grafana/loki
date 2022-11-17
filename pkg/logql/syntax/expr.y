@@ -50,6 +50,7 @@ import (
   UnitFilter              log.LabelFilterer
   IPLabelFilter           log.LabelFilterer
   LineFormatExpr          *LineFmtExpr
+  TimestampFormatExpr     *TimestampFmtExpr
   LabelFormatExpr         *LabelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
@@ -97,6 +98,7 @@ import (
 %type <LineFilters>           lineFilters
 %type <LineFilter>            lineFilter
 %type <LineFormatExpr>        lineFormatExpr
+%type <TimestampFormatExpr>   timestampFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
@@ -114,7 +116,7 @@ import (
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
+                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT TIMESTAMP_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
                   DECOLORIZE
@@ -252,6 +254,7 @@ pipelineStage:
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
+  | PIPE timestampFormatExpr     { $$ = $2 }
   | PIPE decolorizeExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
   ;
@@ -282,6 +285,8 @@ jsonExpressionParser:
     JSON jsonExpressionList { $$ = newJSONExpressionParser($2) }
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
+
+timestampFormatExpr: TIMESTAMP_FMT STRING { $$ = newTimestampFmtExpr($2) };
 
 decolorizeExpr: DECOLORIZE { $$ = newDecolorizeExpr() };
 
@@ -378,68 +383,68 @@ binOpExpr:
          ;
 
 boolModifier:
-		{
-		 $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}}
-        	}
+    {
+     $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}}
+          }
         | BOOL
-        	{
-        	 $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool:true}
-        	}
+          {
+           $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool:true}
+          }
         ;
 
 onOrIgnoringModifier:
-    	boolModifier ON OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
-		{
-		$$ = $1
-    		$$.VectorMatching.On=true
-    		$$.VectorMatching.MatchingLabels=$4
-		}
-	| boolModifier ON OPEN_PARENTHESIS CLOSE_PARENTHESIS
-		{
-		$$ = $1
-		$$.VectorMatching.On=true
-		}
-	| boolModifier IGNORING OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
-		{
-		$$ = $1
-    		$$.VectorMatching.MatchingLabels=$4
-		}
-	| boolModifier IGNORING OPEN_PARENTHESIS CLOSE_PARENTHESIS
-		{
-		$$ = $1
-		}
-	;
+      boolModifier ON OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+    {
+    $$ = $1
+        $$.VectorMatching.On=true
+        $$.VectorMatching.MatchingLabels=$4
+    }
+  | boolModifier ON OPEN_PARENTHESIS CLOSE_PARENTHESIS
+    {
+    $$ = $1
+    $$.VectorMatching.On=true
+    }
+  | boolModifier IGNORING OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+    {
+    $$ = $1
+        $$.VectorMatching.MatchingLabels=$4
+    }
+  | boolModifier IGNORING OPEN_PARENTHESIS CLOSE_PARENTHESIS
+    {
+    $$ = $1
+    }
+  ;
 
 binOpModifier:
-	boolModifier {$$ = $1 }
- 	| onOrIgnoringModifier {$$ = $1 }
- 	| onOrIgnoringModifier GROUP_LEFT
-                	{
+  boolModifier {$$ = $1 }
+  | onOrIgnoringModifier {$$ = $1 }
+  | onOrIgnoringModifier GROUP_LEFT
+                  {
                         $$ = $1
                         $$.VectorMatching.Card = CardManyToOne
                         }
- 	| onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS CLOSE_PARENTHESIS
-        	{
+  | onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS CLOSE_PARENTHESIS
+          {
                 $$ = $1
                 $$.VectorMatching.Card = CardManyToOne
                 }
- 	| onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+  | onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
                 {
                 $$ = $1
                 $$.VectorMatching.Card = CardManyToOne
                 $$.VectorMatching.Include = $4
                 }
         | onOrIgnoringModifier GROUP_RIGHT
-        	{
+          {
                 $$ = $1
                 $$.VectorMatching.Card = CardOneToMany
                 }
- 	| onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS CLOSE_PARENTHESIS
+  | onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS CLOSE_PARENTHESIS
                 {
                 $$ = $1
                 $$.VectorMatching.Card = CardOneToMany
                 }
- 	| onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+  | onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
                 {
                 $$ = $1
                 $$.VectorMatching.Card = CardOneToMany

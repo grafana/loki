@@ -49,9 +49,9 @@ func NewJSONParser() *JSONParser {
 	}
 }
 
-func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (j *JSONParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
+		return line, ts, true
 	}
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
 	defer jsoniter.ConfigFastest.ReturnIterator(it)
@@ -63,9 +63,9 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	if err := j.readObject(it); err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
-		return line, true
+		return line, ts, true
 	}
-	return line, true
+	return line, ts, true
 }
 
 func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
@@ -228,7 +228,7 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	}, nil
 }
 
-func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (r *RegexpParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
 			key, ok := r.keys.Get(unsafeGetBytes(name), func() (string, bool) {
@@ -247,7 +247,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			lbs.Set(key, string(value))
 		}
 	}
-	return line, true
+	return line, ts, true
 }
 
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
@@ -266,9 +266,9 @@ func NewLogfmtParser() *LogfmtParser {
 	}
 }
 
-func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *LogfmtParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
+		return line, ts, true
 	}
 	l.dec.Reset(line)
 	for l.dec.ScanKeyval() {
@@ -298,9 +298,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
 		lbs.SetErrorDetails(l.dec.Err().Error())
-		return line, true
+		return line, ts, true
 	}
-	return line, true
+	return line, ts, true
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
@@ -326,9 +326,9 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 	}, nil
 }
 
-func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *PatternParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
+		return line, ts, true
 	}
 	matches := l.matcher.Matches(line)
 	names := l.names[:len(matches)]
@@ -343,7 +343,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 		lbs.Set(name, string(m))
 	}
-	return line, true
+	return line, ts, true
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -376,14 +376,14 @@ func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParse
 	}, nil
 }
 
-func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (j *JSONExpressionParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
+		return line, ts, true
 	}
 
 	if !jsoniter.ConfigFastest.Valid(line) {
 		lbs.SetErr(errJSON)
-		return line, true
+		return line, ts, true
 	}
 
 	for identifier, paths := range j.expressions {
@@ -398,7 +398,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		lbs.Set(key, result)
 	}
 
-	return line, true
+	return line, ts, true
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -422,9 +422,9 @@ func NewUnpackParser() *UnpackParser {
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
 
-func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (u *UnpackParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
+		return line, ts, true
 	}
 	u.lbsBuffer = u.lbsBuffer[:0]
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
@@ -434,9 +434,9 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
-		return line, true
+		return line, ts, true
 	}
-	return entry, true
+	return entry, ts, true
 }
 
 func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBuilder) ([]byte, error) {

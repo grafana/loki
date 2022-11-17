@@ -85,16 +85,16 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 	}
 }
 
-func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	line, lok := b.Left.Process(ts, line, lbs)
+func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
+	line, ts, lok := b.Left.Process(ts, line, lbs)
 	if !b.and && lok {
-		return line, true
+		return line, ts, true
 	}
-	line, rok := b.Right.Process(ts, line, lbs)
+	line, ts, rok := b.Right.Process(ts, line, lbs)
 	if !b.and {
-		return line, lok || rok
+		return line, ts, lok || rok
 	}
-	return line, lok && rok
+	return line, ts, lok && rok
 }
 
 func (b *BinaryLabelFilter) RequiredLabelNames() []string {
@@ -121,8 +121,8 @@ func (b *BinaryLabelFilter) String() string {
 type noopLabelFilter struct{}
 
 func (noopLabelFilter) String() string { return "" }
-func (noopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-	return line, true
+func (noopLabelFilter) Process(ts int64, line []byte, _ *LabelsBuilder) ([]byte, int64, bool) {
+	return line, ts, true
 }
 func (noopLabelFilter) RequiredLabelNames() []string { return []string{} }
 
@@ -157,38 +157,38 @@ func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFi
 	}
 }
 
-func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (d *BytesLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter it out.
-		return line, true
+		return line, ts, true
 	}
 	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
-		return line, false
+		return line, ts, false
 	}
 	value, err := humanize.ParseBytes(v)
 	if err != nil {
 		lbs.SetErr(errLabelFilter)
 		lbs.SetErrorDetails(err.Error())
-		return line, true
+		return line, ts, true
 	}
 	switch d.Type {
 	case LabelFilterEqual:
-		return line, value == d.Value
+		return line, ts, value == d.Value
 	case LabelFilterNotEqual:
-		return line, value != d.Value
+		return line, ts, value != d.Value
 	case LabelFilterGreaterThan:
-		return line, value > d.Value
+		return line, ts, value > d.Value
 	case LabelFilterGreaterThanOrEqual:
-		return line, value >= d.Value
+		return line, ts, value >= d.Value
 	case LabelFilterLesserThan:
-		return line, value < d.Value
+		return line, ts, value < d.Value
 	case LabelFilterLesserThanOrEqual:
-		return line, value <= d.Value
+		return line, ts, value <= d.Value
 	default:
 		lbs.SetErr(errLabelFilter)
-		return line, true
+		return line, ts, true
 	}
 }
 
@@ -222,38 +222,38 @@ func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *Du
 	}
 }
 
-func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (d *DurationLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter out.
-		return line, true
+		return line, ts, true
 	}
 	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
-		return line, false
+		return line, ts, false
 	}
 	value, err := time.ParseDuration(v)
 	if err != nil {
 		lbs.SetErr(errLabelFilter)
 		lbs.SetErrorDetails(err.Error())
-		return line, true
+		return line, ts, true
 	}
 	switch d.Type {
 	case LabelFilterEqual:
-		return line, value == d.Value
+		return line, ts, value == d.Value
 	case LabelFilterNotEqual:
-		return line, value != d.Value
+		return line, ts, value != d.Value
 	case LabelFilterGreaterThan:
-		return line, value > d.Value
+		return line, ts, value > d.Value
 	case LabelFilterGreaterThanOrEqual:
-		return line, value >= d.Value
+		return line, ts, value >= d.Value
 	case LabelFilterLesserThan:
-		return line, value < d.Value
+		return line, ts, value < d.Value
 	case LabelFilterLesserThanOrEqual:
-		return line, value <= d.Value
+		return line, ts, value <= d.Value
 	default:
 		lbs.SetErr(errLabelFilter)
-		return line, true
+		return line, ts, true
 	}
 }
 
@@ -281,38 +281,38 @@ func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLa
 	}
 }
 
-func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (n *NumericLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter out.
-		return line, true
+		return line, ts, true
 	}
 	v, ok := lbs.Get(n.Name)
 	if !ok {
 		// we have not found this label.
-		return line, false
+		return line, ts, false
 	}
 	value, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		lbs.SetErr(errLabelFilter)
 		lbs.SetErrorDetails(err.Error())
-		return line, true
+		return line, ts, true
 	}
 	switch n.Type {
 	case LabelFilterEqual:
-		return line, value == n.Value
+		return line, ts, value == n.Value
 	case LabelFilterNotEqual:
-		return line, value != n.Value
+		return line, ts, value != n.Value
 	case LabelFilterGreaterThan:
-		return line, value > n.Value
+		return line, ts, value > n.Value
 	case LabelFilterGreaterThanOrEqual:
-		return line, value >= n.Value
+		return line, ts, value >= n.Value
 	case LabelFilterLesserThan:
-		return line, value < n.Value
+		return line, ts, value < n.Value
 	case LabelFilterLesserThanOrEqual:
-		return line, value <= n.Value
+		return line, ts, value <= n.Value
 	default:
 		lbs.SetErr(errLabelFilter)
-		return line, true
+		return line, ts, true
 	}
 
 }
@@ -338,13 +338,13 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 	}
 }
 
-func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (s *StringLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	if s.Name == logqlmodel.ErrorLabel {
-		return line, s.Matches(lbs.GetErr())
+		return line, ts, s.Matches(lbs.GetErr())
 	}
 
 	v, _ := lbs.Get(s.Name)
-	return line, s.Matches(v)
+	return line, ts, s.Matches(v)
 }
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
