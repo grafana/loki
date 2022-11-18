@@ -653,21 +653,27 @@ func (w wrappedValue) Generate(rand *rand.Rand, size int) reflect.Value {
 		q, _ := quick.Value(reflect.TypeOf(promql.Scalar{}), rand)
 		return reflect.ValueOf(wrappedValue{q.Interface().(parser.Value)})
 	case loghttp.ResultTypeStream:
-		stream := logproto.Stream{
-			Labels:  randLabels(rand).String(),
-			Entries: randEntries(rand),
-			Hash:    0,
-		}
+		var streams logqlmodel.Streams
+		for i := 0; i < rand.Intn(100); i++ {
+			stream := logproto.Stream{
+				Labels:  randLabels(rand).String(),
+				Entries: randEntries(rand),
+				Hash:    0,
+			}
 
-		streams := logqlmodel.Streams([]logproto.Stream{stream})
+			streams = append(streams, stream)
+		}
 		return reflect.ValueOf(wrappedValue{streams})
 	case loghttp.ResultTypeVector:
-		v, _ := quick.Value(reflect.TypeOf(promql.Sample{}), rand)
-		sample, _ := v.Interface().(promql.Sample)
+		var vector promql.Vector
+		for i := 0; i < rand.Intn(100); i++ {
+			v, _ := quick.Value(reflect.TypeOf(promql.Sample{}), rand)
+			sample, _ := v.Interface().(promql.Sample)
 
-		l, _ := quick.Value(reflect.TypeOf(labels.Labels{}), rand)
-		sample.Metric = l.Interface().(labels.Labels)
-		vector := promql.Vector([]promql.Sample{sample})
+			l, _ := quick.Value(reflect.TypeOf(labels.Labels{}), rand)
+			sample.Metric = l.Interface().(labels.Labels)
+			vector = append(vector, sample)
+		}
 		return reflect.ValueOf(wrappedValue{vector})
 
 	}

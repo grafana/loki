@@ -257,7 +257,11 @@ func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream) error {
 	s.WriteArrayStart()
 	defer s.WriteArrayEnd()
 
-	for _, stream := range streams {
+	for i, stream := range streams {
+		if i > 0 {
+			s.WriteMore()
+		}
+
 		err := encodeStream(stream, s)
 		if err != nil {
 			return nil
