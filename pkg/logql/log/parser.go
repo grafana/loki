@@ -91,22 +91,12 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 
 // nextKeyPrefix load the next prefix in the buffer and tells if it should be processed based on hints.
 func (j *JSONParser) nextKeyPrefix(key []byte) bool {
-	// first time we add return the field as prefix.
-	if len(j.prefixBuffer) == 0 {
-		j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-		if j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer)) {
-			return true
-		}
-		return false
+	// first add the spacer if needed.
+	if len(j.prefixBuffer) != 0 {
+		j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
 	}
-	// otherwise we build the prefix and check using the buffer
-	j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
 	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	// if matches keep going
-	if j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer)) {
-		return true
-	}
-	return false
+	return j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer))
 }
 
 func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType) {
@@ -158,7 +148,7 @@ func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 func readValue(v []byte, dataType jsonparser.ValueType) string {
 	switch dataType {
 	case jsonparser.String:
-		return unescapeJsonString(v)
+		return unescapeJSONString(v)
 	case jsonparser.Null:
 		return ""
 	case jsonparser.Number:
@@ -173,7 +163,7 @@ func readValue(v []byte, dataType jsonparser.ValueType) string {
 	}
 }
 
-func unescapeJsonString(b []byte) string {
+func unescapeJSONString(b []byte) string {
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 	bU, err := jsonparser.Unescape(b, stackbuf[:])
 	if err != nil {
