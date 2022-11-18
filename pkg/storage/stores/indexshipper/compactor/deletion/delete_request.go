@@ -139,6 +139,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 
 	intervals := make([]retention.IntervalFilter, 0, 2)
 
+	// chunk partially deleted from the end
 	if d.StartTime > entry.From {
 		// Add the deleted part with Filter func
 		if ff != nil {
@@ -160,6 +161,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		})
 	}
 
+	// chunk partially deleted from the beginning
 	if d.EndTime < entry.Through {
 		// Add the deleted part with Filter func
 		if ff != nil {
