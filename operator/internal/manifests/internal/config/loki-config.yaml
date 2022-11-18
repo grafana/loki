@@ -1,3 +1,4 @@
+{{- /*gotype: github.com/grafana/loki/operator/internal/manifests/internal/config.Options*/ -}}
 ---
 auth_enabled: true
 chunk_store_config:
@@ -335,6 +336,16 @@ ruler:
     kvstore:
       store: memberlist
 {{ end }}
+{{- if .Gates.HTTPEncryption }}
+internal_server:
+  enable: true
+  http_listen_address: ""
+  tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+  tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+  http_tls_config:
+    cert_file: /var/run/tls/http/server/tls.crt
+    key_file: /var/run/tls/http/server/tls.key
+{{- end }}
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_min_time_between_pings: '10s'
@@ -345,6 +356,17 @@ server:
   http_listen_port: 3100
   http_server_idle_timeout: 120s
   http_server_write_timeout: 1m
+{{- if or .Gates.HTTPEncryption .Gates.GRPCEncryption }}
+  tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+  tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+{{- if .Gates.HTTPEncryption }}
+  http_tls_config:
+    cert_file: /var/run/tls/http/server/tls.crt
+    key_file: /var/run/tls/http/server/tls.key
+    client_auth_type: RequireAndVerifyClientCert
+    client_ca_file: /var/run/ca/service-ca.crt
+{{- end }}
+{{- end }}
   log_level: info
 storage_config:
   boltdb_shipper:

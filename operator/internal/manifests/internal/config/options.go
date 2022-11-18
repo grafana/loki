@@ -5,13 +5,16 @@ import (
 	"math"
 	"strings"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // Options is used to render the loki-config.yaml file template
 type Options struct {
-	Stack lokiv1.LokiStackSpec
+	Stack      lokiv1.LokiStackSpec
+	Gates      configv1.FeatureGates
+	TLSProfile TLSProfileSpec
 
 	Namespace             string
 	Name                  string
@@ -165,4 +168,18 @@ func (w WriteAheadLog) ReplayMemoryCeiling() string {
 type RetentionOptions struct {
 	Enabled           bool
 	DeleteWorkerCount uint
+}
+
+// TLSProfileSpec is the desired behavior of a TLSProfileType.
+type TLSProfileSpec struct {
+	// Ciphers is used to specify the cipher algorithms that are negotiated
+	// during the TLS handshake.
+	Ciphers []string
+	// MinTLSVersion is used to specify the minimal version of the TLS protocol
+	// that is negotiated during the TLS handshake.
+	MinTLSVersion string
+}
+
+func (o TLSProfileSpec) CipherSuitesString() string {
+	return strings.Join(o.Ciphers, ",")
 }

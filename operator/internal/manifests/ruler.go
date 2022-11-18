@@ -154,13 +154,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
-	}
-
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ruler.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ruler.NodeSelector

@@ -108,20 +108,6 @@ func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName, minTLSVersion
 				MountPath: lokiServerHTTPTLSDir(),
 			},
 		},
-		Args: []string{
-			// Expose ready handler through internal server without requiring mTLS
-			"-internal-server.enable=true",
-			"-internal-server.http-listen-address=",
-			fmt.Sprintf("-internal-server.http-tls-min-version=%s", minTLSVersion),
-			fmt.Sprintf("-internal-server.http-tls-cipher-suites=%s", tlsCipherSuites),
-			fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-			fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-			// Require mTLS for any other handler
-			fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-			fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-			"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-		},
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          lokiInternalHTTPPortName,

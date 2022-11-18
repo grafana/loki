@@ -81,7 +81,12 @@ func ConfigOptions(opt Options) config.Options {
 	}
 
 	return config.Options{
-		Stack:     opt.Stack,
+		Stack: opt.Stack,
+		Gates: opt.Gates,
+		TLSProfile: config.TLSProfileSpec{
+			Ciphers:       opt.TLSProfile.Ciphers,
+			MinTLSVersion: opt.TLSProfile.MinTLSVersion,
+		},
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		Compactor: config.Address{

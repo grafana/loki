@@ -131,13 +131,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
-	}
-
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ingester.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
