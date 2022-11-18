@@ -40,8 +40,8 @@ var (
 )
 
 type JSONParser struct {
-	buf []byte // buffer used to build json keys
-	lbs *LabelsBuilder
+	prefixBuffer []byte // buffer used to build json keys
+	lbs          *LabelsBuilder
 
 	keys internedStringSet
 }
@@ -49,8 +49,8 @@ type JSONParser struct {
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser() *JSONParser {
 	return &JSONParser{
-		buf:  make([]byte, 0, 1024),
-		keys: internedStringSet{},
+		prefixBuffer: make([]byte, 0, 1024),
+		keys:         internedStringSet{},
 	}
 }
 
@@ -60,10 +60,10 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	}
 
 	// reset the state.
-	j.buf = j.buf[:0]
+	j.prefixBuffer = j.prefixBuffer[:0]
 	j.lbs = lbs
 
-	if err := jsonparser.ObjectEach(line, j.parseObject("")); err != nil {
+	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
 		return line, true
@@ -71,45 +71,47 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	return line, true
 }
 
-// todo use bytes for prefix.
-func (j *JSONParser) parseObject(prefix string) func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
-	return func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
-		switch dataType {
-		case jsonparser.String, jsonparser.Number, jsonparser.Boolean:
-			j.parseLabelValue(prefix, key, value, dataType)
-		case jsonparser.Object:
-			if key, ok := j.nextKeyPrefix(prefix, string(key)); ok {
-				return jsonparser.ObjectEach(value, j.parseObject(key))
-			}
+func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+	switch dataType {
+	case jsonparser.String, jsonparser.Number, jsonparser.Boolean:
+		j.parseLabelValue(key, value, dataType)
+	case jsonparser.Object:
+		prefixLen := len(j.prefixBuffer)
+		var err error
+		if ok := j.nextKeyPrefix(key); ok {
+			err = jsonparser.ObjectEach(value, j.parseObject)
 		}
-		return nil
+		// rollback the prefix as we exit the current object.
+		j.prefixBuffer = j.prefixBuffer[:prefixLen]
+		return err
 	}
+
+	return nil
 }
 
-func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
+// nextKeyPrefix load the next prefix in the buffer and tells if it should be processed based on hints.
+func (j *JSONParser) nextKeyPrefix(key []byte) bool {
 	// first time we add return the field as prefix.
-	if len(prefix) == 0 {
-		field = sanitizeLabelKey(field, true)
-		if j.lbs.ParserLabelHints().ShouldExtractPrefix(field) {
-			return field, true
+	if len(j.prefixBuffer) == 0 {
+		j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
+		if j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer)) {
+			return true
 		}
-		return "", false
+		return false
 	}
 	// otherwise we build the prefix and check using the buffer
-	j.buf = j.buf[:0]
-	j.buf = append(j.buf, prefix...)
-	j.buf = append(j.buf, byte(jsonSpacer))
-	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
+	j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
+	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
 	// if matches keep going
-	if j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.buf)) {
-		return string(j.buf), true
+	if j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer)) {
+		return true
 	}
-	return "", false
+	return false
 }
 
-func (j *JSONParser) parseLabelValue(prefix string, key, value []byte, dataType jsonparser.ValueType) {
+func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType) {
 	// the first time we use the field as label key.
-	if len(prefix) == 0 {
+	if len(j.prefixBuffer) == 0 {
 		key, ok := j.keys.Get(key, func() (string, bool) {
 			field := sanitizeLabelKey(string(key), true)
 			if j.lbs.BaseHas(field) {
@@ -128,19 +130,23 @@ func (j *JSONParser) parseLabelValue(prefix string, key, value []byte, dataType 
 
 	}
 	// otherwise we build the label key using the buffer
-	j.buf = j.buf[:0]
-	j.buf = append(j.buf, prefix...)
-	j.buf = append(j.buf, byte(jsonSpacer))
-	j.buf = append(j.buf, sanitizeLabelKey(string(key), false)...)
-	keyString, ok := j.keys.Get(j.buf, func() (string, bool) {
-		if j.lbs.BaseHas(string(j.buf)) {
-			j.buf = append(j.buf, duplicateSuffix...)
+
+	// snapshot the current prefix position
+	prefixLen := len(j.prefixBuffer)
+	j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
+	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
+	keyString, ok := j.keys.Get(j.prefixBuffer, func() (string, bool) {
+		if j.lbs.BaseHas(string(j.prefixBuffer)) {
+			j.prefixBuffer = append(j.prefixBuffer, duplicateSuffix...)
 		}
-		if !j.lbs.ParserLabelHints().ShouldExtract(string(j.buf)) {
+		if !j.lbs.ParserLabelHints().ShouldExtract(string(j.prefixBuffer)) {
 			return "", false
 		}
-		return string(j.buf), true
+		return string(j.prefixBuffer), true
 	})
+
+	// reset the prefix position
+	j.prefixBuffer = j.prefixBuffer[:prefixLen]
 	if !ok {
 		return
 	}
