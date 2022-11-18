@@ -717,7 +717,8 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
 		js := jsoniter.NewStream(jsoniter.ConfigFastest, &buf, 0)
-		encodeResult(w.Value, js)
+		err := encodeResult(w.Value, js)
+		require.NoError(t, err)
 		js.Flush()
 		actual := buf.String()
 
