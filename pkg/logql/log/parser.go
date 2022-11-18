@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"unicode/utf8"
 
+	"github.com/buger/jsonparser"
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logql/log/pattern"
@@ -23,12 +23,17 @@ const (
 	duplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
+	// How much stack space to allocate for unescaping JSON strings; if a string longer
+	// than this needs to be escaped, it will result in a heap allocation
+	unescapeStackBufSize = 64
 )
 
 var (
 	_ Stage = &JSONParser{}
 	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
+
+	trueBytes = []byte("true")
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
@@ -53,14 +58,12 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-	it := jsoniter.ConfigFastest.BorrowIterator(line)
-	defer jsoniter.ConfigFastest.ReturnIterator(it)
 
 	// reset the state.
 	j.buf = j.buf[:0]
 	j.lbs = lbs
 
-	if err := j.readObject(it); err != nil {
+	if err := jsonparser.ObjectEach(line, j.parseObject("")); err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
 		return line, true
@@ -68,35 +71,18 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	return line, true
 }
 
-func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
-	// we only care about object and values.
-	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
-		return errUnexpectedJSONObject
-	}
-	_ = it.ReadMapCB(j.parseMap(""))
-	if it.Error != nil && it.Error != io.EOF {
-		return it.Error
-	}
-	return nil
-}
-
-func (j *JSONParser) parseMap(prefix string) func(iter *jsoniter.Iterator, field string) bool {
-	return func(iter *jsoniter.Iterator, field string) bool {
-		switch iter.WhatIsNext() {
-		// are we looking at a value that needs to be added ?
-		case jsoniter.StringValue, jsoniter.NumberValue, jsoniter.BoolValue:
-			j.parseLabelValue(iter, prefix, field)
-		// Or another new object based on a prefix.
-		case jsoniter.ObjectValue:
-			if key, ok := j.nextKeyPrefix(prefix, field); ok {
-				return iter.ReadMapCB(j.parseMap(key))
+// todo use bytes for prefix.
+func (j *JSONParser) parseObject(prefix string) func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+	return func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+		switch dataType {
+		case jsonparser.String, jsonparser.Number, jsonparser.Boolean:
+			j.parseLabelValue(prefix, key, value, dataType)
+		case jsonparser.Object:
+			if key, ok := j.nextKeyPrefix(prefix, string(key)); ok {
+				return jsonparser.ObjectEach(value, j.parseObject(key))
 			}
-			// If this keys is not expected we skip the object
-			iter.Skip()
-		default:
-			iter.Skip()
 		}
-		return true
+		return nil
 	}
 }
 
@@ -121,24 +107,23 @@ func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
 	return "", false
 }
 
-func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field string) {
+func (j *JSONParser) parseLabelValue(prefix string, key, value []byte, dataType jsonparser.ValueType) {
 	// the first time we use the field as label key.
 	if len(prefix) == 0 {
-		key, ok := j.keys.Get(unsafeGetBytes(field), func() (string, bool) {
-			field = sanitizeLabelKey(field, true)
-			if !j.lbs.ParserLabelHints().ShouldExtract(field) {
-				return "", false
-			}
+		key, ok := j.keys.Get(key, func() (string, bool) {
+			field := sanitizeLabelKey(string(key), true)
 			if j.lbs.BaseHas(field) {
 				field = field + duplicateSuffix
+			}
+			if !j.lbs.ParserLabelHints().ShouldExtract(field) {
+				return "", false
 			}
 			return field, true
 		})
 		if !ok {
-			iter.Skip()
 			return
 		}
-		j.lbs.Set(key, readValue(iter))
+		j.lbs.Set(key, readValue(value, dataType))
 		return
 
 	}
@@ -146,8 +131,8 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 	j.buf = j.buf[:0]
 	j.buf = append(j.buf, prefix...)
 	j.buf = append(j.buf, byte(jsonSpacer))
-	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
-	key, ok := j.keys.Get(j.buf, func() (string, bool) {
+	j.buf = append(j.buf, sanitizeLabelKey(string(key), false)...)
+	keyString, ok := j.keys.Get(j.buf, func() (string, bool) {
 		if j.lbs.BaseHas(string(j.buf)) {
 			j.buf = append(j.buf, duplicateSuffix...)
 		}
@@ -157,34 +142,45 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 		return string(j.buf), true
 	})
 	if !ok {
-		iter.Skip()
 		return
 	}
-	j.lbs.Set(key, readValue(iter))
+	j.lbs.Set(keyString, readValue(value, dataType))
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func readValue(iter *jsoniter.Iterator) string {
-	switch iter.WhatIsNext() {
-	case jsoniter.StringValue:
-		v := iter.ReadString()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
-		if strings.ContainsRune(v, utf8.RuneError) {
-			return ""
-		}
-		return v
-	case jsoniter.NumberValue:
-		return iter.ReadNumber().String()
-	case jsoniter.BoolValue:
-		if iter.ReadBool() {
+func readValue(v []byte, dataType jsonparser.ValueType) string {
+	switch dataType {
+	case jsonparser.String:
+		return unescapeJsonString(v)
+	case jsonparser.Null:
+		return ""
+	case jsonparser.Number:
+		return string(v)
+	case jsonparser.Boolean:
+		if bytes.Equal(v, trueBytes) {
 			return trueString
 		}
 		return falseString
 	default:
-		iter.Skip()
 		return ""
 	}
+}
+
+func unescapeJsonString(b []byte) string {
+	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
+	bU, err := jsonparser.Unescape(b, stackbuf[:])
+	if err != nil {
+		return ""
+	}
+	res := string(bU)
+	// rune error is rejected by Prometheus
+	for _, r := range res {
+		if r == utf8.RuneError {
+			return ""
+		}
+	}
+	return res
 }
 
 type RegexpParser struct {

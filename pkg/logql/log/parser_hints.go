@@ -25,11 +25,16 @@ type ParserHint interface {
 	//		 sum(rate({app="foo"} | json [5m]))
 	// We don't need to extract any labels from the log line.
 	NoLabels() bool
+	Keys() []string
 }
 
 type parserHint struct {
 	noLabels       bool
 	requiredLabels []string
+}
+
+func (p *parserHint) Keys() []string {
+	return p.requiredLabels
 }
 
 func (p *parserHint) ShouldExtract(key string) bool {

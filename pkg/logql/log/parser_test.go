@@ -80,7 +80,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.Labels{},
 			labels.Labels{
 				{Name: "__error__", Value: "JSONParserErr"},
-				{Name: "__error_details__", Value: "ReadMapCB: expect \" after {, but found n, error found in #2 byte of ...|{n}|..., bigger context ...|{n}|..."},
+				{Name: "__error_details__", Value: "Value looks like object, but can't find closing '}' symbol"},
 			},
 		},
 		{
