@@ -63,6 +63,14 @@ frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
   grpc_client_config:
     max_send_msg_size: 104857600
+{{- if .Gates.GRPCEncryption }}
+    tls_enabled: true
+    tls_cert_path: /var/run/tls/grpc/server/tls.crt
+    tls_key_path: /var/run/tls/grpc/server/tls.key
+    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+{{- end }}
   match_max_concurrent: true
 ingester:
   chunk_block_size: 262144
@@ -88,6 +96,14 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
+{{- if .Gates.GRPCEncryption }}
+    tls_enabled: true
+    tls_cert_path: /var/run/tls/grpc/server/tls.crt
+    tls_key_path: /var/run/tls/grpc/server/tls.key
+    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+{{- end }}
   remote_timeout: 1s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
@@ -153,6 +169,15 @@ querier:
   query_ingesters_within: 3h
   tail_max_duration: 1h
   max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
+{{- if .Gates.GRPCEncryption }}
+compactor_client:
+  tls_enabled: true
+  tls_cert_path: /var/run/tls/grpc/server/tls.crt
+  tls_key_path: /var/run/tls/grpc/server/tls.key
+  tls_ca_path: /var/run/ca/service-ca.crt
+  tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+  tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+{{- end }}
 query_range:
   align_queries_with_step: true
   cache_results: true
@@ -335,6 +360,15 @@ ruler:
   ring:
     kvstore:
       store: memberlist
+{{- if .Gates.GRPCEncryption }}
+  ruler_client:
+    tls_enabled: true
+    tls_cert_path: /var/run/tls/grpc/server/tls.crt
+    tls_key_path: /var/run/tls/grpc/server/tls.key
+    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+{{- end }}
 {{ end }}
 {{- if .Gates.HTTPEncryption }}
 internal_server:
@@ -384,6 +418,15 @@ storage_config:
     shared_store: {{ .ObjectStorage.SharedStore }}
     index_gateway_client:
       server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
+{{- if .Gates.GRPCEncryption }}
+      grpc_client_config:
+        tls_enabled: true
+        tls_cert_path: /var/run/tls/grpc/server/tls.crt
+        tls_key_path: /var/run/tls/grpc/server/tls.key
+        tls_ca_path: /var/run/ca/service-ca.crt
+        tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+        tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+{{- end }}
 tracing:
   enabled: false
 analytics:

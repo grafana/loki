@@ -218,12 +218,6 @@ func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Opti
 	secretContainerSpec := corev1.Container{
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
-			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
 		},
 	}
