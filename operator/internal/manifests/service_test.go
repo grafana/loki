@@ -322,12 +322,7 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "compactor",
 			buildFunc: BuildCompactor,
-			wantArgs: []string{
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
+			wantArgs:  []string{},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -392,10 +387,6 @@ func TestServices_WithEncryption(t *testing.T) {
 				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
 				"-ingester.client.tls-min-version=VersionTLS12",
 				"-ingester.client.tls-cipher-suites=cipher1,cipher2",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
 			},
 			wantPorts: []corev1.ContainerPort{
 				{
@@ -453,12 +444,7 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "index-gateway",
 			buildFunc: BuildIndexGateway,
-			wantArgs: []string{
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
+			wantArgs:  []string{},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -530,10 +516,6 @@ func TestServices_WithEncryption(t *testing.T) {
 				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
 				"-boltdb.shipper.index-gateway-client.grpc.tls-min-version=VersionTLS12",
 				"-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=cipher1,cipher2",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
 			},
 			wantPorts: []corev1.ContainerPort{
 				{
@@ -620,10 +602,6 @@ func TestServices_WithEncryption(t *testing.T) {
 				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
 				"-boltdb.shipper.index-gateway-client.grpc.tls-min-version=VersionTLS12",
 				"-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=cipher1,cipher2",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
 			},
 			wantPorts: []corev1.ContainerPort{
 				{
@@ -688,10 +666,6 @@ func TestServices_WithEncryption(t *testing.T) {
 				fmt.Sprintf("-frontend.tail-tls-config.tls-key-path=%s", lokiServerHTTPTLSKey()),
 				"-frontend.tail-proxy-url=https://test-querier-http.ns.svc.cluster.local:3100",
 				fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
 			},
 			wantPorts: []corev1.ContainerPort{
 				{
@@ -778,10 +752,6 @@ func TestServices_WithEncryption(t *testing.T) {
 				fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(stackName), stackNs)),
 				"-ruler.client.tls-min-version=VersionTLS12",
 				"-ruler.client.tls-cipher-suites=cipher1,cipher2",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
 			},
 			wantPorts: []corev1.ContainerPort{
 				{

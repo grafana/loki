@@ -1,8 +1,6 @@
 package manifests
 
 import (
-	"fmt"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
@@ -66,12 +64,6 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 				ReadOnly:  false,
 				MountPath: lokiServerGRPCTLSDir(),
 			},
-		},
-		Args: []string{
-			fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-			"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
 		},
 	}
 

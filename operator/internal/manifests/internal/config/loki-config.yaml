@@ -366,6 +366,13 @@ server:
     client_auth_type: RequireAndVerifyClientCert
     client_ca_file: /var/run/ca/service-ca.crt
 {{- end }}
+{{- if .Gates.GRPCEncryption }}
+  grpc_tls_config:
+    cert_file: /var/run/tls/grpc/server/tls.crt
+    key_file: /var/run/tls/grpc/server/tls.key
+    client_auth_type: RequireAndVerifyClientCert
+    client_ca_file: /var/run/ca/service-ca.crt
+{{- end }}
 {{- end }}
   log_level: info
 storage_config:

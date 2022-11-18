@@ -613,10 +613,6 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 
 				t.Run(name, func(t *testing.T) {
 					secretName := secretsMap[name]
-					args := []string{
-						"-server.grpc-tls-cert-path=/var/run/tls/grpc/server/tls.crt",
-						"-server.grpc-tls-key-path=/var/run/tls/grpc/server/tls.key",
-					}
 
 					vm := corev1.VolumeMount{
 						Name:      secretName,
@@ -634,11 +630,9 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 					}
 
 					if tst.BuildOptions.Gates.GRPCEncryption {
-						require.Subset(t, spec.Containers[0].Args, args)
 						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
 						require.Contains(t, spec.Volumes, v)
 					} else {
-						require.NotSubset(t, spec.Containers[0].Args, args)
 						require.NotContains(t, spec.Containers[0].VolumeMounts, vm)
 						require.NotContains(t, spec.Volumes, v)
 					}
