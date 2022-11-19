@@ -394,6 +394,53 @@ func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, er
 	return c.parseResponse(buf, statusCode)
 }
 
+func (c *Client) QueryWithoutGzipHeader(ctx context.Context, query string) (http.Header, []byte, error) {
+	u := c.rangeQueryURL(query)
+	req, err := c.request(ctx, "GET", u)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer res.Body.Close()
+
+	buf, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("request failed with status code %v: %w", res.StatusCode, err)
+	}
+
+	return res.Header, buf, nil
+}
+
+func (c *Client) QueryWithGzipHeader(ctx context.Context, query string) (http.Header, []byte, error) {
+	u := c.rangeQueryURL(query)
+	req, err := c.request(ctx, "GET", u)
+	mheader := req.Header["Accept-Encoding"]
+	mheader = append(mheader, "gzip")
+	req.Header["Accept-Encoding"] = mheader
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer res.Body.Close()
+
+	buf, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("request failed with status code %v: %w", res.StatusCode, err)
+	}
+
+	return res.Header, buf, nil
+}
+
 // RunQuery runs a query and returns an error if anything went wrong
 func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
@@ -565,4 +612,28 @@ func (c *Client) run(ctx context.Context, u string) ([]byte, int, error) {
 	}
 
 	return buf, res.StatusCode, nil
+}
+
+func (c *Client) runGetHeaders(ctx context.Context, u string) (http.Header, []byte, error) {
+	req, err := c.request(ctx, "GET", u)
+	mheader := req.Header["Accept-Encoding"]
+	mheader = append(mheader, "gzip")
+	req.Header["Accept-Encoding"] = mheader
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer res.Body.Close()
+
+	buf, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("request failed with status code %v: %w", res.StatusCode, err)
+	}
+
+	return res.Header, buf, nil
 }

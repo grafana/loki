@@ -72,3 +72,44 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})
 }
+
+func TestLokiCompressResponses(t *testing.T) {
+	clu := cluster.New()
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	var (
+		tAll = clu.AddComponent(
+			"all",
+			"-target=all",
+			"-querier.compress-http-responses=true",
+		)
+	)
+
+	require.NoError(t, clu.Run())
+
+	tenantID := "fake"
+	cli := client.New(tenantID, "", tAll.HTTPURL())
+
+	size := int(10 * 1024 * 1024)
+	bytes := make([]byte, size)
+	for i := 0; i < size; i++ {
+		bytes[i] = 'a'
+	}
+	body := string(bytes)
+
+	t.Run("ingest-logs", func(t *testing.T) {
+		require.NoError(t, cli.PushLogLine(body, map[string]string{"job": "fake"}))
+	})
+
+	headers, content, err := cli.QueryWithGzipHeader(context.Background(), `{job="fake"}`)
+	require.NoError(t, err)
+	require.Contains(t, headers["Content-Encoding"], "gzip")
+	require.Less(t, len(content), size/2)
+
+	headers, content, err = cli.QueryWithoutGzipHeader(context.Background(), `{job="fake"}`)
+	require.NoError(t, err)
+	require.NotContains(t, headers["Content-Encoding"], "gzip")
+	require.Greater(t, len(content), size/2)
+}
