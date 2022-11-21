@@ -82,7 +82,7 @@ require (
 	github.com/prometheus/client_golang v1.13.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.37.0
-	github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7
+	github.com/prometheus/prometheus v0.39.1
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
@@ -172,6 +172,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/efficientgo/tools/core v0.0.0-20220225185207-fe763185946b // indirect
+	github.com/emicklei/go-restful/v3 v3.8.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
@@ -192,12 +193,12 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.4.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.0.1 // indirect
+	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20220829040838-70bd9ae97f40 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.5.1 // indirect
-	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gophercloud/gophercloud v1.0.0 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -235,6 +236,7 @@ require (
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
@@ -304,10 +306,6 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
 
-replace k8s.io/api => k8s.io/api v0.23.6
-
-replace k8s.io/apimachinery => k8s.io/apimachinery v0.23.6
-
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
@@ -317,27 +315,12 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/owen-d/gomemcache v0.0.0-20220719101501-ce4268ea75ae
 
-// We only pin this version to avoid problems with running go get: github.com/thanos-io/thanos@main. That
-// currently fails because Thanos isn't merging release branches to main branch, and Go modules system is then
-// confused about which version is the latest one. v0.22.0 was released in July, but latest tag reachable from main
-// is v0.19.1. We pin version from late september here. Feel free to remove when updating to later version.
-replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211126105533-c5505f5eaa7d
-
 replace github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
 
 exclude k8s.io/client-go v8.0.0+incompatible
 
-// Trying to downgrade client-go
-replace k8s.io/client-go => k8s.io/client-go v0.23.6
-
-// Trying to downgrade kube-openapi to avoid issues with google gnostic library
-replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
-
 // grpc v1.46.0 removed "WithBalancerName()" API, still in use by weaveworks/commons.
 replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
-
-// We need to define the replace because thanos is importing an older version and then replacing it
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.39.1
 
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.
