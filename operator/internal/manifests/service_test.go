@@ -617,14 +617,7 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "query-frontend",
 			buildFunc: BuildQueryFrontend,
-			wantArgs: []string{
-				"-frontend.tail-tls-config.tls-min-version=VersionTLS12",
-				"-frontend.tail-tls-config.tls-cipher-suites=cipher1,cipher2",
-				fmt.Sprintf("-frontend.tail-tls-config.tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-frontend.tail-tls-config.tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-frontend.tail-proxy-url=https://test-querier-http.ns.svc.cluster.local:3100",
-				fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s", signingCAPath()),
-			},
+			wantArgs:  []string{},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
