@@ -101,7 +101,7 @@ loop:
 			break
 		}
 
-		u := nodes[f] >> (nodesBitsTextOffset + nodesBitsTextLength)
+		u := uint32(nodeValue(f) >> (nodesBitsTextOffset + nodesBitsTextLength))
 		icannNode = u&(1<<nodesBitsICANN-1) != 0
 		u >>= nodesBitsICANN
 		u = children[u&(1<<nodesBitsChildren-1)]
@@ -154,9 +154,18 @@ func find(label string, lo, hi uint32) uint32 {
 	return notFound
 }
 
+func nodeValue(i uint32) uint64 {
+	off := uint64(i * (nodesBits / 8))
+	return uint64(nodes[off])<<32 |
+		uint64(nodes[off+1])<<24 |
+		uint64(nodes[off+2])<<16 |
+		uint64(nodes[off+3])<<8 |
+		uint64(nodes[off+4])
+}
+
 // nodeLabel returns the label for the i'th node.
 func nodeLabel(i uint32) string {
-	x := nodes[i]
+	x := nodeValue(i)
 	length := x & (1<<nodesBitsTextLength - 1)
 	x >>= nodesBitsTextLength
 	offset := x & (1<<nodesBitsTextOffset - 1)
