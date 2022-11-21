@@ -487,7 +487,7 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			log, ctx := spanlogger.New(req.Context(), call)
-			tenantIDS, err := tenant.TenantIDs(ctx)
+			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
 				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
@@ -496,8 +496,8 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 
 			// use the longest timeout across all tenants
 			longestTimeout := q.limits.QueryTimeout("")
-			for _, tenantID := range tenantIDS {
-				queryTimeout := q.limits.QueryTimeout(tenantID)
+			for _, tenant := range tenants {
+				queryTimeout := q.limits.QueryTimeout(tenant)
 				if longestTimeout < queryTimeout {
 					longestTimeout = queryTimeout
 
