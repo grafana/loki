@@ -42,7 +42,7 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{}
 	if opts.Stack.Tenants != nil {
-		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode, opts.Name); err != nil {
+		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode); err != nil {
 			return nil, err
 		}
 
@@ -290,7 +290,7 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 
 func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameRulerHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
@@ -298,10 +298,7 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 
-func configureRulerStatefulSetForMode(
-	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
-	stackName string,
-) error {
+func configureRulerStatefulSetForMode(ss *appsv1.StatefulSet, mode lokiv1.ModeType) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure

@@ -234,7 +234,7 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 
 func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameCompactorHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {

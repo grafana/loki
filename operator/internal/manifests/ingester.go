@@ -262,7 +262,7 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 
 func configureIngesterHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameIngesterHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {

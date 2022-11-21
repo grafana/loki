@@ -209,7 +209,7 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 
 func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
 	serviceName := serviceNameDistributorHTTP(opts.Name)
-	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {

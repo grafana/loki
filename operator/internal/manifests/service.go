@@ -78,7 +78,7 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 	return nil
 }
 
-func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName, minTLSVersion, tlsCipherSuites string) error {
+func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName string) error {
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{

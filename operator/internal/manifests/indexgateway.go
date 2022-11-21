@@ -235,7 +235,7 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 
 func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
