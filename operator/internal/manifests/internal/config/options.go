@@ -173,11 +173,23 @@ type RetentionOptions struct {
 type TLSOptions struct {
 	Ciphers       []string
 	MinTLSVersion string
+	Paths         TLSFilePaths
 	ServerNames   TLSServerNames
 }
 
 func (o TLSOptions) CipherSuitesString() string {
 	return strings.Join(o.Ciphers, ",")
+}
+
+type TLSFilePaths struct {
+	CA   string
+	GRPC TLSCertPath
+	HTTP TLSCertPath
+}
+
+type TLSCertPath struct {
+	Certificate string
+	Key         string
 }
 
 type TLSServerNames struct {

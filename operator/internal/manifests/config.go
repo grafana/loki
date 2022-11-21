@@ -86,6 +86,17 @@ func ConfigOptions(opt Options) config.Options {
 		TLS: config.TLSOptions{
 			Ciphers:       opt.TLSProfile.Ciphers,
 			MinTLSVersion: opt.TLSProfile.MinTLSVersion,
+			Paths: config.TLSFilePaths{
+				CA: signingCAPath(),
+				GRPC: config.TLSCertPath{
+					Certificate: lokiServerGRPCTLSCert(),
+					Key:         lokiServerGRPCTLSKey(),
+				},
+				HTTP: config.TLSCertPath{
+					Certificate: lokiServerHTTPTLSCert(),
+					Key:         lokiServerHTTPTLSKey(),
+				},
+			},
 			ServerNames: config.TLSServerNames{
 				GRPC: config.GRPCServerNames{
 					IndexGateway:  fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),

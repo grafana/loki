@@ -58,9 +58,9 @@ frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}
   tail_tls_config:
-    tls_cert_path: /var/run/tls/http/server/tls.crt
-    tls_key_path: /var/run/tls/http/server/tls.key
-    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cert_path: {{ .TLS.Paths.HTTP.Certificate }}
+    tls_key_path: {{ .TLS.Paths.HTTP.Key }}
+    tls_ca_path: {{ .TLS.Paths.CA }}
     tls_server_name: {{ .TLS.ServerNames.HTTP.Querier }}
     tls_cipher_suites: {{ .TLS.CipherSuitesString }}
     tls_min_version: {{ .TLS.MinTLSVersion }}
@@ -74,9 +74,9 @@ frontend_worker:
     max_send_msg_size: 104857600
 {{- if .Gates.GRPCEncryption }}
     tls_enabled: true
-    tls_cert_path: /var/run/tls/grpc/server/tls.crt
-    tls_key_path: /var/run/tls/grpc/server/tls.key
-    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+    tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+    tls_ca_path: {{ .TLS.Paths.CA }}
     tls_server_name: {{ .TLS.ServerNames.GRPC.QueryFrontend }}
     tls_cipher_suites: {{ .TLS.CipherSuitesString }}
     tls_min_version: {{ .TLS.MinTLSVersion }}
@@ -108,9 +108,9 @@ ingester_client:
     max_recv_msg_size: 67108864
 {{- if .Gates.GRPCEncryption }}
     tls_enabled: true
-    tls_cert_path: /var/run/tls/grpc/server/tls.crt
-    tls_key_path: /var/run/tls/grpc/server/tls.key
-    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+    tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+    tls_ca_path: {{ .TLS.Paths.CA }}
     tls_server_name: {{ .TLS.ServerNames.GRPC.Ingester }}
     tls_cipher_suites: {{ .TLS.CipherSuitesString }}
     tls_min_version: {{ .TLS.MinTLSVersion }}
@@ -183,9 +183,9 @@ querier:
 {{- if .Gates.GRPCEncryption }}
 compactor_client:
   tls_enabled: true
-  tls_cert_path: /var/run/tls/grpc/server/tls.crt
-  tls_key_path: /var/run/tls/grpc/server/tls.key
-  tls_ca_path: /var/run/ca/service-ca.crt
+  tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+  tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+  tls_ca_path: {{ .TLS.Paths.CA }}
   tls_server_name: {{ .TLS.ServerNames.HTTP.Compactor }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}
   tls_min_version: {{ .TLS.MinTLSVersion }}
@@ -375,9 +375,9 @@ ruler:
 {{- if .Gates.GRPCEncryption }}
   ruler_client:
     tls_enabled: true
-    tls_cert_path: /var/run/tls/grpc/server/tls.crt
-    tls_key_path: /var/run/tls/grpc/server/tls.key
-    tls_ca_path: /var/run/ca/service-ca.crt
+    tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+    tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+    tls_ca_path: {{ .TLS.Paths.CA }}
     tls_server_name: {{ .TLS.ServerNames.GRPC.Ruler }}
     tls_cipher_suites: {{ .TLS.CipherSuitesString }}
     tls_min_version: {{ .TLS.MinTLSVersion }}
@@ -390,8 +390,8 @@ internal_server:
   tls_min_version: {{ .TLS.MinTLSVersion }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}
   http_tls_config:
-    cert_file: /var/run/tls/http/server/tls.crt
-    key_file: /var/run/tls/http/server/tls.key
+    cert_file: {{ .TLS.Paths.HTTP.Certificate }}
+    key_file: {{ .TLS.Paths.HTTP.Key }}
 {{- end }}
 server:
   graceful_shutdown_timeout: 5s
@@ -408,17 +408,17 @@ server:
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}
 {{- if .Gates.HTTPEncryption }}
   http_tls_config:
-    cert_file: /var/run/tls/http/server/tls.crt
-    key_file: /var/run/tls/http/server/tls.key
+    cert_file: {{ .TLS.Paths.HTTP.Certificate }}
+    key_file: {{ .TLS.Paths.HTTP.Key }}
     client_auth_type: RequireAndVerifyClientCert
-    client_ca_file: /var/run/ca/service-ca.crt
+    client_ca_file: {{ .TLS.Paths.CA }}
 {{- end }}
 {{- if .Gates.GRPCEncryption }}
   grpc_tls_config:
-    cert_file: /var/run/tls/grpc/server/tls.crt
-    key_file: /var/run/tls/grpc/server/tls.key
+    cert_file: {{ .TLS.Paths.GRPC.Certificate }}
+    key_file: {{ .TLS.Paths.GRPC.Key }}
     client_auth_type: RequireAndVerifyClientCert
-    client_ca_file: /var/run/ca/service-ca.crt
+    client_ca_file: {{ .TLS.Paths.CA }}
 {{- end }}
 {{- end }}
   log_level: info
@@ -434,9 +434,9 @@ storage_config:
 {{- if .Gates.GRPCEncryption }}
       grpc_client_config:
         tls_enabled: true
-        tls_cert_path: /var/run/tls/grpc/server/tls.crt
-        tls_key_path: /var/run/tls/grpc/server/tls.key
-        tls_ca_path: /var/run/ca/service-ca.crt
+        tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+        tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+        tls_ca_path: {{ .TLS.Paths.CA }}
         tls_server_name: {{ .TLS.ServerNames.GRPC.IndexGateway }}
         tls_cipher_suites: {{ .TLS.CipherSuitesString }}
         tls_min_version: {{ .TLS.MinTLSVersion }}
