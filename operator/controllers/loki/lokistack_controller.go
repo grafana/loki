@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
@@ -112,10 +111,7 @@ type LokiStackReconciler struct {
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ok, err := state.IsManaged(ctx, req, r.Client)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 	if !ok {
 		r.Log.Info("Skipping reconciliation for unmanaged lokistack resource", "name", req.NamespacedName)
@@ -137,10 +133,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	err = status.Refresh(ctx, r.Client, req)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -151,23 +144,16 @@ func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request,
 	if errors.As(err, &degraded) {
 		err = status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
 		if err != nil {
-			return ctrl.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second,
-			}, err
+			return ctrl.Result{}, err
 		}
 
 		return ctrl.Result{
-			Requeue:      degraded.Requeue,
-			RequeueAfter: time.Second,
+			Requeue: degraded.Requeue,
 		}, nil
 	}
 
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
