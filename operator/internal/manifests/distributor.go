@@ -6,8 +6,6 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -215,17 +213,6 @@ func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, opts Opti
 }
 
 func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
-	secretContainerSpec := corev1.Container{
-		Args: []string{
-			// Enable GRPC over TLS for ingester client
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
-		},
-	}
-
-	if err := mergo.Merge(&deployment.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
 	serviceName := serviceNameDistributorGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

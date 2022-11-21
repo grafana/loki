@@ -12,9 +12,9 @@ import (
 
 // Options is used to render the loki-config.yaml file template
 type Options struct {
-	Stack      lokiv1.LokiStackSpec
-	Gates      configv1.FeatureGates
-	TLSProfile TLSProfileSpec
+	Stack lokiv1.LokiStackSpec
+	Gates configv1.FeatureGates
+	TLS   TLSOptions
 
 	Namespace             string
 	Name                  string
@@ -170,16 +170,29 @@ type RetentionOptions struct {
 	DeleteWorkerCount uint
 }
 
-// TLSProfileSpec is the desired behavior of a TLSProfileType.
-type TLSProfileSpec struct {
-	// Ciphers is used to specify the cipher algorithms that are negotiated
-	// during the TLS handshake.
-	Ciphers []string
-	// MinTLSVersion is used to specify the minimal version of the TLS protocol
-	// that is negotiated during the TLS handshake.
+type TLSOptions struct {
+	Ciphers       []string
 	MinTLSVersion string
+	ServerNames   TLSServerNames
 }
 
-func (o TLSProfileSpec) CipherSuitesString() string {
+func (o TLSOptions) CipherSuitesString() string {
 	return strings.Join(o.Ciphers, ",")
+}
+
+type TLSServerNames struct {
+	GRPC GRPCServerNames
+	HTTP HTTPServerNames
+}
+
+type GRPCServerNames struct {
+	IndexGateway  string
+	Ingester      string
+	QueryFrontend string
+	Ruler         string
+}
+
+type HTTPServerNames struct {
+	Compactor string
+	Querier   string
 }

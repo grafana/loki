@@ -61,8 +61,9 @@ frontend:
     tls_cert_path: /var/run/tls/http/server/tls.crt
     tls_key_path: /var/run/tls/http/server/tls.key
     tls_ca_path: /var/run/ca/service-ca.crt
-    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
-    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+    tls_server_name: {{ .TLS.ServerNames.HTTP.Querier }}
+    tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+    tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
   compress_responses: true
   max_outstanding_per_tenant: 256
@@ -76,8 +77,9 @@ frontend_worker:
     tls_cert_path: /var/run/tls/grpc/server/tls.crt
     tls_key_path: /var/run/tls/grpc/server/tls.key
     tls_ca_path: /var/run/ca/service-ca.crt
-    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
-    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+    tls_server_name: {{ .TLS.ServerNames.GRPC.QueryFrontend }}
+    tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+    tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
   match_max_concurrent: true
 ingester:
@@ -109,8 +111,9 @@ ingester_client:
     tls_cert_path: /var/run/tls/grpc/server/tls.crt
     tls_key_path: /var/run/tls/grpc/server/tls.key
     tls_ca_path: /var/run/ca/service-ca.crt
-    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
-    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+    tls_server_name: {{ .TLS.ServerNames.GRPC.Ingester }}
+    tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+    tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
   remote_timeout: 1s
 # NOTE: Keep the order of keys as in Loki docs
@@ -183,8 +186,9 @@ compactor_client:
   tls_cert_path: /var/run/tls/grpc/server/tls.crt
   tls_key_path: /var/run/tls/grpc/server/tls.key
   tls_ca_path: /var/run/ca/service-ca.crt
-  tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
-  tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+  tls_server_name: {{ .TLS.ServerNames.HTTP.Compactor }}
+  tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+  tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
 query_range:
   align_queries_with_step: true
@@ -374,16 +378,17 @@ ruler:
     tls_cert_path: /var/run/tls/grpc/server/tls.crt
     tls_key_path: /var/run/tls/grpc/server/tls.key
     tls_ca_path: /var/run/ca/service-ca.crt
-    tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
-    tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+    tls_server_name: {{ .TLS.ServerNames.GRPC.Ruler }}
+    tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+    tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
 {{ end }}
 {{- if .Gates.HTTPEncryption }}
 internal_server:
   enable: true
   http_listen_address: ""
-  tls_min_version: {{ .TLSProfile.MinTLSVersion }}
-  tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+  tls_min_version: {{ .TLS.MinTLSVersion }}
+  tls_cipher_suites: {{ .TLS.CipherSuitesString }}
   http_tls_config:
     cert_file: /var/run/tls/http/server/tls.crt
     key_file: /var/run/tls/http/server/tls.key
@@ -399,8 +404,8 @@ server:
   http_server_idle_timeout: 120s
   http_server_write_timeout: 1m
 {{- if or .Gates.HTTPEncryption .Gates.GRPCEncryption }}
-  tls_min_version: {{ .TLSProfile.MinTLSVersion }}
-  tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
+  tls_min_version: {{ .TLS.MinTLSVersion }}
+  tls_cipher_suites: {{ .TLS.CipherSuitesString }}
 {{- if .Gates.HTTPEncryption }}
   http_tls_config:
     cert_file: /var/run/tls/http/server/tls.crt
@@ -432,8 +437,9 @@ storage_config:
         tls_cert_path: /var/run/tls/grpc/server/tls.crt
         tls_key_path: /var/run/tls/grpc/server/tls.key
         tls_ca_path: /var/run/ca/service-ca.crt
-        tls_cipher_suites: {{ .TLSProfile.CipherSuitesString }}
-        tls_min_version: {{ .TLSProfile.MinTLSVersion }}
+        tls_server_name: {{ .TLS.ServerNames.GRPC.IndexGateway }}
+        tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+        tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
 tracing:
   enabled: false

@@ -314,7 +314,6 @@ func TestServices_WithEncryption(t *testing.T) {
 	tt := []struct {
 		desc             string
 		buildFunc        func(Options) ([]client.Object, error)
-		wantArgs         []string
 		wantPorts        []corev1.ContainerPort
 		wantVolumeMounts []corev1.VolumeMount
 		wantVolumes      []corev1.Volume
@@ -322,7 +321,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "compactor",
 			buildFunc: BuildCompactor,
-			wantArgs:  []string{},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -379,9 +377,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "distributor",
 			buildFunc: BuildDistributor,
-			wantArgs: []string{
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -438,7 +433,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "index-gateway",
 			buildFunc: BuildIndexGateway,
-			wantArgs:  []string{},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -495,10 +489,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "ingester",
 			buildFunc: BuildIngester,
-			wantArgs: []string{
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -555,12 +545,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "querier",
 			buildFunc: BuildQuerier,
-			wantArgs: []string{
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNs)),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(stackName), stackNs)),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -617,7 +601,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "query-frontend",
 			buildFunc: BuildQueryFrontend,
-			wantArgs:  []string{},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -674,12 +657,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "ruler",
 			buildFunc: BuildRuler,
-			wantArgs: []string{
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(stackName), stackNs)),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(stackName), stackNs)),
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -757,16 +734,6 @@ func TestServices_WithEncryption(t *testing.T) {
 					strings.Contains(s, "-http") || // Serving HTTP certificates
 					strings.Contains(s, "-grpc") || // Serving GRPC certificates
 					strings.Contains(s, "ca") // Certificate authorities
-			}
-
-			// Check args not missing
-			for _, arg := range test.wantArgs {
-				require.Contains(t, pod.Containers[0].Args, arg)
-			}
-			for _, arg := range pod.Containers[0].Args {
-				if isEncryptionRelated(arg) {
-					require.Contains(t, test.wantArgs, arg)
-				}
 			}
 
 			// Check ports not missing

@@ -83,9 +83,21 @@ func ConfigOptions(opt Options) config.Options {
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
-		TLSProfile: config.TLSProfileSpec{
+		TLS: config.TLSOptions{
 			Ciphers:       opt.TLSProfile.Ciphers,
 			MinTLSVersion: opt.TLSProfile.MinTLSVersion,
+			ServerNames: config.TLSServerNames{
+				GRPC: config.GRPCServerNames{
+					IndexGateway:  fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),
+					Ingester:      fqdn(serviceNameIngesterGRPC(opt.Name), opt.Namespace),
+					QueryFrontend: fqdn(serviceNameQueryFrontendGRPC(opt.Name), opt.Namespace),
+					Ruler:         fqdn(serviceNameRulerGRPC(opt.Name), opt.Namespace),
+				},
+				HTTP: config.HTTPServerNames{
+					Compactor: fqdn(serviceNameCompactorHTTP(opt.Name), opt.Namespace),
+					Querier:   fqdn(serviceNameQuerierHTTP(opt.Name), opt.Namespace),
+				},
+			},
 		},
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
