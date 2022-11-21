@@ -1640,6 +1640,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>loki.ingester</td>
+			<td>object</td>
+			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.limits_config</td>
 			<td>object</td>
 			<td>Limits config</td>
