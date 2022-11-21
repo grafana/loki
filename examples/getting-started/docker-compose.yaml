@@ -35,6 +35,11 @@ services:
       - 9095
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       - minio
     networks:
@@ -174,6 +179,11 @@ services:
         /docker-entrypoint.sh nginx -g "daemon off;"
     ports:
       - "3100:3100"
+    healthcheck:
+      test: ["CMD", "service", "nginx", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - loki
 
