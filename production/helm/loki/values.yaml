@@ -293,7 +293,7 @@ loki:
   # --  Optional querier configuration
   querier: {}
 
-  # --  Optional querier configuration
+  # --  Optional ingester configuration
   ingester: {}
 
 enterprise:
