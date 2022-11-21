@@ -240,8 +240,15 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	userID, _ := tenant.TenantID(ctx)
-	queryTimeout := q.limits.QueryTimeout(userID)
+	// set as timeout the longest timeout across all tenants.
+	queryTimeout := q.limits.QueryTimeout("")
+	tenants, _ := tenant.TenantIDs(ctx)
+	for _, tenant := range tenants {
+		t := q.limits.QueryTimeout(tenant)
+		if t > queryTimeout {
+			queryTimeout = t
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()

@@ -99,9 +99,17 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	// use biggest max query parallelism across all given tenants
+	maxQueryParallelism := ast.limits.MaxQueryParallelism("")
+	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
+	}
+	for _, tenant := range tenants {
+		m := ast.limits.MaxQueryParallelism(tenant)
+		if m > maxQueryParallelism {
+			maxQueryParallelism = m
+		}
 	}
 
 	resolver, ok := shardResolverForConf(
@@ -109,7 +117,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
-		ast.limits.MaxQueryParallelism(userID),
+		maxQueryParallelism,
 		r,
 		ast.next,
 	)
