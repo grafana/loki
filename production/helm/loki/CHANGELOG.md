@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.4.1
+
+- [BUGFIX] Remove extra `/` in image name if `registry` or `repository` is empty
+
 ## 3.4.0
 
 - [ENHANCEMENT] Allow to add some selector for Loki persistent volume
