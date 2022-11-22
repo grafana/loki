@@ -216,16 +216,18 @@ func (sl *seriesLimiter) isLimitReached() bool {
 }
 
 type limitedRoundTripper struct {
-	next   http.RoundTripper
-	limits Limits
+	configs []config.PeriodConfig
+	next    http.RoundTripper
+	limits  Limits
 
 	codec      queryrangebase.Codec
 	middleware queryrangebase.Middleware
 }
 
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, middlewares ...queryrangebase.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
 	transport := limitedRoundTripper{
+		configs:    configs,
 		next:       next,
 		codec:      codec,
 		limits:     limits,
@@ -278,7 +280,14 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	parallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, rt.limits.MaxQueryParallelism)
+	parallelism := MinWeightedParallelism(
+		tenantIDs,
+		rt.configs,
+		rt.limits,
+		model.Time(request.GetStart()),
+		model.Time(request.GetEnd()),
+	)
+
 	if parallelism < 1 {
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
@@ -368,6 +377,18 @@ func WeightedParallelism(
 		i = 0
 	}
 
+	// If start == end, this is an instant query;
+	// use the appropriate parallelism type for
+	// the active configuration
+	if start.Equal(end) {
+		switch configs[i].IndexType {
+		case config.TSDBType:
+			return l.TSDBMaxQueryParallelism(user)
+		}
+		return l.MaxQueryParallelism(user)
+
+	}
+
 	var tsdbDur, otherDur time.Duration
 
 	for ; i < len(configs) && configs[i].From.Before(end); i++ {
@@ -400,4 +421,16 @@ func minMaxModelTime(a, b model.Time) (min, max model.Time) {
 		return a, b
 	}
 	return b, a
+}
+
+func MinWeightedParallelism(tenantIDs []string, configs []config.PeriodConfig, l Limits, start, end model.Time) int {
+	return validation.SmallestPositiveIntPerTenant(tenantIDs, func(user string) int {
+		return WeightedParallelism(
+			configs,
+			user,
+			l,
+			start,
+			end,
+		)
+	})
 }

@@ -54,7 +54,9 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, config.SchemaConfig{}, nil, nil)
+	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, config.SchemaConfig{
+		Configs: testSchemas,
+	}, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -159,6 +161,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	require.Nil(t, err)
 
 	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				var wg sync.WaitGroup
@@ -193,6 +196,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	require.Nil(t, err)
 
 	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
@@ -221,6 +225,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	require.Nil(t, err)
 
 	_, err = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
@@ -239,7 +244,9 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
-	}, config.SchemaConfig{}, nil, nil)
+	}, config.SchemaConfig{
+		Configs: testSchemas,
+	}, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -324,6 +331,12 @@ func Test_WeightedParallelism(t *testing.T) {
 			start: borderTime.Add(-3 * time.Hour),
 			end:   borderTime.Add(time.Hour),
 			exp:   32,
+		},
+		{
+			desc:  "start==end",
+			start: borderTime.Add(time.Hour),
+			end:   borderTime.Add(time.Hour),
+			exp:   100,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

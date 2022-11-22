@@ -727,10 +727,11 @@ func TestHandleHit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sut := resultsCache{
-				extractor:      PrometheusResponseExtractor{},
-				minCacheExtent: 10,
-				limits:         mockLimits{},
-				merger:         PrometheusCodec,
+				extractor:         PrometheusResponseExtractor{},
+				minCacheExtent:    10,
+				limits:            mockLimits{},
+				merger:            PrometheusCodec,
+				parallelismForReq: func(tenantIDs []string, r Request) int { return 1 },
 				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
 				}),
@@ -765,6 +766,9 @@ func TestResultsCache(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		func(tenantIDs []string, r Request) int {
+			return mockLimits{}.MaxQueryParallelism("fake")
+		},
 		nil,
 	)
 	require.NoError(t, err)
@@ -807,6 +811,9 @@ func TestResultsCacheRecent(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		func(tenantIDs []string, r Request) int {
+			return mockLimits{}.MaxQueryParallelism("fake")
+		},
 		nil,
 	)
 	require.NoError(t, err)
@@ -870,7 +877,10 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,
-				nil,
+				nil, func(tenantIDs []string, r Request) int {
+					return tc.fakeLimits.MaxQueryParallelism("fake")
+				},
+
 				nil,
 			)
 			require.NoError(t, err)
@@ -910,6 +920,9 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		func(tenantIDs []string, r Request) int {
+			return mockLimits{}.MaxQueryParallelism("fake")
+		},
 		nil,
 	)
 	require.NoError(t, err)
@@ -1021,6 +1034,9 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				tc.shouldCache,
+				func(tenantIDs []string, r Request) int {
+					return mockLimits{}.MaxQueryParallelism("fake")
+				},
 				nil,
 			)
 			require.NoError(t, err)
