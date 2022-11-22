@@ -2360,6 +2360,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.size</td>
 			<td>string</td>
 			<td>Size of persistent disk</td>
@@ -2626,6 +2635,15 @@ null
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2913,6 +2931,15 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
