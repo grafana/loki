@@ -3,7 +3,7 @@ title: Configure storage
 menuTitle: Configure storage 
 description: Configure Loki storage
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/storage
 weight: 100
 keywords:
   - object store

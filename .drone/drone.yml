@@ -118,8 +118,8 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
-  - clone
   - clone-target-branch
+  - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.24.2
   name: test
@@ -166,7 +166,6 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
-  - clone
   - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.24.2
@@ -174,7 +173,6 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
-  - clone
   - test
   - lint
   environment: {}
@@ -187,7 +185,6 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
-  - clone
   - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.24.2
@@ -1610,6 +1607,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 7103f179cdc3517cf3ddb2d31c3ead90a400dd5416558ef4cccf5d54063cc923
+hmac: 3e912c7f00b4d1e8c96a37a6da65a696ec455d81fb4a1ab66f2e87041dd023de
 
 ...

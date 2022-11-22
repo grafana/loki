@@ -1,9 +1,9 @@
 ---
 title: Helm Chart Components
-menuTitle: Helm Chart Components
+menuTitle: Helm Chart components
 description: A short introduction to the components installed with the Loki Helm Chart.
 aliases:
-  - /docs/writers-toolkit/latest/templates/concept-template
+  - /docs/installation/helm/concepts
 weight: 100
 keywords:
   - dashboards
