@@ -2442,8 +2442,8 @@ querier:
   tail_max_duration: 1h
 compactor_client:
   tls_enabled: true
-  tls_cert_path: /var/run/tls/grpc/tls.crt
-  tls_key_path: /var/run/tls/grpc/tls.key
+  tls_cert_path: /var/run/tls/http/tls.crt
+  tls_key_path: /var/run/tls/http/tls.key
   tls_ca_path: /var/run/tls/ca.pem
   tls_server_name: compactor-http.svc
   tls_cipher_suites: cipher1,cipher2
