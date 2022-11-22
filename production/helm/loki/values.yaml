@@ -785,6 +785,8 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the read node(s)
 read:
@@ -852,6 +854,8 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the single binary node(s)
 singleBinary:
@@ -917,6 +921,8 @@ singleBinary:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.

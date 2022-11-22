@@ -18,23 +18,12 @@ import (
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
-	value, err := NewResultValue(v.Data)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	err := EncodeResult(v, s)
 	if err != nil {
 		return err
 	}
-
-	q := loghttp.QueryResponse{
-		Status: "success",
-		Data: loghttp.QueryResponseData{
-			ResultType: value.Type(),
-			Result:     value,
-			Statistics: v.Statistics,
-		},
-	}
-
-	s := jsoniter.ConfigFastest.BorrowStream(w)
-	defer jsoniter.ConfigFastest.ReturnStream(s)
-	s.WriteVal(q)
 	s.WriteRaw("\n")
 	return s.Flush()
 }

@@ -138,4 +138,8 @@ spec:
         resources:
           requests:
             storage: {{ .Values.write.persistence.size | quote }}
+        {{- with .Values.write.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
 {{- end }}

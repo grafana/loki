@@ -183,18 +183,6 @@ string
 <p>NoProxy configures the NO_PROXY/no_proxy env variable.</p>
 </td>
 </tr>
-<tr>
-<td>
-<code>readVarsFromEnv</code><br/>
-<em>
-bool
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>ReadVarsFromEnv defines a flag to use Operator-lib provides a helper function</p>
-</td>
-</tr>
 </tbody>
 </table>
 
