@@ -10,7 +10,6 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -722,7 +721,7 @@ func randEntries(rand *rand.Rand) []logproto.Entry {
 func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
-		js := jsoniter.NewStream(jsoniter.ConfigFastest, &buf, 0)
+		js := json.NewStream(json.ConfigFastest, &buf, 0)
 		err := encodeResult(w.Value, js)
 		require.NoError(t, err)
 		js.Flush()

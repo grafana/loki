@@ -218,7 +218,7 @@ func encodeResult(v parser.Value, s *jsoniter.Stream) error {
 			return fmt.Errorf("unexpected type %T for streams", s)
 		}
 
-		encodeStreams(result, s)
+		return encodeStreams(result, s)
 	case loghttp.ResultTypeScalar:
 		scalar, ok := v.(promql.Scalar)
 
@@ -264,7 +264,7 @@ func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream) error {
 
 		err := encodeStream(stream, s)
 		if err != nil {
-			return nil
+			return err
 		}
 	}
 
