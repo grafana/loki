@@ -108,10 +108,14 @@ Create the name of the service account to use
 Base template for building docker image reference
 */}}
 {{- define "loki.baseImage" }}
-{{- $registry := .global.registry | default .service.registry -}}
-{{- $repository := .service.repository -}}
+{{- $registry := .global.registry | default .service.registry | default "" -}}
+{{- $repository := .service.repository | default "" -}}
 {{- $tag := .service.tag | default .defaultVersion | toString -}}
-{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- if and $registry $repository -}}
+  {{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+  {{- printf "%s%s:%s" $registry $repository $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
