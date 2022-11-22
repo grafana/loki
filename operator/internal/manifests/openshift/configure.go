@@ -201,7 +201,7 @@ func ConfigureOptions(configOpt *config.Options) error {
 
 	if len(configOpt.Ruler.AlertManager.Hosts) == 0 {
 		amc := &config.AlertManagerConfig{
-			Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, monitoringNamespace),
 			EnableV2:        true,
 			EnableDiscovery: true,
 			RefreshInterval: "1m",
@@ -209,6 +209,20 @@ func ConfigureOptions(configOpt *config.Options) error {
 
 		if err := mergo.Merge(configOpt.Ruler.AlertManager, amc); err != nil {
 			return kverrors.Wrap(err, "failed merging AlertManager config")
+		}
+	}
+
+	// Configure user-workload alertmanager when enabled.
+	//TODO check is enbaled
+	/*uwam := map[string]lokiv1beta1.LimitsTemplateSpec{
+		tenantApplication: lokiv1beta1.LimitsTemplateSpec{
+			AlertManagerOverrides: &lokiv1beta1.AlertManagerSpec{},
+		},
+	}*/
+
+	if configOpt.Stack.Limits == nil {
+		configOpt.Stack.Limits = &lokiv1.LimitsSpec{
+			//Tenants: map[string]lokiv1.LimitsTemplateSpec{},
 		}
 	}
 
