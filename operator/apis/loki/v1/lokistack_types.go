@@ -353,7 +353,7 @@ type ObjectStorageTLSSpec struct {
 	// +optional
 	// +kubebuilder:validation:optional
 	// +kubebuilder:default:=service-ca.crt
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Key"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap Key"
 	CAKey string `json:"caKey,omitempty"`
 	// CA is the name of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
