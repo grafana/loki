@@ -344,8 +344,6 @@ spec:
           It needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Key
         path: storage.tls.caKey
-        x-descriptors:
-        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: CA is the name of a ConfigMap containing a CA certificate. It
           needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
