@@ -568,6 +568,7 @@ func Test_getOperation(t *testing.T) {
 type fakeLimits struct {
 	maxQueryLength          time.Duration
 	maxQueryParallelism     int
+	tsdbMaxQueryParallelism int
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
@@ -592,6 +593,10 @@ func (f fakeLimits) MaxQueryLength(string) time.Duration {
 
 func (f fakeLimits) MaxQueryParallelism(string) int {
 	return f.maxQueryParallelism
+}
+
+func (f fakeLimits) TSDBMaxQueryParallelism(string) int {
+	return f.tsdbMaxQueryParallelism
 }
 
 func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {

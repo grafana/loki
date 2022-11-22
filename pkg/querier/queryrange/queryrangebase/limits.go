@@ -2,6 +2,8 @@ package queryrangebase
 
 import (
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 // Limits allows us to specify per-tenant runtime limits on the behavior of
@@ -15,7 +17,7 @@ type Limits interface {
 
 	// MaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel.
-	MaxQueryParallelism(string) int
+	MaxQueryParallelism(tenant string, start, end model.Time) int
 
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.

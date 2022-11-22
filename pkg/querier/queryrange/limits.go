@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -18,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -39,6 +42,9 @@ type Limits interface {
 	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
 	MinShardingLookback(string) time.Duration
+	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
+	// frontend will process in parallel for TSDB queries.
+	TSDBMaxQueryParallelism(string) int
 }
 
 type limits struct {
@@ -331,4 +337,67 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 	defer func() { _ = response.Body.Close() }()
 
 	return rt.codec.DecodeResponse(ctx, response, r)
+}
+
+// WeightedParallelism will calculate the request parallelism to use
+// based on the two fields:
+// 1) `max_query_parallelism`:
+// 2) `tsdb_max_query_parallelism`:
+// For instance, if the max_query_parallelism=10,
+// tsdb_max_query_parallelism=100, and the request is equally split
+// between tsdb and non-tsdb period configs,
+// the resulting parallelism will be
+// 0.5 * 10 + 0.5 * 100 = 60
+func WeightedParallelism(
+	configs []config.PeriodConfig,
+	user string,
+	l Limits,
+	start, end model.Time,
+) int {
+	i := sort.Search(len(configs), func(i int) bool {
+		// Return first index of desired period configs
+		finalOrFuture := i == len(configs)-1 || configs[i].From.After(end)
+		startsBefore := configs[i].From.Before(start)
+		return finalOrFuture || (startsBefore && configs[i+1].From.After(start))
+	})
+
+	// There was no overlapping index. This can only happen when a time
+	// was requested before the first period config start. In that case, just
+	// use the first period config. It should error elsewhere.
+	if i == len(configs) {
+		i = 0
+	}
+
+	var tsdbDur, otherDur time.Duration
+
+	for ; i < len(configs) && configs[i].From.Before(end); i++ {
+		_, from := minMaxModelTime(start, configs[i].From.Time)
+		through := end
+		if i+1 < len(configs) {
+			through, _ = minMaxModelTime(end, configs[i+1].From.Time)
+		}
+
+		dur := through.Sub(from)
+
+		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
+			dur = configs[i+1].From.Time.Sub(from)
+		}
+		if ty := configs[i].IndexType; ty == config.TSDBType {
+			tsdbDur += dur
+		} else {
+			otherDur += dur
+		}
+	}
+
+	totalDur := int(tsdbDur + otherDur)
+	tsdbPart := int(tsdbDur) * l.TSDBMaxQueryParallelism(user) / totalDur
+	regPart := int(otherDur) * l.MaxQueryParallelism(user) / totalDur
+	return regPart + tsdbPart
+}
+
+func minMaxModelTime(a, b model.Time) (min, max model.Time) {
+	if a.Before(b) {
+		return a, b
+	}
+	return b, a
 }

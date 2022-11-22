@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -281,4 +283,51 @@ func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
 		fmt.Sprintf("foo:qry:%d:0:0", r.GetStep()),
 		l.GenerateCacheKey(context.Background(), "foo", r),
 	)
+}
+
+func Test_WeightedParallelism(t *testing.T) {
+	limits := &fakeLimits{
+		tsdbMaxQueryParallelism: 100,
+		maxQueryParallelism:     10,
+	}
+
+	confS := `
+- from: "2022-01-01"
+  store: boltdb-shipper
+  object_store: gcs
+  schema: v12
+- from: "2022-01-02"
+  store: tsdb
+  object_store: gcs
+  schema: v12
+`
+
+	var confs []config.PeriodConfig
+	require.Nil(t, yaml.Unmarshal([]byte(confS), &confs))
+	parsed, err := time.Parse("2006-01-02", "2022-01-02")
+	borderTime := model.TimeFromUnix(parsed.Unix())
+	require.Nil(t, err)
+
+	for _, tc := range []struct {
+		desc       string
+		start, end model.Time
+		exp        int
+	}{
+		{
+			desc:  "50% each",
+			start: borderTime.Add(-time.Hour),
+			end:   borderTime.Add(time.Hour),
+			exp:   55,
+		},
+		{
+			desc:  "75/25 split",
+			start: borderTime.Add(-3 * time.Hour),
+			end:   borderTime.Add(time.Hour),
+			exp:   32,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, WeightedParallelism(confs, "fake", limits, tc.start, tc.end))
+		})
+	}
 }
