@@ -117,7 +117,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		cliIngester.Now = now
 		metrics, err := cliIngester.Metrics()
 		require.NoError(t, err)
-		checkMetricValue(t, "loki_ingester_memory_chunks", metrics, 1)
+		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 1)
 
 		// reset boltdb-shipper client and restart querier
 		storage.ResetBoltDBIndexClientWithShipper()
@@ -166,8 +166,8 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// Check metrics
 		metrics, err := cliCompactor.Metrics()
 		require.NoError(t, err)
-		checkUserLabelValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, 1)
-		checkUserLabelValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 1)
+		checkUserLabelAndMetricValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, 1)
+		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 1)
 	})
 
 	// Query lines
@@ -191,7 +191,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 }
 
-func checkUserLabelValue(t *testing.T, metricName, metrics, tenantID string, expectedValue float64) {
+func checkUserLabelAndMetricValue(t *testing.T, metricName, metrics, tenantID string, expectedValue float64) {
 	t.Helper()
 	val, labels, err := extractMetric(metricName, metrics)
 	require.NoError(t, err)
