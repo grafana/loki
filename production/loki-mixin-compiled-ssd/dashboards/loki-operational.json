@@ -874,7 +874,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[5m])) by (route)",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -1080,7 +1080,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -1392,7 +1392,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}[5m])) by (route)",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -1597,7 +1597,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[5m])) by (route)",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -2195,7 +2195,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[5m])) by (route)",
+                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (route) > 0",
                         "interval": "",
                         "intervalFactor": 1,
                         "legendFormat": "{{route}}",
@@ -3402,7 +3402,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[1m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}[1m])) by (route)",
+                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval])) by (route) > 0",
                         "interval": "",
                         "intervalFactor": 1,
                         "legendFormat": "{{route}}",
