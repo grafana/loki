@@ -181,7 +181,20 @@ func (c *Cluster) Run() error {
 	}
 	return nil
 }
+
+func (c *Cluster) Restart() error {
+	if err := c.stop(false); err != nil {
+		return err
+	}
+
+	return c.Run()
+}
+
 func (c *Cluster) Cleanup() error {
+	return c.stop(true)
+}
+
+func (c *Cluster) stop(cleanupFiles bool) error {
 	_, cancelFunc := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancelFunc()
 
@@ -207,12 +220,14 @@ func (c *Cluster) Cleanup() error {
 	// wait for all process to close
 	c.waitGroup.Wait()
 
-	// cleanup dirs/files
-	for _, d := range dirs {
-		errs.Add(os.RemoveAll(d))
-	}
-	for _, f := range files {
-		errs.Add(os.Remove(f))
+	if cleanupFiles {
+		// cleanup dirs/files
+		for _, d := range dirs {
+			errs.Add(os.RemoveAll(d))
+		}
+		for _, f := range files {
+			errs.Add(os.Remove(f))
+		}
 	}
 
 	return errs.Err()
@@ -243,6 +258,7 @@ type Component struct {
 	RulesTenant  string
 
 	running bool
+	wg      sync.WaitGroup
 
 	RemoteWriteUrls []string
 }
@@ -374,8 +390,11 @@ func (c *Component) run() error {
 	}()
 
 	c.cluster.waitGroup.Add(1)
+	c.wg.Add(1)
+
 	go func() {
 		defer c.cluster.waitGroup.Done()
+		defer c.wg.Done()
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
 			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
@@ -397,6 +416,7 @@ func (c *Component) run() error {
 func (c *Component) cleanup() (files []string, dirs []string) {
 	if c.loki != nil && c.loki.SignalHandler != nil {
 		c.loki.SignalHandler.Stop()
+		c.running = false
 	}
 	if c.configFile != "" {
 		files = append(files, c.configFile)
@@ -412,6 +432,12 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	}
 
 	return files, dirs
+}
+
+func (c *Component) Restart() error {
+	c.cleanup()
+	c.wg.Wait()
+	return c.run()
 }
 
 func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
