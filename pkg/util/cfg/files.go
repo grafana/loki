@@ -114,7 +114,7 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 			if _, err := os.Stat(val); err == nil {
 				err := YAML(val, expandEnv, strict)(dst)
 				if err != nil && !expandEnv {
-					err = fmt.Errorf("%w. You may have to try `-config.expand-env=true` flag if your config contains ENV variables", err)
+					err = fmt.Errorf("%w. Use `-config.expand-env=true` flag if you want to expand environment variables in your config file", err)
 				}
 				return err
 			}
