@@ -9,65 +9,74 @@
   # Nixpkgs / NixOS version to use.
 
   outputs = { self, nixpkgs, flake-utils }:
+    let
+      golangci-lint-overlay = final: prev: {
+        golangci-lint = prev.callPackage
+          "${prev.path}/pkgs/development/tools/golangci-lint"
+          {
+            buildGoModule = args:
+              prev.buildGoModule (args // rec {
+                version = "1.45.2";
+
+                src = prev.fetchFromGitHub rec {
+                  owner = "golangci";
+                  repo = "golangci-lint";
+                  rev = "v${version}";
+                  sha256 =
+                    "sha256-Mr45nJbpyzxo0ZPwx22JW2WrjyjI9FPpl+gZ7NIc6WQ=";
+                };
+
+                vendorSha256 =
+                  "sha256-pcbKg1ePN8pObS9EzP3QYjtaty27L9sroKUs/qEPtJo=";
+
+                ldflags = [
+                  "-s"
+                  "-w"
+                  "-X main.version=${version}"
+                  "-X main.commit=v${version}"
+                  "-X main.date=19700101-00:00:00"
+                ];
+              });
+          };
+      };
+
+      helm-docs-overlay = final: prev: {
+        helm-docs = prev.callPackage
+          "${prev.path}/pkgs/applications/networking/cluster/helm-docs"
+          {
+            buildGoModule = args:
+              prev.buildGoModule (args // rec {
+                version = "1.8.1";
+
+                src = prev.fetchFromGitHub {
+                  owner = "norwoodj";
+                  repo = "helm-docs";
+                  rev = "v${version}";
+                  sha256 = "sha256-OpS/CYBb2Ll6ktvEhqkw/bWMSrFa4duidK3Glu8EnPw=";
+                };
+
+                vendorSha256 = "sha256-FpmeOQ8nV+sEVu2+nY9o9aFbCpwSShQUFOmyzwEQ9Pw=";
+
+                ldflags = [
+                  "-w"
+                  "-s"
+                  "-X main.version=v${version}"
+                ];
+              });
+          };
+      };
+
+      nix = import ./nix { inherit self; };
+    in
+    {
+      overlays = {
+        golangci-lint = golangci-lint-overlay;
+        helm-docs = helm-docs-overlay;
+        default = nix.overlay;
+      };
+    } //
     flake-utils.lib.eachDefaultSystem (system:
       let
-        golangci-lint-overlay = final: prev: {
-          golangci-lint = prev.callPackage
-            "${prev.path}/pkgs/development/tools/golangci-lint"
-            {
-              buildGoModule = args:
-                prev.buildGoModule (args // rec {
-                  version = "1.45.2";
-
-                  src = prev.fetchFromGitHub rec {
-                    owner = "golangci";
-                    repo = "golangci-lint";
-                    rev = "v${version}";
-                    sha256 =
-                      "sha256-Mr45nJbpyzxo0ZPwx22JW2WrjyjI9FPpl+gZ7NIc6WQ=";
-                  };
-
-                  vendorSha256 =
-                    "sha256-pcbKg1ePN8pObS9EzP3QYjtaty27L9sroKUs/qEPtJo=";
-
-                  ldflags = [
-                    "-s"
-                    "-w"
-                    "-X main.version=${version}"
-                    "-X main.commit=v${version}"
-                    "-X main.date=19700101-00:00:00"
-                  ];
-                });
-            };
-        };
-
-        helm-docs-overlay = final: prev: {
-          helm-docs = prev.callPackage
-            "${prev.path}/pkgs/applications/networking/cluster/helm-docs"
-            {
-              buildGoModule = args:
-                prev.buildGoModule (args // rec {
-                  version = "1.8.1";
-
-                  src = prev.fetchFromGitHub {
-                    owner = "norwoodj";
-                    repo = "helm-docs";
-                    rev = "v${version}";
-                    sha256 = "sha256-OpS/CYBb2Ll6ktvEhqkw/bWMSrFa4duidK3Glu8EnPw=";
-                  };
-
-                  vendorSha256 = "sha256-FpmeOQ8nV+sEVu2+nY9o9aFbCpwSShQUFOmyzwEQ9Pw=";
-
-                  ldflags = [
-                    "-w"
-                    "-s"
-                    "-X main.version=v${version}"
-                  ];
-                });
-            };
-        };
-
-        nix = import ./nix { inherit self nixpkgs system; };
 
         pkgs = import nixpkgs {
           inherit system;
@@ -141,12 +150,6 @@
             chart-testing
             chart-releaser
           ];
-
-          shellHook = ''
-            pushd $(git rev-parse --show-toplevel) > /dev/null || exit 1
-            ./nix/generate-build-vars.sh
-            popd > /dev/null || exit 1
-          '';
         };
       });
 }
