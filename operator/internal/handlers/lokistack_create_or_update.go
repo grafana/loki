@@ -101,7 +101,7 @@ func CreateOrUpdateLokiStack(
 
 	objStore.Schemas = storageSchemas
 
-	if stack.Spec.Storage.TLS != nil {
+	if stack.Spec.Storage.TLS != nil && stack.Spec.Storage.TLS.CA != "" {
 		var cm corev1.ConfigMap
 		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
 		if err = k.Get(ctx, key, &cm); err != nil {
