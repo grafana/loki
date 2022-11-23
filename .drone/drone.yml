@@ -230,6 +230,11 @@ steps:
   environment: {}
   image: grafana/loki-build-image:0.24.2
   name: loki-mixin-check
+  when:
+    event:
+    - pull_request
+    paths:
+    - production/loki-mixin/**
 trigger:
   ref:
   - refs/heads/main
@@ -1607,6 +1612,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 3e912c7f00b4d1e8c96a37a6da65a696ec455d81fb4a1ab66f2e87041dd023de
+hmac: c0eb47ec65c18d431d2d326925e9f9b6cf4dded08dce0b3f28c969a0a24ac791
 
 ...
