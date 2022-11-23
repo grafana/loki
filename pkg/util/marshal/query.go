@@ -185,13 +185,16 @@ func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream) error {
 
 	s.WriteMore()
 	s.WriteObjectField("data")
-	encodeData(v, s)
+	err := encodeData(v, s)
+	if err != nil {
+		return err
+	}
 
 	s.WriteObjectEnd()
 	return nil
 }
 
-func encodeData(v logqlmodel.Result, s *jsoniter.Stream) {
+func encodeData(v logqlmodel.Result, s *jsoniter.Stream) error {
 	s.WriteObjectStart()
 
 	s.WriteObjectField("resultType")
@@ -199,7 +202,10 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream) {
 
 	s.WriteMore()
 	s.WriteObjectField("result")
-	encodeResult(v.Data, s)
+	err := encodeResult(v.Data, s)
+	if err != nil {
+		return err
+	}
 
 	s.WriteMore()
 	s.WriteObjectField("stats")
@@ -207,6 +213,7 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream) {
 
 	s.WriteObjectEnd()
 	s.Flush()
+	return nil
 }
 
 func encodeResult(v parser.Value, s *jsoniter.Stream) error {

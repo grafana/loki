@@ -504,6 +504,25 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 	}
 }
 
+func Test_WriteQueryResponseJSONWithError(t *testing.T) {
+	broken := logqlmodel.Result{
+		Data: logqlmodel.Streams{
+			logproto.Stream{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+					},
+				},
+				Labels: `{testtest"}`,
+			},
+		},
+	}
+	var b bytes.Buffer
+	err := WriteQueryResponseJSON(broken, &b)
+	require.Error(t, err)
+}
+
 func Test_MarshalTailResponse(t *testing.T) {
 	for i, tailTest := range tailTests {
 		// convert logproto to model objects
