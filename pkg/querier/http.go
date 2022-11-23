@@ -495,12 +495,12 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				return
 			}
 
-			// use the longest timeout across all tenants
-			longestTimeout := q.limits.QueryTimeout("")
+			// use the smallest timeout across all tenants.
+			timeout := q.limits.QueryTimeout("")
 			for _, tenant := range tenants {
-				queryTimeout := q.limits.QueryTimeout(tenant)
-				if longestTimeout < queryTimeout {
-					longestTimeout = queryTimeout
+				t := q.limits.QueryTimeout(tenant)
+				if timeout > t {
+					timeout = t
 
 				}
 			}
@@ -508,10 +508,10 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
 			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
 				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))
-				longestTimeout = q.cfg.QueryTimeout
+				timeout = q.cfg.QueryTimeout
 			}
 
-			newCtx, cancel := context.WithTimeout(ctx, longestTimeout)
+			newCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)

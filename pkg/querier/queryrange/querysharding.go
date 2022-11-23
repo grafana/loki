@@ -99,7 +99,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	// use biggest max query parallelism across all given tenants
+	// use smallest max query parallelism across all given tenants
 	maxQueryParallelism := ast.limits.MaxQueryParallelism("")
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -107,7 +107,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 	for _, tenant := range tenants {
 		m := ast.limits.MaxQueryParallelism(tenant)
-		if m > maxQueryParallelism {
+		if m < maxQueryParallelism {
 			maxQueryParallelism = m
 		}
 	}
