@@ -1,8 +1,6 @@
 package manifests
 
 import (
-	"fmt"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
@@ -67,12 +65,6 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 				MountPath: lokiServerGRPCTLSDir(),
 			},
 		},
-		Args: []string{
-			fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-			"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-		},
 	}
 
 	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
@@ -86,7 +78,7 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 	return nil
 }
 
-func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName, minTLSVersion, tlsCipherSuites string) error {
+func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName string) error {
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -107,20 +99,6 @@ func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName, minTLSVersion
 				ReadOnly:  false,
 				MountPath: lokiServerHTTPTLSDir(),
 			},
-		},
-		Args: []string{
-			// Expose ready handler through internal server without requiring mTLS
-			"-internal-server.enable=true",
-			"-internal-server.http-listen-address=",
-			fmt.Sprintf("-internal-server.http-tls-min-version=%s", minTLSVersion),
-			fmt.Sprintf("-internal-server.http-tls-cipher-suites=%s", tlsCipherSuites),
-			fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-			fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-			// Require mTLS for any other handler
-			fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-			fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-			"-server.http-tls-client-auth=RequireAndVerifyClientCert",
 		},
 		Ports: []corev1.ContainerPort{
 			{

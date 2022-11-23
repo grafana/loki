@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -12,6 +13,8 @@ import (
 // Options is used to render the loki-config.yaml file template
 type Options struct {
 	Stack lokiv1.LokiStackSpec
+	Gates configv1.FeatureGates
+	TLS   TLSOptions
 
 	Namespace             string
 	Name                  string
@@ -165,4 +168,43 @@ func (w WriteAheadLog) ReplayMemoryCeiling() string {
 type RetentionOptions struct {
 	Enabled           bool
 	DeleteWorkerCount uint
+}
+
+type TLSOptions struct {
+	Ciphers       []string
+	MinTLSVersion string
+	Paths         TLSFilePaths
+	ServerNames   TLSServerNames
+}
+
+func (o TLSOptions) CipherSuitesString() string {
+	return strings.Join(o.Ciphers, ",")
+}
+
+type TLSFilePaths struct {
+	CA   string
+	GRPC TLSCertPath
+	HTTP TLSCertPath
+}
+
+type TLSCertPath struct {
+	Certificate string
+	Key         string
+}
+
+type TLSServerNames struct {
+	GRPC GRPCServerNames
+	HTTP HTTPServerNames
+}
+
+type GRPCServerNames struct {
+	IndexGateway  string
+	Ingester      string
+	QueryFrontend string
+	Ruler         string
+}
+
+type HTTPServerNames struct {
+	Compactor string
+	Querier   string
 }

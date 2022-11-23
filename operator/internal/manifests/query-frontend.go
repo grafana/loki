@@ -6,8 +6,6 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -127,13 +125,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
-	}
-
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
 		podSpec.Tolerations = opts.Stack.Template.QueryFrontend.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
@@ -229,33 +220,8 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 }
 
 func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
-	var qfIdx int
-	for i, c := range deployment.Spec.Template.Spec.Containers {
-		if c.Name == lokiFrontendContainerName {
-			qfIdx = i
-			break
-		}
-	}
-
-	url := fmt.Sprintf("https://%s:%d", fqdn(serviceNameQuerierHTTP(opts.Name), opts.Namespace), httpPort)
-
-	containerSpec := corev1.Container{
-		Args: []string{
-			fmt.Sprintf("-frontend.tail-proxy-url=%s", url),
-			fmt.Sprintf("-frontend.tail-tls-config.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-frontend.tail-tls-config.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-frontend.tail-tls-config.tls-cert-path=%s", lokiServerHTTPTLSCert()),
-			fmt.Sprintf("-frontend.tail-tls-config.tls-key-path=%s", lokiServerHTTPTLSKey()),
-		},
-	}
-
-	if err := mergo.Merge(&deployment.Spec.Template.Spec.Containers[qfIdx], containerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to add tls config args")
-	}
-
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
-	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
