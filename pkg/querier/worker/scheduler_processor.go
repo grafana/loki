@@ -100,7 +100,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 		}
 
 		if err := sp.querierLoop(c, address, inflightQuery); err != nil {
-			// Do not log an error is the query-scheduler is shutting down.
+			// Do not log an error if the query-scheduler is shutting down.
 			if s, ok := status.FromError(err); !ok || !strings.Contains(s.Message(), schedulerpb.ErrSchedulerIsNotRunning.Error()) {
 				level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
 			}
