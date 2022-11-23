@@ -565,6 +565,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki-mixin-check', container=false) {
         depends_on: ['clone'],
+        when: onPRs + onPath('production/loki-mixin/**'),
       },
     ],
   },
