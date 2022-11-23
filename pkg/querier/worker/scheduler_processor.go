@@ -138,6 +138,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			// We need to inject user into context for sending response back.
 			ctx := user.InjectOrgID(ctx, request.UserID)
 
+			sp.metrics.inflightRequests.Inc()
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.
 			parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request.HttpRequest)
@@ -150,7 +151,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			logger := util_log.WithContext(ctx, sp.log)
 
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
-
+			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
 				level.Error(logger).Log("msg", "error notifying scheduler about finished query", "err", err, "addr", address)
