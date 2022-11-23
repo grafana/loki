@@ -2144,7 +2144,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/distributor\"} | logfmt | level=\"error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/distributor\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -2817,7 +2817,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/ingester.*\"} | logfmt | level=\"error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/ingester.*\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -3757,7 +3757,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/querier\"} | logfmt | level=\"error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/querier\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
