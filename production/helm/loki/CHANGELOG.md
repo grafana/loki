@@ -19,6 +19,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Allow to change Loki `-target` argument
 
+## 3.5.0
+
+- [CHANGE] Bump Loki version to 2.7.0 and GEL version to 1.6.0
+
 ## 3.4.2
 
 - [BUGFIX] Fix read-only /tmp in single-binary mode

@@ -272,7 +272,7 @@ enterprise:
   enabled: false
 
   # Default verion of GEL to deploy
-  version: v1.5.2
+  version: v1.6.0
 
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
@@ -323,8 +323,6 @@ enterprise:
     registry: docker.io
     # -- Docker image repository
     repository: grafana/enterprise-logs
-    # -- Overrides the image tag whose default is the chart's appVersion
-    tag: v1.4.0
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
 
