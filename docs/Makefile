@@ -19,7 +19,7 @@ docs-test: pull
 
 sources/installation/helm/reference.md: ../production/helm/loki/reference.md.gotmpl
 ifeq ($(BUILD_IN_CONTAINER),true)
-	docker run --rm --volume "$(realpath ..):/helm-docs:z" -u "$$(id -u)" "docker.io/jnorwood/helm-docs:v1.8.1" \
+	docker run --rm --volume "$(realpath ..):/helm-docs:z" -u "$$(id -u)" "docker.io/jnorwood/helm-docs:v1.11.0" \
 		-c /helm-docs/production/helm/ \
 		-t reference.md.gotmpl \
 		-o reference.md
