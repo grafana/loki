@@ -99,17 +99,18 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
+	queryParallelism := validation.SmallestPositiveIntPerTenant(tenants, ast.limits.MaxQueryParallelism)
 
 	resolver, ok := shardResolverForConf(
 		ctx,
 		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
-		ast.limits.MaxQueryParallelism(userID),
+		queryParallelism,
 		r,
 		ast.next,
 	)
