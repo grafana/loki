@@ -1,5 +1,5 @@
-//go:build cgo
-// +build cgo
+//go:build cgo && promtail_journal_enabled
+// +build cgo,promtail_journal_enabled
 
 package journal
 

@@ -769,6 +769,7 @@ func TestResultsCache(t *testing.T) {
 		func(tenantIDs []string, r Request) int {
 			return mockLimits{}.MaxQueryParallelism("fake")
 		},
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -814,6 +815,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		func(tenantIDs []string, r Request) int {
 			return mockLimits{}.MaxQueryParallelism("fake")
 		},
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -877,10 +879,11 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,
-				nil, func(tenantIDs []string, r Request) int {
+				nil,
+				func(tenantIDs []string, r Request) int {
 					return tc.fakeLimits.MaxQueryParallelism("fake")
 				},
-
+				false,
 				nil,
 			)
 			require.NoError(t, err)
@@ -923,6 +926,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		func(tenantIDs []string, r Request) int {
 			return mockLimits{}.MaxQueryParallelism("fake")
 		},
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -1037,6 +1041,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				func(tenantIDs []string, r Request) int {
 					return mockLimits{}.MaxQueryParallelism("fake")
 				},
+				false,
 				nil,
 			)
 			require.NoError(t, err)

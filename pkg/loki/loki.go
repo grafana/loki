@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
@@ -74,7 +75,7 @@ type Config struct {
 	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
-	DeleteClient     deletion.Config          `yaml:"delete_client,omitempty"`
+	CompactorClient  compactor.ClientConfig   `yaml:"compactor_client,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
@@ -115,7 +116,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.DeleteClient.RegisterFlags(f)
+	c.CompactorClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
@@ -219,6 +220,64 @@ func (c *Config) Validate() error {
 
 	if err := ValidateConfigCompatibility(*c); err != nil {
 		return err
+	}
+
+	if err := AdjustForTimeoutsMigration(c); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AdjustForTimeoutsMigration will adjust Loki timeouts configuration to be in accordance with the next major release.
+//
+// We're preparing to unify the querier:engine:timeout and querier:query_timeout into a single timeout named limits_config:query_timeout.
+// The migration encompasses of:
+// - If limits_config:query_timeout is explicitly configured, use it everywhere as it is a new configuration and by
+// configuring it, users are expressing that they're willing of using it.
+// - If none are explicitly configured, use the default engine:timeout everywhere as it is longer than the default limits_config:query_timeout
+// and otherwise users would start to experience shorter timeouts without expecting it.
+// - If only the querier:engine:timeout was explicitly configured, warn the user and use it everywhere.
+func AdjustForTimeoutsMigration(c *Config) error {
+	engineTimeoutIsDefault := c.Querier.Engine.Timeout == logql.DefaultEngineTimeout
+	perTenantTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
+	if engineTimeoutIsDefault && perTenantTimeoutIsDefault {
+		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
+			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+		}
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"per-tenant timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default per-tenant timeout (%q).",
+				c.Querier.Engine.Timeout.String(),
+				c.LimitsConfig.QueryTimeout.String(),
+			),
+		)
+		return nil
+	}
+
+	if !perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"using configured per-tenant timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
+				c.LimitsConfig.QueryTimeout.String(),
+				c.Querier.Engine.Timeout.String(),
+			),
+		)
+		return nil
+	}
+
+	if perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
+			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+		}
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"using configured engine timeout (%q) as the default (can be overridden per-tenant in the limits_config). Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
+				c.Querier.Engine.Timeout.String(),
+				c.LimitsConfig.QueryTimeout.String(),
+			),
+		)
+		return nil
 	}
 
 	return nil

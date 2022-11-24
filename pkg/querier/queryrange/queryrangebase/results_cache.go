@@ -164,6 +164,7 @@ type resultsCache struct {
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
 	parallelismForReq    func(tenantIDs []string, r Request) int
+	retentionEnabled     bool
 	metrics              *ResultsCacheMetrics
 }
 
@@ -183,6 +184,7 @@ func NewResultsCacheMiddleware(
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
 	parallelismForReq func(tenantIDs []string, r Request) int,
+	retentionEnabled bool,
 	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
@@ -202,6 +204,7 @@ func NewResultsCacheMiddleware(
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
 			parallelismForReq:    parallelismForReq,
+			retentionEnabled:     retentionEnabled,
 			metrics:              metrics,
 		}
 	}), nil
@@ -217,7 +220,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return s.next.Do(ctx, r)
 	}
 
-	if s.cacheGenNumberLoader != nil {
+	if s.cacheGenNumberLoader != nil && s.retentionEnabled {
 		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 

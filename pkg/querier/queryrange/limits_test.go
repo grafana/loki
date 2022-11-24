@@ -56,7 +56,7 @@ func Test_seriesLimiter(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
 	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
-	}, nil, nil)
+	}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -246,7 +246,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
 		Configs: testSchemas,
-	}, nil, nil)
+	}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}

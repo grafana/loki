@@ -37,10 +37,13 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Namespace, "namespace", "", "Namespace to deploy to")
 	f.StringVar(&c.Image, "image", manifests.DefaultContainerImage, "The Loki image pull spec loation.")
 	// Feature flags
-	c.featureFlags = configv1.FeatureGates{}
-	c.featureFlags.OpenShift = configv1.OpenShiftFeatureGates{}
-	f.BoolVar(&c.featureFlags.OpenShift.ServingCertsService, "with-serving-certs-service", false, "Enable usage of serving certs service on OpenShift.")
 	f.BoolVar(&c.featureFlags.ServiceMonitors, "with-service-monitors", false, "Enable service monitors for all LokiStack components.")
+	f.BoolVar(&c.featureFlags.OpenShift.ServingCertsService, "with-serving-certs-service", false, "Enable usage of serving certs service on OpenShift.")
+	f.BoolVar(&c.featureFlags.BuiltInCertManagement.Enabled, "with-builtin-cert-management", false, "Enable usage built-in cert generation and rotation.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CACertValidity, "ca-cert-validity", "8760h", "CA Certificate validity duration.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CACertRefresh, "ca-cert-refresh", "7008h", "CA Certificate refresh time.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CertValidity, "target-cert-validity", "2160h", "Target Certificate validity duration.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CertRefresh, "target-cert-refresh", "1728h", "Target Certificate refresh time.")
 	f.BoolVar(&c.featureFlags.HTTPEncryption, "with-http-tls-services", false, "Enables TLS for all LokiStack GRPC services.")
 	f.BoolVar(&c.featureFlags.GRPCEncryption, "with-grpc-tls-services", false, "Enables TLS for all LokiStack HTTP services.")
 	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
