@@ -298,7 +298,13 @@ func Test_WeightedParallelism(t *testing.T) {
 		maxQueryParallelism:     10,
 	}
 
-	confS := `
+	for _, cfgs := range []struct {
+		desc    string
+		periods string
+	}{
+		{
+			desc: "end configs",
+			periods: `
 - from: "2022-01-01"
   store: boltdb-shipper
   object_store: gcs
@@ -307,40 +313,66 @@ func Test_WeightedParallelism(t *testing.T) {
   store: tsdb
   object_store: gcs
   schema: v12
-`
-
-	var confs []config.PeriodConfig
-	require.Nil(t, yaml.Unmarshal([]byte(confS), &confs))
-	parsed, err := time.Parse("2006-01-02", "2022-01-02")
-	borderTime := model.TimeFromUnix(parsed.Unix())
-	require.Nil(t, err)
-
-	for _, tc := range []struct {
-		desc       string
-		start, end model.Time
-		exp        int
-	}{
-		{
-			desc:  "50% each",
-			start: borderTime.Add(-time.Hour),
-			end:   borderTime.Add(time.Hour),
-			exp:   55,
+`,
 		},
 		{
-			desc:  "75/25 split",
-			start: borderTime.Add(-3 * time.Hour),
-			end:   borderTime.Add(time.Hour),
-			exp:   32,
-		},
-		{
-			desc:  "start==end",
-			start: borderTime.Add(time.Hour),
-			end:   borderTime.Add(time.Hour),
-			exp:   100,
+			// Add another test that wraps the tested period configs with other unused configs
+			// to ensure we bounds-test properly
+			desc: "middle configs",
+			periods: `
+- from: "2021-01-01"
+  store: boltdb-shipper
+  object_store: gcs
+  schema: v12
+- from: "2022-01-01"
+  store: boltdb-shipper
+  object_store: gcs
+  schema: v12
+- from: "2022-01-02"
+  store: tsdb
+  object_store: gcs
+  schema: v12
+- from: "2023-01-02"
+  store: tsdb
+  object_store: gcs
+  schema: v12
+`,
 		},
 	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			require.Equal(t, tc.exp, WeightedParallelism(confs, "fake", limits, tc.start, tc.end))
-		})
+		var confs []config.PeriodConfig
+		require.Nil(t, yaml.Unmarshal([]byte(cfgs.periods), &confs))
+		parsed, err := time.Parse("2006-01-02", "2022-01-02")
+		borderTime := model.TimeFromUnix(parsed.Unix())
+		require.Nil(t, err)
+
+		for _, tc := range []struct {
+			desc       string
+			start, end model.Time
+			exp        int
+		}{
+			{
+				desc:  "50% each",
+				start: borderTime.Add(-time.Hour),
+				end:   borderTime.Add(time.Hour),
+				exp:   55,
+			},
+			{
+				desc:  "75/25 split",
+				start: borderTime.Add(-3 * time.Hour),
+				end:   borderTime.Add(time.Hour),
+				exp:   32,
+			},
+			{
+				desc:  "start==end",
+				start: borderTime.Add(time.Hour),
+				end:   borderTime.Add(time.Hour),
+				exp:   100,
+			},
+		} {
+			t.Run(cfgs.desc+tc.desc, func(t *testing.T) {
+				require.Equal(t, tc.exp, WeightedParallelism(confs, "fake", limits, tc.start, tc.end))
+			})
+		}
 	}
+
 }

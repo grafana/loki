@@ -363,11 +363,19 @@ func WeightedParallelism(
 	l Limits,
 	start, end model.Time,
 ) int {
+	// Return first index of desired period configs
 	i := sort.Search(len(configs), func(i int) bool {
-		// Return first index of desired period configs
+		// return true when there is no overlap with query & current
+		// config because query is in future
+		// or
+		// there is overlap with current config
 		finalOrFuture := i == len(configs)-1 || configs[i].From.After(end)
-		startsBefore := configs[i].From.Before(start)
-		return finalOrFuture || (startsBefore && configs[i+1].From.After(start))
+		if finalOrFuture {
+			return true
+		}
+		// qEnd not before start && qStart not after end
+		overlapCurrent := !end.Before(configs[i].From.Time) && !start.After(configs[i+1].From.Time)
+		return overlapCurrent
 	})
 
 	// There was no overlapping index. This can only happen when a time
@@ -413,7 +421,11 @@ func WeightedParallelism(
 	totalDur := int(tsdbDur + otherDur)
 	tsdbPart := int(tsdbDur) * l.TSDBMaxQueryParallelism(user) / totalDur
 	regPart := int(otherDur) * l.MaxQueryParallelism(user) / totalDur
-	return regPart + tsdbPart
+
+	// ensure at least 1 parallelism to account for integer division
+	// in unlikely edge cases (such as two configs with parallelism of 1)
+	return max(regPart+tsdbPart, 1)
+
 }
 
 func minMaxModelTime(a, b model.Time) (min, max model.Time) {
@@ -433,4 +445,11 @@ func MinWeightedParallelism(tenantIDs []string, configs []config.PeriodConfig, l
 			end,
 		)
 	})
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
