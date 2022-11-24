@@ -1857,9 +1857,9 @@ the index to a backing cache store.
 [default_validity: <duration>]
 
 # Configures embedded cache settings.
-embedded-cache:
+embedded_cache:
   # Whether embedded cache is enabled.
-  # CLI flag: -<prefix>.embeddec-cache.enabled
+  # CLI flag: -<prefix>.embedded-cache.enabled
   [enabled: <bool> | default = false]
 
   # Maximum memory size of the cache in MB.
@@ -1868,7 +1868,7 @@ embedded-cache:
 
   # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.embedded-cache.ttl
-  [ttl: <duration> | default = 1hr]
+  [ttl: <duration> | default = 1h]
 
 # Configures the background cache when memcached is used.
 background:
