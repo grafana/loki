@@ -630,6 +630,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'prepare-updater-config',
         image: 'alpine',
         environment: {
+          MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)',
           RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$',
         },
         commands: [
@@ -638,13 +639,12 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'echo $(./tools/image-tag) > .tag',
           'export RELEASE_TAG=$(cat .tag)',
           // if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
-          'export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE "([0-9]+\\.[0-9]+)" | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")',
+          'export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")',
           'echo $RELEASE_NAME',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE_NAME and RELEASE TAG
           'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
           'sed -i "s/{{version}}/$RELEASE_TAG/g" %s' % configFileName,
-          'cat %s' % configFileName,
         ],
         settings: {
           config_template: { from_secret: updater_config_template.name },
