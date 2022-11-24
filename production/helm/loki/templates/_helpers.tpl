@@ -327,6 +327,75 @@ Return if ingress supports pathType.
 {{- end -}}
 
 {{/*
+Generate list of ingress service paths based on deployment type
+*/}}
+{{- define "loki.ingress.servicePaths" -}}
+{{- if (eq (include "loki.deployment.isScalable" .) "true") -}}
+{{- include "loki.ingress.scalableServicePaths" . }}
+{{- else -}}
+{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Ingress service paths for scalable deployment
+*/}}
+{{- define "loki.ingress.scalableServicePaths" -}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "read" "paths" .Values.ingress.paths.read )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "write" "paths" .Values.ingress.paths.write )}}
+{{- end -}}
+
+{{/*
+Ingress service paths for single binary deployment
+*/}}
+{{- define "loki.ingress.singleBinaryServicePaths" -}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "singleBinary" "paths" .Values.ingress.paths.singleBinary )}}
+{{- end -}}
+
+{{/*
+Ingress service path helper function
+Params:
+  ctx = . context
+  svcName = service name without the "loki.fullname" part (ie. read, write)
+  paths = list of url paths to allow ingress for
+*/}}
+{{- define "loki.ingress.servicePath" -}}
+{{- $ingressApiIsStable := eq (include "loki.ingress.isStable" .ctx) "true" -}}
+{{- $ingressSupportsPathType := eq (include "loki.ingress.supportsPathType" .ctx) "true" -}}
+{{- range .paths }}
+- path: {{ . }}
+  {{- if $ingressSupportsPathType }}
+  pathType: Prefix
+  {{- end }}
+  backend:
+    {{- if $ingressApiIsStable }}
+    {{- $serviceName := include "loki.ingress.serviceName" (dict "ctx" $.ctx "svcName" $.svcName) }}
+    service:
+      name: {{ $serviceName }}
+      port:
+        number: 3100
+    {{- else }}
+    serviceName: {{ $serviceName }}
+    servicePort: 3100
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Ingress service name helper function
+Params:
+  ctx = . context
+  svcName = service name without the "loki.fullname" part (ie. read, write)
+*/}}
+{{- define "loki.ingress.serviceName" -}}
+{{- if (eq .svcName "singleBinary") }}
+{{- printf "%s" (include "loki.fullname" .ctx) }}
+{{- else }}
+{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Create the service endpoint including port for MinIO.
 */}}
 {{- define "loki.minio" -}}

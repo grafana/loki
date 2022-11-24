@@ -34,6 +34,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.3.1
 
 - [BUGFIX] Fix invalid ruler config when filesystem storage is being used
+- [BUGFIX] Fix ingress template to work with both deployment types (scalable and single binary)
 
 ## 3.3.0
 

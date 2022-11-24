@@ -100,7 +100,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
-		WeightedParallelism(ast.confs, userID, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
+		MinWeightedParallelism(tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
 		r,
 		ast.next,
 	)
