@@ -3,7 +3,6 @@ package cloudflare
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -227,7 +226,7 @@ func (t *Target) Details() interface{} {
 	fields, _ := Fields(FieldsType(t.config.FieldsType))
 	var errMsg string
 	if t.err != nil {
-		errMsg = fmt.Sprintf("%v", t.err.Error())
+		errMsg = t.err.Error()
 	}
 	return map[string]string{
 		"zone_id":        t.config.ZoneID,

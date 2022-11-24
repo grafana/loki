@@ -253,7 +253,7 @@ func (t *Target) Labels() model.LabelSet {
 func (t *Target) Details() interface{} {
 	var errMsg string
 	if t.err != nil {
-		errMsg = fmt.Sprintf("%v", t.err.Error())
+		errMsg = t.err.Error()
 	}
 	return map[string]string{
 		"id":       t.containerName,
