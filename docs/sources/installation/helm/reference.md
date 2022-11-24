@@ -1086,6 +1086,87 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>ingress.paths.singleBinary[0]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/api/prom/push"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[1]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api/v1/push"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[2]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/api/prom/tail"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[3]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api/v1/tail"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[4]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[5]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/api/prom/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[6]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api/v1/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[7]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/prometheus/api/v1/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[8]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/prometheus/api/v1/alerts"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingress.paths.write[0]</td>
 			<td>string</td>
 			<td></td>
