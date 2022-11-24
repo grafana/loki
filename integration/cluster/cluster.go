@@ -30,6 +30,9 @@ auth_enabled: true
 server:
   http_listen_port: 0
   grpc_listen_port: 0
+  grpc_server_max_recv_msg_size: 110485813
+  grpc_server_max_send_msg_size: 110485813
+
 
 common:
   path_prefix: {{.dataPath}}
@@ -42,6 +45,12 @@ common:
     instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+
+limits_config:
+  per_stream_rate_limit: 50MB
+  per_stream_rate_limit_burst: 50MB
+  ingestion_rate_mb: 50
+  ingestion_burst_size_mb: 50
 
 storage_config:
   boltdb_shipper:
@@ -70,6 +79,9 @@ analytics:
 ingester:
   lifecycler:
     min_ready_duration: 0s
+
+querier:
+  multi_tenant_queries_enabled: true
 
 {{if .remoteWriteUrls}}
 ruler:
