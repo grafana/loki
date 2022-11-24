@@ -347,7 +347,7 @@ func TestLabelsTripperware(t *testing.T) {
 }
 
 func TestLogNoFilter(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -376,9 +376,8 @@ func TestLogNoFilter(t *testing.T) {
 	count, h := promqlResult(streams)
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
-	// fake round tripper is not called because we send "limited" queries to log tripperware
-	require.Equal(t, 0, *count)
-	require.Error(t, err)
+	require.Equal(t, 1, *count)
+	require.Nil(t, err)
 }
 
 func TestRegexpParamsSupport(t *testing.T) {

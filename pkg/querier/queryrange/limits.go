@@ -419,12 +419,23 @@ func WeightedParallelism(
 	}
 
 	totalDur := int(tsdbDur + otherDur)
-	tsdbPart := int(tsdbDur) * l.TSDBMaxQueryParallelism(user) / totalDur
-	regPart := int(otherDur) * l.MaxQueryParallelism(user) / totalDur
+	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
+	regMaxQueryParallelism := l.MaxQueryParallelism(user)
+	tsdbPart := int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
+	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
 
+	if combined := regPart + tsdbPart; combined > 0 {
+		return combined
+	}
+
+	// As long as the actual config is not zero,
 	// ensure at least 1 parallelism to account for integer division
-	// in unlikely edge cases (such as two configs with parallelism of 1)
-	return max(regPart+tsdbPart, 1)
+	// in unlikely edge cases such as two configs with parallelism of 1
+	// being rounded down to zero
+	if (tsdbMaxQueryParallelism > 0 && tsdbDur > 0) || (regMaxQueryParallelism > 0 && otherDur > 0) {
+		return 1
+	}
+	return 0
 
 }
 
@@ -445,11 +456,4 @@ func MinWeightedParallelism(tenantIDs []string, configs []config.PeriodConfig, l
 			end,
 		)
 	})
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
