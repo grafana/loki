@@ -1,4 +1,3 @@
-let host = "https://logql-analyzer.grafana.net/next";
 Handlebars.registerHelper("inc", (val) => parseInt(val) + 1);
 let streamSelector = `{job="analyze"}`;
 const logsSourceInputElement = document.getElementById("logs-source-input");
@@ -89,7 +88,27 @@ function handleError(error) {
   resultsElement.classList.add("hide");
 }
 
+// Loki version in docs always looks like `MAJOR.MINOR.x`
+const lokiVersionRegexp = /(\d+\.\d+\.x)/
+const baseAnalyzerHost = "https://logql-analyzer.grafana.net";
+
+function getSelectedDocsVersionTitle() {
+  let selectedDocsVersion = document.querySelector("#grafana-version-select > option:checked");
+  // we need to return "next" for the local development. in this case we do not have version selector
+  return selectedDocsVersion && selectedDocsVersion.text || "next";
+}
+
+function getAnalyzerHost() {
+  const docsVersionTitle = getSelectedDocsVersionTitle();
+  const matches = docsVersionTitle.match(lokiVersionRegexp);
+  if (matches === null || matches.length === 0) {
+    return `${baseAnalyzerHost}/next`
+  }
+  return `${baseAnalyzerHost}/${matches[0].replaceAll(".", "-")}`
+}
+
 async function sendRequest(payload) {
+  const host = getAnalyzerHost();
   return fetch(host + "/api/logql-analyze", {
     method: 'POST', headers: {
       'Accept': 'application/json', 'Content-Type': 'application/json'
