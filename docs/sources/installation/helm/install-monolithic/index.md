@@ -1,14 +1,11 @@
 ---
 title: Install the Single Binary Helm Chart
-menuTitle: Install Single Binary Loki
+menuTitle: Install single binary Loki
 description: Install Loki in single binary mode.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/monolithic
 weight: 100
-keywords:
-  - keyword
-  - key
-  - word
+keywords: []
 ---
 
 # Install the single binary Helm Chart

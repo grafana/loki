@@ -54,3 +54,4 @@ featureGates:
     gatewayRoute: true
     ruleExtendedValidation: true
     clusterTLSPolicy: true
+    clusterProxy: true

@@ -57,6 +57,7 @@ rules:
   resources:
   - apiservers
   - dnses
+  - proxies
   verbs:
   - get
   - list

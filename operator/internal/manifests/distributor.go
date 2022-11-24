@@ -6,8 +6,6 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +35,10 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		if err := configureServiceCA(&deployment.Spec.Template.Spec, caBundleName); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
@@ -109,13 +111,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
-	}
-
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Distributor != nil {
@@ -214,27 +209,10 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 
 func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
 	serviceName := serviceNameDistributorHTTP(opts.Name)
-	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
-	secretContainerSpec := corev1.Container{
-		Args: []string{
-			// Enable GRPC over TLS for ingester client
-			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
-		},
-	}
-
-	if err := mergo.Merge(&deployment.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
 	serviceName := serviceNameDistributorGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

@@ -118,8 +118,8 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
-  - clone
   - clone-target-branch
+  - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.24.2
   name: test
@@ -166,7 +166,6 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
-  - clone
   - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.24.2
@@ -174,7 +173,6 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
-  - clone
   - test
   - lint
   environment: {}
@@ -187,7 +185,6 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
-  - clone
   - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.24.2
@@ -233,6 +230,11 @@ steps:
   environment: {}
   image: grafana/loki-build-image:0.24.2
   name: loki-mixin-check
+  when:
+    event:
+    - pull_request
+    paths:
+    - production/loki-mixin/**
 trigger:
   ref:
   - refs/heads/main
@@ -1203,19 +1205,19 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
-  - export RELEASE_TAG=$(cat .tag)
-  - export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG
-    | grep -oE "([0-9]+\.[0-9]+)" | sed "s/\./-/g" | sed "s/$/-x/" || echo "next")
+  - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
+    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" | sed "s/\./-/g" || echo "next")
   - echo $RELEASE_NAME
+  - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
   - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
-  - cat updater-config.json
   depends_on:
   - clone
   environment:
-    RELEASE_TAG_REGEXP: ^([0-9]+\.[0-9]+\.[0-9]+)$
+    RELEASE_BRANCH_REGEXP: ^release-([0-9\.x]+)$
   image: alpine
   name: prepare-updater-config
   settings:
@@ -1610,6 +1612,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: dabdcd6c70862e27138d18737c729fcaac8b9ade194183567fe693f8d91e1d20
+hmac: c0eb47ec65c18d431d2d326925e9f9b6cf4dded08dce0b3f28c969a0a24ac791
 
 ...

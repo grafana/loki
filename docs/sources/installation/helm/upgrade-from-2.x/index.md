@@ -3,7 +3,7 @@ title: Upgrade the Helm Chart to 3.0
 menuTitle: Upgrade the Helm Chart to 3.0
 description: Upgrade the Helm Chart from 2.x to 3.0.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/upgrade
 weight: 100
 keywords:
   - upgrade
