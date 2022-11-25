@@ -9,6 +9,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/dskit/tenant"
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -46,6 +48,7 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
+	configs  []config.PeriodConfig
 	next     queryrangebase.Handler
 	limits   Limits
 	merger   queryrangebase.Merger
@@ -56,9 +59,10 @@ type splitByInterval struct {
 type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
+			configs:  configs,
 			next:     next,
 			limits:   limits,
 			merger:   merger,
@@ -217,7 +221,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
-	maxParallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQueryParallelism)
+	maxParallelism := MinWeightedParallelism(tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -103,14 +104,13 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
-	queryParallelism := validation.SmallestPositiveIntPerTenant(tenants, ast.limits.MaxQueryParallelism)
 
 	resolver, ok := shardResolverForConf(
 		ctx,
 		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
-		queryParallelism,
+		MinWeightedParallelism(tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
 		r,
 		ast.next,
 	)
@@ -292,7 +292,7 @@ func NewSeriesQueryShardMiddleware(
 	confs ShardingConfigs,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
-	limits queryrangebase.Limits,
+	limits Limits,
 	merger queryrangebase.Merger,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
@@ -324,7 +324,7 @@ type seriesShardingHandler struct {
 	logger  log.Logger
 	next    queryrangebase.Handler
 	metrics *logql.MapperMetrics
-	limits  queryrangebase.Limits
+	limits  Limits
 	merger  queryrangebase.Merger
 }
 
@@ -353,7 +353,17 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 		}.String()}
 		requests = append(requests, &shardedRequest)
 	}
-	requestResponses, err := queryrangebase.DoRequests(ctx, ss.next, requests, ss.limits)
+
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	requestResponses, err := queryrangebase.DoRequests(
+		ctx,
+		ss.next,
+		requests,
+		MinWeightedParallelism(tenantIDs, ss.confs, ss.limits, model.Time(req.GetStart()), model.Time(req.GetEnd())),
+	)
 	if err != nil {
 		return nil, err
 	}
