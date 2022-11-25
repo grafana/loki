@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package grpc;
+
+service Compactor {
+  rpc GetDeleteRequests(GetDeleteRequestsRequest) returns (GetDeleteRequestsResponse);
+  rpc GetCacheGenNumbers(GetCacheGenNumbersRequest) returns (GetCacheGenNumbersResponse);
+}
+
+message GetDeleteRequestsRequest {}
+
+message GetDeleteRequestsResponse {
+  repeated DeleteRequest deleteRequests = 1;
+}
+
+message DeleteRequest {
+  string requestID = 1;
+  int64 startTime = 2;
+  int64 endTime = 3;
+  string query = 4;
+  string status = 5;
+  int64 createdAt = 6;
+}
+
+message GetCacheGenNumbersRequest {}
+
+message GetCacheGenNumbersResponse {
+  string resultsCacheGen = 1;
+}
