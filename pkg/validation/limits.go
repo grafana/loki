@@ -84,6 +84,7 @@ type Limits struct {
 	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int            `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
@@ -203,6 +204,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries will be scheduled in parallel by the frontend.")
+	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 512, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
@@ -421,6 +423,12 @@ func (o *Overrides) MaxQueriersPerUser(userID string) int {
 // QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.
 func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
 	return o.getOverridesForUser(userID).QueryReadyIndexNumDays
+}
+
+// TSDBMaxQueryParallelism returns the limit to the number of sub-queries the
+// frontend will process in parallel for TSDB schemas.
+func (o *Overrides) TSDBMaxQueryParallelism(userID string) int {
+	return o.getOverridesForUser(userID).TSDBMaxQueryParallelism
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the

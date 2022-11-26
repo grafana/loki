@@ -1,5 +1,6 @@
 ## Main
 
+- [7744](https://github.com/grafana/loki/pull/7744) **periklis**: Fix object storage TLS spec CAKey descriptor
 - [7716](https://github.com/grafana/loki/pull/7716) **aminesnow**: Migrate API docs generation tool
 - [7710](https://github.com/grafana/loki/pull/7710) **periklis**: Fix LokiStackController watches for cluster-scoped resources
 - [7682](https://github.com/grafana/loki/pull/7682) **periklis**: Refactor cluster proxy to use configv1.Proxy on OpenShift

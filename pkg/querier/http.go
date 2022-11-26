@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -487,22 +488,21 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			log, ctx := spanlogger.New(req.Context(), call)
-			userID, err := tenant.TenantID(ctx)
+			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
 				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 				return
 			}
 
-			// Enforce the query timeout while querying backends
-			queryTimeout := q.limits.QueryTimeout(userID)
+			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
-			if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout")
-				queryTimeout = q.cfg.QueryTimeout
+			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
+				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))
+				timeout = q.cfg.QueryTimeout
 			}
 
-			newCtx, cancel := context.WithTimeout(ctx, queryTimeout)
+			newCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)

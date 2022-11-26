@@ -261,10 +261,10 @@ func Test_InstantSharding(t *testing.T) {
 	called := 0
 	shards := []string{}
 
+	cpyPeriodConf := testSchemas[0]
+	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
-		config.PeriodConfig{
-			RowShards: 3,
-		},
+		cpyPeriodConf,
 	}, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
