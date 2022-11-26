@@ -267,7 +267,7 @@ func (s *PromtailServer) Reload() <-chan chan error {
 	return s.reloadCh
 }
 
-// Reload returns the receive-only channel that signals configuration reload requests.
+// PromtailConfig returns configuration.
 func (s *PromtailServer) PromtailConfig() string {
 	return s.promtailCfg
 }
