@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -622,6 +623,10 @@ func (f fakeLimits) MinShardingLookback(string) time.Duration {
 
 func (f fakeLimits) QueryTimeout(string) time.Duration {
 	return f.queryTimeout
+}
+
+func (f fakeLimits) BlockedQueries(string) []*validation.BlockedQuery {
+	return []*validation.BlockedQuery{}
 }
 
 func counter() (*int, http.Handler) {
