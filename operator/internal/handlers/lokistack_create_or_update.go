@@ -33,6 +33,10 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+const (
+	caKeyKey = "service-ca.crt"
+)
+
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
 func CreateOrUpdateLokiStack(
 	ctx context.Context,
@@ -101,7 +105,15 @@ func CreateOrUpdateLokiStack(
 
 	objStore.Schemas = storageSchemas
 
-	if stack.Spec.Storage.TLS != nil && stack.Spec.Storage.TLS.CA != "" {
+	if stack.Spec.Storage.TLS != nil {
+		if stack.Spec.Storage.TLS.CA == "" {
+			return &status.DegradedError{
+				Message: "Missing object storage CA config map",
+				Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
 		var cm corev1.ConfigMap
 		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
 		if err = k.Get(ctx, key, &cm); err != nil {
@@ -123,7 +135,12 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: stack.Spec.Storage.TLS.CAKey}
+		caKey := stack.Spec.Storage.TLS.CAKey
+		if caKey == "" {
+			caKey = caKeyKey
+		}
+
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: caKey}
 	}
 
 	var (
