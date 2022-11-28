@@ -47,6 +47,7 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 			opts.Tenants.Configs[r.Spec.TenantID] = tenant
 		}
 	}
+	// If configmap size exceeds 1MB, split it into shards
 
 	// start the sharding process, shards will contain a list of the resulting
 	// configmaps, identified by a "prefix+index"
