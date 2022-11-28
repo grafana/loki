@@ -205,11 +205,11 @@ func TestGetStreamRates(t *testing.T) {
 		return valid
 	}, 3*time.Second, 100*time.Millisecond)
 
-	// Decay back to 0
+	// Decay
 	require.Eventually(t, func() bool {
 		rates = inst.streamRateCalculator.Rates()
 		for _, r := range rates {
-			if r.Rate != 0 {
+			if r.Rate > 65000 {
 				return false
 			}
 		}
