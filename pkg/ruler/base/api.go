@@ -448,7 +448,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	logger = log.With(logger, "namespace", namespace, "tenant", userID, "userID", userID)
+	logger = log.With(logger, "namespace", namespace, "userID", userID)
 
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
