@@ -30,7 +30,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"exact match all types",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Query: defaultQuery,
+					Pattern: defaultQuery,
 				},
 			}, logqlmodel.ErrBlocked,
 		},
@@ -38,7 +38,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"exact match all types with surrounding whitespace trimmed",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Query: fmt.Sprintf("       %s  ", defaultQuery),
+					Pattern: fmt.Sprintf("       %s  ", defaultQuery),
 				},
 			}, logqlmodel.ErrBlocked,
 		},
@@ -46,8 +46,23 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"exact match filter type only",
 			`{app=~"foo|bar"} |= "baz"`, []*validation.BlockedQuery{
 				{
-					Query: `{app=~"foo|bar"} |= "baz"`,
-					Types: []string{QueryTypeFilter},
+					Pattern: `{app=~"foo|bar"} |= "baz"`,
+					Types:   []string{QueryTypeFilter},
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
+			"match from multiple patterns",
+			`{app=~"foo|bar"} |= "baz"`, []*validation.BlockedQuery{
+				// won't match
+				{
+					Pattern: `.*"buzz".*`,
+					Regex:   true,
+				},
+				// will match
+				{
+					Pattern: `{app=~"foo|bar"} |= "baz"`,
+					Types:   []string{QueryTypeFilter},
 				},
 			}, logqlmodel.ErrBlocked,
 		},
@@ -55,8 +70,8 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"no block: exact match not matching filter type",
 			`{app=~"foo|bar"} | json`, []*validation.BlockedQuery{
 				{
-					Query: `{app=~"foo|bar"} | json`, // "limited" query
-					Types: []string{QueryTypeFilter},
+					Pattern: `{app=~"foo|bar"} | json`, // "limited" query
+					Types:   []string{QueryTypeFilter},
 				},
 			}, nil,
 		},
@@ -64,8 +79,8 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"regex match all types",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Query: ".*foo.*",
-					Regex: true,
+					Pattern: ".*foo.*",
+					Regex:   true,
 				},
 			}, logqlmodel.ErrBlocked,
 		},
@@ -73,19 +88,35 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"regex match multiple types",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Query: ".*foo.*",
-					Regex: true,
+					Pattern: ".*foo.*",
+					Regex:   true,
+					Types:   []string{QueryTypeFilter, QueryTypeMetric},
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
+			"match all queries by type",
+			defaultQuery, []*validation.BlockedQuery{
+				{
 					Types: []string{QueryTypeFilter, QueryTypeMetric},
 				},
 			}, logqlmodel.ErrBlocked,
 		},
 		{
+			"no block: match all queries by type",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Types: []string{QueryTypeLimited},
+				},
+			}, nil,
+		},
+		{
 			"regex does not compile",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Query: "[.*",
-					Regex: true,
-					Types: []string{QueryTypeFilter, QueryTypeMetric},
+					Pattern: "[.*",
+					Regex:   true,
+					Types:   []string{QueryTypeFilter, QueryTypeMetric},
 				},
 			}, nil,
 		},

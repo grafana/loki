@@ -26,9 +26,9 @@ func newQueryBlocker(ctx context.Context, q *query) *queryBlocker {
 	}
 }
 
-func (qb *queryBlocker) check(tenant string) bool {
-	queries := qb.q.limits.BlockedQueries(tenant)
-	if len(queries) <= 0 {
+func (qb *queryBlocker) isBlocked(tenant string) bool {
+	patterns := qb.q.limits.BlockedQueries(tenant)
+	if len(patterns) <= 0 {
 		return false
 	}
 
@@ -40,22 +40,29 @@ func (qb *queryBlocker) check(tenant string) bool {
 	logger := log.With(qb.logger, "user", tenant, "type", typ)
 
 	query := qb.q.params.Query()
-	for _, q := range queries {
-		if strings.TrimSpace(q.Query) == strings.TrimSpace(query) {
-			level.Warn(logger).Log("msg", "query blocker matched with exact match policy", "query", query)
-			return qb.block(q, typ, logger)
+	for _, p := range patterns {
+
+		// if no pattern is given, assume we want to match all queries
+		if p.Pattern == "" {
+			p.Pattern = ".*"
+			p.Regex = true
 		}
 
-		if q.Regex {
-			p, err := regexp.Compile(q.Query)
+		if strings.TrimSpace(p.Pattern) == strings.TrimSpace(query) {
+			level.Warn(logger).Log("msg", "query blocker matched with exact match policy", "query", query)
+			return qb.block(p, typ, logger)
+		}
+
+		if p.Regex {
+			r, err := regexp.Compile(p.Pattern)
 			if err != nil {
-				level.Error(logger).Log("msg", "query blocker regex does not compile", "regex", q.Query, "err", err)
+				level.Error(logger).Log("msg", "query blocker regex does not compile", "pattern", p.Pattern, "err", err)
 				continue
 			}
 
-			if p.MatchString(query) {
-				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "query", query)
-				return qb.block(q, typ, logger)
+			if r.MatchString(query) {
+				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", p.Pattern, "query", query)
+				return qb.block(p, typ, logger)
 			}
 		}
 	}
@@ -79,7 +86,7 @@ func (qb *queryBlocker) block(q *validation.BlockedQuery, typ string, logger log
 
 	// query would be blocked, but it didn't match specified types
 	if !matched {
-		level.Debug(logger).Log("msg", "query blocker did not match specified types", "types", q.Types.String(), "queryType", typ)
+		level.Debug(logger).Log("msg", "query blocker matched pattern, but not specified types", "pattern", q.Pattern, "types", q.Types.String(), "queryType", typ)
 		return false
 	}
 

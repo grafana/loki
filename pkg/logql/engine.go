@@ -287,7 +287,7 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	blocker := newQueryBlocker(ctx, q)
 
 	for _, tenant := range tenants {
-		if blocker.check(tenant) {
+		if blocker.isBlocked(tenant) {
 			QueriesBlocked.WithLabelValues(tenant).Inc()
 			return true
 		}
