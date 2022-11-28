@@ -18,10 +18,12 @@ if there were made any changes in the folder `./loki-build-image/`.
 3. run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone` and commit the changes to the same branch
 4. create a PR
 5. once approved and merged to `main`, the image with the new version is built and published
+   - **hint:** keep an eye on https://drone.grafana.net/grafana/loki for the build after merging ([example](https://drone.grafana.net/grafana/loki/17760/1/2))
 
 ## Step 2
 
 1. create a branch
 2. update the `BUILD_IMAGE_VERSION` variable in the `Makefile`
+3. Repeat step 1.3, which will use the new image
 3. run `loki-build-image/version-updater.sh <new-version>` to update all the references
 4. create a PR
