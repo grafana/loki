@@ -36,6 +36,8 @@ The available query types are:
 - `filter`: a query with a log filter, e.g. `{env="prod"} |= "error"`
 - `limited`: a query without a filter or a metric aggregation
 
+**Note:** the order of patterns is preserved, so the first matching pattern will be used
+
 ## Observing blocked queries
 
 Blocked queries are logged, as well as counted in the `loki_blocked_queries` metric on a per-tenant basis.
