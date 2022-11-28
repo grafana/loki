@@ -9,7 +9,7 @@ is the Docker image used to run tests and build Grafana Loki binaries in CI.
 The build and publish process of the image is triggered upon a merge to `main`
 if there were made any changes in the folder `./loki-build-image/`.
 
-**Building and using the `loki-build-image` is a two-step process:**
+**To build and use the `loki-build-image`:**
 
 ## Step 1
 
@@ -17,7 +17,7 @@ if there were made any changes in the folder `./loki-build-image/`.
 2. update the version tag of the `loki-build-image` pipeline defined in `.drone/drone.jsonnet` (search for `pipeline('loki-build-image')`) to a new version number (try follow semver)
 3. run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone` and commit the changes to the same branch
 4. create a PR
-5. once approved and merged to `main`, the image with the new version is built
+5. once approved and merged to `main`, the image with the new version is built and published
 
 ## Step 2
 
