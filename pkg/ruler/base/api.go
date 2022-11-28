@@ -508,7 +508,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	level.Info(logger).Log("msg", "storeed rulegroup", "group", rgProto.String())
+	level.Info(logger).Log("msg", "stored rulegroup", "group", rgProto.String())
 
 	respondAccepted(w, logger)
 }
