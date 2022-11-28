@@ -13,7 +13,7 @@ import (
 // If the size of the data is more than 1MB, the ConfigMap will
 // be split into multiple shards, and this function will return
 // the list of shards
-func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
+func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	l := commonLabels(opts.Name)
 
 	template := newConfigMapTemplate(opts, l)
@@ -47,7 +47,6 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 			opts.Tenants.Configs[r.Spec.TenantID] = tenant
 		}
 	}
-	// If configmap size exceeds 1MB, split it into shards
 
 	// start the sharding process, shards will contain a list of the resulting
 	// configmaps, identified by a "prefix+index"
@@ -55,25 +54,7 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 
 	// TODO: what happens when there's an update to the rules?
 
-	for _, shard := range shards {
-		println("--------%s--------", shard.Name)
-		for k, v := range shard.Data {
-			println(k, v)
-		}
-	}
-
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: corev1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      RulesConfigMapName(opts.Name),
-			Namespace: opts.Namespace,
-			Labels:    l,
-		},
-		//Data: data,
-	}, nil
+	return shards, nil
 }
 
 func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap {

@@ -10,7 +10,7 @@ import (
 // MaxConfigMapDataSizeBytes is the maximum data size in bytes that a single ConfigMap
 // may contain. This is lower than 1MB  in order to reserve space for
 // metadata and the rest of the ConfigMap k8s object.
-const MaxConfigMapDataSizeBytes = 10000 //(1 * 1024 * 1024) - 50_000
+const MaxConfigMapDataSizeBytes = (1 * 1024 * 1024) - 50_000
 
 // ShardedConfigMap is the configmap data that is sharded across multiple
 // k8s configmaps in case the maximum data size is exceeded
@@ -64,14 +64,14 @@ func (cm *ShardedConfigMap) Shard() []*corev1.ConfigMap {
 
 	for _, key := range keys {
 		v := cm.data[key]
-		vSize := len(key) + len(v)
-		if currentCMSize+vSize > MaxConfigMapDataSizeBytes {
+		dataSize := len(key) + len(v)
+		if currentCMSize+dataSize > MaxConfigMapDataSizeBytes {
 			cm.configMapShards = append(cm.configMapShards, currentCM)
 			currentCMIndex++
 			currentCMSize = 0
 			currentCM = cm.newConfigMapShard(currentCMIndex)
 		}
-		currentCMSize += vSize
+		currentCMSize += dataSize
 		currentCM.Data[key] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)
