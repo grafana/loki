@@ -204,6 +204,17 @@ func TestGetStreamRates(t *testing.T) {
 
 		return valid
 	}, 3*time.Second, 100*time.Millisecond)
+
+	// Decay
+	require.Eventually(t, func() bool {
+		rates = inst.streamRateCalculator.Rates()
+		for _, r := range rates {
+			if r.Rate > 65000 {
+				return false
+			}
+		}
+		return true
+	}, 3*time.Second, 100*time.Millisecond)
 }
 
 func labelHashNoShard(l labels.Labels) uint64 {

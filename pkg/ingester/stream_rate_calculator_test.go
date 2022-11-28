@@ -52,13 +52,34 @@ func TestStreamRateCalculator(t *testing.T) {
 		calc.updateRates()
 		rates = calc.Rates()
 		require.Len(t, rates, 1)
-		require.Equal(t, int64(3400), rates[0].Rate)
+		require.Equal(t, int64(8000), rates[0].Rate)
 
 		calc.Record("tenant 1", 1, 1, 10000)
 		calc.updateRates()
 		rates = calc.Rates()
 		require.Len(t, rates, 1)
-		require.Equal(t, int64(7756), rates[0].Rate)
+		require.Equal(t, int64(8400), rates[0].Rate)
+	})
+
+	t.Run("it uses the larger sample without taking the average when there's a spike in load", func(t *testing.T) {
+		calc := setupCalculator()
+
+		calc.Record("tenant 1", 1, 1, 10000)
+		calc.updateRates()
+		rates := calc.Rates()
+		require.Len(t, rates, 1)
+		require.Equal(t, int64(10000), rates[0].Rate)
+
+		calc.updateRates()
+		rates = calc.Rates()
+		require.Len(t, rates, 1)
+		require.Equal(t, int64(8000), rates[0].Rate)
+
+		calc.Record("tenant 1", 1, 1, 13000)
+		calc.updateRates()
+		rates = calc.Rates()
+		require.Len(t, rates, 1)
+		require.Equal(t, int64(13000), rates[0].Rate)
 	})
 }
 

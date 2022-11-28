@@ -18,7 +18,13 @@ const (
 	// The factor used to weight the moving average. Must be in the range [0, 1.0].
 	// A larger factor weights recent samples more heavily while a smaller
 	// factor weights historic samples more heavily.
-	smoothingFactor = .66
+	smoothingFactor = .2
+
+	// A threshold for when to reset the average without smoothing. Calculated
+	// by currentValue >= (lastValue * burstThreshold). This allows us to set
+	// the smoothing factor fairly small to preserve historic samples but still
+	// be able to react to sudden bursts in load
+	burstThreshold = 1.5
 )
 
 // stripeLock is taken from ruler/storage/wal/series.go
@@ -141,9 +147,16 @@ func updateSamples(rates []logproto.StreamRate, samples map[string]map[uint64]lo
 	return samples
 }
 
-func weightedMovingAverage(next, last int64) int64 {
+func weightedMovingAverage(n, l int64) int64 {
+	next, last := float64(n), float64(l)
+
+	// If we see a sudden spike use the new value without smoothing
+	if next >= (last * burstThreshold) {
+		return n
+	}
+
 	// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
-	return int64((smoothingFactor * float64(next)) + ((1 - smoothingFactor) * float64(last)))
+	return int64((smoothingFactor * next) + ((1 - smoothingFactor) * last))
 }
 
 func (c *StreamRateCalculator) Rates() []logproto.StreamRate {
@@ -182,16 +195,11 @@ func (c *StreamRateCalculator) Remove(tenant string, streamHash uint64) {
 	c.rateLock.Lock()
 	defer c.rateLock.Unlock()
 
-	idx := -1
 	for i, rate := range c.allRates {
 		if rate.Tenant == tenant && rate.StreamHash == streamHash {
-			idx = i
+			c.allRates = append(c.allRates[:i], c.allRates[i+1:]...)
 			break
 		}
-	}
-
-	if idx >= 0 {
-		c.allRates = append(c.allRates[:idx], c.allRates[idx+1:]...)
 	}
 }
 
