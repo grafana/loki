@@ -93,14 +93,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: check-generated-files
 - commands:
   - cd ..
@@ -110,7 +110,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: clone-target-branch
   when:
     event:
@@ -121,7 +121,7 @@ steps:
   - clone-target-branch
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: test
 - commands:
   - cd ../loki-target-branch
@@ -129,7 +129,7 @@ steps:
   depends_on:
   - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: test-target-branch
   when:
     event:
@@ -142,7 +142,7 @@ steps:
   - test
   - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: compare-coverage
   when:
     event:
@@ -158,7 +158,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: report-coverage
   when:
     event:
@@ -168,7 +168,7 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -176,7 +176,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -187,21 +187,21 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: check-example-config-doc
 trigger:
   ref:
@@ -228,7 +228,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: loki-mixin-check
   when:
     event:
@@ -253,7 +253,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1340,7 +1340,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1348,7 +1348,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1374,7 +1374,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.2
+  image: grafana/loki-build-image:0.24.3
   name: publish
   when:
     event:
@@ -1613,6 +1613,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 209b41a9cee719fa211a9e97f38a4964233e9ecb46664bc12dab23f819dbcca8
+hmac: 1abf633c26259d324da5804cd9fada3eacaf9b3184497f8b48ee29bad674b617
 
 ...
