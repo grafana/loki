@@ -157,7 +157,7 @@ type Limits struct {
 
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 
-	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries"`
+	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 }
 
 type StreamRetention struct {

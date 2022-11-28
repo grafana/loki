@@ -18,6 +18,7 @@ import (
 	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
@@ -191,6 +192,10 @@ func (l *limiter) MaxQuerySeries(userID string) int {
 
 func (l *limiter) QueryTimeout(userID string) time.Duration {
 	return time.Minute * 5
+}
+
+func (l *limiter) BlockedQueries(userID string) []*validation.BlockedQuery {
+	return []*validation.BlockedQuery{}
 }
 
 type querier struct {
