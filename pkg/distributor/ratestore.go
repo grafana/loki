@@ -55,7 +55,7 @@ type rateStore struct {
 
 	ring            ring.ReadRing
 	clientPool      poolClientFactory
-	rates           map[string]map[uint64]expiringRate
+	rates           map[string]map[uint64]expiringRate // tenant id -> fingerprint -> rate
 	rateLock        sync.RWMutex
 	rateKeepAlive   time.Duration
 	ingesterTimeout time.Duration
