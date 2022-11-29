@@ -110,11 +110,11 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	defer s.rateLock.Unlock()
 
 	s.updateRates(rates)
-	maxShards, maxRate := s.cleanupExpired()
+	maxShards, maxRate, totalStreams := s.cleanupExpired()
 
 	s.metrics.maxStreamRate.Set(float64(maxRate))
 	s.metrics.maxStreamShardCount.Set(float64(maxShards))
-	s.metrics.streamCount.Set(float64(len(s.rates)))
+	s.metrics.streamCount.Set(float64(totalStreams))
 
 	return nil
 }
@@ -131,10 +131,11 @@ func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) {
 	}
 }
 
-func (s *rateStore) cleanupExpired() (int64, int64) {
-	var maxShards, maxRate int64
+func (s *rateStore) cleanupExpired() (int64, int64, int64) {
+	var maxShards, maxRate, totalStreams int64
 
 	for tID, tenant := range s.rates {
+		totalStreams += int64(len(tenant))
 		for stream, rate := range tenant {
 			if time.Since(rate.createdAt) > s.rateKeepAlive {
 				delete(s.rates[tID], stream)
@@ -146,7 +147,7 @@ func (s *rateStore) cleanupExpired() (int64, int64) {
 		}
 	}
 
-	return maxShards, maxRate
+	return maxShards, maxRate, totalStreams
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
