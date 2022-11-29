@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
@@ -47,6 +48,8 @@ const (
 
 	defaultPerStreamRateLimit  = 3 << 20 // 3MB
 	defaultPerStreamBurstLimit = 5 * defaultPerStreamRateLimit
+
+	DefaultPerTenantQueryTimeout = "1m"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -82,6 +85,7 @@ type Limits struct {
 	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int            `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
@@ -152,6 +156,8 @@ type Limits struct {
 	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
 
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
+
+	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 }
 
 type StreamRetention struct {
@@ -195,12 +201,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
-	_ = l.QueryTimeout.Set("1m")
+	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries will be scheduled in parallel by the frontend.")
+	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 512, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
@@ -421,6 +428,12 @@ func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
 	return o.getOverridesForUser(userID).QueryReadyIndexNumDays
 }
 
+// TSDBMaxQueryParallelism returns the limit to the number of sub-queries the
+// frontend will process in parallel for TSDB schemas.
+func (o *Overrides) TSDBMaxQueryParallelism(userID string) int {
+	return o.getOverridesForUser(userID).TSDBMaxQueryParallelism
+}
+
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
@@ -622,6 +635,10 @@ func (o *Overrides) DeletionMode(userID string) string {
 
 func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
+}
+
+func (o *Overrides) BlockedQueries(userID string) []*validation.BlockedQuery {
+	return o.getOverridesForUser(userID).BlockedQueries
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

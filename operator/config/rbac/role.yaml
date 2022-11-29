@@ -12,6 +12,7 @@ rules:
   - endpoints
   - nodes
   - pods
+  - secrets
   - serviceaccounts
   - services
   verbs:
@@ -56,6 +57,7 @@ rules:
   resources:
   - apiservers
   - dnses
+  - proxies
   verbs:
   - get
   - list

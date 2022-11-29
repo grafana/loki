@@ -415,6 +415,19 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:Managed
         - urn:alm:descriptor:com.tectonic.ui:select:Unmanaged
+      - description: Proxy defines the spec for the object proxy to configure cluster
+          proxy information.
+        displayName: Cluster Proxy
+        path: proxy
+      - description: HTTPProxy configures the HTTP_PROXY/http_proxy env variable.
+        displayName: HTTPProxy
+        path: proxy.httpProxy
+      - description: HTTPSProxy configures the HTTPS_PROXY/https_proxy env variable.
+        displayName: HTTPSProxy
+        path: proxy.httpsProxy
+      - description: NoProxy configures the NO_PROXY/no_proxy env variable.
+        displayName: NoProxy
+        path: proxy.noProxy
       - description: ReplicationFactor defines the policy for log stream replication.
         displayName: Replication Factor
         path: replicationFactor
@@ -473,11 +486,10 @@ spec:
         displayName: TLS Config
         path: storage.tls
       - description: Key is the data key of a ConfigMap containing a CA certificate.
-          It needs to be in the same namespace as the LokiStack custom resource.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
         displayName: CA ConfigMap Key
         path: storage.tls.caKey
-        x-descriptors:
-        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: CA is the name of a ConfigMap containing a CA certificate. It
           needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
@@ -984,6 +996,7 @@ spec:
           - endpoints
           - nodes
           - pods
+          - secrets
           - serviceaccounts
           - services
           verbs:
@@ -1028,6 +1041,7 @@ spec:
           resources:
           - apiservers
           - dnses
+          - proxies
           verbs:
           - get
           - list

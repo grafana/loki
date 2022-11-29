@@ -156,6 +156,33 @@ func TestRateStore(t *testing.T) {
 		time.Sleep(time.Second)
 		require.Equal(t, int64(0), tc.rateStore.RateFor("tenant 1", 0))
 	})
+
+	t.Run("it clears the rate after an interval", func(t *testing.T) {
+		tc := setup(true)
+		tc.ring.replicationSet = ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Addr: "ingester0"},
+			},
+		}
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient([]*logproto.StreamRate{
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25},
+			}, 1),
+		}
+
+		tc.rateStore.rateKeepAlive = 2 * time.Second
+		_ = tc.rateStore.StartAsync(context.Background())
+		defer tc.rateStore.StopAsync()
+
+		require.Eventually(t, func() bool {
+			return 25 == tc.rateStore.RateFor("tenant 1", 0)
+		}, time.Second, 100*time.Millisecond)
+
+		require.Eventually(t, func() bool {
+			return 0 == tc.rateStore.RateFor("tenant 1", 0)
+		}, 3*time.Second, 250*time.Millisecond)
+	})
 }
 
 func newFakeRing() *fakeRing {
@@ -188,18 +215,29 @@ func (p *fakeClientPool) GetClientFor(addr string) (client.PoolClient, error) {
 	return p.clients[addr], p.err
 }
 
-func newRateClient(rates []*logproto.StreamRate) client.PoolClient {
+func newRateClient(rates []*logproto.StreamRate, maxResponses ...int) client.PoolClient {
+	var maxResp int
+	if len(maxResponses) > 0 {
+		maxResp = maxResponses[0]
+	}
+
 	return client2.ClosableHealthAndIngesterClient{
-		StreamDataClient: &fakeStreamDataClient{resp: &logproto.StreamRatesResponse{StreamRates: rates}},
+		StreamDataClient: &fakeStreamDataClient{resp: &logproto.StreamRatesResponse{StreamRates: rates}, maxResponses: maxResp},
 	}
 }
 
 type fakeStreamDataClient struct {
-	resp *logproto.StreamRatesResponse
-	err  error
+	resp         *logproto.StreamRatesResponse
+	err          error
+	maxResponses int
+	callCount    int
 }
 
 func (c *fakeStreamDataClient) GetStreamRates(ctx context.Context, in *logproto.StreamRatesRequest, opts ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
+	if c.maxResponses > 0 && c.callCount > c.maxResponses {
+		return nil, c.err
+	}
+	c.callCount++
 	return c.resp, c.err
 }
 

@@ -3,7 +3,7 @@ title: Configure monitoring and alerting
 menuTitle: Configure monitoring and alerting
 description: setup monitoring and alerts for the Helm Chart
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/monitoring
 weight: 100
 keywords:
   - monitoring 

@@ -5,11 +5,11 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/imdario/mergo"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 const (
@@ -18,8 +18,9 @@ const (
 	// GCSFileName is the file containing the Google credentials for authentication
 	GCSFileName = "key.json"
 
-	secretDirectory = "/etc/storage/secrets"
-	caDirectory     = "/etc/storage/ca"
+	secretDirectory  = "/etc/storage/secrets"
+	storageTLSVolume = "storage-tls"
+	caDirectory      = "/etc/storage/ca"
 )
 
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
@@ -141,7 +142,7 @@ func ensureCAForS3(p *corev1.PodSpec, tls *TLSConfig) corev1.PodSpec {
 	volumes := p.Volumes
 
 	volumes = append(volumes, corev1.Volume{
-		Name: tls.CA,
+		Name: storageTLSVolume,
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{
@@ -152,7 +153,7 @@ func ensureCAForS3(p *corev1.PodSpec, tls *TLSConfig) corev1.PodSpec {
 	})
 
 	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-		Name:      tls.CA,
+		Name:      storageTLSVolume,
 		ReadOnly:  false,
 		MountPath: caDirectory,
 	})

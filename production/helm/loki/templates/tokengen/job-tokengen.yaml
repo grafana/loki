@@ -38,9 +38,7 @@ spec:
         {{- toYaml .Values.enterprise.tokengen.securityContext | nindent 8 }}
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
       initContainers:
         - name: loki
@@ -48,7 +46,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=tokengen
+            - -target={{ .Values.enterprise.tokengen.targetModule }}
             - -tokengen.token-file=/shared/admin-token
             {{- with .Values.enterprise.tokengen.extraArgs }}
             {{- toYaml . | nindent 12 }}

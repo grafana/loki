@@ -32,6 +32,18 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Promtail
+
+#### The go build tag `promtail_journal_enabled` was introduced
+
+The go build tag `promtail_journal_enabled` should be passed to include Journal support to the promtail binary.
+If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
+
+```shell
+go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+```
+Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
+
 ## 2.7.0
 
 ### Loki
@@ -104,11 +116,35 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 
 The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
 
+#### Usage Report  / Telemetry config has changed named
+
+The configuration for anonymous usage statistics reporting to Grafana has changed from `usage_report` to `analytics`.
+
+#### TLS `cipher_suites` and `tls_min_version` have moved
+
+These were previously configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example: `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
+
+#### Querier `query_timeout` default changed
+
+The previous default value for `querier.query_timeout` of `1m` has changed to `0s`.
+
+#### `ruler.storage.configdb` has been removed
+
+ConfigDB was disallowed as a Ruler storage option back in 2.0. The config struct has finally been removed.
+
+#### `ruler.remote_write.client` has been removed
+
+Can no longer specify a remote write client for the ruler.
+
 ### Promtail
 
 #### `gcp_push_target_parsing_errors_total` has a new `reason` label
 
 The `gcp_push_target_parsing_errors_total` GCP Push Target metrics has been added a new label named `reason`. This includes detail on what might have caused the parsing to fail.
+
+#### Windows event logs: now correctly includes `user_data`
+
+The contents of the `user_data` field was erroneously set to the same value as `event_data` in previous versions. This was fixed in [#7461](https://github.com/grafana/loki/pull/7461) and log queries relying on this broken behaviour may be impacted.
 
 ## 2.6.0
 

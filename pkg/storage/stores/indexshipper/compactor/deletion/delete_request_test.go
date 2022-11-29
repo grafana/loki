@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 func TestDeleteRequest_IsDeleted(t *testing.T) {
@@ -20,6 +21,9 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 
 	lbl := `{foo="bar", fizz="buzz"}`
 	lblWithFilter := `{foo="bar", fizz="buzz"} |= "filter"`
+	var dummyFilterFunc filter.Func = func(s string) bool {
+		return false
+	}
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -69,6 +73,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 							Start: now.Add(-3 * time.Hour),
 							End:   now.Add(-time.Hour),
 						},
+						Filter: dummyFilterFunc,
 					},
 				},
 			},
@@ -146,6 +151,13 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				nonDeletedIntervals: []retention.IntervalFilter{
 					{
 						Interval: model.Interval{
+							Start: now.Add(-2 * time.Hour),
+							End:   now.Add(-time.Hour),
+						},
+						Filter: dummyFilterFunc,
+					},
+					{
+						Interval: model.Interval{
 							Start: now.Add(-3 * time.Hour),
 							End:   now.Add(-2*time.Hour) - 1,
 						},
@@ -220,6 +232,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
 			isDeleted, nonDeletedIntervals := tc.deleteRequest.IsDeleted(chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isDeleted)
+			require.Len(t, nonDeletedIntervals, len(tc.expectedResp.nonDeletedIntervals))
 			for idx := range tc.expectedResp.nonDeletedIntervals {
 				require.Equal(t,
 					tc.expectedResp.nonDeletedIntervals[idx].Interval.Start,
@@ -229,6 +242,11 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 					tc.expectedResp.nonDeletedIntervals[idx].Interval.End,
 					nonDeletedIntervals[idx].Interval.End,
 				)
+				if tc.expectedResp.nonDeletedIntervals[idx].Filter != nil {
+					require.NotNil(t, nonDeletedIntervals[idx].Filter)
+				} else {
+					require.Nil(t, nonDeletedIntervals[idx].Filter)
+				}
 			}
 		})
 	}
@@ -286,7 +304,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 
-	t.Run("all_lines_matching", func(t *testing.T) {
+	t.Run("no_line_filter", func(t *testing.T) {
 		dr := DeleteRequest{
 			Query:        `{namespace="default"}`,
 			DeletedLines: 0,
@@ -298,11 +316,6 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
-
-		require.True(t, f(`some line`))
-		require.True(t, f(""))
-		require.True(t, f("other line"))
-		require.Equal(t, int32(3), dr.DeletedLines)
-		require.Equal(t, float64(3), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+		require.Nil(t, f)
 	})
 }

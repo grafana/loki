@@ -11,15 +11,31 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 var nilMetrics = NewSplitByMetrics(nil)
+
+var testSchemas = func() []config.PeriodConfig {
+	confS := `
+- from: "1950-01-01"
+  store: boltdb-shipper
+  object_store: gcs
+  schema: v12
+`
+
+	var confs []config.PeriodConfig
+	if err := yaml.Unmarshal([]byte(confS), &confs); err != nil {
+		panic(err)
+	}
+	return confs
+}()
 
 func Test_splitQuery(t *testing.T) {
 	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
@@ -572,6 +588,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			}
 			require.Equal(t, tc.expected, splits)
 		})
+
 	}
 }
 
@@ -599,6 +616,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 	split := SplitByIntervalMiddleware(
+		testSchemas,
 		l,
 		LokiCodec,
 		splitByTime,
@@ -771,6 +789,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 	split := SplitByIntervalMiddleware(
+		testSchemas,
 		l,
 		LokiCodec,
 		splitByTime,
@@ -851,6 +870,7 @@ func Test_ExitEarly(t *testing.T) {
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 	split := SplitByIntervalMiddleware(
+		testSchemas,
 		l,
 		LokiCodec,
 		splitByTime,
@@ -932,6 +952,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: n}, time.Hour)
 	split := SplitByIntervalMiddleware(
+		testSchemas,
 		l,
 		LokiCodec,
 		splitByTime,

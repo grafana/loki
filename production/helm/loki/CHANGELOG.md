@@ -11,9 +11,34 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.4.3
+
+- [ENHANCEMENT] Allow to change Loki `-target` argument
+
+## 3.4.2
+
+- [BUGFIX] Fix read-only /tmp in single-binary mode
+
+## 3.4.1
+
+- [BUGFIX] Remove extra `/` in image name if `registry` or `repository` is empty
+
+## 3.4.0
+
+- [ENHANCEMENT] Allow to add some selector for Loki persistent volume
+
+## 3.3.3
+
+- [BUGFIX] Add missing label `prometheus.io/service-monitor: "false"` to single-binary headless service
+
+## 3.3.2
+
+- [BUGFIX] Fixed indentation in single-binary pdb template
+
 ## 3.3.1
 
 - [BUGFIX] Fix invalid ruler config when filesystem storage is being used
+- [BUGFIX] Fix ingress template to work with both deployment types (scalable and single binary)
 
 ## 3.3.0
 

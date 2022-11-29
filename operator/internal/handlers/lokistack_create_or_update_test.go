@@ -39,8 +39,12 @@ var (
 	featureGates = configv1.FeatureGates{
 		ServiceMonitors:            false,
 		ServiceMonitorTLSEndpoints: false,
-		OpenShift: configv1.OpenShiftFeatureGates{
-			ServingCertsService: false,
+		BuiltInCertManagement: configv1.BuiltInCertManagement{
+			Enabled:        true,
+			CACertValidity: "10m",
+			CACertRefresh:  "5m",
+			CertValidity:   "2m",
+			CertRefresh:    "1m",
 		},
 	}
 

@@ -52,7 +52,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: LokiStackSpec defines the desired state of LokiStack
+            description: LokiStack CR spec field.
             properties:
               limits:
                 description: Limits defines the limits to be applied to log stream
@@ -292,8 +292,23 @@ spec:
                 - Managed
                 - Unmanaged
                 type: string
+              proxy:
+                description: Proxy defines the spec for the object proxy to configure
+                  cluster proxy information.
+                properties:
+                  httpProxy:
+                    description: HTTPProxy configures the HTTP_PROXY/http_proxy env
+                      variable.
+                    type: string
+                  httpsProxy:
+                    description: HTTPSProxy configures the HTTPS_PROXY/https_proxy
+                      env variable.
+                    type: string
+                  noProxy:
+                    description: NoProxy configures the NO_PROXY/no_proxy env variable.
+                    type: string
+                type: object
               replicationFactor:
-                default: 1
                 description: ReplicationFactor defines the policy for log stream replication.
                 format: int32
                 minimum: 1
@@ -465,16 +480,18 @@ spec:
                       endpoint.
                     properties:
                       caKey:
-                        default: service-ca.crt
                         description: Key is the data key of a ConfigMap containing
                           a CA certificate. It needs to be in the same namespace as
-                          the LokiStack custom resource.
+                          the LokiStack custom resource. If empty, it defaults to
+                          "service-ca.crt".
                         type: string
                       caName:
                         description: CA is the name of a ConfigMap containing a CA
                           certificate. It needs to be in the same namespace as the
                           LokiStack custom resource.
                         type: string
+                    required:
+                    - caName
                     type: object
                 required:
                 - secret
@@ -1114,7 +1131,7 @@ spec:
             - storageClassName
             type: object
           status:
-            description: LokiStackStatus defines the observed state of LokiStack
+            description: LokiStack CR spec Status.
             properties:
               components:
                 description: Components provides summary of all Loki pod status grouped

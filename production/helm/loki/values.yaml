@@ -173,6 +173,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.querier }}
+    querier:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
 
@@ -259,6 +264,9 @@ loki:
   # --  Optional analytics configuration
   analytics: {}
 
+  # --  Optional querier configuration
+  querier: {}
+
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
@@ -327,6 +335,8 @@ enterprise:
   tokengen:
     # -- Whether the job should be part of the deployment
     enabled: true
+    # -- Comma-separated list of Loki modules to load for tokengen
+    targetModule: "tokengen"
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -635,9 +645,9 @@ monitoring:
     metricsInstance:
       # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
       enabled: true
-      # -- MerticsInstance annotations
+      # -- MetricsInstance annotations
       annotations: {}
-      # -- Additional MatricsInstance labels
+      # -- Additional MetricsInstance labels
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
@@ -739,6 +749,8 @@ write:
   selectorLabels: {}
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the write
+  targetModule: "write"
   # -- Additional CLI args for the write
   extraArgs: []
   # -- Environment variables to add to the write pods
@@ -777,6 +789,8 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the read node(s)
 read:
@@ -808,6 +822,8 @@ read:
   selectorLabels: {}
   # -- Labels for read service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the read
+  targetModule: "read"
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -844,6 +860,8 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the single binary node(s)
 singleBinary:
@@ -873,6 +891,8 @@ singleBinary:
   podAnnotations: {}
   # -- Additional selecto labels for each `single binary` pod
   selectorLabels: {}
+  # -- Comma-separated list of Loki modules to load for the single binary
+  targetModule: "all"
   # -- Labels for single binary service
   extraArgs: []
   # -- Environment variables to add to the single binary pods
@@ -909,6 +929,8 @@ singleBinary:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
@@ -934,6 +956,17 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+    singleBinary:
+      - /api/prom/push
+      - /loki/api/v1/push
+      - /api/prom/tail
+      - /loki/api/v1/tail
+      - /loki/api
+      - /api/prom/rules
+      - /loki/api/v1/rules
+      - /prometheus/api/v1/rules
+      - /prometheus/api/v1/alerts
+
   hosts:
     - loki.example.com
 #  tls:

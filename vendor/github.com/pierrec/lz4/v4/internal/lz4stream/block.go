@@ -224,7 +224,9 @@ func (b *FrameDataBlock) Close(f *Frame) {
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.CompressionLevel) *FrameDataBlock {
 	data := b.data
 	if f.isLegacy() {
-		data = data[:cap(data)]
+		// In legacy mode, the buffer is sized according to CompressBlockBound,
+		// but only 8Mb is buffered for compression.
+		src = src[:8<<20]
 	} else {
 		data = data[:len(src)] // trigger the incompressible flag in CompressBlock
 	}

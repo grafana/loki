@@ -15,7 +15,7 @@ type Limits interface {
 
 	// MaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel.
-	MaxQueryParallelism(string) int
+	MaxQueryParallelism(tenant string) int
 
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
