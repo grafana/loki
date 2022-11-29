@@ -1,6 +1,8 @@
 package deletion
 
 import (
+	"time"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -10,6 +12,10 @@ import (
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+type timeInterval struct {
+	start, end time.Time
+}
 
 type DeleteRequest struct {
 	RequestID string              `json:"request_id"`
@@ -23,6 +29,7 @@ type DeleteRequest struct {
 	SequenceNum     int64                  `json:"-"`
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
+	timeInterval    *timeInterval          `json:"-"`
 
 	Metrics      *deleteRequestsManagerMetrics `json:"-"`
 	DeletedLines int32                         `json:"-"`
@@ -60,13 +67,13 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	}
 
 	if !allMatch(d.matchers, labels) {
-		return func(s string) bool {
+		return func(_ time.Time, s string) bool {
 			return false
 		}, nil
 	}
 
 	f := p.ForStream(labels).ProcessString
-	return func(s string) bool {
+	return func(_ time.Time, s string) bool {
 		result, _, skip := f(0, s)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
@@ -88,7 +95,7 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
 // It also returns the intervals of the ChunkEntry that will remain before filtering.
-func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention.IntervalFilter) {
+func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func) {
 	if d.UserID != unsafeGetString(entry.UserID) {
 		return false, nil
 	}
@@ -123,68 +130,42 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 	if d.StartTime <= entry.From && d.EndTime >= entry.Through {
 		// if the logSelectorExpr has a filter part return the chunk boundaries as intervals
 		if d.logSelectorExpr.HasFilter() {
-			return true, []retention.IntervalFilter{
-				{
-					Interval: model.Interval{
-						Start: entry.From,
-						End:   entry.Through,
-					},
-					Filter: ff,
-				},
-			}
+			level.Info(util_log.Logger).Log("msg", "deleting whole chunk with filter",
+				"delete_request_id", d.RequestID,
+				"chunk_id", string(entry.ChunkID),
+				"chunk_start", entry.From.Time().UTC().String(),
+				"chunk_end", entry.Through.Time().UTC().String(),
+			)
+			return true, ff
 		}
 
 		// No filter in the logSelectorExpr so the whole chunk will be deleted
 		return true, nil
 	}
 
-	intervals := make([]retention.IntervalFilter, 0, 2)
-
-	// chunk partially deleted from the end
-	if d.StartTime > entry.From {
-		// Add the deleted part with Filter func
-		if ff != nil {
-			intervals = append(intervals, retention.IntervalFilter{
-				Interval: model.Interval{
-					Start: d.StartTime,
-					End:   entry.Through,
-				},
-				Filter: ff,
-			})
+	// delete request is without a line filter so initialize it to always return true to simplify the code below for partial chunk deletion
+	if ff == nil {
+		ff = func(_ time.Time, _ string) bool {
+			return true
 		}
-
-		// Add non-deleted part without Filter func
-		intervals = append(intervals, retention.IntervalFilter{
-			Interval: model.Interval{
-				Start: entry.From,
-				End:   d.StartTime - 1,
-			},
-		})
 	}
 
-	// chunk partially deleted from the beginning
-	if d.EndTime < entry.Through {
-		// Add the deleted part with Filter func
-		if ff != nil {
-			intervals = append(intervals, retention.IntervalFilter{
-				Interval: model.Interval{
-					Start: entry.From,
-					End:   d.EndTime,
-				},
-				Filter: ff,
-			})
+	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
+	// without having to do conversion of timestamps for each log line we check.
+	if d.timeInterval == nil {
+		d.timeInterval = &timeInterval{
+			start: d.StartTime.Time(),
+			end:   d.EndTime.Time(),
 		}
-
-		// Add non-deleted part without Filter func
-		intervals = append(intervals, retention.IntervalFilter{
-			Interval: model.Interval{
-				Start: d.EndTime + 1,
-				End:   entry.Through,
-			},
-		})
 	}
 
-	return true, intervals
+	return true, func(ts time.Time, s string) bool {
+		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
+			return false
+		}
+
+		return ff(ts, s)
+	}
 }
 
 func intervalsOverlap(interval1, interval2 model.Interval) bool {
