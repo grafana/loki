@@ -177,7 +177,7 @@ func (s *rateStore) aggregateByShard(streamRates map[string]map[uint64]*logproto
 
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
-			rate.shards += 1
+			rate.shards++
 			rate.createdAt = time.Now()
 
 			rates[tID][streamRate.StreamHashNoShard] = rate
