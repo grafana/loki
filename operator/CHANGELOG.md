@@ -1,5 +1,6 @@
 ## Main
 
+- [7808](https://github.com/grafana/loki/pull/7808) **xperimental**: Replace fifocache usage by embedded_cache
 - [7753](https://github.com/grafana/loki/pull/7753) **periklis**: Check for mandatory CA configmap name in ObjectStorageTLS spec
 - [7744](https://github.com/grafana/loki/pull/7744) **periklis**: Fix object storage TLS spec CAKey descriptor
 - [7716](https://github.com/grafana/loki/pull/7716) **aminesnow**: Migrate API docs generation tool
