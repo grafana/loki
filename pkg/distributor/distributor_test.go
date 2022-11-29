@@ -650,10 +650,26 @@ func BenchmarkShardStream(b *testing.B) {
 	allEntries := generateEntries(25000)
 
 	desiredRate := 3000
+
+	distributorLimits := &validation.Limits{}
+	flagext.DefaultValues(distributorLimits)
+	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(desiredRate)
+
+	overrides, err := validation.NewOverrides(*distributorLimits, nil)
+	require.NoError(b, err)
+
+	validator, err := NewValidator(overrides)
+	require.NoError(b, err)
+
 	distributorBuilder := func(shards int) *Distributor {
-		d := &Distributor{}
-		// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
-		d.rateStore = &fakeRateStore{rate: int64(desiredRate*shards - 1)}
+		d := &Distributor{
+			validator:        validator,
+			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+			shardTracker:     NewShardTracker(),
+			// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
+			rateStore: &fakeRateStore{rate: int64(desiredRate*shards - 1)},
+		}
+
 		return d
 	}
 
