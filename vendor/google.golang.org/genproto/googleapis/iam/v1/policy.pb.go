@@ -203,7 +203,6 @@ func (AuditConfigDelta_Action) EnumDescriptor() ([]byte, []int) {
 // An Identity and Access Management (IAM) policy, which specifies access
 // controls for Google Cloud resources.
 //
-//
 // A `Policy` is a collection of `bindings`. A `binding` binds one or more
 // `members`, or principals, to a single `role`. Principals can be user
 // accounts, service accounts, Google groups, and domains (such as G Suite). A
@@ -219,51 +218,51 @@ func (AuditConfigDelta_Action) EnumDescriptor() ([]byte, []int) {
 //
 // **JSON example:**
 //
-//     {
-//       "bindings": [
-//         {
-//           "role": "roles/resourcemanager.organizationAdmin",
-//           "members": [
-//             "user:mike@example.com",
-//             "group:admins@example.com",
-//             "domain:google.com",
-//             "serviceAccount:my-project-id@appspot.gserviceaccount.com"
-//           ]
-//         },
-//         {
-//           "role": "roles/resourcemanager.organizationViewer",
-//           "members": [
-//             "user:eve@example.com"
-//           ],
-//           "condition": {
-//             "title": "expirable access",
-//             "description": "Does not grant access after Sep 2020",
-//             "expression": "request.time < timestamp('2020-10-01T00:00:00.000Z')",
-//           }
-//         }
-//       ],
-//       "etag": "BwWWja0YfJA=",
-//       "version": 3
-//     }
+//	{
+//	  "bindings": [
+//	    {
+//	      "role": "roles/resourcemanager.organizationAdmin",
+//	      "members": [
+//	        "user:mike@example.com",
+//	        "group:admins@example.com",
+//	        "domain:google.com",
+//	        "serviceAccount:my-project-id@appspot.gserviceaccount.com"
+//	      ]
+//	    },
+//	    {
+//	      "role": "roles/resourcemanager.organizationViewer",
+//	      "members": [
+//	        "user:eve@example.com"
+//	      ],
+//	      "condition": {
+//	        "title": "expirable access",
+//	        "description": "Does not grant access after Sep 2020",
+//	        "expression": "request.time < timestamp('2020-10-01T00:00:00.000Z')",
+//	      }
+//	    }
+//	  ],
+//	  "etag": "BwWWja0YfJA=",
+//	  "version": 3
+//	}
 //
 // **YAML example:**
 //
-//     bindings:
-//     - members:
-//       - user:mike@example.com
-//       - group:admins@example.com
-//       - domain:google.com
-//       - serviceAccount:my-project-id@appspot.gserviceaccount.com
-//       role: roles/resourcemanager.organizationAdmin
-//     - members:
-//       - user:eve@example.com
-//       role: roles/resourcemanager.organizationViewer
-//       condition:
-//         title: expirable access
-//         description: Does not grant access after Sep 2020
-//         expression: request.time < timestamp('2020-10-01T00:00:00.000Z')
-//     etag: BwWWja0YfJA=
-//     version: 3
+//	bindings:
+//	- members:
+//	  - user:mike@example.com
+//	  - group:admins@example.com
+//	  - domain:google.com
+//	  - serviceAccount:my-project-id@appspot.gserviceaccount.com
+//	  role: roles/resourcemanager.organizationAdmin
+//	- members:
+//	  - user:eve@example.com
+//	  role: roles/resourcemanager.organizationViewer
+//	  condition:
+//	    title: expirable access
+//	    description: Does not grant access after Sep 2020
+//	    expression: request.time < timestamp('2020-10-01T00:00:00.000Z')
+//	etag: BwWWja0YfJA=
+//	version: 3
 //
 // For a description of IAM and its features, see the
 // [IAM documentation](https://cloud.google.com/iam/docs/).
@@ -519,41 +518,41 @@ func (x *Binding) GetCondition() *expr.Expr {
 //
 // Example Policy with multiple AuditConfigs:
 //
-//     {
-//       "audit_configs": [
-//         {
-//           "service": "allServices",
-//           "audit_log_configs": [
-//             {
-//               "log_type": "DATA_READ",
-//               "exempted_members": [
-//                 "user:jose@example.com"
-//               ]
-//             },
-//             {
-//               "log_type": "DATA_WRITE"
-//             },
-//             {
-//               "log_type": "ADMIN_READ"
-//             }
-//           ]
-//         },
-//         {
-//           "service": "sampleservice.googleapis.com",
-//           "audit_log_configs": [
-//             {
-//               "log_type": "DATA_READ"
-//             },
-//             {
-//               "log_type": "DATA_WRITE",
-//               "exempted_members": [
-//                 "user:aliya@example.com"
-//               ]
-//             }
-//           ]
-//         }
-//       ]
-//     }
+//	{
+//	  "audit_configs": [
+//	    {
+//	      "service": "allServices",
+//	      "audit_log_configs": [
+//	        {
+//	          "log_type": "DATA_READ",
+//	          "exempted_members": [
+//	            "user:jose@example.com"
+//	          ]
+//	        },
+//	        {
+//	          "log_type": "DATA_WRITE"
+//	        },
+//	        {
+//	          "log_type": "ADMIN_READ"
+//	        }
+//	      ]
+//	    },
+//	    {
+//	      "service": "sampleservice.googleapis.com",
+//	      "audit_log_configs": [
+//	        {
+//	          "log_type": "DATA_READ"
+//	        },
+//	        {
+//	          "log_type": "DATA_WRITE",
+//	          "exempted_members": [
+//	            "user:aliya@example.com"
+//	          ]
+//	        }
+//	      ]
+//	    }
+//	  ]
+//	}
 //
 // For sampleservice, this policy enables DATA_READ, DATA_WRITE and ADMIN_READ
 // logging. It also exempts jose@example.com from DATA_READ logging, and
@@ -620,19 +619,19 @@ func (x *AuditConfig) GetAuditLogConfigs() []*AuditLogConfig {
 // Provides the configuration for logging a type of permissions.
 // Example:
 //
-//     {
-//       "audit_log_configs": [
-//         {
-//           "log_type": "DATA_READ",
-//           "exempted_members": [
-//             "user:jose@example.com"
-//           ]
-//         },
-//         {
-//           "log_type": "DATA_WRITE"
-//         }
-//       ]
-//     }
+//	{
+//	  "audit_log_configs": [
+//	    {
+//	      "log_type": "DATA_READ",
+//	      "exempted_members": [
+//	        "user:jose@example.com"
+//	      ]
+//	    },
+//	    {
+//	      "log_type": "DATA_WRITE"
+//	    }
+//	  ]
+//	}
 //
 // This enables 'DATA_READ' and 'DATA_WRITE' logging, while exempting
 // jose@example.com from DATA_READ logging.

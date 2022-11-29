@@ -3,7 +3,6 @@ package loki
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"reflect"
@@ -39,7 +38,7 @@ func configWrapperFromYAML(t *testing.T, configFileString string, args []string)
 	config := ConfigWrapper{}
 	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
-	file, err := ioutil.TempFile("", "config.yaml")
+	file, err := os.CreateTemp("", "config.yaml")
 	defer func() {
 		os.Remove(file.Name())
 	}()
@@ -820,6 +819,23 @@ ingester:
 			assert.Equal(t, 12*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
 		})
 	})
+
+	t.Run("embedded-cache setting is applied to result caches", func(t *testing.T) {
+		// ensure they are all false by default
+		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+
+		configFileString := `---
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true`
+
+		config, _ = testContext(configFileString, nil)
+
+		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+	})
 }
 
 func TestDefaultFIFOCacheBehavior(t *testing.T) {
@@ -953,7 +969,7 @@ query_range:
 
 func TestDefaultUnmarshal(t *testing.T) {
 	t.Run("with a minimal config file and no command line args, defaults are use", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.yaml")
+		file, err := os.CreateTemp("", "config.yaml")
 		defer func() {
 			os.Remove(file.Name())
 		}()

@@ -1,0 +1,16 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and $isSimpleScalable .Values.gateway.enabled }}
+{{- if gt (int .Values.gateway.replicas) 1 }}
+apiVersion: {{ include "loki.podDisruptionBudget.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.gatewayFullname" . }}
+  labels:
+    {{- include "loki.gatewayLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
+  maxUnavailable: 1
+{{- end }}
+{{- end }}

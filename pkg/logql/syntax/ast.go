@@ -409,6 +409,24 @@ func newLineFmtExpr(value string) *LineFmtExpr {
 	}
 }
 
+type DecolorizeExpr struct {
+	implicit
+}
+
+func newDecolorizeExpr() *DecolorizeExpr {
+	return &DecolorizeExpr{}
+}
+
+func (e *DecolorizeExpr) Shardable() bool { return true }
+
+func (e *DecolorizeExpr) Stage() (log.Stage, error) {
+	return log.NewDecolorizer()
+}
+func (e *DecolorizeExpr) String() string {
+	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
+}
+func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -632,6 +650,9 @@ const (
 	OpRangeTypeLast        = "last_over_time"
 	OpRangeTypeAbsent      = "absent_over_time"
 
+	//vector
+	OpTypeVector = "vector"
+
 	// binops - logical/set
 	OpTypeOr     = "or"
 	OpTypeAnd    = "and"
@@ -660,8 +681,9 @@ const (
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"
 
-	OpFmtLine  = "line_format"
-	OpFmtLabel = "label_format"
+	OpFmtLine    = "line_format"
+	OpFmtLabel   = "label_format"
+	OpDecolorize = "decolorize"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
@@ -869,8 +891,12 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		if params == nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
-		if p, err = strconv.Atoi(*params); err != nil {
+		p, err = strconv.Atoi(*params)
+		if err != nil {
 			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
+		}
+		if p <= 0 {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0))
 		}
 
 	default:
@@ -924,10 +950,16 @@ func canInjectVectorGrouping(vecOp, rangeOp string) bool {
 
 func (e *VectorAggregationExpr) String() string {
 	var params []string
-	if e.Params != 0 {
+	switch e.Operation {
+	// bottomK and topk can have first parameter as 0
+	case OpTypeBottomK, OpTypeTopK:
 		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
-	} else {
-		params = []string{e.Left.String()}
+	default:
+		if e.Params != 0 {
+			params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
+		} else {
+			params = []string{e.Left.String()}
+		}
 	}
 	return formatOperation(e.Operation, e.Grouping, params...)
 }
@@ -1552,3 +1584,49 @@ func MatcherGroups(expr Expr) []MatcherRange {
 		return nil
 	}
 }
+
+type VectorExpr struct {
+	Val float64
+	err error
+	implicit
+}
+
+func NewVectorExpr(scalar string) *VectorExpr {
+	n, err := strconv.ParseFloat(scalar, 64)
+	if err != nil {
+		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
+	}
+	return &VectorExpr{
+		Val: n,
+		err: err,
+	}
+}
+
+func (e *VectorExpr) Err() error {
+	return e.err
+}
+
+func (e *VectorExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpTypeVector)
+	sb.WriteString("(")
+	sb.WriteString(fmt.Sprintf("%f", e.Val))
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (e *VectorExpr) Value() (float64, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	return e.Val, nil
+}
+
+func (e *VectorExpr) Selector() LogSelectorExpr               { return e }
+func (e *VectorExpr) HasFilter() bool                         { return false }
+func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
+func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
+func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *VectorExpr) MatcherGroups() []MatcherRange           { return nil }
+func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }

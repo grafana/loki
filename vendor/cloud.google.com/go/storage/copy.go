@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/internal/trace"
-	raw "google.golang.org/api/storage/v1"
 )
 
 // CopierFrom creates a Copier that can copy src to dst.
@@ -86,64 +85,55 @@ func (c *Copier) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
 	if c.DestinationKMSKeyName != "" && c.dst.encryptionKey != nil {
 		return nil, errors.New("storage: cannot use DestinationKMSKeyName with a customer-supplied encryption key")
 	}
+	if c.dst.gen != defaultGen {
+		return nil, fmt.Errorf("storage: generation cannot be specified on copy destination, got %v", c.dst.gen)
+	}
 	// Convert destination attributes to raw form, omitting the bucket.
 	// If the bucket is included but name or content-type aren't, the service
 	// returns a 400 with "Required" as the only message. Omitting the bucket
 	// does not cause any problems.
-	rawObject := c.ObjectAttrs.toRawObject("")
+	req := &rewriteObjectRequest{
+		srcObject: sourceObject{
+			name:          c.src.object,
+			bucket:        c.src.bucket,
+			gen:           c.src.gen,
+			conds:         c.src.conds,
+			encryptionKey: c.src.encryptionKey,
+		},
+		dstObject: destinationObject{
+			name:          c.dst.object,
+			bucket:        c.dst.bucket,
+			conds:         c.dst.conds,
+			attrs:         &c.ObjectAttrs,
+			encryptionKey: c.dst.encryptionKey,
+			keyName:       c.DestinationKMSKeyName,
+		},
+		predefinedACL: c.PredefinedACL,
+		token:         c.RewriteToken,
+	}
+
+	isIdempotent := c.dst.conds != nil && (c.dst.conds.GenerationMatch != 0 || c.dst.conds.DoesNotExist)
+	var userProject string
+	if c.dst.userProject != "" {
+		userProject = c.dst.userProject
+	} else if c.src.userProject != "" {
+		userProject = c.src.userProject
+	}
+	opts := makeStorageOpts(isIdempotent, c.dst.retry, userProject)
+
 	for {
-		res, err := c.callRewrite(ctx, rawObject)
+		res, err := c.dst.c.tc.RewriteObject(ctx, req, opts...)
 		if err != nil {
 			return nil, err
 		}
+		c.RewriteToken = res.token
 		if c.ProgressFunc != nil {
-			c.ProgressFunc(uint64(res.TotalBytesRewritten), uint64(res.ObjectSize))
+			c.ProgressFunc(uint64(res.written), uint64(res.size))
 		}
-		if res.Done { // Finished successfully.
-			return newObject(res.Resource), nil
+		if res.done { // Finished successfully.
+			return res.resource, nil
 		}
 	}
-}
-
-func (c *Copier) callRewrite(ctx context.Context, rawObj *raw.Object) (*raw.RewriteResponse, error) {
-	call := c.dst.c.raw.Objects.Rewrite(c.src.bucket, c.src.object, c.dst.bucket, c.dst.object, rawObj)
-
-	call.Context(ctx).Projection("full")
-	if c.RewriteToken != "" {
-		call.RewriteToken(c.RewriteToken)
-	}
-	if c.DestinationKMSKeyName != "" {
-		call.DestinationKmsKeyName(c.DestinationKMSKeyName)
-	}
-	if c.PredefinedACL != "" {
-		call.DestinationPredefinedAcl(c.PredefinedACL)
-	}
-	if err := applyConds("Copy destination", c.dst.gen, c.dst.conds, call); err != nil {
-		return nil, err
-	}
-	if c.dst.userProject != "" {
-		call.UserProject(c.dst.userProject)
-	} else if c.src.userProject != "" {
-		call.UserProject(c.src.userProject)
-	}
-	if err := applySourceConds(c.src.gen, c.src.conds, call); err != nil {
-		return nil, err
-	}
-	if err := setEncryptionHeaders(call.Header(), c.dst.encryptionKey, false); err != nil {
-		return nil, err
-	}
-	if err := setEncryptionHeaders(call.Header(), c.src.encryptionKey, true); err != nil {
-		return nil, err
-	}
-	var res *raw.RewriteResponse
-	var err error
-	setClientHeader(call.Header())
-	err = runWithRetry(ctx, func() error { res, err = call.Do(); return err })
-	if err != nil {
-		return nil, err
-	}
-	c.RewriteToken = res.RewriteToken
-	return res, nil
 }
 
 // ComposerFrom creates a Composer that can compose srcs into dst.
@@ -185,17 +175,13 @@ func (c *Composer) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
 	if err := c.dst.validate(); err != nil {
 		return nil, err
 	}
+	if c.dst.gen != defaultGen {
+		return nil, fmt.Errorf("storage: generation cannot be specified on compose destination, got %v", c.dst.gen)
+	}
 	if len(c.srcs) == 0 {
 		return nil, errors.New("storage: at least one source object must be specified")
 	}
 
-	req := &raw.ComposeRequest{}
-	// Compose requires a non-empty Destination, so we always set it,
-	// even if the caller-provided ObjectAttrs is the zero value.
-	req.Destination = c.ObjectAttrs.toRawObject(c.dst.bucket)
-	if c.SendCRC32C {
-		req.Destination.Crc32c = encodeUint32(c.ObjectAttrs.CRC32C)
-	}
 	for _, src := range c.srcs {
 		if err := src.validate(); err != nil {
 			return nil, err
@@ -206,33 +192,31 @@ func (c *Composer) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
 		if src.encryptionKey != nil {
 			return nil, fmt.Errorf("storage: compose source %s.%s must not have encryption key", src.bucket, src.object)
 		}
-		srcObj := &raw.ComposeRequestSourceObjects{
-			Name: src.object,
-		}
-		if err := applyConds("ComposeFrom source", src.gen, src.conds, composeSourceObj{srcObj}); err != nil {
-			return nil, err
-		}
-		req.SourceObjects = append(req.SourceObjects, srcObj)
 	}
 
-	call := c.dst.c.raw.Objects.Compose(c.dst.bucket, c.dst.object, req).Context(ctx)
-	if err := applyConds("ComposeFrom destination", c.dst.gen, c.dst.conds, call); err != nil {
-		return nil, err
+	req := &composeObjectRequest{
+		dstBucket:     c.dst.bucket,
+		predefinedACL: c.PredefinedACL,
+		sendCRC32C:    c.SendCRC32C,
 	}
-	if c.dst.userProject != "" {
-		call.UserProject(c.dst.userProject)
+	req.dstObject = destinationObject{
+		name:          c.dst.object,
+		bucket:        c.dst.bucket,
+		conds:         c.dst.conds,
+		attrs:         &c.ObjectAttrs,
+		encryptionKey: c.dst.encryptionKey,
 	}
-	if c.PredefinedACL != "" {
-		call.DestinationPredefinedAcl(c.PredefinedACL)
+	for _, src := range c.srcs {
+		s := sourceObject{
+			name:   src.object,
+			bucket: src.bucket,
+			gen:    src.gen,
+			conds:  src.conds,
+		}
+		req.srcs = append(req.srcs, s)
 	}
-	if err := setEncryptionHeaders(call.Header(), c.dst.encryptionKey, false); err != nil {
-		return nil, err
-	}
-	var obj *raw.Object
-	setClientHeader(call.Header())
-	err = runWithRetry(ctx, func() error { obj, err = call.Do(); return err })
-	if err != nil {
-		return nil, err
-	}
-	return newObject(obj), nil
+
+	isIdempotent := c.dst.conds != nil && (c.dst.conds.GenerationMatch != 0 || c.dst.conds.DoesNotExist)
+	opts := makeStorageOpts(isIdempotent, c.dst.retry, c.dst.userProject)
+	return c.dst.c.tc.ComposeObject(ctx, req, opts...)
 }

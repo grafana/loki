@@ -84,3 +84,29 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	tick := time.NewTicker(interval)
 	return func() { tick.Stop() }, tick.C
 }
+
+// ForInterval splits the given start and end time into given interval.
+// The start and end time in splits would be aligned to the interval
+// except for the start time of first split and end time of last split which would be kept same as original start/end
+// When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
+func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+	ogStart := start
+	startNs := start.UnixNano()
+	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
+	firstInterval := true
+
+	for start := start; start.Before(end); start = start.Add(interval) {
+		newEnd := start.Add(interval)
+		if !newEnd.Before(end) {
+			newEnd = end
+		} else if endTimeInclusive {
+			newEnd = newEnd.Add(-time.Millisecond)
+		}
+		if firstInterval {
+			callback(ogStart, newEnd)
+			firstInterval = false
+			continue
+		}
+		callback(start, newEnd)
+	}
+}

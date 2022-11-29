@@ -1,7 +1,9 @@
 package miniredis
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"sync"
@@ -11,33 +13,42 @@ import (
 )
 
 const (
-	msgWrongType          = "WRONGTYPE Operation against a key holding the wrong kind of value"
-	msgInvalidInt         = "ERR value is not an integer or out of range"
-	msgInvalidFloat       = "ERR value is not a valid float"
-	msgInvalidMinMax      = "ERR min or max is not a float"
-	msgInvalidRangeItem   = "ERR min or max not valid string range item"
-	msgInvalidTimeout     = "ERR timeout is not a float or out of range"
-	msgSyntaxError        = "ERR syntax error"
-	msgKeyNotFound        = "ERR no such key"
-	msgOutOfRange         = "ERR index out of range"
-	msgInvalidCursor      = "ERR invalid cursor"
-	msgXXandNX            = "ERR XX and NX options at the same time are not compatible"
-	msgNegTimeout         = "ERR timeout is negative"
-	msgInvalidSETime      = "ERR invalid expire time in set"
-	msgInvalidSETEXTime   = "ERR invalid expire time in setex"
-	msgInvalidPSETEXTime  = "ERR invalid expire time in psetex"
-	msgInvalidKeysNumber  = "ERR Number of keys can't be greater than number of args"
-	msgNegativeKeysNumber = "ERR Number of keys can't be negative"
-	msgFScriptUsage       = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try SCRIPT HELP."
-	msgFPubsubUsage       = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try PUBSUB HELP."
-	msgSingleElementPair  = "ERR INCR option supports a single increment-element pair"
-	msgInvalidStreamID    = "ERR Invalid stream ID specified as stream command argument"
-	msgStreamIDTooSmall   = "ERR The ID specified in XADD is equal or smaller than the target stream top item"
-	msgStreamIDZero       = "ERR The ID specified in XADD must be greater than 0-0"
-	msgNoScriptFound      = "NOSCRIPT No matching script. Please use EVAL."
-	msgUnsupportedUnit    = "ERR unsupported unit provided. please use m, km, ft, mi"
-	msgNotFromScripts     = "This Redis command is not allowed from scripts"
-	msgXreadUnbalanced    = "ERR Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified."
+	msgWrongType            = "WRONGTYPE Operation against a key holding the wrong kind of value"
+	msgNotValidHllValue     = "WRONGTYPE Key is not a valid HyperLogLog string value."
+	msgInvalidInt           = "ERR value is not an integer or out of range"
+	msgInvalidFloat         = "ERR value is not a valid float"
+	msgInvalidMinMax        = "ERR min or max is not a float"
+	msgInvalidRangeItem     = "ERR min or max not valid string range item"
+	msgInvalidTimeout       = "ERR timeout is not a float or out of range"
+	msgSyntaxError          = "ERR syntax error"
+	msgKeyNotFound          = "ERR no such key"
+	msgOutOfRange           = "ERR index out of range"
+	msgInvalidCursor        = "ERR invalid cursor"
+	msgXXandNX              = "ERR XX and NX options at the same time are not compatible"
+	msgNegTimeout           = "ERR timeout is negative"
+	msgInvalidSETime        = "ERR invalid expire time in set"
+	msgInvalidSETEXTime     = "ERR invalid expire time in setex"
+	msgInvalidPSETEXTime    = "ERR invalid expire time in psetex"
+	msgInvalidKeysNumber    = "ERR Number of keys can't be greater than number of args"
+	msgNegativeKeysNumber   = "ERR Number of keys can't be negative"
+	msgFScriptUsage         = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try SCRIPT HELP."
+	msgFPubsubUsage         = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try PUBSUB HELP."
+	msgScriptFlush          = "ERR SCRIPT FLUSH only support SYNC|ASYNC option"
+	msgSingleElementPair    = "ERR INCR option supports a single increment-element pair"
+	msgGTLTandNX            = "ERR GT, LT, and/or NX options at the same time are not compatible"
+	msgInvalidStreamID      = "ERR Invalid stream ID specified as stream command argument"
+	msgStreamIDTooSmall     = "ERR The ID specified in XADD is equal or smaller than the target stream top item"
+	msgStreamIDZero         = "ERR The ID specified in XADD must be greater than 0-0"
+	msgNoScriptFound        = "NOSCRIPT No matching script. Please use EVAL."
+	msgUnsupportedUnit      = "ERR unsupported unit provided. please use m, km, ft, mi"
+	msgNotFromScripts       = "This Redis command is not allowed from scripts"
+	msgXreadUnbalanced      = "ERR Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified."
+	msgXgroupKeyNotFound    = "ERR The XGROUP subcommand requires the key to exist. Note that for CREATE you may want to use the MKSTREAM option to create an empty stream automatically."
+	msgXtrimInvalidStrategy = "ERR unsupported XTRIM strategy. Please use MAXLEN, MINID"
+	msgXtrimInvalidMaxLen   = "ERR value is not an integer or out of range"
+	msgXtrimInvalidLimit    = "ERR syntax error, LIMIT cannot be used without the special ~ option"
+	msgDBIndexOutOfRange    = "ERR DB index is out of range"
+	msgLimitCombination     = "ERR syntax error, LIMIT is only supported in combination with either BYSCORE or BYLEX"
 )
 
 func errWrongNumber(cmd string) string {
@@ -46,6 +57,14 @@ func errWrongNumber(cmd string) string {
 
 func errLuaParseError(err error) string {
 	return fmt.Sprintf("ERR Error compiling script (new function): %s", err.Error())
+}
+
+func errReadgroup(key, group string) error {
+	return fmt.Errorf("NOGROUP No such key '%s' or consumer group '%s'", key, group)
+}
+
+func errXreadgroup(key, group string) error {
+	return fmt.Errorf("NOGROUP No such key '%s' or consumer group '%s' in XREADGROUP with GROUP option", key, group)
 }
 
 // withTx wraps the non-argument-checking part of command handling code in
@@ -90,8 +109,6 @@ func blocking(
 ) {
 	var (
 		ctx = getCtx(c)
-		dl  *time.Timer
-		dlc <-chan time.Time
 	)
 	if inTx(ctx) {
 		addTxCmd(ctx, func(c *server.Peer, ctx *connCtx) {
@@ -102,11 +119,17 @@ func blocking(
 		c.WriteInline("QUEUED")
 		return
 	}
+
+	localCtx, cancel := context.WithCancel(m.Ctx)
+	defer cancel()
+	timedOut := false
 	if timeout != 0 {
-		dl = time.NewTimer(timeout)
-		defer dl.Stop()
-		dlc = dl.C
+		go setCondTimer(localCtx, m.signal, &timedOut, timeout)
 	}
+	go func() {
+		<-localCtx.Done()
+		m.signal.Broadcast() // main loop might miss this signal
+	}()
 
 	m.Lock()
 	defer m.Unlock()
@@ -115,31 +138,29 @@ func blocking(
 		if done {
 			return
 		}
-		// there is no cond.WaitTimeout(), so hence the the goroutine to wait
-		// for a timeout
-		var (
-			wg     sync.WaitGroup
-			wakeup = make(chan struct{}, 1)
-		)
-		wg.Add(1)
-		go func() {
-			m.signal.Wait()
-			wakeup <- struct{}{}
-			wg.Done()
-		}()
-		select {
-		case <-wakeup:
-		case <-dlc:
-			onTimeout(c)
-			m.signal.Broadcast() // to kill the wakeup go routine
-			wg.Wait()
-			return
-		case <-m.Ctx.Done():
-			m.signal.Broadcast() // to kill the wakeup go routine
-			wg.Wait()
+
+		if m.Ctx.Err() != nil {
 			return
 		}
-		wg.Wait()
+		if timedOut {
+			onTimeout(c)
+			return
+		}
+
+		m.signal.Wait()
+	}
+}
+
+func setCondTimer(ctx context.Context, sig *sync.Cond, timedOut *bool, timeout time.Duration) {
+	dl := time.NewTimer(timeout)
+	defer dl.Stop()
+	select {
+	case <-dl.C:
+		sig.L.Lock() // for timedOut
+		*timedOut = true
+		sig.Broadcast() // main loop might miss this signal
+		sig.L.Unlock()
+	case <-ctx.Done():
 	}
 }
 
@@ -197,7 +218,9 @@ func redisRange(l, start, end int, stringSymantics bool) (int, int) {
 			}
 		}
 	}
-	end++ // end argument is inclusive in Redis.
+	if end < math.MaxInt32 {
+		end++ // end argument is inclusive in Redis.
+	}
 	if end > l {
 		end = l
 	}

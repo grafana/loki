@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -39,6 +41,9 @@ var (
 			Direction: logproto.BACKWARD,
 			Limit:     defaultReq().Limit,
 			Version:   1,
+			Headers: []definitions.PrometheusResponseHeader{
+				{Name: "Header", Values: []string{"value"}},
+			},
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -57,6 +62,9 @@ var (
 			Direction: logproto.BACKWARD,
 			Limit:     100,
 			Version:   1,
+			Headers: []definitions.PrometheusResponseHeader{
+				{Name: "Header", Values: []string{"value"}},
+			},
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -116,6 +124,7 @@ func Test_shardSplitter(t *testing.T) {
 				now:  func() time.Time { return end },
 				limits: fakeLimits{
 					minShardingLookback: tc.lookback,
+					queryTimeout:        time.Minute,
 					maxQueryParallelism: 1,
 				},
 			}
@@ -156,11 +165,15 @@ func Test_astMapper(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 	)
 
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
 	require.Nil(t, err)
+
+	require.Equal(t, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	}, resp.GetHeaders())
 
 	expected, err := LokiCodec.MergeResponse(lokiResps...)
 	sort.Sort(logproto.Streams(expected.(*LokiResponse).Data.Result))
@@ -248,15 +261,16 @@ func Test_InstantSharding(t *testing.T) {
 	called := 0
 	shards := []string{}
 
+	cpyPeriodConf := testSchemas[0]
+	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
-		config.PeriodConfig{
-			RowShards: 3,
-		},
+		cpyPeriodConf,
 	}, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
 			maxQueryParallelism: 10,
+			queryTimeout:        time.Second,
 		})
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()

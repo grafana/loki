@@ -12,6 +12,7 @@ rules:
   - endpoints
   - nodes
   - pods
+  - secrets
   - serviceaccounts
   - services
   verbs:
@@ -54,7 +55,9 @@ rules:
 - apiGroups:
   - config.openshift.io
   resources:
+  - apiservers
   - dnses
+  - proxies
   verbs:
   - get
   - list
@@ -174,10 +177,17 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - alertmanagers
+  verbs:
+  - patch
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
   - prometheusrules
   - servicemonitors
   verbs:
   - create
+  - delete
   - get
   - list
   - update
@@ -213,6 +223,7 @@ rules:
   - routes
   verbs:
   - create
+  - delete
   - get
   - list
   - update

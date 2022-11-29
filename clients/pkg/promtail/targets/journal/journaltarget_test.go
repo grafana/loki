@@ -1,5 +1,5 @@
-//go:build linux && cgo
-// +build linux,cgo
+//go:build linux && cgo && promtail_journal_enabled
+// +build linux,cgo,promtail_journal_enabled
 
 package journal
 
@@ -384,4 +384,39 @@ func Test_MakeJournalFields(t *testing.T) {
 		"__journal_priority_keyword": "info",
 	}
 	assert.Equal(t, expectedFields, receivedFields)
+}
+
+func TestJournalTarget_Matches(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
+	positionsFileName := dirName + "/positions.yml"
+
+	// Set the sync period to a really long value, to guarantee the sync timer
+	// never runs, this way we know everything saved was done through channel
+	// notifications when target.stop() was called.
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := fake.New(func() {})
+
+	cfg := scrapeconfig.JournalTargetConfig{
+		Matches: "UNIT=foo.service PRIORITY=1",
+	}
+
+	jt, err := journalTargetWithReader(NewMetrics(prometheus.NewRegistry()), logger, client, ps, "test", nil,
+		&cfg, newMockJournalReader, newMockJournalEntry(nil))
+	require.NoError(t, err)
+
+	r := jt.r.(*mockJournalReader)
+	matches := []sdjournal.Match{{Field: "UNIT", Value: "foo.service"}, {Field: "PRIORITY", Value: "1"}}
+	require.Equal(t, r.config.Matches, matches)
+	client.Stop()
 }

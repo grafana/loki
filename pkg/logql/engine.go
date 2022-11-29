@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,8 +29,14 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
+)
+
+const (
+	DefaultEngineTimeout       = 5 * time.Minute
+	DefaultBlockedQueryMessage = "blocked by policy"
 )
 
 var (
@@ -38,6 +46,13 @@ var (
 		Help:      "LogQL query timings",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"query_type"})
+
+	QueriesBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "blocked_queries",
+		Help:      "Count of queries blocked by per-tenant policy",
+	}, []string{"user"})
+
 	lastEntryMinTime = time.Unix(-100, 0)
 )
 
@@ -96,22 +111,22 @@ type Querier interface {
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
+	// TODO: remove this after next release.
 	// Timeout for queries execution
 	Timeout time.Duration `yaml:"timeout"`
+
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution.")
+	// TODO: remove this configuration after next release.
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", DefaultEngineTimeout, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
 func (opts *EngineOpts) applyDefault() {
-	if opts.Timeout == 0 {
-		opts.Timeout = 5 * time.Minute
-	}
 	if opts.MaxLookBackPeriod == 0 {
 		opts.MaxLookBackPeriod = 30 * time.Second
 	}
@@ -119,23 +134,24 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
+	Timeout   time.Duration
 	logger    log.Logger
-	timeout   time.Duration
 	evaluator Evaluator
 	limits    Limits
 }
 
 // NewEngine creates a new LogQL Engine.
 func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
+	queryTimeout := opts.Timeout
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
 		logger:    logger,
-		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
+		Timeout:   queryTimeout,
 	}
 }
 
@@ -143,7 +159,6 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
@@ -162,7 +177,6 @@ type Query interface {
 
 type query struct {
 	logger    log.Logger
-	timeout   time.Duration
 	params    Params
 	parse     func(context.Context, string) (syntax.Expr, error)
 	limits    Limits
@@ -189,6 +203,12 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
+	if GetRangeType(q.params) == InstantType {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query())
+	} else {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+	}
+
 	rangeType := GetRangeType(q.params)
 	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
@@ -196,6 +216,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	// records query statistics
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
+	metadataCtx, ctx := metadata.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
@@ -210,6 +231,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		if errors.Is(err, logqlmodel.ErrParse) ||
 			errors.Is(err, logqlmodel.ErrPipeline) ||
 			errors.Is(err, logqlmodel.ErrLimit) ||
+			errors.Is(err, logqlmodel.ErrBlocked) ||
 			errors.Is(err, context.Canceled) {
 			status = "400"
 		}
@@ -222,16 +244,24 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	return logqlmodel.Result{
 		Data:       data,
 		Statistics: statResult,
+		Headers:    metadataCtx.Headers(),
 	}, err
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	ctx, cancel := context.WithTimeout(ctx, q.timeout)
+	tenants, _ := tenant.TenantIDs(ctx)
+	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
+
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
 	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
 		return nil, err
+	}
+
+	if q.checkBlocked(ctx, tenants) {
+		return nil, logqlmodel.ErrBlocked
 	}
 
 	switch e := expr.(type) {
@@ -253,10 +283,26 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 }
 
+func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
+	blocker := newQueryBlocker(ctx, q)
+
+	for _, tenant := range tenants {
+		if blocker.isBlocked(tenant) {
+			QueriesBlocked.WithLabelValues(tenant).Inc()
+			return true
+		}
+	}
+
+	return false
+}
+
 // evalSample evaluate a sampleExpr
 func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_parser.Value, error) {
 	if lit, ok := expr.(*syntax.LiteralExpr); ok {
 		return q.evalLiteral(ctx, lit)
+	}
+	if vec, ok := expr.(*syntax.VectorExpr); ok {
+		return q.evalVector(ctx, vec)
 	}
 
 	expr, err := optimizeSampleExpr(expr)
@@ -342,6 +388,23 @@ func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.Value(),
+	}
+
+	if GetRangeType(q.params) == InstantType {
+		return s, nil
+	}
+
+	return PopulateMatrixFromScalar(s, q.params), nil
+}
+
+func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_parser.Value, error) {
+	value, err := expr.Value()
+	if err != nil {
+		return nil, err
+	}
+	s := promql.Scalar{
+		T: q.params.Start().UnixNano() / int64(time.Millisecond),
+		V: value,
 	}
 
 	if GetRangeType(q.params) == InstantType {

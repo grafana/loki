@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -18,9 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -89,8 +88,9 @@ func newTableCompactor(
 func (t *tableCompactor) CompactTable() error {
 	multiTenantIndexes := t.commonIndexSet.ListSourceFiles()
 
-	var multiTenantIndices []Index
-	indicesMtx := sync.Mutex{}
+	// index reference and download paths would be stored at the same slice index
+	multiTenantIndices := make([]Index, len(multiTenantIndexes))
+	downloadPaths := make([]string, len(multiTenantIndexes))
 
 	// concurrently download and open all the multi-tenant indexes
 	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(ctx context.Context, job int) error {
@@ -99,20 +99,13 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		defer func() {
-			if err := os.Remove(downloadedAt); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadedAt, "err", err)
-			}
-		}()
-
+		downloadPaths[job] = downloadedAt
 		idx, err := OpenShippableTSDB(downloadedAt)
 		if err != nil {
 			return err
 		}
 
-		indicesMtx.Lock()
-		defer indicesMtx.Unlock()
-		multiTenantIndices = append(multiTenantIndices, idx.(Index))
+		multiTenantIndices[job] = idx.(Index)
 
 		return nil
 	})
@@ -120,13 +113,21 @@ func (t *tableCompactor) CompactTable() error {
 		return err
 	}
 
+	defer func() {
+		for i, idx := range multiTenantIndices {
+			if err := idx.Close(); err != nil {
+				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+			}
+
+			if err := os.Remove(downloadPaths[i]); err != nil {
+				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+			}
+		}
+	}()
+
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {
-		var err error
-		multiTenantIndex, err = NewMultiIndex(multiTenantIndices...)
-		if err != nil {
-			return err
-		}
+		multiTenantIndex = NewMultiIndex(IndexSlice(multiTenantIndices))
 	}
 
 	// find all the user ids from the multi-tenant indexes using TenantLabel.
@@ -269,7 +270,7 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 }
 
 // ForEachChunk iterates over all the chunks in the builder and calls the callback function.
-func (c *compactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) error {
+func (c *compactedIndex) ForEachChunk(ctx context.Context, callback retention.ChunkEntryCallback) error {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{c.periodConfig},
 	}
@@ -287,7 +288,8 @@ func (c *compactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) err
 		chunkEntry.SeriesID = getUnsafeBytes(seriesID)
 		chunkEntry.Labels = withoutTenantLabel(stream.labels)
 
-		for _, chk := range stream.chunks {
+		for i := 0; i < len(stream.chunks) && ctx.Err() == nil; i++ {
+			chk := stream.chunks[i]
 			logprotoChunkRef.From = chk.From()
 			logprotoChunkRef.Through = chk.Through()
 			logprotoChunkRef.Checksum = chk.Checksum
@@ -308,7 +310,7 @@ func (c *compactedIndex) ForEachChunk(callback retention.ChunkEntryCallback) err
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 // IndexChunk adds the chunk to the list of chunks to index.
@@ -379,7 +381,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, false)
+	return NewShippableTSDBFile(id)
 }
 
 func getUnsafeBytes(s string) []byte {

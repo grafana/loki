@@ -167,7 +167,11 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			0,
 			nil,
-			labels.Labels{{Name: logqlmodel.ErrorLabel, Value: errTemplateFormat}, {Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"},
+				{Name: "__error_details__", Value: "template: line:1:2: executing \"line\" at <.foo>: foo is not a method but has arguments"},
+			},
 			nil,
 		},
 		{
@@ -323,6 +327,20 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "bar", Value: "2"}},
 			[]byte("1"),
 		},
+		{
+			"template_error",
+			newMustLineFormatter("{{.foo | now}}"),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			0,
+			nil,
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "__error_details__", Value: "template: line:1:9: executing \"line\" at <now>: wrong number of args for now: want 0 got 1"},
+			},
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -391,13 +409,54 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
 		},
+		{
+			"template error",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{replace \"test\" .foo}}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "__error__", Value: "TemplateFormatErr"},
+				{Name: "__error_details__", Value: "template: label:1:2: executing \"label\" at <replace>: wrong number of args for replace: want 3 got 2"},
+			},
+		},
+		{
+			"line",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("line", "{{ __line__ }}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "line", Value: "test line"},
+			},
+		},
+		{
+			"timestamp",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | date \"2006-01-02\" }}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "ts", Value: "2022-08-26"},
+			},
+		},
+		{
+			"timestamp_unix",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | unixEpoch }}")}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "ts", Value: "1661518453"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
 			builder.Reset()
-			_, _ = tt.fmter.Process(0, nil, builder)
+			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})
@@ -511,6 +570,24 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, mustNewLabelsFormatter(tt.fmts).RequiredLabelNames())
+		})
+	}
+}
+
+func TestDecolorizer(t *testing.T) {
+	var decolorizer, _ = NewDecolorizer()
+	tests := []struct {
+		name     string
+		src      []byte
+		expected []byte
+	}{
+		{"uncolored text remains the same", []byte("sample text"), []byte("sample text")},
+		{"colored text loses color", []byte("\033[0;32mgreen\033[0m \033[0;31mred\033[0m"), []byte("green red")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var result, _ = decolorizer.Process(0, tt.src, nil)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

@@ -3,10 +3,12 @@ package openshift
 import (
 	"fmt"
 	"math/rand"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // Options is the set of internal template options for rendering
-// the lokistack-gateway tenants configuration file when mode openshift-logging.
+// the lokistack-gateway tenants configuration file when mode openshift-logging or openshift-network.
 type Options struct {
 	BuildOpts      BuildOptions
 	Authentication []AuthenticationSpec
@@ -39,7 +41,9 @@ type BuildOptions struct {
 	GatewayName          string
 	GatewaySvcName       string
 	GatewaySvcTargetPort string
+	RulerName            string
 	Labels               map[string]string
+	AlertManagerEnabled  bool
 }
 
 // TenantData defines the existing cookieSecret for lokistack reconcile.
@@ -49,15 +53,19 @@ type TenantData struct {
 
 // NewOptions returns an openshift options struct.
 func NewOptions(
+	mode lokiv1.ModeType,
 	stackName, stackNamespace string,
 	gwName, gwBaseDomain, gwSvcName, gwPortName string,
 	gwLabels map[string]string,
 	tenantConfigMap map[string]TenantData,
+	rulerName string,
 ) Options {
 	host := ingressHost(stackName, stackNamespace, gwBaseDomain)
 
 	var authn []AuthenticationSpec
-	for _, name := range defaultTenants {
+
+	tenants := GetTenants(mode)
+	for _, name := range tenants {
 		cookieSecret := tenantConfigMap[name].CookieSecret
 		if cookieSecret == "" {
 			cookieSecret = newCookieSecret()
@@ -80,6 +88,7 @@ func NewOptions(
 			GatewaySvcName:       gwSvcName,
 			GatewaySvcTargetPort: gwPortName,
 			Labels:               gwLabels,
+			RulerName:            rulerName,
 		},
 		Authentication: authn,
 		Authorization: AuthorizationSpec{

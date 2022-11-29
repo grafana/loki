@@ -35,6 +35,13 @@ variable "password" {
   default     = ""
 }
 
+variable "bearer_token" {
+  type        = string
+  description = "The bearer token, necessary if target endpoint requires it."
+  sensitive   = true
+  default     = ""
+}
+
 variable "tenant_id" {
   type        = string
   description = "Tenant ID to be added when writing logs from lambda-promtail."
@@ -68,5 +75,17 @@ variable "lambda_vpc_subnets" {
 variable "lambda_vpc_security_groups" {
   type        = list(string)
   description = "List of security group IDs associated with the Lambda function."
+  default     = []
+}
+
+variable "kms_key_arn" {
+  type        = string
+  description = "kms key arn for encryp env vars."
+  default     = ""
+}
+
+variable "kinesis_stream_name" {
+  type        = list(string)
+  description = "Enter kinesis name if kinesis stream is configured as event source in lambda."
   default     = []
 }

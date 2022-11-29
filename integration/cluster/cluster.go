@@ -1,13 +1,15 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -26,8 +28,11 @@ var (
 auth_enabled: true
 
 server:
-  http_listen_port: {{.httpPort}}
-  grpc_listen_port: {{.grpcPort}}
+  http_listen_port: 0
+  grpc_listen_port: 0
+  grpc_server_max_recv_msg_size: 110485813
+  grpc_server_max_send_msg_size: 110485813
+
 
 common:
   path_prefix: {{.dataPath}}
@@ -40,6 +45,12 @@ common:
     instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+
+limits_config:
+  per_stream_rate_limit: 50MB
+  per_stream_rate_limit_burst: 50MB
+  ingestion_rate_mb: 50
+  ingestion_burst_size_mb: 50
 
 storage_config:
   boltdb_shipper:
@@ -69,12 +80,46 @@ ingester:
   lifecycler:
     min_ready_duration: 0s
 
-frontend_worker:
-  scheduler_address: localhost:{{.schedulerPort}}
+querier:
+  multi_tenant_queries_enabled: true
 
-frontend:
-  scheduler_address: localhost:{{.schedulerPort}}
+{{if .remoteWriteUrls}}
+ruler:
+  wal:
+    dir: {{.rulerWALPath}}
+  storage:
+    type: local
+    local:
+      directory: {{.rulesPath}}
+  rule_path: {{.sharedDataPath}}/rule
+  enable_api: true
+  ring:
+    kvstore:
+      store: inmemory
+  remote_write:
+    enabled: true
+    clients:
+      remote_client1:
+        url: {{index .remoteWriteUrls 0}}/api/v1/write
+      remote_client2:
+        url: {{index .remoteWriteUrls 1}}/api/v1/write
+{{end}}
 `))
+
+	rulesConfig = `
+groups:
+- name: always-firing
+  interval: 1s
+  rules:
+  - alert: fire
+    expr: |
+      1 > 0
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: test
+`
 )
 
 func wrapRegistry() {
@@ -126,13 +171,33 @@ func New() *Cluster {
 
 func (c *Cluster) Run() error {
 	for _, component := range c.components {
+		if component.running {
+			continue
+		}
+
 		if err := component.run(); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
+func (c *Cluster) Restart() error {
+	if err := c.stop(false); err != nil {
+		return err
+	}
+
+	return c.Run()
+}
+
 func (c *Cluster) Cleanup() error {
+	return c.stop(true)
+}
+
+func (c *Cluster) stop(cleanupFiles bool) error {
+	_, cancelFunc := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancelFunc()
+
 	var (
 		files []string
 		dirs  []string
@@ -155,12 +220,14 @@ func (c *Cluster) Cleanup() error {
 	// wait for all process to close
 	c.waitGroup.Wait()
 
-	// cleanup dirs/files
-	for _, d := range dirs {
-		errs.Add(os.RemoveAll(d))
-	}
-	for _, f := range files {
-		errs.Add(os.Remove(f))
+	if cleanupFiles {
+		// cleanup dirs/files
+		for _, d := range dirs {
+			errs.Add(os.RemoveAll(d))
+		}
+		for _, f := range files {
+			errs.Add(os.Remove(f))
+		}
 	}
 
 	return errs.Err()
@@ -171,17 +238,7 @@ func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 		name:    name,
 		cluster: c,
 		flags:   flags,
-	}
-
-	var err error
-	component.httpPort, err = getFreePort()
-	if err != nil {
-		panic(fmt.Errorf("error allocating HTTP port: %w", err))
-	}
-
-	component.grpcPort, err = getFreePort()
-	if err != nil {
-		panic(fmt.Errorf("error allocating GRPC port: %w", err))
+		running: false,
 	}
 
 	c.components = append(c.components, component)
@@ -194,25 +251,29 @@ type Component struct {
 	cluster *Cluster
 	flags   []string
 
-	httpPort int
-	grpcPort int
+	configFile   string
+	dataPath     string
+	rulerWALPath string
+	rulesPath    string
+	RulesTenant  string
 
-	configFile string
-	dataPath   string
+	running bool
+	wg      sync.WaitGroup
+
+	RemoteWriteUrls []string
 }
 
-func (c *Component) HTTPURL() *url.URL {
-	return &url.URL{
-		Host:   fmt.Sprintf("localhost:%d", c.httpPort),
-		Scheme: "http",
-	}
+func (c *Component) HTTPURL() string {
+	return fmt.Sprintf("http://localhost:%s", port(c.loki.Server.HTTPListenAddr().String()))
 }
 
-func (c *Component) GRPCURL() *url.URL {
-	return &url.URL{
-		Host:   fmt.Sprintf("localhost:%d", c.grpcPort),
-		Scheme: "grpc",
-	}
+func (c *Component) GRPCURL() string {
+	return fmt.Sprintf("localhost:%s", port(c.loki.Server.GRPCListenAddr().String()))
+}
+
+func port(addr string) string {
+	parts := strings.Split(addr, ":")
+	return parts[len(parts)-1]
 }
 
 func (c *Component) writeConfig() error {
@@ -228,12 +289,43 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
 
+	if len(c.RemoteWriteUrls) > 0 {
+		c.rulesPath, err = os.MkdirTemp(c.cluster.sharedPath, "rules")
+		if err != nil {
+			return fmt.Errorf("error creating rules path: %w", err)
+		}
+
+		fakeDir, err := os.MkdirTemp(c.rulesPath, "fake")
+		if err != nil {
+			return fmt.Errorf("error creating rules/fake path: %w", err)
+		}
+
+		s := strings.Split(fakeDir, "/")
+		c.RulesTenant = s[len(s)-1]
+
+		c.rulerWALPath, err = os.MkdirTemp(c.cluster.sharedPath, "ruler-wal")
+		if err != nil {
+			return fmt.Errorf("error creating ruler-wal path: %w", err)
+		}
+
+		rulesConfigFile, err := os.CreateTemp(fakeDir, "rules*.yaml")
+		if err != nil {
+			return fmt.Errorf("error creating rules config file: %w", err)
+		}
+
+		if _, err = rulesConfigFile.Write([]byte(rulesConfig)); err != nil {
+			return fmt.Errorf("error writing to rules config file: %w", err)
+		}
+
+		rulesConfigFile.Close()
+	}
+
 	if err := configTemplate.Execute(configFile, map[string]interface{}{
-		"dataPath":       c.dataPath,
-		"sharedDataPath": c.cluster.sharedPath,
-		"grpcPort":       c.grpcPort,
-		"httpPort":       c.httpPort,
-		"schedulerPort":  c.grpcPort,
+		"dataPath":        c.dataPath,
+		"sharedDataPath":  c.cluster.sharedPath,
+		"remoteWriteUrls": c.RemoteWriteUrls,
+		"rulesPath":       c.rulesPath,
+		"rulerWALPath":    c.rulerWALPath,
 	}); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
@@ -242,11 +334,12 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error closing config file: %w", err)
 	}
 	c.configFile = configFile.Name()
-
 	return nil
 }
 
 func (c *Component) run() error {
+	c.running = true
+
 	if err := c.writeConfig(); err != nil {
 		return err
 	}
@@ -281,7 +374,7 @@ func (c *Component) run() error {
 	go func() {
 		for {
 			time.Sleep(time.Millisecond * 200)
-			if c.loki.Server.HTTP == nil {
+			if c.loki == nil || c.loki.Server == nil || c.loki.Server.HTTP == nil {
 				continue
 			}
 
@@ -297,8 +390,11 @@ func (c *Component) run() error {
 	}()
 
 	c.cluster.waitGroup.Add(1)
+	c.wg.Add(1)
+
 	go func() {
 		defer c.cluster.waitGroup.Done()
+		defer c.wg.Done()
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
 			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
@@ -318,8 +414,9 @@ func (c *Component) run() error {
 
 // cleanup calls the stop handler and returns files and directories to be cleaned up
 func (c *Component) cleanup() (files []string, dirs []string) {
-	if c.loki != nil {
+	if c.loki != nil && c.loki.SignalHandler != nil {
 		c.loki.SignalHandler.Stop()
+		c.running = false
 	}
 	if c.configFile != "" {
 		files = append(files, c.configFile)
@@ -327,17 +424,31 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	if c.dataPath != "" {
 		dirs = append(dirs, c.dataPath)
 	}
+	if c.rulerWALPath != "" {
+		dirs = append(dirs, c.rulerWALPath)
+	}
+	if c.rulesPath != "" {
+		dirs = append(dirs, c.rulesPath)
+	}
+
 	return files, dirs
 }
 
-func getFreePort() (port int, err error) {
-	var a *net.TCPAddr
-	if a, err = net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
-		var l *net.TCPListener
-		if l, err = net.ListenTCP("tcp", a); err == nil {
-			defer l.Close()
-			return l.Addr().(*net.TCPAddr).Port, nil
-		}
+func (c *Component) Restart() error {
+	c.cleanup()
+	c.wg.Wait()
+	return c.run()
+}
+
+func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(fmt.Errorf("failed to listen on: %v", err))
 	}
-	return
+
+	server := httptest.NewUnstartedServer(*handler)
+	server.Listener = l
+	server.Start()
+
+	return server
 }

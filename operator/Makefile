@@ -27,8 +27,8 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.0.1
-CHANNELS ?= "candidate"
-DEFAULT_CHANNEL ?= "candidate"
+CHANNELS ?= "stable"
+DEFAULT_CHANNEL ?= "stable"
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -106,7 +106,7 @@ help: ## Display this help.
 
 .PHONY: deps
 deps: go.mod go.sum
-	go mod tidy -compat=1.17
+	go mod tidy
 	go mod download
 	go mod verify
 
@@ -150,15 +150,15 @@ scorecard: generate go-generate bundle ## Run scorecard test
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run --timeout=5m ./...
 
 .PHONY: lint-prometheus
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
-	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-alerts.yaml
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-*.yaml
 
 .PHONY: fmt
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
+	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
 
 .PHONY: oci-build
 oci-build: ## Build the image
@@ -275,16 +275,22 @@ oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
 
 ##@ Website
-TYPES_V1BETA1_TARGET := $(shell find apis/loki -type f -iname "*_types.go")
-docs/operator/api.md: $(TYPES_V1BETA1_TARGET)
-	po-docgen api $(TYPES_V1BETA1_TARGET) > $@
-	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
+TYPES_TARGET := $(shell find apis/loki -type f -iname "*_types.go")
+docs/operator/api.md: $(TYPES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
+	sed -i 's/+docs:/  docs:/' $@
+	sed -i 's/+parent:/    parent:/' $@
+	sed -i 's/##/\n##/' $@
+	sed -i 's/+newline/\n/' $@
 
 FEATURE_GATES_TARGET := $(shell find apis/config -type f -iname "*_types.go")
-docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET)
-	po-docgen api $(FEATURE_GATES_TARGET) > $@
+docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/config/v1/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
 	sed -i 's/title: "API"/title: "Feature Gates"/' $@
-	sed -i 's/Prometheus Operator/Loki Operator/ig' $@
+	sed -i 's/+docs:/  docs:/' $@
+	sed -i 's/+parent:/    parent:/' $@
+	sed -i 's/##/\n##/' $@
+	sed -i 's/+newline/\n/' $@
 
 .PHONY: web-pre
 web-pre: docs/operator/api.md docs/operator/feature-gates.md

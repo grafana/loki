@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,15 +19,26 @@ import (
 func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 	deployment := NewQueryFrontendDeployment(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureQueryFrontendHTTPServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendGRPCServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&deployment.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
@@ -39,6 +51,7 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -55,7 +68,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name:  "loki-query-frontend",
+				Name:  lokiFrontendContainerName,
 				Resources: corev1.ResourceRequirements{
 					Limits:   opts.ResourceRequirements.QueryFrontend.Limits,
 					Requests: opts.ResourceRequirements.QueryFrontend.Requests,
@@ -118,7 +131,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -136,7 +149,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-query-frontend-%s", opts.Name),
+					Name:        fmt.Sprintf("%s-%s", lokiFrontendContainerName, opts.Name),
 					Labels:      labels.Merge(l, GossipLabels()),
 					Annotations: a,
 				},
@@ -160,9 +173,8 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -190,9 +202,8 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -208,12 +219,12 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQueryFrontendHTTP(stackName)
+func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQueryFrontendGRPC(stackName)
+func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQueryFrontendGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

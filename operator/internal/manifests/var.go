@@ -13,17 +13,21 @@ import (
 )
 
 const (
-	gossipPort  = 7946
-	httpPort    = 3100
-	grpcPort    = 9095
-	protocolTCP = "TCP"
+	gossipPort       = 7946
+	httpPort         = 3100
+	internalHTTPPort = 3101
+	grpcPort         = 9095
+	protocolTCP      = "TCP"
 
-	lokiHTTPPortName   = "metrics"
-	lokiGRPCPortName   = "grpclb"
-	lokiGossipPortName = "gossip-ring"
+	lokiHTTPPortName         = "metrics"
+	lokiInternalHTTPPortName = "healthchecks"
+	lokiGRPCPortName         = "grpclb"
+	lokiGossipPortName       = "gossip-ring"
 
 	lokiLivenessPath  = "/loki/api/v1/status/buildinfo"
 	lokiReadinessPath = "/ready"
+
+	lokiFrontendContainerName = "loki-query-frontend"
 
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
@@ -40,13 +44,15 @@ const (
 	dataDirectory         = "/tmp/loki"
 	rulesStorageDirectory = "/tmp/rules"
 
+	rulerContainerName = "loki-ruler"
+
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.6.0"
+	DefaultContainerImage = "docker.io/grafana/loki:2.6.1"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -58,6 +64,11 @@ const (
 
 	// labelJobComponent is a ServiceMonitor.Spec.JobLabel.
 	labelJobComponent string = "loki.grafana.com/component"
+
+	// AnnotationCertRotationRequiredAt stores the point in time the last cert rotation happened
+	AnnotationCertRotationRequiredAt string = "loki.grafana.com/certRotationRequiredAt"
+	// AnnotationLokiConfigHash stores the last SHA1 hash of the loki configuration
+	AnnotationLokiConfigHash string = "loki.grafana.com/config-hash"
 
 	// LabelCompactorComponent is the label value for the compactor component
 	LabelCompactorComponent string = "compactor"
@@ -80,14 +91,13 @@ const (
 	httpTLSDir = "/var/run/tls/http"
 	// grpcTLSDir is the path that is mounted from the secret for TLS
 	grpcTLSDir = "/var/run/tls/grpc"
-	// tlsCertFile is the file of the X509 server certificate file
-	tlsCertFile = "tls.crt"
-	// tlsKeyFile is the file name of the server private key
-	tlsKeyFile = "tls.key"
 	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
 	caFile = "service-ca.crt"
+
+	kubernetesNodeOSLabel = "kubernetes.io/os"
+	kubernetesNodeOSLinux = "linux"
 )
 
 var (
@@ -95,9 +105,10 @@ var (
 	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
 )
 
-func commonAnnotations(h string) map[string]string {
+func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
 	return map[string]string{
-		"loki.grafana.com/config-hash": h,
+		AnnotationLokiConfigHash:         configHash,
+		AnnotationCertRotationRequiredAt: rotationRequiredAt,
 	}
 }
 
@@ -137,7 +148,7 @@ func CompactorName(stackName string) string {
 	return fmt.Sprintf("%s-compactor", stackName)
 }
 
-// DistributorName is the name of the distibutor deployment
+// DistributorName is the name of the distributor deployment
 func DistributorName(stackName string) string {
 	return fmt.Sprintf("%s-distributor", stackName)
 }
@@ -184,6 +195,58 @@ func PrometheusRuleName(stackName string) string {
 
 func lokiConfigMapName(stackName string) string {
 	return fmt.Sprintf("%s-config", stackName)
+}
+
+func lokiServerGRPCTLSDir() string {
+	return path.Join(grpcTLSDir, "server")
+}
+
+func lokiServerGRPCTLSCert() string {
+	return path.Join(lokiServerGRPCTLSDir(), corev1.TLSCertKey)
+}
+
+func lokiServerGRPCTLSKey() string {
+	return path.Join(lokiServerGRPCTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func lokiServerHTTPTLSDir() string {
+	return path.Join(httpTLSDir, "server")
+}
+
+func lokiServerHTTPTLSCert() string {
+	return path.Join(lokiServerHTTPTLSDir(), corev1.TLSCertKey)
+}
+
+func lokiServerHTTPTLSKey() string {
+	return path.Join(lokiServerHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func gatewayServerHTTPTLSDir() string {
+	return path.Join(httpTLSDir, "server")
+}
+
+func gatewayServerHTTPTLSCert() string {
+	return path.Join(gatewayServerHTTPTLSDir(), corev1.TLSCertKey)
+}
+
+func gatewayServerHTTPTLSKey() string {
+	return path.Join(gatewayServerHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func gatewayUpstreamHTTPTLSDir() string {
+	return path.Join(httpTLSDir, "upstream")
+}
+
+func gatewayUpstreamHTTPTLSCert() string {
+	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSCertKey)
+}
+
+func gatewayUpstreamHTTPTLSKey() string {
+	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func gatewayClientSecretName(stackName string) string {
+	return fmt.Sprintf("%s-gateway-client-http", stackName)
 }
 
 func serviceNameQuerierHTTP(stackName string) string {
@@ -250,12 +313,44 @@ func serviceMonitorName(componentName string) string {
 	return fmt.Sprintf("%s-monitor", componentName)
 }
 
-func signingServiceSecretName(serviceName string) string {
-	return fmt.Sprintf("%s-tls", serviceName)
-}
-
 func signingCABundleName(stackName string) string {
 	return fmt.Sprintf("%s-ca-bundle", stackName)
+}
+
+func gatewaySigningCABundleName(gwName string) string {
+	return fmt.Sprintf("%s-ca-bundle", gwName)
+}
+
+func gatewaySigningCADir() string {
+	return path.Join(caBundleDir, "server")
+}
+
+func gatewaySigningCAPath() string {
+	return path.Join(gatewaySigningCADir(), caFile)
+}
+
+func gatewayUpstreamCADir() string {
+	return path.Join(caBundleDir, "upstream")
+}
+
+func gatewayUpstreamCAPath() string {
+	return path.Join(gatewayUpstreamCADir(), caFile)
+}
+
+func gatewayTokenSecretName(gwName string) string {
+	return fmt.Sprintf("%s-token", gwName)
+}
+
+func alertmanagerSigningCABundleName(rulerName string) string {
+	return fmt.Sprintf("%s-ca-bundle", rulerName)
+}
+
+func alertmanagerUpstreamCADir() string {
+	return path.Join(caBundleDir, "alertmanager")
+}
+
+func alertmanagerUpstreamCAPath() string {
+	return path.Join(alertmanagerUpstreamCADir(), caFile)
 }
 
 func signingCAPath() string {
@@ -266,27 +361,43 @@ func fqdn(serviceName, namespace string) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
 }
 
-// serviceMonitorTLSConfig returns the TLS configuration for service monitors.
-func serviceMonitorTLSConfig(serviceName, namespace string) monitoringv1.TLSConfig {
-	return monitoringv1.TLSConfig{
-		SafeTLSConfig: monitoringv1.SafeTLSConfig{
-			// ServerName can be e.g. loki-distributor-http.openshift-logging.svc.cluster.local
-			ServerName: fqdn(serviceName, namespace),
-		},
-		CAFile: PrometheusCAFile,
-	}
-}
-
-// serviceMonitorEndpoint returns the lokistack endpoint for service monitors.
-func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
+// lokiServiceMonitorEndpoint returns the lokistack endpoint for service monitors.
+func lokiServiceMonitorEndpoint(stackName, portName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
 	if enableTLS {
-		tlsConfig := serviceMonitorTLSConfig(serviceName, namespace)
+		tlsConfig := monitoringv1.TLSConfig{
+			SafeTLSConfig: monitoringv1.SafeTLSConfig{
+				CA: monitoringv1.SecretOrConfigMap{
+					ConfigMap: &corev1.ConfigMapKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: signingCABundleName(stackName),
+						},
+						Key: caFile,
+					},
+				},
+				Cert: monitoringv1.SecretOrConfigMap{
+					Secret: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: serviceName,
+						},
+						Key: corev1.TLSCertKey,
+					},
+				},
+				KeySecret: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: serviceName,
+					},
+					Key: corev1.TLSPrivateKeyKey,
+				},
+				// ServerName can be e.g. loki-distributor-http.openshift-logging.svc.cluster.local
+				ServerName: fqdn(serviceName, namespace),
+			},
+		}
+
 		return monitoringv1.Endpoint{
-			Port:            portName,
-			Path:            "/metrics",
-			Scheme:          "https",
-			BearerTokenFile: BearerTokenFile,
-			TLSConfig:       &tlsConfig,
+			Port:      portName,
+			Path:      "/metrics",
+			Scheme:    "https",
+			TLSConfig: &tlsConfig,
 		}
 	}
 
@@ -294,6 +405,71 @@ func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS b
 		Port:   portName,
 		Path:   "/metrics",
 		Scheme: "http",
+	}
+}
+
+// gatewayServiceMonitorEndpoint returns the lokistack endpoint for service monitors.
+func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
+	if enableTLS {
+		tlsConfig := monitoringv1.TLSConfig{
+			SafeTLSConfig: monitoringv1.SafeTLSConfig{
+				CA: monitoringv1.SecretOrConfigMap{
+					ConfigMap: &corev1.ConfigMapKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: gatewaySigningCABundleName(gatewayName),
+						},
+						Key: caFile,
+					},
+				},
+				// ServerName can be e.g. lokistack-dev-gateway-http.openshift-logging.svc.cluster.local
+				ServerName: fqdn(serviceName, namespace),
+			},
+		}
+
+		return monitoringv1.Endpoint{
+			Port:   portName,
+			Path:   "/metrics",
+			Scheme: "https",
+			BearerTokenSecret: corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: gatewayTokenSecretName(gatewayName),
+				},
+				Key: corev1.ServiceAccountTokenKey,
+			},
+			TLSConfig: &tlsConfig,
+		}
+	}
+
+	return monitoringv1.Endpoint{
+		Port:   portName,
+		Path:   "/metrics",
+		Scheme: "http",
+	}
+}
+
+func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+	if !enableNodeAffinity {
+		return nil
+	}
+
+	return &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      kubernetesNodeOSLabel,
+								Operator: corev1.NodeSelectorOpIn,
+								Values: []string{
+									kubernetesNodeOSLinux,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 }
 

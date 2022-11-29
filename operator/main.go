@@ -8,6 +8,9 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
+	"github.com/grafana/loki/operator/internal/validation"
+
+	"github.com/grafana/loki/operator/internal/validation/openshift"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -99,44 +102,54 @@ func main() {
 
 	if err = (&lokictrl.LokiStackReconciler{
 		Client:       mgr.GetClient(),
-		Log:          logger.WithName("controllers").WithName("LokiStack"),
+		Log:          logger.WithName("controllers").WithName("lokistack"),
 		Scheme:       mgr.GetScheme(),
 		FeatureGates: ctrlCfg.Gates,
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "LokiStack")
+		logger.Error(err, "unable to create controller", "controller", "lokistack")
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.LokiStackWebhook {
 		if err = (&lokiv1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
+			logger.Error(err, "unable to create webhook", "webhook", "lokistack")
 			os.Exit(1)
 		}
 	}
 	if err = (&lokictrl.AlertingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("AlertingRule"),
+		Log:    logger.WithName("controllers").WithName("alertingrule"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "AlertingRule")
+		logger.Error(err, "unable to create controller", "controller", "alertingrule")
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.AlertingRuleWebhook {
-		if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
+		v := &validation.AlertingRuleValidator{}
+		if ctrlCfg.Gates.OpenShift.ExtendedRuleValidation {
+			v.ExtendedValidator = openshift.AlertingRuleValidator
+		}
+
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "alertingrule")
 			os.Exit(1)
 		}
 	}
 	if err = (&lokictrl.RecordingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("RecordingRule"),
+		Log:    logger.WithName("controllers").WithName("recordingrule"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "RecordingRule")
+		logger.Error(err, "unable to create controller", "controller", "recordingrule")
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.RecordingRuleWebhook {
-		if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
+		v := &validation.RecordingRuleValidator{}
+		if ctrlCfg.Gates.OpenShift.ExtendedRuleValidation {
+			v.ExtendedValidator = openshift.RecordingRuleValidator
+		}
+
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "recordingrule")
 			os.Exit(1)
 		}
 	}
@@ -144,8 +157,19 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "RulerConfig")
+		logger.Error(err, "unable to create controller", "controller", "rulerconfig")
 		os.Exit(1)
+	}
+	if ctrlCfg.Gates.BuiltInCertManagement.Enabled {
+		if err = (&lokictrl.CertRotationReconciler{
+			Client:       mgr.GetClient(),
+			Log:          logger.WithName("controllers").WithName("certrotation"),
+			Scheme:       mgr.GetScheme(),
+			FeatureGates: ctrlCfg.Gates,
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "certrotation")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

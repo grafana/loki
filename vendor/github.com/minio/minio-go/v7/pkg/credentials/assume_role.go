@@ -94,6 +94,8 @@ type STSAssumeRoleOptions struct {
 	AccessKey string
 	SecretKey string
 
+	Policy string // Optional to assign a policy to the assumed role
+
 	Location        string // Optional commonly needed with AWS STS.
 	DurationSeconds int    // Optional defaults to 1 hour.
 
@@ -156,6 +158,9 @@ func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssume
 		v.Set("DurationSeconds", strconv.Itoa(opts.DurationSeconds))
 	} else {
 		v.Set("DurationSeconds", strconv.Itoa(defaultDurationSeconds))
+	}
+	if opts.Policy != "" {
+		v.Set("Policy", opts.Policy)
 	}
 
 	u, err := url.Parse(endpoint)

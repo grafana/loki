@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -13,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -21,7 +21,7 @@ import (
 func BuildCompactor(opts Options) ([]client.Object, error) {
 	statefulSet := NewCompactorStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureCompactorHTTPServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureCompactorHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -31,9 +31,20 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureCompactorGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureCompactorGRPCServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&statefulSet.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
@@ -46,6 +57,7 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 // NewCompactorStatefulSet creates a statefulset object for a compactor.
 func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -113,7 +125,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	l := ComponentLabels(LabelCompactorComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
@@ -174,9 +186,8 @@ func NewCompactorGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -204,9 +215,8 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -222,12 +232,12 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameCompactorHTTP(stackName)
+func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameCompactorHTTP(opts.Name)
 	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameCompactorGRPC(stackName)
+func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameCompactorGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

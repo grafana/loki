@@ -76,7 +76,7 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -90,7 +90,7 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -106,7 +106,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.tails),
+	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -123,7 +123,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 2, len(target.tails),
+	assert.Equal(t, 2, len(target.readers),
 		"Expected tails to be 2 at this point in the test...",
 	)
 
@@ -137,7 +137,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.tails),
+	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
 
@@ -151,7 +151,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 0, len(target.watches),
 		"Expected watches to be 0 at this point in the test...",
 	)
-	assert.Equal(t, 0, len(target.tails),
+	assert.Equal(t, 0, len(target.readers),
 		"Expected tails to be 0 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -228,7 +228,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -246,7 +246,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -264,7 +264,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.Equal(t, 2, len(target.watches),
 		"Expected watches to be 2 at this point in the test...",
 	)
-	assert.Equal(t, 3, len(target.tails),
+	assert.Equal(t, 3, len(target.readers),
 		"Expected tails to be 3 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -285,7 +285,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.tails),
+	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -294,6 +294,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return receivedStopWatch.Load() == 1
 	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
+
+	require.NoError(t, os.RemoveAll(logDir2))
+	require.NoError(t, os.RemoveAll(logDir3))
+	require.NoError(t, target.sync())
 
 	target.Stop()
 	ps.Stop()
@@ -360,13 +364,13 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		Op:   fsnotify.Create,
 	}
 	require.Eventually(t, func() bool {
-		return len(target.tails) == 1
+		return len(target.readers) == 1
 	}, time.Second*10, time.Millisecond*1, "Expected tails to be 1 at this point in the test...")
 }
 
 func TestToStopTailing(t *testing.T) {
 	nt := []string{"file1", "file2", "file3", "file4", "file5", "file6", "file7", "file11", "file12", "file15"}
-	et := make(map[string]*tailer, 15)
+	et := make(map[string]Reader, 15)
 	for i := 1; i <= 15; i++ {
 		et[fmt.Sprintf("file%d", i)] = nil
 	}
@@ -386,7 +390,7 @@ func TestToStopTailing(t *testing.T) {
 
 func BenchmarkToStopTailing(b *testing.B) {
 	nt := []string{"file1", "file2", "file3", "file4", "file5", "file6", "file7", "file11", "file12", "file15"}
-	et := make(map[string]*tailer, 15)
+	et := make(map[string]Reader, 15)
 	for i := 1; i <= 15; i++ {
 		et[fmt.Sprintf("file%d", i)] = nil
 	}

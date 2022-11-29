@@ -11,7 +11,7 @@ The `json` stage is a parsing stage that reads the log line as JSON and accepts
 ```yaml
 json:
   # Set of key/value pairs of JMESPath expressions. The key will be
-  # the key in the extracted data while the expression will the value,
+  # the key in the extracted data while the expression will be the value,
   # evaluated as a JMESPath from the source data.
   #
   # Literal JMESPath expressions can be done by wrapping a key in

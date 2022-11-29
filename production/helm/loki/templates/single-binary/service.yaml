@@ -1,0 +1,26 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- if $isSingleBinary }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.name" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
+    {{- with .Values.singleBinary.selectorLabels }}
+      {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+{{- end }}

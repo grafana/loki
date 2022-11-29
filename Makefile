@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.21.0
+BUILD_IMAGE_VERSION := 0.24.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -54,15 +54,6 @@ DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(G
 DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
 MOUNT_FLAGS := :delegated
-
-NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-       rm $@; \
-       echo "\nYour go standard library was built without the 'netgo' build tag."; \
-       echo "To fix that, run"; \
-       echo "    sudo go clean -i net"; \
-       echo "    sudo go install -tags netgo std"; \
-       false; \
-}
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -135,7 +126,6 @@ logcli-image:
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
-	$(NETGO_CHECK)
 
 ########
 # Loki #
@@ -146,11 +136,9 @@ loki-debug: cmd/loki/loki-debug
 
 cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ###############
 # Loki-Canary #
@@ -160,7 +148,16 @@ loki-canary: cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
+
+###############
+# Helm-Test #
+###############
+.PHONY: production/helm/loki/src/helm-test/helm-test
+helm-test: production/helm/loki/src/helm-test/helm-test
+
+# Package Helm tests but do not run them.
+production/helm/loki/src/helm-test/helm-test:
+	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
 
 #################
 # Loki-QueryTee #
@@ -170,7 +167,6 @@ loki-querytee: cmd/querytee/querytee
 
 cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 ############
 # Promtail #
@@ -190,6 +186,9 @@ PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
+ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
+PROMTAIL_GO_TAGS = promtail_journal_enabled
+endif
 .PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
 promtail: clients/cmd/promtail/promtail
 promtail-debug: clients/cmd/promtail/promtail-debug
@@ -203,12 +202,10 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
 clients/cmd/promtail/promtail:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
 
 clients/cmd/promtail/promtail-debug:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
 
 #########
 # Mixin #
@@ -246,7 +243,6 @@ migrate: cmd/migrate/migrate
 
 cmd/migrate/migrate:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 #############
 # Releasing #
@@ -263,11 +259,7 @@ dist: clean
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
 packages: dist
-	mkdir -p dist/tmp
-	unzip dist/logcli-linux-amd64.zip -d dist/tmp
-	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
-	nfpm package -f tools/nfpm.yaml -p deb -t dist/
-	rm -rf dist/tmp
+	@tools/packaging/nfpm.sh
 
 publish: packages
 	./tools/release
@@ -277,8 +269,10 @@ publish: packages
 ########
 
 # To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint:
+	go version
+	golangci-lint version
 	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
@@ -311,6 +305,8 @@ clean:
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
+	rm -rf cmd/logql-analyzer/logql-analyzer
+	$(MAKE) -BC clients/cmd/fluentd $@
 	go clean ./...
 
 #########
@@ -415,7 +411,6 @@ docker-driver: docker-driver-clean
 
 clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
@@ -437,7 +432,7 @@ fluent-bit-plugin:
 	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o clients/cmd/fluent-bit/out_grafana_loki.so ./clients/cmd/fluent-bit/
 
 fluent-bit-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluent-bit/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
 fluent-bit-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
@@ -452,15 +447,16 @@ fluent-bit-test:
 # fluentd plugin #
 ##################
 fluentd-plugin:
-	gem install bundler --version 2.3.4
-	bundle config silence_root_warning true
-	bundle config set --local path clients/cmd/fluentd/vendor/bundle
-	bundle install --gemfile=clients/cmd/fluentd/Gemfile
+	$(MAKE) -BC clients/cmd/fluentd $@
+
+fluentd-plugin-push:
+	$(MAKE) -BC clients/cmd/fluentd $@
 
 fluentd-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
 
 fluentd-push:
+fluentd-image-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 fluentd-test: LOKI_URL ?= http://loki:3100
@@ -504,7 +500,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
+images: promtail-image loki-image loki-canary-image helm-test-image docker-driver fluent-bit-image fluentd-image
 
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
@@ -553,6 +549,10 @@ loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+helm-test-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+helm-test-push: helm-test-image
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
@@ -565,6 +565,12 @@ loki-querytee-push: loki-querytee-image-cross
 # migrate-image
 migrate-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+
+# LogQL Analyzer
+logql-analyzer-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
+logql-analyzer-push: logql-analyzer-image
+	$(call push-image,logql-analyzer)
 
 
 # build-image (only amd64)
@@ -586,7 +592,16 @@ loki-operator-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
-	
+
+#################
+# Documentation #
+#################
+
+documentation-helm-reference-check:
+	@echo "Checking diff"
+	$(MAKE) -BC docs sources/installation/helm/reference.md
+	@git diff --exit-code -- docs || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+
 ########
 # Misc #
 ########

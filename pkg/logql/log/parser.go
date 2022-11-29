@@ -62,6 +62,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 
 	if err := j.readObject(it); err != nil {
 		lbs.SetErr(errJSON)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	return line, true
@@ -296,6 +297,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
+		lbs.SetErrorDetails(l.dec.Err().Error())
 		return line, true
 	}
 	return line, true
@@ -431,6 +433,7 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	entry, err := u.unpack(it, line, lbs)
 	if err != nil {
 		lbs.SetErr(errJSON)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	return entry, true

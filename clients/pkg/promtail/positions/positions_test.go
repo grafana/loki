@@ -1,7 +1,6 @@
 package positions
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -16,7 +15,7 @@ import (
 func tempFilename(t *testing.T) string {
 	t.Helper()
 
-	temp, err := ioutil.TempFile("", "positions")
+	temp, err := os.CreateTemp("", "positions")
 	if err != nil {
 		t.Fatal("tempFilename:", err)
 	}
@@ -43,7 +42,7 @@ func TestReadPositionsOK(t *testing.T) {
 	yaml := []byte(`positions:
   /tmp/random.log: "17623"
 `)
-	err := ioutil.WriteFile(temp, yaml, 0644)
+	err := os.WriteFile(temp, yaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +62,7 @@ func TestReadPositionsEmptyFile(t *testing.T) {
 	}()
 
 	yaml := []byte(``)
-	err := ioutil.WriteFile(temp, yaml, 0644)
+	err := os.WriteFile(temp, yaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +103,7 @@ func TestReadPositionsFromBadYaml(t *testing.T) {
 	badYaml := []byte(`positions:
   /tmp/random.log: "176
 `)
-	err := ioutil.WriteFile(temp, badYaml, 0644)
+	err := os.WriteFile(temp, badYaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +125,7 @@ func TestReadPositionsFromBadYamlIgnoreCorruption(t *testing.T) {
 	badYaml := []byte(`positions:
   /tmp/random.log: "176
 `)
-	err := ioutil.WriteFile(temp, badYaml, 0644)
+	err := os.WriteFile(temp, badYaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +147,7 @@ func Test_ReadOnly(t *testing.T) {
 	yaml := []byte(`positions:
   /tmp/random.log: "17623"
 `)
-	err := ioutil.WriteFile(temp, yaml, 0644)
+	err := os.WriteFile(temp, yaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}

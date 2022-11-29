@@ -18,17 +18,6 @@ import (
 )
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
-	got := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				"test": "test",
-			},
-			Annotations: map[string]string{
-				"test": "test",
-			},
-		},
-	}
-
 	want := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
@@ -37,22 +26,34 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 			Annotations: map[string]string{
 				"test": "test",
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					BlockOwnerDeletion: pointer.Bool(true),
+					Controller:         pointer.Bool(true),
+					Kind:               "LokiStack",
+					Name:               "lokistack-testing",
+					UID:                "6128aa83-de7f-47c0-abf2-4a380713b599",
+				},
+			},
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	got := &corev1.ConfigMap{}
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
 	// Partial mutation checks
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.OwnerReferences, want.OwnerReferences)
 }
 
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
 	got := &corev1.Endpoints{}
 	want := &corev1.Endpoints{}
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 
 	require.Error(t, f())
 }
@@ -68,7 +69,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 		BinaryData: map[string][]byte{"btest": []byte("btestss")},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -115,7 +116,7 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -230,7 +231,7 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tt.got, tt.want)
+			f := manifests.MutateFuncFor(tt.got, tt.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -292,7 +293,7 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -357,7 +358,7 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -412,7 +413,7 @@ func TestGetMutateFunc_MutateRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -477,7 +478,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -596,7 +597,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -753,7 +754,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -880,7 +881,11 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 				},
 			},
 			want: &monitoringv1.ServiceMonitor{
-				ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.Now()},
+				ObjectMeta: metav1.ObjectMeta{
+					CreationTimestamp: metav1.Now(),
+					Labels:            map[string]string{"test": "label"},
+					Annotations:       map[string]string{"test": "annotations"},
+				},
 				Spec: monitoringv1.ServiceMonitorSpec{
 					JobLabel: "some-job-new",
 					Endpoints: []monitoringv1.Endpoint{
@@ -926,14 +931,18 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
 			// Ensure not mutated
-			require.NotEqual(t, tst.got.Spec.JobLabel, tst.want.Spec.JobLabel)
-			require.NotEqual(t, tst.got.Spec.Endpoints, tst.want.Spec.Endpoints)
+			require.Equal(t, tst.got.Annotations, tst.want.Annotations)
+			require.Equal(t, tst.got.Labels, tst.want.Labels)
+			require.Equal(t, tst.got.Spec.Endpoints, tst.want.Spec.Endpoints)
+			require.Equal(t, tst.got.Spec.JobLabel, tst.want.Spec.JobLabel)
+			require.Equal(t, tst.got.Spec.Endpoints, tst.want.Spec.Endpoints)
 			require.NotEqual(t, tst.got.Spec.NamespaceSelector, tst.want.Spec.NamespaceSelector)
+			require.NotEqual(t, tst.got.Spec.Selector, tst.want.Spec.Selector)
 		})
 	}
 }
@@ -994,7 +1003,7 @@ func TestGetMutateFunc_MutateIngress(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -1046,8 +1055,8 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 			},
 		},
 	}
+	f := manifests.MutateFuncFor(got, want, nil)
 
-	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 

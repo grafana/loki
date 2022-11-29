@@ -289,13 +289,12 @@ func (mi *MediaInfo) UploadRequest(reqHeaders http.Header, body io.Reader) (newB
 		// be retried because the data is stored in the MediaBuffer.
 		media, _, _, _ = mi.buffer.Chunk()
 	}
+	toCleanup := []io.Closer{}
 	if media != nil {
 		fb := readerFunc(body)
 		fm := readerFunc(media)
 		combined, ctype := CombineBodyMedia(body, "application/json", media, mi.mType)
-		toCleanup := []io.Closer{
-			combined,
-		}
+		toCleanup = append(toCleanup, combined)
 		if fb != nil && fm != nil {
 			getBody = func() (io.ReadCloser, error) {
 				rb := ioutil.NopCloser(fb())
@@ -309,17 +308,29 @@ func (mi *MediaInfo) UploadRequest(reqHeaders http.Header, body io.Reader) (newB
 				return r, nil
 			}
 		}
-		cleanup = func() {
-			for _, closer := range toCleanup {
-				_ = closer.Close()
-			}
-
-		}
 		reqHeaders.Set("Content-Type", ctype)
 		body = combined
 	}
 	if mi.buffer != nil && mi.mType != "" && !mi.singleChunk {
+		// This happens when initiating a resumable upload session.
+		// The initial request contains a JSON body rather than media.
+		// It can be retried with a getBody function that re-creates the request body.
+		fb := readerFunc(body)
+		if fb != nil {
+			getBody = func() (io.ReadCloser, error) {
+				rb := ioutil.NopCloser(fb())
+				toCleanup = append(toCleanup, rb)
+				return rb, nil
+			}
+		}
 		reqHeaders.Set("X-Upload-Content-Type", mi.mType)
+	}
+	// Ensure that any bodies created in getBody are cleaned up.
+	cleanup = func() {
+		for _, closer := range toCleanup {
+			_ = closer.Close()
+		}
+
 	}
 	return body, getBody, cleanup
 }
