@@ -514,10 +514,10 @@ func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGr
 		return
 	}
 
-	for userID := range result {
-		if !r.allowedTenants.IsAllowed(userID) {
-			level.Debug(r.logger).Log("msg", "ignoring rule groups for user, not allowed", "user", userID)
-			delete(result, userID)
+	for orgID := range result {
+		if !r.allowedTenants.IsAllowed(orgID) {
+			level.Debug(r.logger).Log("msg", "ignoring rule groups for user, not allowed", "user", orgID, "org_id", orgID)
+			delete(result, orgID)
 		}
 	}
 	return
@@ -534,10 +534,10 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 	}
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
-	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+	for orgID, groups := range configs {
+		filtered := filterRuleGroups(orgID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
-			filteredConfigs[userID] = filtered
+			filteredConfigs[orgID] = filtered
 		}
 	}
 	return filteredConfigs, nil
@@ -587,19 +587,19 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	g, gctx := errgroup.WithContext(ctx)
 	for i := 0; i < concurrency; i++ {
 		g.Go(func() error {
-			for userID := range userCh {
-				groups, err := r.store.ListRuleGroupsForUserAndNamespace(gctx, userID, "")
+			for orgID := range userCh {
+				groups, err := r.store.ListRuleGroupsForUserAndNamespace(gctx, orgID, "")
 				if err != nil {
-					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
+					return errors.Wrapf(err, "failed to fetch rule groups for user %s", orgID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := filterRuleGroups(orgID, groups, userRings[orgID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
 
 				mu.Lock()
-				result[userID] = filtered
+				result[orgID] = filtered
 				mu.Unlock()
 			}
 			return nil
@@ -615,14 +615,14 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 //
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+func filterRuleGroups(orgID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
 		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "org_id", orgID, "namespace", g.Namespace, "group", g.Name, "err", err)
 			continue
 		}
 
@@ -630,7 +630,7 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 			level.Debug(log).Log("msg", "rule group owned", "user", g.User, "namespace", g.Namespace, "name", g.Name)
 			result = append(result, g)
 		} else {
-			level.Debug(log).Log("msg", "rule group not owned, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+			level.Debug(log).Log("msg", "rule group not owned, ignoring", "org_id", g.User, "namespace", g.Namespace, "name", g.Name)
 		}
 	}
 
@@ -640,23 +640,23 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	userID, err := tenant.TenantID(ctx)
+	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, orgID)
 	}
 
-	return r.getLocalRules(userID)
+	return r.getLocalRules(orgID)
 }
 
-func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
-	groups := r.manager.GetRules(userID)
+func (r *Ruler) getLocalRules(orgID string) ([]*GroupStateDesc, error) {
+	groups := r.manager.GetRules(orgID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
-	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
+	prefix := filepath.Join(r.cfg.RulePath, orgID) + "/"
 
 	for _, group := range groups {
 		interval := group.Interval()
@@ -672,7 +672,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				Name:      group.Name(),
 				Namespace: decodedNamespace,
 				Interval:  interval,
-				User:      userID,
+				User:      orgID,
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),
@@ -739,11 +739,11 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, orgID string) ([]*GroupStateDesc, error) {
 	ring := ring.ReadRing(r.ring)
 
-	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		ring = r.ring.ShuffleShard(userID, shardSize)
+	if shardSize := r.limits.RulerTenantShardSize(orgID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		ring = r.ring.ShuffleShard(orgID, shardSize)
 	}
 
 	rulers, err := ring.GetReplicationSetForOperation(RingOp)
@@ -753,7 +753,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 	ctx, err = user.InjectIntoGRPCRequest(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
+		return nil, fmt.Errorf("unable to inject org ID into grpc request, %v", err)
 	}
 
 	var (
@@ -789,12 +789,12 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID)
+	groupDescs, err := r.getLocalRules(orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -804,8 +804,8 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 
 // AssertMaxRuleGroups limit has not been reached compared to the current
 // number of total rule groups in input and returns an error if so.
-func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {
-	limit := r.limits.RulerMaxRuleGroupsPerTenant(userID)
+func (r *Ruler) AssertMaxRuleGroups(orgID string, rg int) error {
+	limit := r.limits.RulerMaxRuleGroupsPerTenant(orgID)
 
 	if limit <= 0 {
 		return nil
@@ -820,8 +820,8 @@ func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {
 
 // AssertMaxRulesPerRuleGroup limit has not been reached compared to the current
 // number of rules in a rule group in input and returns an error if so.
-func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
-	limit := r.limits.RulerMaxRulesPerRuleGroup(userID)
+func (r *Ruler) AssertMaxRulesPerRuleGroup(orgID string, rules int) error {
+	limit := r.limits.RulerMaxRulesPerRuleGroup(orgID)
 
 	if limit <= 0 {
 		return nil
@@ -836,7 +836,7 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
-	userID, err := tenant.TenantID(req.Context())
+	orgID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
 		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
@@ -844,20 +844,20 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
+	err = r.store.DeleteNamespace(req.Context(), orgID, "") // Empty namespace = delete all rule groups.
 	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
 		respondError(logger, w, err.Error())
 		return
 	}
 
-	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", orgID)
 	w.WriteHeader(http.StatusOK)
 }
 
 func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
-	userIDs, err := r.store.ListAllUsers(req.Context())
+	orgIDs, err := r.store.ListAllUsers(req.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errListAllUser, "err", err)
 		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
@@ -872,16 +872,16 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		close(done)
 	}()
 
-	err = concurrency.ForEachUser(req.Context(), userIDs, fetchRulesConcurrency, func(ctx context.Context, userID string) error {
-		rg, err := r.store.ListRuleGroupsForUserAndNamespace(ctx, userID, "")
+	err = concurrency.ForEachUser(req.Context(), orgIDs, fetchRulesConcurrency, func(ctx context.Context, orgID string) error {
+		rg, err := r.store.ListRuleGroupsForUserAndNamespace(ctx, orgID, "")
 		if err != nil {
-			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
+			return errors.Wrapf(err, "failed to fetch ruler config for user %s", orgID)
 		}
-		userRules := map[string]rulespb.RuleGroupList{userID: rg}
+		userRules := map[string]rulespb.RuleGroupList{orgID: rg}
 		if err := r.store.LoadRuleGroups(ctx, userRules); err != nil {
-			return errors.Wrapf(err, "failed to load ruler config for user %s", userID)
+			return errors.Wrapf(err, "failed to load ruler config for user %s", orgID)
 		}
-		data := map[string]map[string][]rulefmt.RuleGroup{userID: userRules[userID].Formatted()}
+		data := map[string]map[string][]rulefmt.RuleGroup{orgID: userRules[orgID].Formatted()}
 
 		select {
 		case iter <- data:
