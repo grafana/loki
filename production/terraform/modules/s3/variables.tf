@@ -7,7 +7,6 @@ variable "region" {
 variable "bucket_name" {
   description = "Bucket name for Loki storage"
   type    = string
-  default = "loki-data"
 }
 
 variable "cluster_name" {
@@ -18,7 +17,6 @@ variable "cluster_name" {
 variable "namespace" {
   description = "Namespace of Loki installation"
   type        = string
-  default     = "default"
 }
 
 variable "serviceaccount" {
