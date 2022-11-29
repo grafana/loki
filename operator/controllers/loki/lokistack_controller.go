@@ -142,12 +142,14 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request, err error) (ctrl.Result, error) {
 	var degraded *status.DegradedError
 	if errors.As(err, &degraded) {
-		derr := status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
-		if derr != nil {
-			return ctrl.Result{}, derr
+		err = status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
 
-		return ctrl.Result{Requeue: degraded.Requeue}, err
+		return ctrl.Result{
+			Requeue: degraded.Requeue,
+		}, nil
 	}
 
 	if err != nil {
