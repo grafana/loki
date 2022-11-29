@@ -518,9 +518,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
 			// Use fifo cache for caching index in memory, this also significantly helps performance.
 			t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
-				EnableFifoCache: true,
-				Fifocache: cache.FifoCacheConfig{
-					MaxSizeBytes: "200 MB",
+				EmbeddedCache: cache.EmbeddedCacheConfig{
+					Enabled:   true,
+					MaxSizeMB: 200,
 					// This is a small hack to save some CPU cycles.
 					// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
 					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the

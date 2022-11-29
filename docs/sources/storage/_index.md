@@ -238,6 +238,64 @@ storage_config:
       dynamodb_url: dynamodb://region
 ```
 
+The role should have a policy with the following permissions attached.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "LokiStorage",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::<account_ID>"
+                ]
+            },
+            "Action": [
+                "s3:ListBucket",
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::<bucket_name>",
+                "arn:aws:s3:::<bucket_name>/*"
+            ]
+        }
+    ]
+}
+```
+
+**To setup an S3 bucket and an IAM role and policy:** 
+
+This guide assumes a provisioned EKS cluster.
+
+1. Checkout the Loki repository and navigate to [production/terraform/modules/s3](https://github.com/grafana/loki/tree/main/production/terraform/modules/s3).
+
+2. Initialize Terraform `terraform init`.
+
+3. Export the AWS profile and region if not done so:
+
+   ```
+   export AWS_PROFILE=<profile in ~/.aws/config>
+   export AWS_REGION=<region of EKS cluster>
+   ```
+
+4. Save the OIDC provider in an enviroment variable:
+
+   ```
+   oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+   ```
+
+   See the [IAM OIDC provider guide](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) for a guide for creating a provider.
+
+5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS cluster> -var oidc_id="$oidc_provider"`
+
+   Note, the bucket name defaults to `loki-data` but can be changed via the
+   `bucket_name` variable.
+
+
 ### On prem deployment (Cassandra+Cassandra)
 
 **Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**

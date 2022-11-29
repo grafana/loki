@@ -10,7 +10,6 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -505,6 +504,25 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 	}
 }
 
+func Test_WriteQueryResponseJSONWithError(t *testing.T) {
+	broken := logqlmodel.Result{
+		Data: logqlmodel.Streams{
+			logproto.Stream{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+					},
+				},
+				Labels: `{testtest"}`,
+			},
+		},
+	}
+	var b bytes.Buffer
+	err := WriteQueryResponseJSON(broken, &b)
+	require.Error(t, err)
+}
+
 func Test_MarshalTailResponse(t *testing.T) {
 	for i, tailTest := range tailTests {
 		// convert logproto to model objects
@@ -722,7 +740,7 @@ func randEntries(rand *rand.Rand) []logproto.Entry {
 func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
-		js := jsoniter.NewStream(jsoniter.ConfigFastest, &buf, 0)
+		js := json.NewStream(json.ConfigFastest, &buf, 0)
 		err := encodeResult(w.Value, js)
 		require.NoError(t, err)
 		js.Flush()
