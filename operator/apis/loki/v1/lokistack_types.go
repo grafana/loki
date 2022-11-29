@@ -349,6 +349,7 @@ type ClusterProxy struct {
 type ObjectStorageTLSSpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
+	// If empty, it defaults to "service-ca.crt".
 	//
 	// +optional
 	// +kubebuilder:validation:optional
@@ -357,10 +358,10 @@ type ObjectStorageTLSSpec struct {
 	// CA is the name of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
 	//
-	// +optional
-	// +kubebuilder:validation:optional
+	// +required
+	// +kubebuilder:validation:required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
-	CA string `json:"caName,omitempty"`
+	CA string `json:"caName"`
 }
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
