@@ -23,8 +23,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-const keySeparator = ":"
-
 type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
 }
