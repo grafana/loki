@@ -123,6 +123,7 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 			continue
 		}
 
+		s.metrics.streamRate.Observe(float64(rate.rate))
 		maxRate = max(maxRate, rate.rate)
 	}
 
@@ -166,6 +167,7 @@ func (s *rateStore) aggregateByShard(streamRates map[string]*logproto.StreamRate
 
 	var maxShards int64
 	for _, v := range shardCount {
+		s.metrics.streamShardCount.Observe(float64(v))
 		maxShards = max(maxShards, int64(v))
 	}
 
