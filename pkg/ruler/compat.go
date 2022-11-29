@@ -87,7 +87,7 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyC
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point(v),
+				Point:  promql.Point{T: v.T, V: v.V},
 				Metric: labels.Labels{},
 			}}, nil
 		default:

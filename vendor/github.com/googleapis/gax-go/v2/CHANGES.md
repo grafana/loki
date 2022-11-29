@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/googleapis/gax-go/compare/v2.5.1...v2.6.0) (2022-10-13)
+
+
+### Features
+
+* **v2:** copy DetermineContentType functionality ([#230](https://github.com/googleapis/gax-go/issues/230)) ([2c52a70](https://github.com/googleapis/gax-go/commit/2c52a70bae965397f740ed27d46aabe89ff249b3))
+
 ## [2.5.1](https://github.com/googleapis/gax-go/compare/v2.5.0...v2.5.1) (2022-08-04)
 
 

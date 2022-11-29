@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	promwal "github.com/prometheus/prometheus/tsdb/wal"
+	promwal "github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/pkg/ruler/storage/wal"
