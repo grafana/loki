@@ -189,12 +189,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		var err error
 
 		if amOverrides != nil {
-			tenantAmCfg, err := getAlertmanagerTenantConfig(r.cfg.AlertManagerConfig, *amOverrides)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get alertmaanger config for tenant %s: %w", userID, err)
-			}
-
-			amCfg = tenantAmCfg
+			amCfg = getAlertmanagerTenantConfig(r.cfg.AlertManagerConfig, *amOverrides)
 		}
 
 		nCfg, err = buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
