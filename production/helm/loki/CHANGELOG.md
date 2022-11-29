@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.4.3
+
+- [ENHANCEMENT] Allow to change Loki `-target` argument
+
 ## 3.4.2
 
 - [BUGFIX] Fix read-only /tmp in single-binary mode

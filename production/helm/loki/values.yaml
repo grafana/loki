@@ -335,6 +335,8 @@ enterprise:
   tokengen:
     # -- Whether the job should be part of the deployment
     enabled: true
+    # -- Comma-separated list of Loki modules to load for tokengen
+    targetModule: "tokengen"
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -747,6 +749,8 @@ write:
   selectorLabels: {}
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the write
+  targetModule: "write"
   # -- Additional CLI args for the write
   extraArgs: []
   # -- Environment variables to add to the write pods
@@ -818,6 +822,8 @@ read:
   selectorLabels: {}
   # -- Labels for read service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the read
+  targetModule: "read"
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -885,6 +891,8 @@ singleBinary:
   podAnnotations: {}
   # -- Additional selecto labels for each `single binary` pod
   selectorLabels: {}
+  # -- Comma-separated list of Loki modules to load for the single binary
+  targetModule: "all"
   # -- Labels for single binary service
   extraArgs: []
   # -- Environment variables to add to the single binary pods

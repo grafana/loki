@@ -324,6 +324,7 @@ null
     "runAsNonRoot": true,
     "runAsUser": 10001
   },
+  "targetModule": "tokengen",
   "tolerations": []
 }
 </pre>
@@ -412,6 +413,15 @@ true
   "runAsNonRoot": true,
   "runAsUser": 10001
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for tokengen</td>
+			<td><pre lang="json">
+"tokengen"
 </pre>
 </td>
 		</tr>
@@ -2522,6 +2532,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td><pre lang="json">
+"read"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the read to shutdown before it is killed</td>
@@ -2788,6 +2807,15 @@ null
 			<td>Additional selecto labels for each `single binary` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the single binary</td>
+			<td><pre lang="json">
+"all"
 </pre>
 </td>
 		</tr>
@@ -3093,6 +3121,15 @@ null
 			<td>Labels for ingestor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the write</td>
+			<td><pre lang="json">
+"write"
 </pre>
 </td>
 		</tr>
