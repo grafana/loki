@@ -137,6 +137,9 @@ func (s *rateStore) cleanupExpired() (int64, int64, int64) {
 		for stream, rate := range tenant {
 			if time.Since(rate.createdAt) > s.rateKeepAlive {
 				delete(s.rates[tID], stream)
+				if len(s.rates[tID]) == 0 {
+					delete(s.rates, tID)
+				}
 				continue
 			}
 
