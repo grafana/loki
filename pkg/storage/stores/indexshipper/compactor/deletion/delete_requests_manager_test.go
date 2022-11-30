@@ -501,6 +501,8 @@ type mockDeleteRequestsStore struct {
 	getAllUser   string
 	getAllResult []DeleteRequest
 	getAllErr    error
+
+	genNumber string
 }
 
 func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
@@ -529,4 +531,8 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, use
 func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
 	m.getAllUser = userID
 	return m.getAllResult, m.getAllErr
+}
+
+func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+	return m.genNumber, m.getErr
 }
