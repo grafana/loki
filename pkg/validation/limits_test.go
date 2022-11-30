@@ -76,6 +76,9 @@ shard_streams:
   enabled: true
   desired_rate: 4mb
   logging_enabled: true
+blocked_queries:
+  - pattern: ".*foo.*"
+    regex: true
 `
 	inputJSON := `
  {
@@ -117,7 +120,13 @@ shard_streams:
     "desired_rate": "4mb",
     "enabled": true,
     "logging_enabled": true
-  }
+  },
+  "blocked_queries": [
+	{
+		"pattern": ".*foo.*",
+		"regex": true
+	}
+  ]
  }
 `
 

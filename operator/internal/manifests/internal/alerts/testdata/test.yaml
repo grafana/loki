@@ -55,10 +55,10 @@ tests:
         values: '0+100x20'
 
       - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="1"}'
+        values: '0x20'
+      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="30"}'
         values: '0+10x20'
-      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="5"}'
-        values: '0+50x20'
-      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="10"}'
+      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="60"}'
         values: '0+100x20'
       - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="+Inf"}'
         values: '0+100x20'
@@ -119,7 +119,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
-              message: "ingester my-route is experiencing 990.00s 99th percentile latency."
+              message: "ingester my-route is experiencing 9.90s 99th percentile latency."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
       - eval_time: 16m
         alertname: LokiTenantRateLimit

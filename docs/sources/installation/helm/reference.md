@@ -324,6 +324,7 @@ null
     "runAsNonRoot": true,
     "runAsUser": 10001
   },
+  "targetModule": "tokengen",
   "tolerations": []
 }
 </pre>
@@ -412,6 +413,15 @@ true
   "runAsNonRoot": true,
   "runAsUser": 10001
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for tokengen</td>
+			<td><pre lang="json">
+"tokengen"
 </pre>
 </td>
 		</tr>
@@ -1078,6 +1088,87 @@ false
 		</tr>
 		<tr>
 			<td>ingress.paths.read[6]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/prometheus/api/v1/alerts"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[0]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/api/prom/push"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[1]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api/v1/push"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[2]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/api/prom/tail"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[3]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api/v1/tail"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[4]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[5]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/api/prom/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[6]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/loki/api/v1/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[7]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/prometheus/api/v1/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.singleBinary[8]</td>
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
@@ -2360,6 +2451,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.size</td>
 			<td>string</td>
 			<td>Size of persistent disk</td>
@@ -2428,6 +2528,15 @@ null
 			<td>Labels for read service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td><pre lang="json">
+"read"
 </pre>
 </td>
 		</tr>
@@ -2630,6 +2739,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.size</td>
 			<td>string</td>
 			<td>Size of persistent disk</td>
@@ -2689,6 +2807,15 @@ null
 			<td>Additional selecto labels for each `single binary` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the single binary</td>
+			<td><pre lang="json">
+"all"
 </pre>
 </td>
 		</tr>
@@ -2917,6 +3044,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.size</td>
 			<td>string</td>
 			<td>Size of persistent disk</td>
@@ -2985,6 +3121,15 @@ null
 			<td>Labels for ingestor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the write</td>
+			<td><pre lang="json">
+"write"
 </pre>
 </td>
 		</tr>
