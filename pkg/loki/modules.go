@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -43,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -54,6 +53,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -677,45 +678,53 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 	var client generationnumber.CacheGenClient
 	if t.supportIndexDeleteRequest() {
-		compactorAddress, err := t.compactorAddress()
+		compactorAddress, isGRPCAddress, err := t.compactorAddress()
 		if err != nil {
 			return nil, err
 		}
 
-		httpClient, err := compactor.NewCompactorHTTPClient(t.Cfg.CompactorClient)
-		if err != nil {
-			return nil, err
-		}
-
-		client, err = generationnumber.NewGenNumberClient(compactorAddress, httpClient)
-		if err != nil {
-			return nil, err
+		reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "cache_gen", "client_type": t.Cfg.Target.String()}, prometheus.DefaultRegisterer)
+		if isGRPCAddress {
+			client, err = compactor_client.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			client, err = compactor_client.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
-	return services.NewIdleService(nil, nil), nil
+	return services.NewIdleService(nil, func(failureCase error) error {
+		t.cacheGenerationLoader.Stop()
+		return nil
+	}), nil
 }
 
 func (t *Loki) supportIndexDeleteRequest() bool {
 	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
-func (t *Loki) compactorAddress() (string, error) {
+// compactorAddress returns the configured address of the compactor.
+// It prefers grpc address over http. If the address is grpc then the bool would be true otherwise false
+func (t *Loki) compactorAddress() (string, bool, error) {
 	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
 		// In single binary or read modes, this module depends on Server
-		proto := "http"
-		if len(t.Cfg.Server.HTTPTLSConfig.TLSCertPath) > 0 && len(t.Cfg.Server.HTTPTLSConfig.TLSKeyPath) > 0 {
-			proto = "https"
-		}
-		return fmt.Sprintf("%s://%s:%d", proto, t.Cfg.Server.HTTPListenAddress, t.Cfg.Server.HTTPListenPort), nil
+		return fmt.Sprintf("%s:%d", t.Cfg.Server.GRPCListenAddress, t.Cfg.Server.GRPCListenPort), true, nil
 	}
 
-	if t.Cfg.Common.CompactorAddress == "" {
-		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	if t.Cfg.Common.CompactorAddress == "" && t.Cfg.Common.CompactorGRPCAddress == "" {
+		return "", false, errors.New("query filtering for deletes requires 'compactor_grpc_address' or 'compactor_address' to be configured")
 	}
 
-	return t.Cfg.Common.CompactorAddress, nil
+	if t.Cfg.Common.CompactorGRPCAddress != "" {
+		return t.Cfg.Common.CompactorGRPCAddress, true, nil
+	}
+
+	return t.Cfg.Common.CompactorAddress, false, nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -1012,6 +1021,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler))
 		t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler))
+		grpc.RegisterCompactorServer(t.Server.GRPC, t.compactor.DeleteRequestsGRPCHandler)
 	}
 
 	return t.compactor, nil
@@ -1128,17 +1138,26 @@ func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overri
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	compactorAddress, err := t.compactorAddress()
+	compactorAddress, isGRPCAddress, err := t.compactorAddress()
 	if err != nil {
 		return nil, err
 	}
 
-	httpClient, err := compactor.NewCompactorHTTPClient(t.Cfg.CompactorClient)
-	if err != nil {
-		return nil, err
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "delete_requests", "client_type": clientType}, prometheus.DefaultRegisterer)
+	var compactorClient deletion.CompactorClient
+	if isGRPCAddress {
+		compactorClient, err = compactor_client.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		compactorClient, err = compactor_client.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	client, err := deletion.NewDeleteRequestsClient(compactorAddress, httpClient, t.deleteClientMetrics, clientType)
+	client, err := deletion.NewDeleteRequestsClient(compactorClient, t.deleteClientMetrics, clientType)
 	if err != nil {
 		return nil, err
 	}
