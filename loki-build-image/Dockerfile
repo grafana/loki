@@ -51,7 +51,7 @@ FROM golang:1.19.2 as faillint
 RUN GO111MODULE=on go install github.com/fatih/faillint@v1.10.0
 
 FROM golang:1.19.2 as delve
-RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@v1.7.3
+RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.

@@ -68,6 +68,7 @@ func NewResultsCacheMetrics(registerer prometheus.Registerer) *ResultsCacheMetri
 
 type CacheGenNumberLoader interface {
 	GetResultsCacheGenNumber(tenantIDs []string) string
+	Stop()
 }
 
 // ResultsCacheConfig is the config for the results cache.
@@ -163,6 +164,7 @@ type resultsCache struct {
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
+	parallelismForReq    func(tenantIDs []string, r Request) int
 	retentionEnabled     bool
 	metrics              *ResultsCacheMetrics
 }
@@ -182,6 +184,7 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
+	parallelismForReq func(tenantIDs []string, r Request) int,
 	retentionEnabled bool,
 	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
@@ -201,6 +204,7 @@ func NewResultsCacheMiddleware(
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
+			parallelismForReq:    parallelismForReq,
 			retentionEnabled:     retentionEnabled,
 			metrics:              metrics,
 		}
@@ -402,7 +406,12 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(tenantIDs, r))
+
 	if err != nil {
 		return nil, nil, err
 	}

@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,10 +40,7 @@ type RecordingRuleReconciler struct {
 func (r *RecordingRuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	err := lokistack.AnnotateForDiscoveredRules(ctx, r.Client)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }

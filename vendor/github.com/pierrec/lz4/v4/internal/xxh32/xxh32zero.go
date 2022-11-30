@@ -1,5 +1,5 @@
 // Package xxh32 implements the very fast XXH hashing algorithm (32 bits version).
-// (https://github.com/Cyan4973/XXH/)
+// (ported from the reference implementation https://github.com/Cyan4973/xxHash/)
 package xxh32
 
 import (

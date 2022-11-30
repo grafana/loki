@@ -132,6 +132,60 @@ OPASpec
 </tbody>
 </table>
 
+## ClusterProxy { #loki-grafana-com-v1-ClusterProxy }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>ClusterProxy is the Proxy configuration when the cluster is behind a Proxy.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>httpProxy</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>HTTPProxy configures the HTTP_PROXY/http_proxy env variable.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>httpsProxy</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>HTTPSProxy configures the HTTPS_PROXY/https_proxy env variable.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>noProxy</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NoProxy configures the NO_PROXY/no_proxy env variable.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
@@ -604,7 +658,10 @@ PodStatusMap
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;FailedComponents&#34;</p></td>
+<tbody><tr><td><p>&#34;FailedCertificateRotation&#34;</p></td>
+<td><p>ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.</p>
+</td>
+</tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantSecret&#34;</p></td>
@@ -788,6 +845,20 @@ string
 </td>
 <td>
 <p>Storage class name defines the storage class for ingester/querier PVCs.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>proxy</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ClusterProxy">
+ClusterProxy
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Proxy defines the spec for the object proxy to configure cluster proxy information.</p>
 </td>
 </tr>
 <tr>
@@ -1633,7 +1704,7 @@ uint
 <code>streams</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-RetentionStreamSpec">
-[]*github.com/grafana/loki/operator/apis/loki/v1.RetentionStreamSpec
+[]*RetentionStreamSpec
 </a>
 </em>
 </td>
@@ -1646,6 +1717,9 @@ uint
 </table>
 
 ## RetentionStreamSpec { #loki-grafana-com-v1-RetentionStreamSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RetentionLimitSpec">RetentionLimitSpec</a>)
+</p>
 <div>
 <p>RetentionStreamSpec defines a log stream with separate retention time.</p>
 </div>
@@ -2328,6 +2402,9 @@ AlertingRuleStatus
 </table>
 
 ## AlertingRuleGroup { #loki-grafana-com-v1beta1-AlertingRuleGroup }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertingRuleSpec">AlertingRuleSpec</a>)
+</p>
 <div>
 <p>AlertingRuleGroup defines a group of Loki alerting rules.</p>
 </div>
@@ -2382,7 +2459,7 @@ int32
 <code>rules</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-AlertingRuleGroupSpec">
-[]*github.com/grafana/loki/operator/apis/loki/v1beta1.AlertingRuleGroupSpec
+[]*AlertingRuleGroupSpec
 </a>
 </em>
 </td>
@@ -2394,6 +2471,9 @@ int32
 </table>
 
 ## AlertingRuleGroupSpec { #loki-grafana-com-v1beta1-AlertingRuleGroupSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertingRuleGroup">AlertingRuleGroup</a>)
+</p>
 <div>
 <p>AlertingRuleGroupSpec defines the spec for a Loki alerting rule.</p>
 </div>
@@ -2503,7 +2583,7 @@ string
 <code>groups</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-AlertingRuleGroup">
-[]*github.com/grafana/loki/operator/apis/loki/v1beta1.AlertingRuleGroup
+[]*AlertingRuleGroup
 </a>
 </em>
 </td>
@@ -4150,6 +4230,9 @@ RecordingRuleStatus
 </table>
 
 ## RecordingRuleGroup { #loki-grafana-com-v1beta1-RecordingRuleGroup }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RecordingRuleSpec">RecordingRuleSpec</a>)
+</p>
 <div>
 <p>RecordingRuleGroup defines a group of Loki  recording rules.</p>
 </div>
@@ -4204,7 +4287,7 @@ int32
 <code>rules</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-RecordingRuleGroupSpec">
-[]*github.com/grafana/loki/operator/apis/loki/v1beta1.RecordingRuleGroupSpec
+[]*RecordingRuleGroupSpec
 </a>
 </em>
 </td>
@@ -4216,6 +4299,9 @@ int32
 </table>
 
 ## RecordingRuleGroupSpec { #loki-grafana-com-v1beta1-RecordingRuleGroupSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RecordingRuleGroup">RecordingRuleGroup</a>)
+</p>
 <div>
 <p>RecordingRuleGroupSpec defines the spec for a Loki recording rule.</p>
 </div>
@@ -4286,7 +4372,7 @@ string
 <code>groups</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-RecordingRuleGroup">
-[]*github.com/grafana/loki/operator/apis/loki/v1beta1.RecordingRuleGroup
+[]*RecordingRuleGroup
 </a>
 </em>
 </td>

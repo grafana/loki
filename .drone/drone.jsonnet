@@ -446,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.24.2',
+    local build_image_tag = '0.24.3',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -524,7 +524,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
         'cd -',
       ]) { depends_on: ['clone'], when: onPRs },
-      make('test', container=false) { depends_on: ['clone', 'clone-target-branch'] },
+      make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
       run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
         'old=../loki-target-branch/test_results.txt',
@@ -540,14 +540,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
       }) { depends_on: ['compare-coverage'], when: onPRs },
-      make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
-      make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
+      make('lint', container=false) { depends_on: ['check-generated-files'] },
+      make('check-mod', container=false) { depends_on: ['test', 'lint'] },
       {
         name: 'shellcheck',
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
-      make('loki', container=false) { depends_on: ['clone', 'check-generated-files'] },
+      make('loki', container=false) { depends_on: ['check-generated-files'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
@@ -565,6 +565,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki-mixin-check', container=false) {
         depends_on: ['clone'],
+        when: onPRs + onPath('production/loki-mixin/**'),
       },
     ],
   },
@@ -629,17 +630,17 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'prepare-updater-config',
         image: 'alpine',
         environment: {
-          RELEASE_BRANCH_REGEXP: '^release-([0-9\\.x]+)$',
+          MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)',
+          RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$',
         },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
-          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
-          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
-          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'export RELEASE_TAG=$(cat .tag)',
+          // if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")',
           'echo $RELEASE_NAME',
-          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE_NAME and RELEASE TAG
           'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,

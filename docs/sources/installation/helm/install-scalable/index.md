@@ -3,12 +3,9 @@ title: Install the Helm Chart
 menuTitle: Install Loki
 description: Install Loki in scalable mode.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/scalable
 weight: 100
-keywords:
-  - keyword
-  - key
-  - word
+keywords: []
 ---
 
 # Install the Helm Chart
@@ -62,7 +59,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
           insecure: false
       ```
 
-      Consult the [Reference](../reference) for configuring otehr storage providers.
+      Consult the [Reference](../reference) for configuring other storage providers.
 
     - Define the AWS S3 credentials in the file.
 

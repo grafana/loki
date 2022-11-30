@@ -4,25 +4,40 @@
 
 This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/fluent/fluent-bit-go) interface. It pushes logs to Loki using a GRPC connection.
 
-> syslog and systemd input plugin have not been tested yet, feedback appreciated.
+> **Warning**
+> `syslog` and `systemd` input plugins have not been tested yet. Feedback appreciated, file [an issue](https://github.com/grafana/loki/issues/new?template=bug_report.md) if you encounter any misbehaviors.
 
 ## Building
 
-Prerequisites:
+**Prerequisites**
 
-* Go 1.16+
+* Go 1.17+
 * gcc (for cgo)
 
-To build the output plugin library file (`out_grafana_loki.so`), you can use:
+To [build](https://docs.fluentbit.io/manual/development/golang-output-plugins#build-a-go-plugin) the output plugin library file `out_grafana_loki.so`, in the root directory of Loki source code, you can use:
 
 ```bash
-make fluent-bit-plugin
+$ make fluent-bit-plugin
 ```
 
-You can also build the docker image with the plugin pre-installed using:
+You can also build the Docker image with the plugin pre-installed using:
 
 ```bash
-make fluent-bit-image
+$ make fluent-bit-image
 ```
 
-Finally if you want to test you can use `make fluent-bit-test` to send some logs to your local Loki instance.
+## Running
+
+```bash
+$ fluent-bit -e out_grafana_loki.so -c /etc/fluent-bit.conf
+```
+
+**Testing**
+
+Issue the following command to send `/var/log` logs to your `http://localhost:3100/loki/api/` Loki instance for testing:
+
+```bash
+$ make fluent-bit-test
+```
+
+You can easily override the address by setting  the `$LOKI_URL` environment variable.

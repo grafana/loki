@@ -111,14 +111,14 @@ func readTimestamp(iter *jsoniter.Iterator) (time.Time, bool) {
 	return time.Unix(0, t), true
 }
 
-type entryEncoder struct{}
+type EntryEncoder struct{}
 
-func (entryEncoder) IsEmpty(ptr unsafe.Pointer) bool {
+func (EntryEncoder) IsEmpty(ptr unsafe.Pointer) bool {
 	// we don't omit-empty with log entries.
 	return false
 }
 
-func (entryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	e := *((*Entry)(ptr))
 	stream.WriteArrayStart()
 	stream.WriteRaw(`"`)
@@ -138,7 +138,7 @@ func (e *jsonExtension) CreateDecoder(typ reflect2.Type) jsoniter.ValDecoder {
 
 func (e *jsonExtension) CreateEncoder(typ reflect2.Type) jsoniter.ValEncoder {
 	if typ == reflect2.TypeOf(Entry{}) {
-		return entryEncoder{}
+		return EntryEncoder{}
 	}
 	return nil
 }

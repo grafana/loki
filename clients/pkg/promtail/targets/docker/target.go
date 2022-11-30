@@ -251,9 +251,13 @@ func (t *Target) Labels() model.LabelSet {
 
 // Details returns target-specific details.
 func (t *Target) Details() interface{} {
+	var errMsg string
+	if t.err != nil {
+		errMsg = t.err.Error()
+	}
 	return map[string]string{
 		"id":       t.containerName,
-		"error":    t.err.Error(),
+		"error":    errMsg,
 		"position": t.positions.GetString(positions.CursorKey(t.containerName)),
 		"running":  strconv.FormatBool(t.running.Load()),
 	}

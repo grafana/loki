@@ -61,7 +61,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=read
+            - -target={{ .Values.read.targetModule }}
             {{- with .Values.read.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -150,4 +150,8 @@ spec:
         resources:
           requests:
             storage: {{ .Values.read.persistence.size | quote }}
+        {{- with .Values.read.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
 {{- end }}
