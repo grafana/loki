@@ -123,13 +123,7 @@ loki:
       configs:
         - from: 2022-01-11
           store: boltdb-shipper
-          {{- if eq .Values.loki.storage.type "s3" }}
-          object_store: s3
-          {{- else if eq .Values.loki.storage.type "gcs" }}
-          object_store: gcs
-          {{- else }}
-          object_store: filesystem
-          {{- end }}
+          object_store: {{ .Values.loki.storage.type }}
           schema: v12
           index:
             prefix: loki_index_
@@ -219,6 +213,12 @@ loki:
       chunkBufferSize: 0
       requestTimeout: "0s"
       enableHttp2: true
+    azure:
+      accountName: null
+      accountKey: null
+      useManagedIdentity: false
+      userAssignedId: null
+      requestTimeout: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
@@ -301,7 +301,7 @@ enterprise:
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
+    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
     admin_client:
       storage:
         s3:
@@ -539,6 +539,8 @@ serviceAccount:
   imagePullSecrets: []
   # -- Annotations for the service account
   annotations: {}
+  # -- Labels for the service account
+  labels: {}
   # -- Set this toggle to false to opt out of automounting API credentials for the service account
   automountServiceAccountToken: true
 

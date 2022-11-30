@@ -204,7 +204,23 @@ gcs:
   bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   chunk_buffer_size: {{ .chunkBufferSize }}
   request_timeout: {{ .requestTimeout }}
-  enable_http2: {{ .enableHttp2}}
+  enable_http2: {{ .enableHttp2 }}
+{{- end -}}
+{{- else if eq .Values.loki.storage.type "azure" -}}
+{{- with .Values.loki.storage.azure }}
+azure:
+  account_name: {{ .accountName }}
+  {{- with .accountKey }}
+  account_key: {{ . }}
+  {{- end }}
+  container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+  use_managed_identity: {{ .useManagedIdentity }}
+  {{- with .userAssignedId }}
+  user_assigned_id: {{ . }}
+  {{- end }}
+  {{- with .requestTimeout }}
+  request_timeout: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
@@ -253,7 +269,23 @@ gcs:
   bucket_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   chunk_buffer_size: {{ .chunkBufferSize }}
   request_timeout: {{ .requestTimeout }}
-  enable_http2: {{ .enableHttp2}}
+  enable_http2: {{ .enableHttp2 }}
+{{- end -}}
+{{- else if eq .Values.loki.storage.type "azure" -}}
+{{- with .Values.loki.storage.azure }}
+azure:
+  account_name: {{ .accountName }}
+  {{- with .accountKey }}
+  account_key: {{ . }}
+  {{- end }}
+  container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
+  use_managed_identity: {{ .useManagedIdentity }}
+  {{- with .userAssignedId }}
+  user_assigned_id: {{ . }}
+  {{- end }}
+  {{- with .requestTimeout }}
+  request_timeout: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
