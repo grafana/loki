@@ -3,7 +3,6 @@ package deletion
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,8 +13,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/dskit/crypto/tls"
-
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -23,20 +20,6 @@ const (
 	orgHeaderKey  = "X-Scope-OrgID"
 	getDeletePath = "/loki/api/v1/delete"
 )
-
-// Config for compactor's delete client
-type Config struct {
-	TLSEnabled bool             `yaml:"tls_enabled"`
-	TLS        tls.ClientConfig `yaml:",inline"`
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	prefix := "boltdb.shipper.compactor.delete_client"
-	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", false,
-		"Enable TLS in the HTTP client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to HTTP server will be used.")
-	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
-}
 
 type DeleteRequestsClient interface {
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
@@ -67,25 +50,6 @@ func WithRequestClientCacheDuration(d time.Duration) DeleteRequestsStoreOption {
 	return func(c *deleteRequestsClient) {
 		c.cacheDuration = d
 	}
-}
-
-// NewDeleteHTTPClient return a pointer to a http client instance based on the
-// delete client tls settings.
-func NewDeleteHTTPClient(cfg Config) (*http.Client, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConns = 250
-	transport.MaxIdleConnsPerHost = 250
-
-	if cfg.TLSEnabled {
-		tlsCfg, err := cfg.TLS.GetTLSConfig()
-		if err != nil {
-			return nil, err
-		}
-
-		transport.TLSClientConfig = tlsCfg
-	}
-
-	return &http.Client{Timeout: 5 * time.Second, Transport: transport}, nil
 }
 
 func NewDeleteRequestsClient(addr string, c httpClient, deleteClientMetrics *DeleteRequestClientMetrics, clientType string, opts ...DeleteRequestsStoreOption) (DeleteRequestsClient, error) {

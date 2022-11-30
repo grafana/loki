@@ -66,6 +66,7 @@ Check the history of the branch FIXME.
 * [6952](https://github.com/grafana/loki/pull/6952) **DylanGuedes**: Experimental: Introduce a new feature named stream sharding.
 
 ##### Fixes
+* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
 * [7426](https://github.com/grafana/loki/pull/7426) **periklis**: Add missing compactor delete client tls client config
 * [7238](https://github.com/grafana/loki/pull/7328) **periklis**: Fix internal server bootstrap for query frontend
 * [7288](https://github.com/grafana/loki/pull/7288) **ssncferreira**: Fix query mapping in AST mapper `rangemapper` to support the new `VectorExpr` expression.
