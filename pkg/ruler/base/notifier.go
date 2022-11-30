@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -76,23 +75,21 @@ func (rn *rulerNotifier) stop() {
 	rn.wg.Wait()
 }
 
-func getAlertmanagerTenantConfig(amConfig ruler_config.AlertManagerConfig, amOverrides ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
-	amConfig = amOverrides
-
+func applyAlertmanagerDefaults(config ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
 	// Use default value if the override values are zero
-	if amConfig.AlertmanagerRefreshInterval == 0 {
-		amConfig.AlertmanagerRefreshInterval = 1 * time.Minute
+	if config.AlertmanagerRefreshInterval == 0 {
+		config.AlertmanagerRefreshInterval = AlertmanagerRefreshIntervalDefault
 	}
 
-	if amConfig.NotificationQueueCapacity <= 0 {
-		amConfig.NotificationQueueCapacity = 10000
+	if config.NotificationQueueCapacity <= 0 {
+		config.NotificationQueueCapacity = NotificationQueueCapacityDefault
 	}
 
-	if amConfig.NotificationTimeout == 0 {
-		amConfig.NotificationTimeout = 10 * time.Second
+	if config.NotificationTimeout == 0 {
+		config.NotificationTimeout = NotificationTimeoutDefault
 	}
 
-	return amConfig
+	return config
 }
 
 // Builds a Prometheus config.Config from a ruler.Config with just the required
