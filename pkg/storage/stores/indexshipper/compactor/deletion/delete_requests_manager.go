@@ -23,7 +23,7 @@ const (
 )
 
 type userDeleteRequests struct {
-	requests []DeleteRequest
+	requests []*DeleteRequest
 	// requestsInterval holds the earliest start time and latest end time considering all the delete requests
 	requestsInterval model.Interval
 }
@@ -128,7 +128,8 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		return err
 	}
 
-	for i, deleteRequest := range deleteRequests {
+	for i := range deleteRequests {
+		deleteRequest := deleteRequests[i]
 		if i >= d.batchSize {
 			logBatchTruncation(i, len(deleteRequests))
 			break
@@ -143,7 +144,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		deleteRequest.Metrics = d.metrics
 
 		ur := d.requestsForUser(deleteRequest)
-		ur.requests = append(ur.requests, deleteRequest)
+		ur.requests = append(ur.requests, &deleteRequest)
 		if deleteRequest.StartTime < ur.requestsInterval.Start {
 			ur.requestsInterval.Start = deleteRequest.StartTime
 		}
@@ -243,6 +244,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
+	isExpired := false
 	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
 	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
 		Interval: model.Interval{
@@ -254,6 +256,14 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
 		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
 		for _, ivf := range d.chunkIntervalsToRetain {
+			if ivf.Filter != nil {
+				// This can happen when there are multiple delete requests touching the same chunk.
+				// It likely can have different line filters or no line filters at all.
+				// To keep things simple, let us not consider chunks which are already being considered for deletion with line filter.
+				// ToDo(Sandeep): See if we can efficiently consider multiple delete requests touching same chunk.
+				rebuiltIntervals = append(rebuiltIntervals, ivf)
+				continue
+			}
 			entry := ref
 			entry.From = ivf.Interval.Start
 			entry.Through = ivf.Interval.End
@@ -261,12 +271,13 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			if !isDeleted {
 				rebuiltIntervals = append(rebuiltIntervals, ivf)
 			} else {
+				isExpired = true
 				rebuiltIntervals = append(rebuiltIntervals, newIntervalsToRetain...)
 			}
 		}
 
 		d.chunkIntervalsToRetain = rebuiltIntervals
-		if len(d.chunkIntervalsToRetain) == 0 {
+		if isExpired && len(d.chunkIntervalsToRetain) == 0 {
 			level.Info(util_log.Logger).Log(
 				"msg", "no chunks to retain: the whole chunk is deleted",
 				"delete_request_id", deleteRequest.RequestID,
@@ -279,7 +290,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		}
 	}
 
-	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Interval.Start == ref.From && d.chunkIntervalsToRetain[0].Interval.End == ref.Through {
+	if !isExpired {
 		return false, nil
 	}
 
@@ -322,7 +333,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest, StatusProcessed); err != nil {
+			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), *deleteRequest, StatusProcessed); err != nil {
 				level.Error(util_log.Logger).Log(
 					"msg", "failed to mark delete request for user as processed",
 					"delete_request_id", deleteRequest.RequestID,

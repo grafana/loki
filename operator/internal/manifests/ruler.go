@@ -8,8 +8,6 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -44,11 +42,15 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{}
 	if opts.Stack.Tenants != nil {
-		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode, opts.Name); err != nil {
+		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode); err != nil {
 			return nil, err
 		}
 
 		objs = configureRulerObjsForMode(opts)
+	}
+
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
 	}
 
 	return append(objs,
@@ -148,13 +150,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
-	}
-
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
@@ -295,59 +290,15 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 
 func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameRulerHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
-	secretContainerSpec := corev1.Container{
-		Args: []string{
-			// Enable HTTP over TLS for compactor delete client
-			"-boltdb.shipper.compactor.client.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-			fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(opts.Name), opts.Namespace)),
-			// Enable GRPC over TLS for boltb-shipper index-gateway client
-			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-key-path=%s", lokiServerGRPCTLSKey()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
-			// Enable GRPC over TLS for ingester client
-			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
-			// Enable GRPC over TLS for ruler client
-			"-ruler.client.tls-enabled=true",
-			fmt.Sprintf("-ruler.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ruler.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ruler.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-			fmt.Sprintf("-ruler.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(opts.Name), opts.Namespace)),
-		},
-	}
-
-	if err := mergo.Merge(&sts.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
 	serviceName := serviceNameRulerGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 
-func configureRulerStatefulSetForMode(
-	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
-	stackName string,
-) error {
+func configureRulerStatefulSetForMode(ss *appsv1.StatefulSet, mode lokiv1.ModeType) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure

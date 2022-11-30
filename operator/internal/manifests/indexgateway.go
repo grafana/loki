@@ -43,6 +43,10 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -113,15 +117,6 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
-	}
-
-	podSpec = addProxyEnvVar(opts.Stack.Proxy, podSpec)
-
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
@@ -240,7 +235,7 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 
 func configureIndexGatewayHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {

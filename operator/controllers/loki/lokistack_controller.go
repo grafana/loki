@@ -3,19 +3,21 @@ package controllers
 import (
 	"context"
 	"errors"
-	"time"
-
-	"github.com/google/go-cmp/cmp"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/status"
-	routev1 "github.com/openshift/api/route/v1"
-
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -50,11 +52,21 @@ var (
 	updateOrDeleteOnlyPred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			switch e.ObjectOld.(type) {
-			case *appsv1.Deployment:
-			case *appsv1.StatefulSet:
+			case *openshiftconfigv1.Proxy:
+				// Update on any change of the RevisionVersion to capture
+				// status updates for the proxy object. On OpenShift the
+				// proxy status indicates that values for httpProxy/httpsProxy/noProxy
+				// are valid after considering the readiness probes to access
+				// the public net through these proxies.
 				return true
+			default:
+				// Update only if generation change, filter out anything else.
+				// We only need to check generation change here, because it is only
+				// updated on spec changes. On the other hand RevisionVersion
+				// changes also on status changes. We want to omit reconciliation
+				// for status updates for now.
+				return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
 			}
-			return false
 		},
 		CreateFunc: func(e event.CreateEvent) bool { return false },
 		DeleteFunc: func(e event.DeleteEvent) bool {
@@ -85,7 +97,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers,verbs=patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxy,verbs=get;list;watch
+// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -99,10 +111,7 @@ type LokiStackReconciler struct {
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ok, err := state.IsManaged(ctx, req, r.Client)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 	if !ok {
 		r.Log.Info("Skipping reconciliation for unmanaged lokistack resource", "name", req.NamespacedName)
@@ -124,10 +133,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	err = status.Refresh(ctx, r.Client, req)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -138,23 +144,16 @@ func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request,
 	if errors.As(err, &degraded) {
 		err = status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
 		if err != nil {
-			return ctrl.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second,
-			}, err
+			return ctrl.Result{}, err
 		}
 
 		return ctrl.Result{
-			Requeue:      degraded.Requeue,
-			RequeueAfter: time.Second,
+			Requeue: degraded.Requeue,
 		}, nil
 	}
 
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -191,12 +190,36 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	}
 
 	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
-		bld = bld.Owns(&openshiftconfigv1.APIServer{}, updateOrDeleteOnlyPred)
+		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	if r.FeatureGates.OpenShift.ClusterProxy {
-		bld = bld.Owns(&openshiftconfigv1.Proxy{}, updateOrDeleteOnlyPred)
+		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	return bld.Complete(r)
+}
+
+func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler {
+	ctx := context.TODO()
+	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.Client.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error getting LokiStack resources in event handler")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: stack.Namespace,
+					Name:      stack.Name,
+				},
+			})
+		}
+
+		r.Log.Info("Enqueued requests for all LokiStacks because of global resource change", "count", len(requests), "kind", obj.GetObjectKind())
+		return requests
+	})
 }

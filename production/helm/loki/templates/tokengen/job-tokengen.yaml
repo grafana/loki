@@ -46,7 +46,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=tokengen
+            - -target={{ .Values.enterprise.tokengen.targetModule }}
             - -tokengen.token-file=/shared/admin-token
             {{- with .Values.enterprise.tokengen.extraArgs }}
             {{- toYaml . | nindent 12 }}

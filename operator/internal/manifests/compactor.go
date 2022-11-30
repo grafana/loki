@@ -43,6 +43,10 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewCompactorGRPCService(opts),
@@ -113,15 +117,6 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 			},
 		},
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
-	}
-
-	podSpec = addProxyEnvVar(opts.Stack.Proxy, podSpec)
-
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Compactor != nil {
@@ -239,7 +234,7 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 
 func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameCompactorHTTP(opts.Name)
-	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName, opts.TLSProfile.MinTLSVersion, opts.TLSCipherSuites())
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {

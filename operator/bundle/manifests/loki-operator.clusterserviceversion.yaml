@@ -428,12 +428,6 @@ spec:
       - description: NoProxy configures the NO_PROXY/no_proxy env variable.
         displayName: NoProxy
         path: proxy.noProxy
-      - description: ReadVarsFromEnv defines a flag to use Operator-lib provides a
-          helper function
-        displayName: ReadVarsFromEnv
-        path: proxy.readVarsFromEnv
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: ReplicationFactor defines the policy for log stream replication.
         displayName: Replication Factor
         path: replicationFactor
@@ -492,11 +486,10 @@ spec:
         displayName: TLS Config
         path: storage.tls
       - description: Key is the data key of a ConfigMap containing a CA certificate.
-          It needs to be in the same namespace as the LokiStack custom resource.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
         displayName: CA ConfigMap Key
         path: storage.tls.caKey
-        x-descriptors:
-        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: CA is the name of a ConfigMap containing a CA certificate. It
           needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
@@ -1048,7 +1041,7 @@ spec:
           resources:
           - apiservers
           - dnses
-          - proxy
+          - proxies
           verbs:
           - get
           - list
