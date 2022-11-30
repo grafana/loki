@@ -713,7 +713,7 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 func (t *Loki) compactorAddress() (string, bool, error) {
 	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
 		// In single binary or read modes, this module depends on Server
-		return fmt.Sprintf("%s:%d", t.Cfg.Server.HTTPListenAddress, t.Cfg.Server.GRPCListenPort), true, nil
+		return fmt.Sprintf("%s:%d", t.Cfg.Server.GRPCListenAddress, t.Cfg.Server.GRPCListenPort), true, nil
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" && t.Cfg.Common.CompactorGRPCAddress == "" {
