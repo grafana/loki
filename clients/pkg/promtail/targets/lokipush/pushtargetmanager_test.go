@@ -68,7 +68,7 @@ func Test_validateJobName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:     false,
 			expectedJob: "job_1_2_3_4_job",
 		},
 	}
