@@ -39,6 +39,7 @@ func NewGenNumberLoader(g CacheGenClient, registerer prometheus.Registerer) *Gen
 		numberGetter: g,
 		numbers:      make(map[string]string),
 		metrics:      newGenLoaderMetrics(registerer),
+		quit:         make(chan struct{}),
 	}
 	go l.loop()
 
