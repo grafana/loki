@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.5.0
+
+- [FEATURE] Add support for azure blob storage
+
 ## 3.4.3
 
 - [ENHANCEMENT] Allow to change Loki `-target` argument

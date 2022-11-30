@@ -70,7 +70,7 @@ null
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n"
+"{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n"
 </pre>
 </td>
 		</tr>
@@ -84,9 +84,18 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.externalConfigName</td>
+			<td>string</td>
+			<td>Name of the external config secret to use</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.externalLicenseName</td>
 			<td>string</td>
-			<td>Name of external licesne secret to use</td>
+			<td>Name of external license secret to use</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -157,6 +166,7 @@ null
   "annotations": {},
   "enabled": true,
   "env": [],
+  "extraVolumeMounts": [],
   "image": {
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
@@ -199,6 +209,15 @@ true
 			<td>enterprise.provisioner.env</td>
 			<td>list</td>
 			<td>Additional Kubernetes environment</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the provisioner pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -318,6 +337,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "labels": {},
+  "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
     "runAsGroup": 10001,
@@ -399,6 +419,15 @@ true
 			<td>Additional labels for the `tokengen` Job</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for tokengen Pods</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -711,6 +740,15 @@ false
     ]
   }
 ]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.ingress.ingressClassName</td>
+			<td>string</td>
+			<td>Ingress Class Name. MAY be required for Kubernetes versions >= 1.18</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -1033,6 +1071,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>ingress.ingressClassName</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingress.paths.read[0]</td>
 			<td>string</td>
 			<td></td>
@@ -1191,6 +1238,15 @@ false
 			<td></td>
 			<td><pre lang="json">
 "/loki/api/v1/push"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.tls</td>
+			<td>list</td>
+			<td></td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -1501,6 +1557,13 @@ null
 			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
 			<td><pre lang="json">
 {
+  "azure": {
+    "accountKey": null,
+    "accountName": null,
+    "requestTimeout": null,
+    "useManagedIdentity": false,
+    "userAssignedId": null
+  },
   "bucketNames": {
     "admin": "admin",
     "chunks": "chunks",
@@ -1636,42 +1699,6 @@ false
   "rootPassword": "supersecret",
   "rootUser": "enterprise-logs"
 }
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the alerts PrometheusRule resource</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.enabled</td>
-			<td>bool</td>
-			<td>If enabled, create PrometheusRule resource with Loki alerting rules</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.labels</td>
-			<td>object</td>
-			<td>Additional labels for the alerts PrometheusRule resource</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace to create alerting rules PrometheusRule resource in</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -2591,6 +2618,15 @@ true
 			<td>Image pull secrets for the service account</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>serviceAccount.labels</td>
+			<td>object</td>
+			<td>Labels for the service account</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
