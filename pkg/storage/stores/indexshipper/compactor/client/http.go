@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/util/log"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
+
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -44,7 +45,7 @@ type compactorHTTPClient struct {
 
 // NewHTTPClient creates a client which talks to compactor over HTTP.
 // It uses provided TLS config which creating HTTP client.
-func NewHTTPClient(addr string, cfg HTTPConfig) (*compactorHTTPClient, error) {
+func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)

@@ -3,16 +3,17 @@ package client
 import (
 	"context"
 	"flag"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
-	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/grpcclient"
-	deletion_grpc "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+
+	deletion_grpc "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 )
 
 type GRPCConfig struct {
