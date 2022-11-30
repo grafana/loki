@@ -181,7 +181,7 @@ querier:
   tail_max_duration: 1h
   max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
 {{- if .Gates.HTTPEncryption }}
-compactor_client:
+delete_client:
   tls_enabled: true
   tls_cert_path: {{ .TLS.Paths.HTTP.Certificate }}
   tls_key_path: {{ .TLS.Paths.HTTP.Key }}

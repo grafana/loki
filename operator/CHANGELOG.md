@@ -1,5 +1,6 @@
 ## Main
 
+- [7815](https://github.com/grafana/loki/pull/7815) **periklis**: Apply delete client changes for compat with release-2.7.x
 - [7809](https://github.com/grafana/loki/pull/7809) **xperimental**: Fix histogram-based alerting rules
 - [7808](https://github.com/grafana/loki/pull/7808) **xperimental**: Replace fifocache usage by embedded_cache
 - [7753](https://github.com/grafana/loki/pull/7753) **periklis**: Check for mandatory CA configmap name in ObjectStorageTLS spec
