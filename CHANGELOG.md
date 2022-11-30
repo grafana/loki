@@ -15,6 +15,7 @@
 ##### Enhancements
 
 ##### Fixes
+* [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
 
 ##### Changes
 
