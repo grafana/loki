@@ -102,13 +102,8 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	}
 
 	streamRates := s.getRates(ctx, clients)
-	rates := s.aggregateByShard(streamRates)
-
-	s.rateLock.Lock()
-	defer s.rateLock.Unlock()
-
-	s.updateRates(rates)
-	maxShards, maxRate, totalStreams := s.cleanupExpired()
+	updated := s.aggregateByShard(streamRates)
+	maxShards, maxRate, totalStreams := s.updateRates(updated)
 
 	s.metrics.maxStreamRate.Set(float64(maxRate))
 	s.metrics.maxStreamShardCount.Set(float64(maxShards))
@@ -117,7 +112,10 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	return nil
 }
 
-func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) {
+func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) (int64, int64, int64) {
+	s.rateLock.Lock()
+	defer s.rateLock.Unlock()
+
 	for tenantID, tenant := range updated {
 		if _, ok := s.rates[tenantID]; !ok {
 			s.rates[tenantID] = map[uint64]expiringRate{}
@@ -127,6 +125,8 @@ func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) {
 			s.rates[tenantID][stream] = rate
 		}
 	}
+
+	return s.cleanupExpired()
 }
 
 func (s *rateStore) cleanupExpired() (int64, int64, int64) {
@@ -233,6 +233,8 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 		}
 
 		for _, rate := range resp.StreamRates {
+			maxRate = max(maxRate, rate.Rate)
+
 			if _, ok := streamRates[rate.Tenant]; !ok {
 				streamRates[rate.Tenant] = map[uint64]*logproto.StreamRate{}
 			}
@@ -245,7 +247,6 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 			}
 
 			streamRates[rate.Tenant][rate.StreamHash] = rate
-			maxRate = max(maxRate, rate.Rate)
 		}
 	}
 
@@ -276,10 +277,8 @@ func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
-	t, ok := s.rates[tenant]
-	if !ok {
-		return 0
+	if t, ok := s.rates[tenant]; ok {
+		return t[streamHash].rate
 	}
-
-	return t[streamHash].rate
+	return 0
 }
