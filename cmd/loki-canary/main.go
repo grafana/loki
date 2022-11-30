@@ -157,6 +157,7 @@ func main() {
 				config.DefaultHTTPClientConfig,
 				*lName, *lVal,
 				*sName, *sValue,
+				*useTLS,
 				tlsConfig,
 				*caFile,
 				*user, *pass,
