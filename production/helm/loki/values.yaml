@@ -290,8 +290,11 @@ enterprise:
   # -- Set to true when providing an external license
   useExternalLicense: false
 
-  # -- Name of external licesne secret to use
+  # -- Name of external license secret to use
   externalLicenseName: null
+
+  # -- Name of the external config secret to use
+  externalConfigName: ""
 
   # -- If enabled, the correct admin_client storage will be configured. If disabled while running enterprise,
   # make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.
@@ -359,6 +362,8 @@ enterprise:
       fsGroup: 10001
     # -- Environment variables from secrets or configmaps to add to the tokengen pods
     extraEnvFrom: []
+    # -- The name of the PriorityClass for tokengen Pods
+    priorityClassName: ""
 
   # -- Configuration for `provisioner` target
   provisioner:
@@ -393,6 +398,8 @@ enterprise:
       tag: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
+    # -- Volume mounts to add to the provisioner pods
+    extraVolumeMounts: []
 
   nginxConfig:
     file: |
@@ -608,17 +615,6 @@ monitoring:
     #       expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
     #     - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
     #       expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-
-  # Alerting rules for monitoring Loki
-  alerts:
-    # -- If enabled, create PrometheusRule resource with Loki alerting rules
-    enabled: true
-    # -- Alternative namespace to create alerting rules PrometheusRule resource in
-    namespace: null
-    # -- Additional annotations for the alerts PrometheusRule resource
-    annotations: {}
-    # -- Additional labels for the alerts PrometheusRule resource
-    labels: {}
 
   # ServiceMonitor configuration
   serviceMonitor:
@@ -939,7 +935,7 @@ singleBinary:
 # You'll need to supply authn configuration for your ingress controller.
 ingress:
   enabled: false
-  #  ingressClassName: nginx
+  ingressClassName: ""
   annotations: {}
   #    nginx.ingress.kubernetes.io/auth-type: basic
   #    nginx.ingress.kubernetes.io/auth-secret: loki-distributed-basic-auth
@@ -971,7 +967,7 @@ ingress:
 
   hosts:
     - loki.example.com
-#  tls:
+  tls: []
 #    - hosts:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
@@ -1073,7 +1069,7 @@ gateway:
     # -- Specifies whether an ingress for the gateway should be created
     enabled: false
     # -- Ingress Class Name. MAY be required for Kubernetes versions >= 1.18
-    # ingressClassName: nginx
+    ingressClassName: ""
     # -- Annotations for the gateway ingress
     annotations: {}
     # -- Hosts configuration for the gateway ingress

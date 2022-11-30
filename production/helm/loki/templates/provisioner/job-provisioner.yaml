@@ -71,8 +71,8 @@ spec:
                 -token=canary
               {{- end }}
           volumeMounts:
-            {{- if .Values.enterprise.provisioner.extraVolumeMounts }}
-              {{ toYaml .Values.enterprise.provisioner.extraVolumeMounts | nindent 12 }}
+            {{- with .Values.enterprise.provisioner.extraVolumeMounts }}
+              {{ toYaml . | nindent 12 }}
             {{- end }}
             - name: bootstrap
               mountPath: /bootstrap
@@ -102,8 +102,8 @@ spec:
                 --from-literal=password="$(cat /bootstrap/token-canary)"
               {{- end }}
           volumeMounts:
-            {{- if .Values.enterprise.provisioner.extraVolumeMounts }}
-              {{ toYaml .Values.enterprise.provisioner.extraVolumeMounts | nindent 12 }}
+            {{- with .Values.enterprise.provisioner.extraVolumeMounts }}
+              {{ toYaml . | nindent 12 }}
             {{- end }}
             - name: bootstrap
               mountPath: /bootstrap

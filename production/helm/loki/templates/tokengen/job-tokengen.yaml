@@ -31,8 +31,8 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if .Values.enterprise.tokengen.priorityClassName }}
-      priorityClassName: {{ .Values.enterprise.tokengen.priorityClassName }}
+      {{- with .Values.enterprise.tokengen.priorityClassName }}
+      priorityClassName: {{ . }}
       {{- end }}
       securityContext:
         {{- toYaml .Values.enterprise.tokengen.securityContext | nindent 8 }}

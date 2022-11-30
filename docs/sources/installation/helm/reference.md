@@ -84,9 +84,18 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.externalConfigName</td>
+			<td>string</td>
+			<td>Name of the external config secret to use</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.externalLicenseName</td>
 			<td>string</td>
-			<td>Name of external licesne secret to use</td>
+			<td>Name of external license secret to use</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -157,6 +166,7 @@ null
   "annotations": {},
   "enabled": true,
   "env": [],
+  "extraVolumeMounts": [],
   "image": {
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
@@ -199,6 +209,15 @@ true
 			<td>enterprise.provisioner.env</td>
 			<td>list</td>
 			<td>Additional Kubernetes environment</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the provisioner pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -318,6 +337,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "labels": {},
+  "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
     "runAsGroup": 10001,
@@ -399,6 +419,15 @@ true
 			<td>Additional labels for the `tokengen` Job</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for tokengen Pods</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -711,6 +740,15 @@ false
     ]
   }
 ]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.ingress.ingressClassName</td>
+			<td>string</td>
+			<td>Ingress Class Name. MAY be required for Kubernetes versions >= 1.18</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -1033,6 +1071,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>ingress.ingressClassName</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingress.paths.read[0]</td>
 			<td>string</td>
 			<td></td>
@@ -1191,6 +1238,15 @@ false
 			<td></td>
 			<td><pre lang="json">
 "/loki/api/v1/push"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.tls</td>
+			<td>list</td>
+			<td></td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -1643,42 +1699,6 @@ false
   "rootPassword": "supersecret",
   "rootUser": "enterprise-logs"
 }
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the alerts PrometheusRule resource</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.enabled</td>
-			<td>bool</td>
-			<td>If enabled, create PrometheusRule resource with Loki alerting rules</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.labels</td>
-			<td>object</td>
-			<td>Additional labels for the alerts PrometheusRule resource</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.alerts.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace to create alerting rules PrometheusRule resource in</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
