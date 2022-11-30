@@ -2440,7 +2440,7 @@ querier:
   max_concurrent: 2
   query_ingesters_within: 3h
   tail_max_duration: 1h
-compactor_client:
+delete_client:
   tls_enabled: true
   tls_cert_path: /var/run/tls/http/tls.crt
   tls_key_path: /var/run/tls/http/tls.key
@@ -2631,7 +2631,6 @@ overrides:
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
-	t.Log(string(cfg))
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
 }
