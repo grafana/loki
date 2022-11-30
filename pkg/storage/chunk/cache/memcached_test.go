@@ -35,7 +35,7 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 
 	wg.Add(1)
 
-	// This goroutine is going to do some real "work" (writing from `c.inputCh`). We then do `m.Stop()` closing `c.inputCh`. We assert there shouldn't be any panics.
+	// This goroutine is going to do some real "work" (writing to `c.inputCh`). We then do `m.Stop()` closing `c.inputCh`. We assert there shouldn't be any panics.
 	go func() {
 		defer wg.Done()
 		<-stopped
