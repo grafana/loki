@@ -340,6 +340,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
 		AllEnabled:            t.Cfg.isModuleEnabled(All),
 		ReadEnabled:           t.Cfg.isModuleEnabled(Read),
+		GrpcListenAddress:     t.Cfg.Server.GRPCListenAddress,
 		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
 		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
 		QuerierWorkerConfig:   &t.Cfg.Worker,
@@ -712,7 +713,7 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 func (t *Loki) compactorAddress() (string, bool, error) {
 	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
 		// In single binary or read modes, this module depends on Server
-		return fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort), true, nil
+		return fmt.Sprintf("%s:%d", t.Cfg.Server.HTTPListenAddress, t.Cfg.Server.GRPCListenPort), true, nil
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" && t.Cfg.Common.CompactorGRPCAddress == "" {

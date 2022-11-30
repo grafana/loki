@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap
 
 * [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
 * [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
@@ -18,6 +19,8 @@
 * [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
 
 * [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix multitenant querying.
+
+* [7784](https://github.com/grafana/loki/pull/7784) **isodude**: Fix default values of connect addresses for compactor and querier workers to work with IPv6.
 
 ##### Changes
 
