@@ -9,6 +9,7 @@ import (
 type ratestoreMetrics struct {
 	rateRefreshFailures *prometheus.CounterVec
 	streamCount         prometheus.Gauge
+	expiredCount        prometheus.Counter
 	maxStreamShardCount prometheus.Gauge
 	streamShardCount    prometheus.Histogram
 	maxStreamRate       prometheus.Gauge
@@ -28,6 +29,11 @@ func newRateStoreMetrics(reg prometheus.Registerer) *ratestoreMetrics {
 			Namespace: "loki",
 			Name:      "rate_store_streams",
 			Help:      "The number of unique streams reported by all ingesters. Sharded streams are combined",
+		}),
+		expiredCount: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "rate_store_expired_streams_total",
+			Help:      "The number of streams that have been expired by the ratestore",
 		}),
 		maxStreamShardCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
