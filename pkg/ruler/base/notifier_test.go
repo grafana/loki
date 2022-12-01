@@ -414,13 +414,13 @@ func TestBuildNotifierConfig(t *testing.T) {
 
 func TestApplyAlertmanagerDefaults(t *testing.T) {
 	tests := []struct {
-		name string
-		cfg  ruler_config.AlertManagerConfig
-		want ruler_config.AlertManagerConfig
+		name     string
+		amConfig ruler_config.AlertManagerConfig
+		want     ruler_config.AlertManagerConfig
 	}{
 		{
-			name: "with an empty config, returns the default values",
-			cfg:  ruler_config.AlertManagerConfig{},
+			name:     "with an empty config, returns the default values",
+			amConfig: ruler_config.AlertManagerConfig{},
 			want: ruler_config.AlertManagerConfig{
 				AlertmanagerRefreshInterval: 1 * time.Minute,
 				NotificationQueueCapacity:   10000,
@@ -429,7 +429,7 @@ func TestApplyAlertmanagerDefaults(t *testing.T) {
 		},
 		{
 			name: "apply default values for the values that are undefined",
-			cfg: ruler_config.AlertManagerConfig{
+			amConfig: ruler_config.AlertManagerConfig{
 				AlertmanagerURL:          "url",
 				AlertmanangerEnableV2API: true,
 				AlertmanagerDiscovery:    true,
@@ -445,7 +445,7 @@ func TestApplyAlertmanagerDefaults(t *testing.T) {
 		},
 		{
 			name: "do not apply default values for the values that are defined",
-			cfg: ruler_config.AlertManagerConfig{
+			amConfig: ruler_config.AlertManagerConfig{
 				AlertmanagerURL:             "url",
 				AlertmanangerEnableV2API:    true,
 				AlertmanagerDiscovery:       true,
@@ -466,8 +466,8 @@ func TestApplyAlertmanagerDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want := applyAlertmanagerDefaults(tt.cfg)
-			require.Equal(t, tt.want, want)
+			result := applyAlertmanagerDefaults(tt.amConfig)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
