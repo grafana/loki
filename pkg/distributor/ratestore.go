@@ -103,16 +103,17 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 
 	streamRates := s.getRates(ctx, clients)
 	updated := s.aggregateByShard(streamRates)
-	maxShards, maxRate, totalStreams := s.updateRates(updated)
+	maxShards, maxRate, totalStreams, expiredCount := s.updateRates(updated)
 
 	s.metrics.maxStreamRate.Set(float64(maxRate))
 	s.metrics.maxStreamShardCount.Set(float64(maxShards))
 	s.metrics.streamCount.Set(float64(totalStreams))
+	s.metrics.expiredCount.Add(float64(expiredCount))
 
 	return nil
 }
 
-func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) (int64, int64, int64) {
+func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) (int64, int64, int64, int64) {
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
 
@@ -129,13 +130,14 @@ func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) (int
 	return s.cleanupExpired()
 }
 
-func (s *rateStore) cleanupExpired() (int64, int64, int64) {
-	var maxShards, maxRate, totalStreams int64
+func (s *rateStore) cleanupExpired() (int64, int64, int64, int64) {
+	var maxShards, maxRate, totalStreams, expiredCount int64
 
 	for tID, tenant := range s.rates {
 		totalStreams += int64(len(tenant))
 		for stream, rate := range tenant {
 			if time.Since(rate.createdAt) > s.rateKeepAlive {
+				expiredCount++
 				delete(s.rates[tID], stream)
 				if len(s.rates[tID]) == 0 {
 					delete(s.rates, tID)
@@ -145,10 +147,13 @@ func (s *rateStore) cleanupExpired() (int64, int64, int64) {
 
 			maxRate = max(maxRate, rate.rate)
 			maxShards = max(maxShards, rate.shards)
+
+			s.metrics.streamShardCount.Observe(float64(rate.shards))
+			s.metrics.streamRate.Observe(float64(rate.rate))
 		}
 	}
 
-	return maxShards, maxRate, totalStreams
+	return maxShards, maxRate, totalStreams, expiredCount
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
