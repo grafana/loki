@@ -1311,6 +1311,11 @@ The Heroku Drain target exposes for each log entry the received syslog fields wi
 - `__heroku_drain_proc`: The [PROCID](https://tools.ietf.org/html/rfc5424#section-6.2.6) field parsed from the message.
 - `__heroku_drain_log_id`: The [MSGID](https://tools.ietf.org/html/rfc5424#section-6.2.7) field parsed from the message.
 
+Additionally, the Heroku drain target will read all url query parameters from the
+configured drain target url and make them available as
+`__heroku_drain_param_<name>` labels, multiple instances of the same parameter
+will appear as comma separated strings
+
 ### relabel_configs
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target

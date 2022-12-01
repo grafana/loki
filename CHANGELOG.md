@@ -28,6 +28,7 @@
 
 #### Promtail
 
+* [7619](https://github.com/grafana/loki/pull/7619) **cadrake**: Add ability to pass query params to heroku drain targets for relabelling.
 
 ##### Enhancements
 
