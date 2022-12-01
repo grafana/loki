@@ -539,7 +539,7 @@ func TestReplayWAL(t *testing.T) {
 	}
 
 	m := NewMetrics(reg, nil)
-	c, err := New(m, cfg, nil, log.NewNopLogger())
+	c, err := New(m, cfg, nil, 0, log.NewNopLogger())
 	require.NoError(t, err)
 
 	tenant := "tenant1"

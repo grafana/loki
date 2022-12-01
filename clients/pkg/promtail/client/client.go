@@ -298,6 +298,7 @@ func (c *client) replayWAL() error {
 			tenantDirs = append(tenantDirs, match)
 		}
 	}
+	// no wal files
 	if len(matches) < 1 {
 		return nil
 	}
@@ -332,6 +333,8 @@ func (c *client) replayWAL() error {
 						// size allowed, we do send the current batch and then create a new one
 						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
 							c.sendBatch(tenantID, b)
+							// todo: thepalbi why is the WAL deleted here?
+							// ahhh it deletes the WAL for that specific batch, not the one being replayed
 							if err := b.wal.Delete(); err != nil {
 								level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
 							}
@@ -388,6 +391,10 @@ func (c *client) run() {
 				return
 			}
 			e, tenantID := c.processEntry(e)
+			// Get WAL, and write entry to it
+			w, _ := c.wal.getWAL(tenantID)
+			xxx(e, w)
+
 			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry

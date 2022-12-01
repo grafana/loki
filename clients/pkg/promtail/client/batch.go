@@ -77,9 +77,42 @@ func (b *batch) replay(entry api.Entry) {
 	}
 }
 
+func xxx(entry api.Entry, wal WAL) error {
+	// Reset wal record slices
+	walRecord.RefEntries = walRecord.RefEntries[:0]
+	walRecord.Series = walRecord.Series[:0]
+
+	// todo: log the error
+	defer func() {
+		err := wal.Log(walRecord)
+		if err != nil {
+			fmt.Println("err: ", err)
+		}
+	}()
+
+	var fp uint64
+	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
+	sort.Sort(lbs)
+	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
+
+	// Append the entry to an already existing stream (if any)
+	walRecord.RefEntries = append(walRecord.RefEntries, ingester.RefEntries{
+		Ref: chunks.HeadSeriesRef(fp),
+		Entries: []logproto.Entry{
+			entry.Entry,
+		},
+	})
+	walRecord.Series = append(walRecord.Series, record.RefSeries{
+		Ref:    chunks.HeadSeriesRef(fp),
+		Labels: lbs,
+	})
+	return nil
+}
+
 // add an entry to the batch
 func (b *batch) add(entry api.Entry) error {
 	b.bytes += len(entry.Line)
+	// Reset wal record slices
 	walRecord.RefEntries = walRecord.RefEntries[:0]
 	walRecord.Series = walRecord.Series[:0]
 
