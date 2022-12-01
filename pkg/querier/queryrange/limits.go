@@ -421,8 +421,12 @@ func WeightedParallelism(
 	totalDur := int(tsdbDur + otherDur)
 	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
 	regMaxQueryParallelism := l.MaxQueryParallelism(user)
-	tsdbPart := int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
-	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
+
+	var tsdbPart, regPart int
+	if totalDur > 0 {
+		tsdbPart = int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
+		regPart = int(otherDur) * regMaxQueryParallelism / totalDur
+	}
 
 	if combined := regPart + tsdbPart; combined > 0 {
 		return combined

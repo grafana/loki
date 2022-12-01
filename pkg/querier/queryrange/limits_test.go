@@ -376,3 +376,23 @@ func Test_WeightedParallelism(t *testing.T) {
 	}
 
 }
+
+func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
+	t.Run("should not divide by zero", func(t *testing.T) {
+		parsed, err := time.Parse("2006-01-02", "2022-01-02")
+		require.NoError(t, err)
+		borderTime := model.TimeFromUnix(parsed.Unix())
+
+		confs := []config.PeriodConfig{
+			{
+				From: config.DayTime{
+					Time: borderTime.Add(-1 * time.Hour),
+				},
+				IndexType: config.TSDBType,
+			},
+		}
+
+		result := WeightedParallelism(confs, "fake", &fakeLimits{}, borderTime, borderTime.Add(-1*time.Hour))
+		require.Equal(t, 0, result)
+	})
+}
