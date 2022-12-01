@@ -95,7 +95,7 @@ func (t *Target) processLoop(ctx context.Context) {
 		Timestamps: true,
 		Since:      strconv.FormatInt(t.since, 10),
 	}
-
+	inspectInfo, err := t.client.ContainerInspect(ctx, t.containerName)
 	logs, err := t.client.ContainerLogs(ctx, t.containerName, opts)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "could not fetch logs for container", "container", t.containerName, "err", err)
@@ -115,7 +115,11 @@ func (t *Target) processLoop(ctx context.Context) {
 			t.Stop()
 		}()
 
-		written, err := stdcopy.StdCopy(wstdout, wstderr, logs)
+		if inspectInfo.Config.Tty {
+			written, err = io.Copy(wstdout, logs)
+		} else {
+			written, err = stdcopy.StdCopy(wstdout, wstderr, logs)
+		}
 		if err != nil {
 			level.Warn(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
 		} else {
