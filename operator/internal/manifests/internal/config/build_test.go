@@ -2680,9 +2680,9 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverr
 auth_enabled: true
 chunk_store_config:
   chunk_cache_config:
-    enable_fifocache: true
-    fifocache:
-      max_size_bytes: 500MB
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
 common:
   storage:
     s3:
@@ -2790,9 +2790,9 @@ query_range:
   max_retries: 5
   results_cache:
     cache:
-      enable_fifocache: true
-      fifocache:
-        max_size_bytes: 500MB
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
   parallelise_shardable_queries: true
 schema_config:
   configs:
