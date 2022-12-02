@@ -281,6 +281,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	parallelism := MinWeightedParallelism(
+		ctx,
 		tenantIDs,
 		rt.configs,
 		rt.limits,
@@ -358,21 +359,24 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 // the resulting parallelism will be
 // 0.5 * 10 + 0.5 * 100 = 60
 func WeightedParallelism(
+	ctx context.Context,
 	configs []config.PeriodConfig,
 	user string,
 	l Limits,
 	start, end model.Time,
 ) int {
+	logger := util_log.WithContext(ctx, util_log.Logger)
+
 	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
 	regMaxQueryParallelism := l.MaxQueryParallelism(user)
 	if tsdbMaxQueryParallelism+regMaxQueryParallelism == 0 {
-		level.Info(util_log.Logger).Log("msg", "querying disabled for tenant")
+		level.Info(logger).Log("msg", "querying disabled for tenant")
 		return 0
 	}
 
 	// query end before start would anyways error out so just short circuit and return 1
 	if end < start {
-		level.Warn(util_log.Logger).Log("msg", "query end time before start, letting downstream code handle it gracefully", "start", start, "end", end)
+		level.Warn(logger).Log("msg", "query end time before start, letting downstream code handle it gracefully", "start", start, "end", end)
 		return 1
 	}
 
@@ -435,7 +439,7 @@ func WeightedParallelism(
 	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
 	// let the downstream code handle it.
 	if totalDur == 0 {
-		level.Warn(util_log.Logger).Log("msg", "could not determine query overlaps on tsdb vs non-tsdb schemas, likely due to query not overlapping any of the schema configs,"+
+		level.Warn(logger).Log("msg", "could not determine query overlaps on tsdb vs non-tsdb schemas, likely due to query not overlapping any of the schema configs,"+
 			"letting downstream code handle it gracefully", "start", start, "end", end)
 		return 1
 	}
@@ -465,9 +469,10 @@ func minMaxModelTime(a, b model.Time) (min, max model.Time) {
 	return b, a
 }
 
-func MinWeightedParallelism(tenantIDs []string, configs []config.PeriodConfig, l Limits, start, end model.Time) int {
+func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []config.PeriodConfig, l Limits, start, end model.Time) int {
 	return validation.SmallestPositiveIntPerTenant(tenantIDs, func(user string) int {
 		return WeightedParallelism(
+			ctx,
 			configs,
 			user,
 			l,
