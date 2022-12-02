@@ -105,8 +105,8 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	updated := s.aggregateByShard(streamRates)
 	updateStats := s.updateRates(updated)
 
-	s.metrics.maxStreamRate.Set(float64(updateStats.maxRate))
-	s.metrics.maxStreamShardCount.Set(float64(updateStats.maxShards))
+	s.metrics.maxStreamRate.WithLabelValues(updateStats.maxRateTenant).Set(float64(updateStats.maxRate))
+	s.metrics.maxStreamShardCount.WithLabelValues(updateStats.maxShardsTenant).Set(float64(updateStats.maxShards))
 	s.metrics.streamCount.Set(float64(updateStats.totalStreams))
 	s.metrics.expiredCount.Add(float64(updateStats.expiredCount))
 
@@ -114,10 +114,12 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 }
 
 type rateStats struct {
-	maxShards    int64
-	maxRate      int64
-	totalStreams int64
-	expiredCount int64
+	maxShards       int64
+	maxShardsTenant string
+	maxRate         int64
+	maxRateTenant   string
+	totalStreams    int64
+	expiredCount    int64
 }
 
 func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) rateStats {
@@ -152,8 +154,8 @@ func (s *rateStore) cleanupExpired() rateStats {
 				continue
 			}
 
-			rs.maxRate = max(rs.maxRate, rate.rate)
-			rs.maxShards = max(rs.maxShards, rate.shards)
+			rs.maxRate, rs.maxRateTenant = max(rs.maxRate, rs.maxRateTenant, rate.rate, tID)
+			rs.maxShards, rs.maxShardsTenant = max(rs.maxShards, rs.maxShardsTenant, rate.shards, tID)
 
 			s.metrics.streamShardCount.Observe(float64(rate.shards))
 			s.metrics.streamRate.Observe(float64(rate.rate))
@@ -200,11 +202,11 @@ func (s *rateStore) aggregateByShard(streamRates map[string]map[uint64]*logproto
 	return rates
 }
 
-func max(a, b int64) int64 {
+func max(a int64, aTenant string, b int64, bTenant string) (int64, string) {
 	if a > b {
-		return a
+		return a, aTenant
 	}
-	return b
+	return b, bTenant
 }
 
 func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
@@ -240,6 +242,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 
 func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]map[uint64]*logproto.StreamRate {
 	var maxRate int64
+	var maxRateTenant string
 	streamRates := map[string]map[uint64]*logproto.StreamRate{}
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
@@ -248,7 +251,7 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 		}
 
 		for _, rate := range resp.StreamRates {
-			maxRate = max(maxRate, rate.Rate)
+			maxRate, maxRateTenant = max(maxRate, maxRateTenant, rate.Rate, rate.Tenant)
 
 			if _, ok := streamRates[rate.Tenant]; !ok {
 				streamRates[rate.Tenant] = map[uint64]*logproto.StreamRate{}
@@ -265,7 +268,7 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 		}
 	}
 
-	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
+	s.metrics.maxUniqueStreamRate.WithLabelValues(maxRateTenant).Set(float64(maxRate))
 	return streamRates
 }
 
