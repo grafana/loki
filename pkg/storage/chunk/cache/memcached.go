@@ -172,12 +172,13 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			select {
 			case <-c.closed:
 				return
-			case c.inputCh <- &work{
-				keys:     batchKeys,
-				ctx:      ctx,
-				resultCh: resultsCh,
-				batchID:  j,
-			}:
+			default:
+				c.inputCh <- &work{
+					keys:     batchKeys,
+					ctx:      ctx,
+					resultCh: resultsCh,
+					batchID:  j,
+				}
 				j++
 			}
 		}
@@ -199,7 +200,8 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		select {
 		case <-c.closed:
 			return
-		case result := <-resultsCh:
+		default:
+			result := <-resultsCh
 			results[result.batchID] = result
 		}
 	}
