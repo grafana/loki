@@ -163,7 +163,7 @@ type resultsCache struct {
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
-	parallelismForReq    func(tenantIDs []string, r Request) int
+	parallelismForReq    func(ctx context.Context, tenantIDs []string, r Request) int
 	retentionEnabled     bool
 	metrics              *ResultsCacheMetrics
 }
@@ -183,7 +183,7 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
-	parallelismForReq func(tenantIDs []string, r Request) int,
+	parallelismForReq func(ctx context.Context, tenantIDs []string, r Request) int,
 	retentionEnabled bool,
 	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
@@ -409,7 +409,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	if err != nil {
 		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
-	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(tenantIDs, r))
+	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(ctx, tenantIDs, r))
 
 	if err != nil {
 		return nil, nil, err
