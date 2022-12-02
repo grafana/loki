@@ -363,6 +363,17 @@ func WeightedParallelism(
 	l Limits,
 	start, end model.Time,
 ) int {
+	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
+	regMaxQueryParallelism := l.MaxQueryParallelism(user)
+	if tsdbMaxQueryParallelism+regMaxQueryParallelism == 0 {
+		return 0
+	}
+
+	// query end before start would anyways error out so just short circuit and return 1
+	if end < start {
+		return 1
+	}
+
 	// Return first index of desired period configs
 	i := sort.Search(len(configs), func(i int) bool {
 		// return true when there is no overlap with query & current
@@ -419,14 +430,14 @@ func WeightedParallelism(
 	}
 
 	totalDur := int(tsdbDur + otherDur)
-	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
-	regMaxQueryParallelism := l.MaxQueryParallelism(user)
-
-	var tsdbPart, regPart int
-	if totalDur > 0 {
-		tsdbPart = int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
-		regPart = int(otherDur) * regMaxQueryParallelism / totalDur
+	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
+	// let the downstream code handle it.
+	if totalDur == 0 {
+		return 1
 	}
+
+	tsdbPart := int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
+	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
 
 	if combined := regPart + tsdbPart; combined > 0 {
 		return combined
@@ -439,8 +450,8 @@ func WeightedParallelism(
 	if (tsdbMaxQueryParallelism > 0 && tsdbDur > 0) || (regMaxQueryParallelism > 0 && otherDur > 0) {
 		return 1
 	}
-	return 0
 
+	return 0
 }
 
 func minMaxModelTime(a, b model.Time) (min, max model.Time) {

@@ -378,7 +378,7 @@ func Test_WeightedParallelism(t *testing.T) {
 }
 
 func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
-	t.Run("should not divide by zero", func(t *testing.T) {
+	t.Run("query end before start", func(t *testing.T) {
 		parsed, err := time.Parse("2006-01-02", "2022-01-02")
 		require.NoError(t, err)
 		borderTime := model.TimeFromUnix(parsed.Unix())
@@ -392,7 +392,43 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 			},
 		}
 
-		result := WeightedParallelism(confs, "fake", &fakeLimits{}, borderTime, borderTime.Add(-1*time.Hour))
-		require.Equal(t, 0, result)
+		result := WeightedParallelism(confs, "fake", &fakeLimits{tsdbMaxQueryParallelism: 50}, borderTime, borderTime.Add(-1*time.Hour))
+		require.Equal(t, 1, result)
+	})
+
+	t.Run("negative start and end time", func(t *testing.T) {
+		parsed, err := time.Parse("2006-01-02", "2022-01-02")
+		require.NoError(t, err)
+		borderTime := model.TimeFromUnix(parsed.Unix())
+
+		confs := []config.PeriodConfig{
+			{
+				From: config.DayTime{
+					Time: borderTime.Add(-1 * time.Hour),
+				},
+				IndexType: config.TSDBType,
+			},
+		}
+
+		result := WeightedParallelism(confs, "fake", &fakeLimits{maxQueryParallelism: 50}, -100, -50)
+		require.Equal(t, 1, result)
+	})
+
+	t.Run("query start and end time before config start", func(t *testing.T) {
+		parsed, err := time.Parse("2006-01-02", "2022-01-02")
+		require.NoError(t, err)
+		borderTime := model.TimeFromUnix(parsed.Unix())
+
+		confs := []config.PeriodConfig{
+			{
+				From: config.DayTime{
+					Time: borderTime.Add(-1 * time.Hour),
+				},
+				IndexType: config.TSDBType,
+			},
+		}
+
+		result := WeightedParallelism(confs, "fake", &fakeLimits{maxQueryParallelism: 50}, confs[0].From.Add(-24*time.Hour), confs[0].From.Add(-12*time.Hour))
+		require.Equal(t, 1, result)
 	})
 }
