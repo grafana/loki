@@ -70,7 +70,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 		if !ok || httpResp.Code/100 == 5 {
 			lastErr = err
-			level.Error(util_log.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "err", err)
+			level.Error(util_log.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "query", req.GetQuery(), "err", err)
 			continue
 		}
 
