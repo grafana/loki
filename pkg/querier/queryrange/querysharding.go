@@ -110,7 +110,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
-		MinWeightedParallelism(tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
+		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
 		r,
 		ast.next,
 	)
@@ -362,7 +362,7 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 		ctx,
 		ss.next,
 		requests,
-		MinWeightedParallelism(tenantIDs, ss.confs, ss.limits, model.Time(req.GetStart()), model.Time(req.GetEnd())),
+		MinWeightedParallelism(ctx, tenantIDs, ss.confs, ss.limits, model.Time(req.GetStart()), model.Time(req.GetEnd())),
 	)
 	if err != nil {
 		return nil, err
