@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.6.0
+
+- [CHANGE] Bump Loki version to 2.7.0 and GEL version to 1.6.0
+
 ## 3.5.0
 
 - [FEATURE] Add support for azure blob storage
