@@ -370,7 +370,7 @@ func Test_WeightedParallelism(t *testing.T) {
 			},
 		} {
 			t.Run(cfgs.desc+tc.desc, func(t *testing.T) {
-				require.Equal(t, tc.exp, WeightedParallelism(confs, "fake", limits, tc.start, tc.end))
+				require.Equal(t, tc.exp, WeightedParallelism(context.Background(), confs, "fake", limits, tc.start, tc.end))
 			})
 		}
 	}
@@ -392,7 +392,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 			},
 		}
 
-		result := WeightedParallelism(confs, "fake", &fakeLimits{tsdbMaxQueryParallelism: 50}, borderTime, borderTime.Add(-1*time.Hour))
+		result := WeightedParallelism(context.Background(), confs, "fake", &fakeLimits{tsdbMaxQueryParallelism: 50}, borderTime, borderTime.Add(-1*time.Hour))
 		require.Equal(t, 1, result)
 	})
 
@@ -410,7 +410,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 			},
 		}
 
-		result := WeightedParallelism(confs, "fake", &fakeLimits{maxQueryParallelism: 50}, -100, -50)
+		result := WeightedParallelism(context.Background(), confs, "fake", &fakeLimits{maxQueryParallelism: 50}, -100, -50)
 		require.Equal(t, 1, result)
 	})
 
@@ -428,7 +428,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 			},
 		}
 
-		result := WeightedParallelism(confs, "fake", &fakeLimits{maxQueryParallelism: 50}, confs[0].From.Add(-24*time.Hour), confs[0].From.Add(-12*time.Hour))
+		result := WeightedParallelism(context.Background(), confs, "fake", &fakeLimits{maxQueryParallelism: 50}, confs[0].From.Add(-24*time.Hour), confs[0].From.Add(-12*time.Hour))
 		require.Equal(t, 1, result)
 	})
 }
