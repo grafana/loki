@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -366,11 +366,13 @@ func WeightedParallelism(
 	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
 	regMaxQueryParallelism := l.MaxQueryParallelism(user)
 	if tsdbMaxQueryParallelism+regMaxQueryParallelism == 0 {
+		level.Info(util_log.Logger).Log("msg", "querying disabled for tenant")
 		return 0
 	}
 
 	// query end before start would anyways error out so just short circuit and return 1
 	if end < start {
+		level.Warn(util_log.Logger).Log("msg", "query end time before start, letting downstream code handle it gracefully", "start", start, "end", end)
 		return 1
 	}
 
@@ -433,6 +435,8 @@ func WeightedParallelism(
 	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
 	// let the downstream code handle it.
 	if totalDur == 0 {
+		level.Warn(util_log.Logger).Log("msg", "could not determine query overlaps on tsdb vs non-tsdb schemas, likely due to query not overlapping any of the schema configs,"+
+			"letting downstream code handle it gracefully", "start", start, "end", end)
 		return 1
 	}
 
