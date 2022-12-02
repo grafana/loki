@@ -78,15 +78,15 @@ func (rn *rulerNotifier) stop() {
 func applyAlertmanagerDefaults(config ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
 	// Use default value if the override values are zero
 	if config.AlertmanagerRefreshInterval == 0 {
-		config.AlertmanagerRefreshInterval = AlertmanagerRefreshIntervalDefault
+		config.AlertmanagerRefreshInterval = alertmanagerRefreshIntervalDefault
 	}
 
 	if config.NotificationQueueCapacity <= 0 {
-		config.NotificationQueueCapacity = NotificationQueueCapacityDefault
+		config.NotificationQueueCapacity = alertmanagerNotificationQueueCapacityDefault
 	}
 
 	if config.NotificationTimeout == 0 {
-		config.NotificationTimeout = NotificationTimeoutDefault
+		config.NotificationTimeout = alertmanagerNotificationTimeoutDefault
 	}
 
 	return config
