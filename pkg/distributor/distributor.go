@@ -104,7 +104,7 @@ type Distributor struct {
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
-	streamShardCount       *prometheus.CounterVec
+	streamShardCount       prometheus.Counter
 }
 
 // New a distributor creates.
@@ -190,11 +190,11 @@ func New(
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
-		streamShardCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
-		}, []string{"tenant"}),
+		}),
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
@@ -417,7 +417,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, tenant
 		return []uint32{util.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
-	d.streamShardCount.WithLabelValues(tenantID).Inc()
+	d.streamShardCount.Inc()
 	if shardStreamsCfg.LoggingEnabled {
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}

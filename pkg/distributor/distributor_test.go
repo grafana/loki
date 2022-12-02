@@ -555,7 +555,7 @@ func TestStreamShard(t *testing.T) {
 			d := Distributor{
 				rateStore:        &fakeRateStore{},
 				validator:        validator,
-				streamShardCount: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"tenant"}),
+				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 				shardTracker:     NewShardTracker(),
 			}
 
@@ -600,7 +600,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 		d := Distributor{
 			rateStore:        &fakeRateStore{},
 			validator:        validator,
-			streamShardCount: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"tenant"}),
+			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 			shardTracker:     NewShardTracker(),
 		}
 
@@ -664,7 +664,7 @@ func BenchmarkShardStream(b *testing.B) {
 	distributorBuilder := func(shards int) *Distributor {
 		d := &Distributor{
 			validator:        validator,
-			streamShardCount: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"tenant"}),
+			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 			shardTracker:     NewShardTracker(),
 			// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
 			rateStore: &fakeRateStore{rate: int64(desiredRate*shards - 1)},
