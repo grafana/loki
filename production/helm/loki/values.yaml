@@ -789,6 +789,8 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for the volumeClaimTemplates
+    annotations: {}
 
 # Configuration for the read node(s)
 read:
@@ -860,6 +862,8 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for the volumeClaimTemplates
+    annotations: {}
 
 # Configuration for the single binary node(s)
 singleBinary:
@@ -929,6 +933,8 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for the volumeClaimTemplates
+    annotations: {}
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
