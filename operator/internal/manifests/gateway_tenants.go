@@ -140,7 +140,14 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		if opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled {
-			return openshift.ConfigureOptions(cfg)
+			monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserwWrkloadNS)
+			return openshift.ConfigureOptions(
+				cfg,
+				opt.OpenShiftOptions.BuildOpts.UserWorkloadAlertManagerEnabled,
+				BearerTokenFile,
+				alertmanagerUpstreamCAPath(),
+				monitorServerName,
+			)
 		}
 		return nil
 	}

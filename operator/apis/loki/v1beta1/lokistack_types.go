@@ -527,12 +527,6 @@ type LimitsTemplateSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
-
-	// AlertManagerOverrides defines the overrides to apply to the alertmanager config.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	AlertManagerOverrides *AlertManagerSpec `json:"alertmanager,omitempty"`
 }
 
 // LimitsSpec defines the spec for limits applied at ingestion or query

@@ -32,6 +32,17 @@ type Options struct {
 	ObjectStorage storage.Options
 
 	Retention RetentionOptions
+
+	Overrides map[string]LokiOverrides
+}
+
+type LokiOverrides struct {
+	Stack lokiv1.LimitsTemplateSpec
+	Ruler RulerOverrides
+}
+
+type RulerOverrides struct {
+	AlertManager *AlertManagerConfig
 }
 
 // Address FQDN and port for a k8s service.
@@ -46,12 +57,13 @@ type Address struct {
 
 // Ruler configuration
 type Ruler struct {
-	Enabled               bool
-	RulesStorageDirectory string
-	EvaluationInterval    string
-	PollInterval          string
-	AlertManager          *AlertManagerConfig
-	RemoteWrite           *RemoteWriteConfig
+	Enabled                       bool
+	RulesStorageDirectory         string
+	EvaluationInterval            string
+	PollInterval                  string
+	AlertManager                  *AlertManagerConfig
+	RemoteWrite                   *RemoteWriteConfig
+	UserWorkloadMonitoringEnabled bool
 }
 
 // AlertManagerConfig for ruler alertmanager config
@@ -72,7 +84,36 @@ type AlertManagerConfig struct {
 	ForGracePeriod     string
 	ResendDelay        string
 
+	Notifier *NotifierConfig
+
 	RelabelConfigs []RelabelConfig
+}
+
+type NotifierConfig struct {
+	TLS        TLSConfig
+	BasicAuth  BasicAuth
+	HeaderAuth HeaderAuth
+}
+
+type BasicAuth struct {
+	Username *string
+	Password *string
+}
+
+type HeaderAuth struct {
+	Type            *string
+	Credentials     *string
+	CredentialsFile *string
+}
+
+type TLSConfig struct {
+	CertPath           *string
+	KeyPath            *string
+	CAPath             *string
+	ServerName         *string
+	InsecureSkipVerify *bool
+	CipherSuites       *string
+	MinVersion         *string
 }
 
 // RemoteWriteConfig for ruler remote write config

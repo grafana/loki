@@ -11,6 +11,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -194,7 +195,7 @@ func ConfigureRulerStatefulSet(
 }
 
 // ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
-func ConfigureOptions(configOpt *config.Options) error {
+func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monitorServerName string) error {
 	if configOpt.Ruler.AlertManager == nil {
 		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
 	}
@@ -212,19 +213,41 @@ func ConfigureOptions(configOpt *config.Options) error {
 		}
 	}
 
-	// Configure user-workload alertmanager when enabled.
-	//TODO check is enbaled
-	/*uwam := map[string]lokiv1beta1.LimitsTemplateSpec{
-		tenantApplication: lokiv1beta1.LimitsTemplateSpec{
-			AlertManagerOverrides: &lokiv1beta1.AlertManagerSpec{},
-		},
-	}*/
-
-	if configOpt.Stack.Limits == nil {
-		configOpt.Stack.Limits = &lokiv1.LimitsSpec{
-			//Tenants: map[string]lokiv1.LimitsTemplateSpec{},
-		}
+	// Check user workload is enbaled.
+	if !uwam {
+		return nil
 	}
+
+	// Configure user-workload alertmanager when.
+	if len(configOpt.Overrides) == 0 {
+		configOpt.Overrides = map[string]config.LokiOverrides{}
+	}
+
+	lokiOverrides, ok := configOpt.Overrides[tenantApplication]
+	if !ok {
+		configOpt.Overrides[tenantApplication] = config.LokiOverrides{}
+	}
+
+	amOverride := config.AlertManagerConfig{
+		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
+		EnableV2:        true,
+		EnableDiscovery: true,
+		RefreshInterval: "1m",
+		Notifier: &config.NotifierConfig{
+			TLS: config.TLSConfig{
+				ServerName: pointer.String(fmt.Sprintf("%s.%s.svc", MonitoringSVCUserWorkload, MonitoringUserwWrkloadNS)),
+				CAPath:     &caPath,
+			},
+			HeaderAuth: config.HeaderAuth{
+				CredentialsFile: &token,
+				Type:            pointer.String("Bearer"),
+			},
+		},
+	}
+
+	lokiOverrides.Ruler.AlertManager = &amOverride
+
+	configOpt.Overrides[tenantApplication] = lokiOverrides
 
 	return nil
 }

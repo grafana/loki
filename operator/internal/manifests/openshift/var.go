@@ -36,6 +36,9 @@ var (
 	MonitoringSVCMain = "alertmanager-main"
 	// MonitoringSVCOperated is the name of the alertmanager operator service used for alerts.
 	MonitoringSVCOperated = "alertmanager-operated"
+
+	MonitoringSVCUserWorkload = "alertmanager-user-workload"
+	MonitoringUserwWrkloadNS  = "openshift-user-workload-monitoring"
 )
 
 func authorizerRbacName(componentName string) string {

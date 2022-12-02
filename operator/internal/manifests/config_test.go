@@ -489,3 +489,152 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigOptions_RulerOverrides(t *testing.T) {
+	tt := []struct {
+		desc        string
+		opts        manifests.Options
+		wantOptions map[string]config.LokiOverrides
+	}{
+		{
+			desc: "static mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "dynamic mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+			},
+			wantOptions: nil,
+		},
+		{
+			desc: "openshift-logging mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Ruler: manifests.Ruler{
+					Spec: &v1beta1.RulerConfigSpec{
+						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             true,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: map[string]config.LokiOverrides{
+				"application": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
+							EnableV2:        true,
+							EnableDiscovery: true,
+							RefreshInterval: "1m",
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc"),
+									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:            pointer.String("Bearer"),
+									CredentialsFile: pointer.String("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-network mode",
+			opts: manifests.Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Ruler: manifests.Ruler{
+					Spec: &v1beta1.RulerConfigSpec{
+						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             true,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: map[string]config.LokiOverrides{
+				"application": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
+							EnableV2:        true,
+							EnableDiscovery: true,
+							RefreshInterval: "1m",
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc"),
+									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:            pointer.String("Bearer"),
+									CredentialsFile: pointer.String("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := manifests.ConfigOptions(tc.opts)
+			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			require.Nil(t, err)
+			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
+		})
+	}
+}

@@ -54,11 +54,14 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 // ConfigOptions converts Options to config.Options
 func ConfigOptions(opt Options) config.Options {
 	rulerEnabled := opt.Stack.Rules != nil && opt.Stack.Rules.Enabled
+	stackLimitsEnabled := opt.Stack.Limits != nil && len(opt.Stack.Limits.Tenants) > 0
+	rulerLimitsEnabled := rulerEnabled && opt.Ruler.Spec != nil && len(opt.Ruler.Spec.Overrides) > 0
 
 	var (
 		evalInterval, pollInterval string
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
+		overrides                  map[string]config.LokiOverrides
 	)
 
 	if rulerEnabled {
@@ -72,6 +75,27 @@ func ConfigOptions(opt Options) config.Options {
 		// Map remote write config from CRD to config options
 		if opt.Ruler.Spec != nil && opt.Ruler.Secret != nil {
 			rwConfig = remoteWriteConfig(opt.Ruler.Spec.RemoteWriteSpec, opt.Ruler.Secret)
+		}
+	}
+
+	if stackLimitsEnabled || rulerLimitsEnabled {
+		overrides = map[string]config.LokiOverrides{}
+	}
+
+	if stackLimitsEnabled {
+		for tenant, override := range opt.Stack.Limits.Tenants {
+			so := overrides[tenant]
+			so.Stack = override
+			overrides[tenant] = so
+		}
+	}
+	if rulerLimitsEnabled {
+		for tenant, override := range opt.Ruler.Spec.Overrides {
+			so := overrides[tenant]
+			so.Ruler = config.RulerOverrides{
+				AlertManager: alertManagerConfig(override.AlertManagerOverrides),
+			}
+			overrides[tenant] = so
 		}
 	}
 
@@ -153,6 +177,7 @@ func ConfigOptions(opt Options) config.Options {
 			RemoteWrite:           rwConfig,
 		},
 		Retention: retentionConfig(&opt.Stack),
+		Overrides: overrides,
 	}
 }
 

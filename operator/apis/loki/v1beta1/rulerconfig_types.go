@@ -389,6 +389,22 @@ type RulerConfigSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Remote Write Configuration"
 	RemoteWriteSpec *RemoteWriteSpec `json:"remoteWrite,omitempty"`
+
+	// Overrides defines the config overrides to be applied per-tenant.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rate Limiting"
+	Overrides map[string]RulerOverrides `json:"overrides,omitempty"`
+}
+
+// RulerOverrides defines the overrides applied per-tenant.
+type RulerOverrides struct {
+	// AlertManagerOverrides defines the overrides to apply to the alertmanager config.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	AlertManagerOverrides *AlertManagerSpec `json:"alertmanager,omitempty"`
 }
 
 // RulerConfigStatus defines the observed state of RulerConfig
