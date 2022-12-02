@@ -66,7 +66,6 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 
 // NewRulerStatefulSet creates a statefulset object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
-
 	volumes := []corev1.Volume{
 		{
 			Name: configVolumeName,
@@ -114,7 +113,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		})
 
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-
 			Name:      rulesStorageVolumeName + name,
 			ReadOnly:  false,
 			MountPath: rulesStorageDirectory,
