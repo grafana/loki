@@ -66,33 +66,64 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 
 // NewRulerStatefulSet creates a statefulset object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
-	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
-		Volumes: []corev1.Volume{
-			{
-				Name: configVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lokiConfigMapName(opts.Name),
-						},
-					},
-				},
-			},
-			{
-				Name: rulesStorageVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: RulesConfigMapName(opts.Name),
-						},
-						Items: ruleVolumeItems(opts.Tenants.Configs),
+
+	volumes := []corev1.Volume{
+		{
+			Name: configVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: lokiConfigMapName(opts.Name),
 					},
 				},
 			},
 		},
+	}
+
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      configVolumeName,
+			ReadOnly:  false,
+			MountPath: config.LokiConfigMountDir,
+		},
+		{
+			Name:      walVolumeName,
+			ReadOnly:  false,
+			MountPath: walDirectory,
+		},
+		{
+			Name:      storageVolumeName,
+			ReadOnly:  false,
+			MountPath: dataDirectory,
+		},
+	}
+
+	for _, name := range opts.RulesConfigMapNames {
+		volumes = append(volumes, corev1.Volume{
+			Name: rulesStorageVolumeName + name,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: name,
+					},
+					Items: ruleVolumeItems(opts.Tenants.Configs),
+				},
+			},
+		})
+
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+
+			Name:      rulesStorageVolumeName + name,
+			ReadOnly:  false,
+			MountPath: rulesStorageDirectory,
+		})
+	}
+
+	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Volumes:  volumes,
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
@@ -126,28 +157,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						Protocol:      protocolTCP,
 					},
 				},
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      configVolumeName,
-						ReadOnly:  false,
-						MountPath: config.LokiConfigMountDir,
-					},
-					{
-						Name:      rulesStorageVolumeName,
-						ReadOnly:  false,
-						MountPath: rulesStorageDirectory,
-					},
-					{
-						Name:      walVolumeName,
-						ReadOnly:  false,
-						MountPath: walDirectory,
-					},
-					{
-						Name:      storageVolumeName,
-						ReadOnly:  false,
-						MountPath: dataDirectory,
-					},
-				},
+				VolumeMounts:             volumeMounts,
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",

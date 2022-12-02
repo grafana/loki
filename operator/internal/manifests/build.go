@@ -69,6 +69,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 
 		var rulesObjectList []client.Object
 		for _, shard := range rulesCMShards {
+			opts.RulesConfigMapNames = append(opts.RulesConfigMapNames, shard.Name)
 			rulesObjectList = append(rulesObjectList, shard)
 		}
 
