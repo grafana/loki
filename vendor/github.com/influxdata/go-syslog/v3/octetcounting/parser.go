@@ -5,6 +5,7 @@ import (
 	"io"
 
 	syslog "github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/rfc3164"
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 )
 
@@ -38,6 +39,26 @@ func NewParser(opts ...syslog.ParserOption) syslog.Parser {
 		p.internal = rfc5424.NewMachine(rfc5424.WithBestEffort())
 	} else {
 		p.internal = rfc5424.NewMachine()
+	}
+
+	return p
+}
+
+func NewParserRFC3164(opts ...syslog.ParserOption) syslog.Parser {
+	p := &parser{
+		emit:             func(*syslog.Result) { /* noop */ },
+		maxMessageLength: 1024,
+	}
+
+	for _, opt := range opts {
+		p = opt(p).(*parser)
+	}
+
+	// Create internal parser depending on options
+	if p.bestEffort {
+		p.internal = rfc3164.NewMachine(rfc3164.WithBestEffort())
+	} else {
+		p.internal = rfc3164.NewMachine()
 	}
 
 	return p

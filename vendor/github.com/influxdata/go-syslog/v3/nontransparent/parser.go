@@ -4,6 +4,7 @@ import (
 	"io"
 
 	syslog "github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/rfc3164"
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 	parser "github.com/leodido/ragel-machinery/parser"
 )
@@ -213,6 +214,29 @@ func NewParser(options ...syslog.ParserOption) syslog.Parser {
 		m.internal = rfc5424.NewMachine(rfc5424.WithBestEffort())
 	} else {
 		m.internal = rfc5424.NewMachine()
+	}
+
+	return m
+}
+
+func NewParserRFC3164(options ...syslog.ParserOption) syslog.Parser {
+	m := &machine{
+		emit: func(*syslog.Result) { /* noop */ },
+	}
+
+	for _, opt := range options {
+		m = opt(m).(*machine)
+	}
+
+	// No error can happens since during its setting we check the trailer type passed in
+	trailer, _ := m.trailertyp.Value()
+	m.trailer = byte(trailer)
+
+	// Create internal parser depending on options
+	if m.bestEffort {
+		m.internal = rfc3164.NewMachine(rfc3164.WithBestEffort())
+	} else {
+		m.internal = rfc3164.NewMachine()
 	}
 
 	return m
