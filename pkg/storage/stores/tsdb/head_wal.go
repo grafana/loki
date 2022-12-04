@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -197,14 +197,14 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 type headWAL struct {
 	initialized time.Time
 	log         log.Logger
-	wal         *wal.WAL
+	wal         *wlog.WL
 }
 
 func newHeadWAL(log log.Logger, dir string, t time.Time) (*headWAL, error) {
 	// NB: if we use a non-nil Prometheus Registerer, ensure
 	// that the underlying metrics won't conflict with existing WAL metrics in the ingester.
 	// Likely, this can be done by adding extra label(s)
-	wal, err := wal.NewSize(log, nil, dir, walSegmentSize, false)
+	wal, err := wlog.NewSize(log, nil, dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}

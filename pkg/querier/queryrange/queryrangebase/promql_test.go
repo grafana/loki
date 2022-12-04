@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -667,7 +668,7 @@ func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMat
 		}
 		var points []promql.Point
 		it := s.Iterator()
-		for it.Next() {
+		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			points = append(points, promql.Point{
 				T: t,
