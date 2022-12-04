@@ -97,9 +97,9 @@ func (t *Target) processLoop(ctx context.Context) {
 	}
 	inspectInfo, err := t.client.ContainerInspect(ctx, t.containerName)
 	if err != nil {
-        level.Error(t.logger).Log("msg", "could not inspect container info", "container", t.containerName, "err", err)
+        	level.Error(t.logger).Log("msg", "could not inspect container info", "container", t.containerName, "err", err)
 		t.err = err
-        return
+        	return
 	}
 	logs, err := t.client.ContainerLogs(ctx, t.containerName, opts)
 	if err != nil {
