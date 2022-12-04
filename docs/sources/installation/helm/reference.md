@@ -1885,7 +1885,7 @@ null
 		<tr>
 			<td>monitoring.lokiCanary.enabled</td>
 			<td>bool</td>
-			<td></td>
+			<td>Enable the Loki canary daemonset to monitor logging round-trip functionality</td>
 			<td><pre lang="json">
 true
 </pre>
@@ -1894,7 +1894,7 @@ true
 		<tr>
 			<td>monitoring.lokiCanary.extraArgs</td>
 			<td>list</td>
-			<td>Additional CLI arguments for the `loki-canary' command</td>
+			<td>Additional CLI arguments for the `loki-canary` command</td>
 			<td><pre lang="json">
 []
 </pre>
