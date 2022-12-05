@@ -1,4 +1,4 @@
-{
+  {
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
@@ -9,6 +9,7 @@
 
     replication_factor: 3,
     memcached_replicas: 3,
+    ingester_allow_multiple_replicas_on_same_node: false,
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
