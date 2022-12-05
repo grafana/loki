@@ -17,10 +17,7 @@ func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
 	require.NotNil(t, cm_shards)
 
 	cm := cm_shards[0]
-	println("test--------", cm.Name, "--------")
-	for k, v := range cm.Data {
-		println("test-", k, v)
-	}
+
 	require.Len(t, cm.Data, 4)
 	require.Contains(t, cm.Data, "dev-alerting-rules-alerts1.yaml")
 	require.Contains(t, cm.Data, "dev-recording-rules-recs1.yaml")
@@ -175,10 +172,19 @@ func testOptions_withSharding() *manifests.Options {
 	}
 
 	return &manifests.Options{
+		Name:      "sharding-test",
+		Namespace: "namespace",
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
 		Tenants: manifests.Tenants{
 			Configs: map[string]manifests.TenantConfig{
-				"tenant-a": {},
-				"tenant-b": {},
+				"tenant-a": {RuleFiles: []string{"rule-a-alerts.yaml"}},
 			},
 		},
 		AlertingRules: alertingRules,
