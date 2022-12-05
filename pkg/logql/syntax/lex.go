@@ -66,8 +66,8 @@ var tokens = map[string]int{
 	OpParserTypePattern: PATTERN,
 
 	// fmt
-	OpFmtLabel:   LABEL_FMT,
-	OpFmtLine:    LINE_FMT,
+	OpFmtLabel: LABEL_FMT,
+	OpFmtLine:  LINE_FMT,
 
 	// filter functions
 	OpFilterIP:   IP,
