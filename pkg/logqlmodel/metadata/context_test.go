@@ -5,9 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHeaders(t *testing.T) {
