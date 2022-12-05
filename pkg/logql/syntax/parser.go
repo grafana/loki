@@ -171,7 +171,7 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 
 		return validateSampleExpr(e.RHS)
-	case *LiteralExpr:
+	case *LiteralExpr, *VectorExpr:
 		return nil
 	default:
 		return validateMatchers(expr.Selector().Matchers())
