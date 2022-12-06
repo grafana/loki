@@ -118,6 +118,37 @@ type AlertManagerSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Alert Relabel Configuration"
 	RelabelConfigs []RelabelConfig `json:"relabelConfigs,omitempty"`
+
+	// Client configuration for reaching the alertmanager endpoint.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
+	Client *AlertManagerClientConfig `json:"client,omitempty"`
+}
+
+type AlertManagerClientConfig struct {
+	TLS        *AlertManagerClientTLSConfig  `json:"tls,omitempty"`
+	HeaderAuth *AlertManagerClientHeaderAuth `json:"headerAuth,omitempty"`
+	BasicAuth  *AlertManagerClientBasicAuth  `json:"basicAuth,omitempty"`
+}
+
+type AlertManagerClientBasicAuth struct {
+	Username *string `json:"username,omitempty"`
+	Password *string `json:"password,omitempty"`
+}
+
+type AlertManagerClientHeaderAuth struct {
+	Type            *string `json:"type,omitempty"`
+	Credentials     *string `json:"credentials,omitempty"`
+	CredentialsFile *string `json:"credentialsFile,omitempty"`
+}
+
+type AlertManagerClientTLSConfig struct {
+	CAPath     *string `json:"caPath,omitempty"`
+	ServerName *string `json:"serverName,omitempty"`
+	CertPath   *string `json:"certPath,omitempty"`
+	KeyPath    *string `json:"keyPath,omitempty"`
 }
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.

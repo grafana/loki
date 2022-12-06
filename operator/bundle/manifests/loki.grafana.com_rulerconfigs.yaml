@@ -44,6 +44,38 @@ spec:
                 description: Defines alert manager configuration to notify on firing
                   alerts.
                 properties:
+                  client:
+                    description: Client configuration for reaching the alertmanager
+                      endpoint.
+                    properties:
+                      basicAuth:
+                        properties:
+                          password:
+                            type: string
+                          username:
+                            type: string
+                        type: object
+                      headerAuth:
+                        properties:
+                          credentials:
+                            type: string
+                          credentialsFile:
+                            type: string
+                          type:
+                            type: string
+                        type: object
+                      tls:
+                        properties:
+                          caPath:
+                            type: string
+                          certPath:
+                            type: string
+                          keyPath:
+                            type: string
+                          serverName:
+                            type: string
+                        type: object
+                    type: object
                   discovery:
                     description: Defines the configuration for DNS-based discovery
                       of AlertManager hosts.
@@ -190,6 +222,38 @@ spec:
                       description: AlertManagerOverrides defines the overrides to
                         apply to the alertmanager config.
                       properties:
+                        client:
+                          description: Client configuration for reaching the alertmanager
+                            endpoint.
+                          properties:
+                            basicAuth:
+                              properties:
+                                password:
+                                  type: string
+                                username:
+                                  type: string
+                              type: object
+                            headerAuth:
+                              properties:
+                                credentials:
+                                  type: string
+                                credentialsFile:
+                                  type: string
+                                type:
+                                  type: string
+                              type: object
+                            tls:
+                              properties:
+                                caPath:
+                                  type: string
+                                certPath:
+                                  type: string
+                                keyPath:
+                                  type: string
+                                serverName:
+                                  type: string
+                              type: object
+                          type: object
                         discovery:
                           description: Defines the configuration for DNS-based discovery
                             of AlertManager hosts.

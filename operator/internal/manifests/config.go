@@ -181,33 +181,33 @@ func ConfigOptions(opt Options) config.Options {
 	}
 }
 
-func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
-	if s == nil {
+func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
+	if spec == nil {
 		return nil
 	}
 
-	c := &config.AlertManagerConfig{
-		ExternalURL:    s.ExternalURL,
-		ExternalLabels: s.ExternalLabels,
-		Hosts:          strings.Join(s.Endpoints, ","),
-		EnableV2:       s.EnableV2,
+	conf := &config.AlertManagerConfig{
+		ExternalURL:    spec.ExternalURL,
+		ExternalLabels: spec.ExternalLabels,
+		Hosts:          strings.Join(spec.Endpoints, ","),
+		EnableV2:       spec.EnableV2,
 	}
 
-	if d := s.DiscoverySpec; d != nil {
-		c.EnableDiscovery = d.EnableSRV
-		c.RefreshInterval = string(d.RefreshInterval)
+	if d := spec.DiscoverySpec; d != nil {
+		conf.EnableDiscovery = d.EnableSRV
+		conf.RefreshInterval = string(d.RefreshInterval)
 	}
 
-	if n := s.NotificationQueueSpec; n != nil {
-		c.QueueCapacity = n.Capacity
-		c.Timeout = string(n.Timeout)
-		c.ForOutageTolerance = string(n.ForOutageTolerance)
-		c.ForGracePeriod = string(n.ForGracePeriod)
-		c.ResendDelay = string(n.ResendDelay)
+	if n := spec.NotificationQueueSpec; n != nil {
+		conf.QueueCapacity = n.Capacity
+		conf.Timeout = string(n.Timeout)
+		conf.ForOutageTolerance = string(n.ForOutageTolerance)
+		conf.ForGracePeriod = string(n.ForGracePeriod)
+		conf.ResendDelay = string(n.ResendDelay)
 	}
 
-	for _, cfg := range s.RelabelConfigs {
-		c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
+	for _, cfg := range spec.RelabelConfigs {
+		conf.RelabelConfigs = append(conf.RelabelConfigs, config.RelabelConfig{
 			SourceLabels: cfg.SourceLabels,
 			Separator:    cfg.Separator,
 			TargetLabel:  cfg.TargetLabel,
@@ -218,7 +218,34 @@ func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerCon
 		})
 	}
 
-	return c
+	if clt := spec.Client; clt != nil {
+		conf.Notifier = &config.NotifierConfig{}
+		if tls := clt.TLS; tls != nil {
+			conf.Notifier.TLS = config.TLSConfig{
+				CAPath:     tls.CAPath,
+				ServerName: tls.ServerName,
+				CertPath:   tls.CertPath,
+				KeyPath:    tls.KeyPath,
+			}
+		}
+
+		if ha := clt.HeaderAuth; ha != nil {
+			conf.Notifier.HeaderAuth = config.HeaderAuth{
+				Type:            ha.Type,
+				Credentials:     ha.Credentials,
+				CredentialsFile: ha.CredentialsFile,
+			}
+		}
+
+		if ha := clt.BasicAuth; ha != nil {
+			conf.Notifier.BasicAuth = config.BasicAuth{
+				Username: ha.Username,
+				Password: ha.Password,
+			}
+		}
+	}
+
+	return conf
 }
 
 func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {

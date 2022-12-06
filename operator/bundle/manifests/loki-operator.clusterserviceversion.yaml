@@ -744,6 +744,9 @@ spec:
         path: alertmanager
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: alertmanager.client
       - description: Defines the configuration for DNS-based discovery of AlertManager
           hosts.
         displayName: DNS Discovery
@@ -845,6 +848,9 @@ spec:
         path: overrides
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: overrides.alertmanager.client
       - description: Defines the configuration for DNS-based discovery of AlertManager
           hosts.
         displayName: DNS Discovery

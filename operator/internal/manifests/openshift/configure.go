@@ -225,29 +225,36 @@ func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monit
 
 	lokiOverrides, ok := configOpt.Overrides[tenantApplication]
 	if !ok {
-		configOpt.Overrides[tenantApplication] = config.LokiOverrides{}
-	}
-
-	amOverride := config.AlertManagerConfig{
-		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
-		EnableV2:        true,
-		EnableDiscovery: true,
-		RefreshInterval: "1m",
-		Notifier: &config.NotifierConfig{
-			TLS: config.TLSConfig{
-				ServerName: pointer.String(fmt.Sprintf("%s.%s.svc", MonitoringSVCUserWorkload, MonitoringUserwWrkloadNS)),
-				CAPath:     &caPath,
+		lokiOverrides = config.LokiOverrides{
+			Ruler: config.RulerOverrides{
+				AlertManager: &config.AlertManagerConfig{},
 			},
-			HeaderAuth: config.HeaderAuth{
-				CredentialsFile: &token,
-				Type:            pointer.String("Bearer"),
+		}
+
+		configOpt.Overrides[tenantApplication] = lokiOverrides
+		amOverride := &config.AlertManagerConfig{
+			Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
+			EnableV2:        true,
+			EnableDiscovery: true,
+			RefreshInterval: "1m",
+			Notifier: &config.NotifierConfig{
+				TLS: config.TLSConfig{
+					ServerName: pointer.String(fmt.Sprintf("%s.%s.svc", MonitoringSVCUserWorkload, MonitoringUserwWrkloadNS)),
+					CAPath:     &caPath,
+				},
+				HeaderAuth: config.HeaderAuth{
+					CredentialsFile: &token,
+					Type:            pointer.String("Bearer"),
+				},
 			},
-		},
+		}
+
+		if err := mergo.Merge(lokiOverrides.Ruler.AlertManager, amOverride); err != nil {
+			return kverrors.Wrap(err, "failed merging application tenant AlertManager config")
+		}
+
+		configOpt.Overrides[tenantApplication] = lokiOverrides
 	}
-
-	lokiOverrides.Ruler.AlertManager = &amOverride
-
-	configOpt.Overrides[tenantApplication] = lokiOverrides
 
 	return nil
 }
