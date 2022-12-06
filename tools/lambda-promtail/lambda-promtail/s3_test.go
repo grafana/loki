@@ -131,6 +131,21 @@ func Test_parseS3Log(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "albaccesslogs",
+			args: args{
+				batchSize: 1024, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/albaccesslog.log.gz",
+				ctx:       context.TODO(),
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"type": LB_LOG_TYPE,
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
