@@ -96,7 +96,8 @@ func (e *LogRange) Pretty(level int) string {
 		s += e.Unwrap.Pretty(level + 1)
 	}
 
-	s += fmt.Sprintf("%s [%s]", s, model.Duration(e.Interval))
+	// TODO: this will put [1m] on the same line, not in new line as people used to now.
+	s = fmt.Sprintf("%s [%s]", s, model.Duration(e.Interval))
 
 	if e.Offset != 0 {
 		oe := OffsetExpr{Offset: e.Offset}

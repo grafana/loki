@@ -23,6 +23,8 @@ type Expr interface {
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
 	Walkable
 	fmt.Stringer
+
+	// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
 	Pretty(level int) string
 }
 

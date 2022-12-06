@@ -109,6 +109,8 @@ Use the --analyze-labels flag to get a summary of the labels found in all stream
 This is helpful to find high cardinality labels.
 `)
 	seriesQuery = newSeriesQuery(seriesCmd)
+
+	fmtCmd = app.Command("fmt", "Formats LogQL query.")
 )
 
 func main() {
@@ -213,6 +215,8 @@ func main() {
 		labelsQuery.DoLabels(queryClient)
 	case seriesCmd.FullCommand():
 		seriesQuery.DoSeries(queryClient)
+	case fmtCmd.FullCommand():
+		formatLogQL()
 	}
 }
 

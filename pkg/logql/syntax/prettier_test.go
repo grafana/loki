@@ -32,8 +32,7 @@ func TestPrettify(t *testing.T) {
 			in:   `count_over_time({job="loki", instance="localhost"}|logfmt[1m])`,
 			exp: `count_over_time(
  {job="loki", instance="localhost"}
-  | logfmt
- [1m]
+  | logfmt [1m]
 )`,
 		},
 	}

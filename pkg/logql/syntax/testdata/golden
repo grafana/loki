@@ -1,0 +1,9 @@
+avg  (avg_over_time(
+{job="loki-prod3/distributor"}
+|= "push request parsed"
+|= "org_id=263912"
+| logfmt
+| label_format bodySize=`{{ if .bodySize | hasSuffix " B"}}{{ .bodySize | trimSuffix " B" }}{{ else if .bodySize | hasSuffix " kB"}}{{ .bodySize  | trimSuffix " kB" | mulf 1000 }}{{ else if .bodySize | hasSuffix " MB"}}{{ .bodySize | trimSuffix " MB" | mulf 1000000 }}{{else}}0{{end}}`
+| label_format totalSize=`{{ if .totalSize | hasSuffix " B"}}{{ .totalSize | trimSuffix " B" }}{{ else if .totalSize | hasSuffix " kB"}}{{ .totalSize | trimSuffix " kB" | mulf 1000 }}{{ else if .totalSize | hasSuffix " MB"}}{{ .totalSize | trimSuffix " MB" | mulf 1000000 }}{{else}}0{{end}}`
+| label_format compression=`{{ divf .bodySize .totalSize | mulf 100 }}`
+| unwrap compression [1m]))
