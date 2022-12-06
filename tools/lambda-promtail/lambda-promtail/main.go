@@ -33,6 +33,7 @@ var (
 	batchSize                                                 int
 	s3Clients                                                 map[string]*s3.Client
 	extraLabels                                               model.LabelSet
+	printLogLine                                              bool
 )
 
 func setupArguments() {
@@ -81,6 +82,12 @@ func setupArguments() {
 	batchSize = 131072
 	if batch != "" {
 		batchSize, _ = strconv.Atoi(batch)
+	}
+
+	print := os.Getenv("PRINT_LOG_LINE")
+	printLogLine = true
+	if strings.EqualFold(print, "false") {
+		printLogLine = false
 	}
 
 	s3Clients = make(map[string]*s3.Client)
