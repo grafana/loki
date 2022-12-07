@@ -100,7 +100,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			args: args{
 				RequestBodies: []string{testPayload},
 				RequestParams: map[string][]string{
-					"some_query_param": []string{"app_123", "app_456"},
+					"some_query_param": {"app_123", "app_456"},
 				},
 				Labels: model.LabelSet{
 					"job": "some_job_name",
@@ -145,7 +145,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			args: args{
 				RequestBodies: []string{testLogLine1, testLogLine2},
 				RequestParams: map[string][]string{
-					"some_query_param": []string{"app_123", "app_456"},
+					"some_query_param": {"app_123", "app_456"},
 				},
 				Labels: model.LabelSet{
 					"job": "multiple_line_job",
@@ -215,7 +215,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			args: args{
 				RequestBodies: []string{testLogLine1},
 				RequestParams: map[string][]string{
-					"some_query_param": []string{"app_123", "app_456"},
+					"some_query_param": {"app_123", "app_456"},
 				},
 				Labels: model.LabelSet{
 					"job": "relabeling_job",
