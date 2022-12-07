@@ -10,9 +10,9 @@ import (
 
 // TODO:
 // 1. test with offset. - DONE
-// 2. test with jsonparser
+// 2. test with jsonparser - DONE
 // 3. test with unwrap - DONE
-// 4. nested aggregation - e.g: quantile_over_time() by (cluster)
+// 4. nested aggregation -
 // 5. binary op and nested
 // 6. unary ops
 // 7. nested funcs + nested aggregation + nested binary ops.
@@ -97,6 +97,34 @@ func TestPrettify(t *testing.T) {
     |= ip("192.168.0.1")
     | logfmt [1m]
 )`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			fmt.Printf("%#v\n", expr)
+			require.NoError(t, err)
+			got := Prettify(expr)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestPretty2(t *testing.T) {
+	maxCharsPerLine = 20
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "jsonparserExpr",
+			in:   `{job="loki", namespace="loki-prod", container="nginx-ingress"}| json first_server="servers[0]", ua="request.headers[\"User-Agent\"]" | level="error"`,
+			exp: `{job="loki", namespace="loki-prod", container="nginx-ingress"}
+  | json first_server="servers[0]",ua="request.headers[\"User-Agent\"]"
+  | level="error"`,
 		},
 	}
 

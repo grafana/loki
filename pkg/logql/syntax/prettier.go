@@ -105,11 +105,9 @@ func (e *LabelFmtExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-// e.g:
-// 1. | json label="expression", another="expression" (with parameters)
-// 2. | json (without parameters)
+// e.g: | json label="expression", another="expression"
 func (e *JSONExpressionParser) Pretty(level int) string {
-	return ""
+	return commonPrefixIndent(level, e)
 }
 
 // e.g: sum_over_time({foo="bar"} | logfmt | unwrap bytes_processed [5m])
