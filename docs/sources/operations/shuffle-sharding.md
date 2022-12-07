@@ -36,7 +36,7 @@ This, in turn, may affect the queriers that have been reassigned.
 
 The idea of shuffle sharding is to assign each tenant to a shard composed by a subset of the Loki queriers, aiming to minimize the overlapping instances between distinct tenants.
 
-A misbehaving tenant will affect only its shard's queriers. Due to the low overlap of queriers among tenants, only a small subset of tenants will be affected bythe misbehaving tenant.
+A misbehaving tenant will affect only its shard's queriers. Due to the low overlap of queriers among tenants, only a small subset of tenants will be affected by the misbehaving tenant.
 Shuffle sharding requires no more resources than the default sharding strategy.
 
 Shuffle sharding does not fix all issues.
