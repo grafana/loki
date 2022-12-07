@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/url"
@@ -18,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	_ "github.com/grafana/loki/pkg/util/build"
 )
 
@@ -216,8 +220,26 @@ func main() {
 	case seriesCmd.FullCommand():
 		seriesQuery.DoSeries(queryClient)
 	case fmtCmd.FullCommand():
-		formatLogQL()
+		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
+			log.Fatalf("unable to format logql: %s", err)
+		}
 	}
+}
+
+func formatLogQL(r io.Reader, w io.Writer) error {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	expr, err := syntax.ParseExpr(string(b))
+	if err != nil {
+		return fmt.Errorf("failed to parse the query: %w", err)
+	}
+
+	fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
+
+	return nil
 }
 
 func newQueryClient(app *kingpin.Application) client.Client {

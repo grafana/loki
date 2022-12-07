@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	maxCharsPerLine = 100
+	maxCharsPerLine = 20
 )
 
 func Prettify(e Expr) string {
@@ -17,18 +17,26 @@ func Prettify(e Expr) string {
 
 // e.g: `{foo="bar"}`
 func (e *MatchersExpr) Pretty(level int) string {
-	return e.String()
+	return commonPrefixIndent(level, e)
 }
 
 // e.g: `{foo="bar"} | logfmt | level="error"`
-// Here, left = `{foo="bar"}` and multistages would collection of each stage in pipeline, here logfmt and level="error"
+// Here, left = `{foo="bar"}` and multistages would collection of each stage in pipeline, here `logfmt` and `level="error"`
 func (e *PipelineExpr) Pretty(level int) string {
 	if !needSplit(e) {
 		return e.String()
 	}
-	s := fmt.Sprintf("%s\n", e.Left.Pretty(level+1))
-	for _, ms := range e.MultiStages {
+	s := fmt.Sprintf("%s\n", e.Left.Pretty(level))
+	for i, ms := range e.MultiStages {
 		s += ms.Pretty(level + 1)
+		//NOTE: Needed because, we tend to format multiple stage in pipeline as each stage in single line
+		// e.g:
+		// | logfmt
+		// | level = "error"
+		// But all the stages will have same indent level. So here we don't increase level.
+		if i < len(e.MultiStages)-1 {
+			s += "\n"
+		}
 	}
 	return s
 }
@@ -45,18 +53,17 @@ func (e *LineFilterExpr) Pretty(level int) string {
 // `| pattern`
 // `| unpack`
 func (e *LabelParserExpr) Pretty(level int) string {
-	s := indent(level)
-	return s + e.String()
+	return commonPrefixIndent(level, e)
 }
 
 // e.g: | level!="error"
 func (e *LabelFilterExpr) Pretty(level int) string {
-	return ""
+	return commonPrefixIndent(level, e)
 }
 
 // e.g: | line_format "{{ .label }}"
 func (e *LineFmtExpr) Pretty(level int) string {
-	return ""
+	return commonPrefixIndent(level, e)
 }
 
 // TODO: I have no idea what it does.
@@ -84,16 +91,14 @@ func (e *UnwrapExpr) Pretty(level int) string {
 // e.g: `{foo="bar"}|logfmt[5m]`
 // TODO: Change it to LogRangeExpr (to be consistent with other expressions)
 func (e *LogRange) Pretty(level int) string {
-	s := indent(level)
-
 	if !needSplit(e) {
-		return s + e.String()
+		return e.String()
 	}
 
-	s += e.Left.Pretty(level + 1)
+	s := e.Left.Pretty(level)
 
 	if e.Unwrap != nil {
-		s += e.Unwrap.Pretty(level + 1)
+		s += e.Unwrap.Pretty(level)
 	}
 
 	// TODO: this will put [1m] on the same line, not in new line as people used to now.
@@ -101,7 +106,7 @@ func (e *LogRange) Pretty(level int) string {
 
 	if e.Offset != 0 {
 		oe := OffsetExpr{Offset: e.Offset}
-		s += oe.Pretty(level + 1)
+		s += oe.Pretty(level)
 	}
 
 	return s
@@ -167,6 +172,10 @@ func (e *VectorExpr) Pretty(level int) string {
 
 // Helpers
 
+func commonPrefixIndent(level int, current Expr) string {
+	return fmt.Sprintf("%s%s", indent(level), current.String())
+}
+
 func needSplit(e Expr) bool {
 	if e == nil {
 		return false
@@ -174,6 +183,8 @@ func needSplit(e Expr) bool {
 	return len(e.String()) > maxCharsPerLine
 }
 
+const indentString = "  "
+
 func indent(level int) string {
-	return strings.Repeat(" ", level)
+	return strings.Repeat(indentString, level)
 }

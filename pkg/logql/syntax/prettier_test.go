@@ -23,16 +23,17 @@ func TestPrettify(t *testing.T) {
 		},
 		{
 			name: "pipeline",
-			in:   `{job="loki", instance="localhost"}|logfmt `,
+			in:   `{job="loki", instance="localhost"}|logfmt|level="error" `,
 			exp: `{job="loki", instance="localhost"}
- | logfmt`,
+  | logfmt
+  | level="error"`,
 		},
 		{
 			name: "aggregation",
 			in:   `count_over_time({job="loki", instance="localhost"}|logfmt[1m])`,
 			exp: `count_over_time(
- {job="loki", instance="localhost"}
-  | logfmt [1m]
+  {job="loki", instance="localhost"}
+    | logfmt [1m]
 )`,
 		},
 	}
