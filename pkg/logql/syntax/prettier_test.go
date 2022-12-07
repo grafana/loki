@@ -9,10 +9,10 @@ import (
 )
 
 // TODO:
-// 1. test with offset.
+// 1. test with offset. - DONE
 // 2. test with jsonparser
-// 3. test with unwrap
-// 4. nested aggregation
+// 3. test with unwrap - DONE
+// 4. nested aggregation - e.g: quantile_over_time() by (cluster)
 // 5. binary op and nested
 // 6. unary ops
 // 7. nested funcs + nested aggregation + nested binary ops.
@@ -75,6 +75,17 @@ func TestPrettify(t *testing.T) {
   {job="loki", instance="localhost"}
     |= "error" [5m] offset 20m
 )`,
+		},
+		{
+			name: "unwrap",
+			in:   `quantile_over_time(0.99,{container="ingress-nginx",service="hosted-grafana"}| json| unwrap response_latency_seconds| __error__=""[1m]) by (cluster)`,
+			exp: `quantile_over_time(
+  0.99,
+  {container="ingress-nginx", service="hosted-grafana"}
+    | json
+    | unwrap response_latency_seconds
+    | __error__="" [1m]
+) by (cluster)`,
 		},
 		{
 			name: "pipeline_aggregation_line_filter",

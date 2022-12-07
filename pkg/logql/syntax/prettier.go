@@ -114,7 +114,18 @@ func (e *JSONExpressionParser) Pretty(level int) string {
 
 // e.g: sum_over_time({foo="bar"} | logfmt | unwrap bytes_processed [5m])
 func (e *UnwrapExpr) Pretty(level int) string {
-	return e.String() // TODO: fix it later
+	var sb strings.Builder
+	sb.WriteString(indent(level))
+
+	if e.Operation != "" {
+		sb.WriteString(fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, e.Operation, e.Identifier))
+	} else {
+		sb.WriteString(fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, e.Identifier))
+	}
+	for _, f := range e.PostFilters {
+		sb.WriteString(fmt.Sprintf("\n%s%s %s", indent(level), OpPipe, f))
+	}
+	return sb.String() //
 }
 
 // e.g: `{foo="bar"}|logfmt[5m]`
@@ -127,7 +138,9 @@ func (e *LogRange) Pretty(level int) string {
 	s := e.Left.Pretty(level)
 
 	if e.Unwrap != nil {
-		s += e.Unwrap.Pretty(level)
+		// NOTE: | unwrap should go to newline
+		s += "\n"
+		s += e.Unwrap.Pretty(level + 1)
 	}
 
 	// TODO: this will put [1m] on the same line, not in new line as people used to now.
@@ -143,6 +156,7 @@ func (e *LogRange) Pretty(level int) string {
 
 // e.g: count_over_time({foo="bar"}[5m] offset 3h)
 // NOTE: why does offset doesn't work on just stream selector? e.g: `{foo="bar"}| offset 1h`? is it bug? or anything else?
+// Also offset expression never to be indended. It always goes with it's parent expr (usually RangeExpr).
 func (e *OffsetExpr) Pretty(level int) string {
 	// using `model.Duration` as it can format ignoring zero units.
 	// e.g: time.Duration(2 * Hour) -> "2h0m0s"
@@ -159,17 +173,38 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 		return s + e.String()
 	}
 
-	s += e.Operation
+	s += e.Operation // e.g: quantile_over_time
 
 	s += "(\n"
 
-	s += e.Left.Pretty(level + 1)
-
-	if e.Grouping != nil {
-		// TODO
+	// print args to the function.
+	if e.Params != nil {
+		s = fmt.Sprintf("%s%s%s,", s, indent(level+1), fmt.Sprint(*e.Params))
+		s += "\n"
 	}
 
+	s += e.Left.Pretty(level + 1)
+
 	s += "\n)"
+
+	if e.Grouping != nil {
+		g := e.Grouping
+
+		var sb strings.Builder
+		if g.Without {
+			sb.WriteString(" without")
+		} else if len(g.Groups) > 0 {
+			sb.WriteString(" by")
+		}
+
+		if len(g.Groups) > 0 {
+			sb.WriteString(" (")
+			sb.WriteString(strings.Join(g.Groups, ", "))
+			sb.WriteString(")")
+		}
+
+		s += sb.String()
+	}
 
 	return s
 }
