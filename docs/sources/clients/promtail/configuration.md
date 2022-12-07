@@ -2084,7 +2084,7 @@ scrape_configs:
 
 ## Example Push Config
 
-The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Dirver:
+The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Driver:
 
 ```yaml
 server:
