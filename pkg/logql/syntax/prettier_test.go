@@ -8,6 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO:
+// 1. test with offset.
+// 2. test with jsonparser
+// 3. test with unwrap
+// 4. nested aggregation
+// 5. binary op and nested
+// 6. unary ops
+// 7. nested funcs + nested aggregation + nested binary ops.
+
 func TestPrettify(t *testing.T) {
 	maxCharsPerLine = 20
 
@@ -22,12 +31,36 @@ func TestPrettify(t *testing.T) {
 			exp:  `{job="loki", instance="localhost"}`,
 		},
 		{
-			name: "pipeline",
+			name: "pipeline_label_filter",
 			in:   `{job="loki", instance="localhost"}|logfmt|level="error" `,
 			exp: `{job="loki", instance="localhost"}
   | logfmt
   | level="error"`,
 		},
+		{
+			name: "pipeline_line_filter",
+			in:   `{job="loki", instance="localhost"}|= "error" != "memcached" |= ip("192.168.0.1") |logfmt`,
+			exp: `{job="loki", instance="localhost"}
+  |= "error"
+  != "memcached"
+  |= ip("192.168.0.1")
+  | logfmt`,
+		},
+		{
+			name: "pipeline_line_format",
+			in:   `{job="loki", instance="localhost"}|logfmt|line_format "{{.error}}"`,
+			exp: `{job="loki", instance="localhost"}
+  | logfmt
+  | line_format "{{.error}}"`,
+		},
+		{
+			name: "pipeline_label_format",
+			in:   `{job="loki", instance="localhost"}|logfmt|label_format dst="{{.src}}"`,
+			exp: `{job="loki", instance="localhost"}
+  | logfmt
+  | label_format dst="{{.src}}"`,
+		},
+
 		{
 			name: "aggregation",
 			in:   `count_over_time({job="loki", instance="localhost"}|logfmt[1m])`,
@@ -37,7 +70,7 @@ func TestPrettify(t *testing.T) {
 )`,
 		},
 		{
-			name: "pipeline_line_filter",
+			name: "pipeline_aggregation_line_filter",
 			in:   `count_over_time({job="loki", instance="localhost"}|= "error" != "memcached" |= ip("192.168.0.1") |logfmt[1m])`,
 			exp: `count_over_time(
   {job="loki", instance="localhost"}

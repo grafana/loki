@@ -95,14 +95,14 @@ func (e *LineFmtExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-// TODO: I have no idea what it does.
+// TODO: I have no idea yet about what it does. Later!
 func (e *DecolorizeExpr) Pretty(level int) string {
 	return ""
 }
 
 // e.g: | label_format dst="{{ .src }}"
 func (e *LabelFmtExpr) Pretty(level int) string {
-	return ""
+	return commonPrefixIndent(level, e)
 }
 
 // e.g:
