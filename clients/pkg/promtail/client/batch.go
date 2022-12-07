@@ -72,7 +72,10 @@ func (b *batch) add(entry api.Entry) error {
 }
 
 func labelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
+	var b strings.Builder
+	var labelsSize int
 	lstrs := make([]string, 0, len(ls))
+
 Outer:
 	for l, v := range ls {
 		for _, w := range without {
@@ -80,11 +83,45 @@ Outer:
 				continue Outer
 			}
 		}
-		lstrs = append(lstrs, fmt.Sprintf("%s=%q", l, v))
+
+		str, s := labelNameValueToString(b, l, v)
+		lstrs = append(lstrs, str)
+		labelsSize += s
+	}
+	if len(lstrs) == 0 {
+		return "{}"
 	}
 
 	sort.Strings(lstrs)
-	return fmt.Sprintf("{%s}", strings.Join(lstrs, ", "))
+	return labelListToString(b, labelsSize, lstrs)
+}
+
+// labelListToString replicates 'fmt.Sprintf("{%s}", strings.Join(lstrs, ", "))', but in a more efficent way. We achieve this by using a string.Builder and keeping track of the size at an earlier stage
+func labelListToString(b strings.Builder, labelsSize int, lstrs []string) string {
+	b.Reset()
+	b.Grow(labelsSize + 2 + (2 * (len(lstrs) - 1)))
+	b.WriteString("{")
+	for i := 0; i < len(lstrs)-1; i++ {
+		b.WriteString(lstrs[i])
+		b.WriteString(", ")
+	}
+	// Write the last element seperatly so we have no trailing comma (', ')
+	b.WriteString(lstrs[len(lstrs)-1])
+	b.WriteString("}")
+	return b.String()
+}
+
+// labelNameValueToString replicates 'fmt.Sprintf("%s=%q", l, v)', but in a more efficent way. We achieve this by using a string.Builder. We also return the size for a later concatenation.
+func labelNameValueToString(b strings.Builder, l model.LabelName, v model.LabelValue) (string, int) {
+	// The strings.Builder
+	b.Reset()
+	stringSize := len(l) + len(v) + 3 // 3 for the equals (=) and two quotes (")
+	b.Grow(stringSize)
+	b.WriteString(string(l))
+	b.WriteString("=\"")
+	b.WriteString(string(v))
+	b.WriteString("\"")
+	return b.String(), stringSize
 }
 
 // sizeBytes returns the current batch size in bytes

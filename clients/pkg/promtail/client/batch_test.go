@@ -164,3 +164,17 @@ func TestHashCollisions(t *testing.T) {
 		assert.Equal(t, ls1.String(), req.Streams[1].Labels)
 	}
 }
+
+func BenchmarkLabelsMapToString(b *testing.B) {
+	labelSet := make(model.LabelSet)
+	labelSet["label"] = "value"
+	labelSet["label1"] = "value"
+	labelSet["label2"] = "value"
+	labelSet["__tenant_id__"] = "value"
+
+	ReservedLabelTenantID := "__tenant_id__"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = labelsMapToString(labelSet, model.LabelName(ReservedLabelTenantID))
+	}
+}
