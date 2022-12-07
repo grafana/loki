@@ -52,6 +52,9 @@ type writer interface {
 	Stop()
 }
 
+// metrics singleton
+var shipperMetrics *metrics
+
 type indexClient struct {
 	cfg          Config
 	indexShipper indexshipper.IndexShipper
@@ -65,9 +68,13 @@ type indexClient struct {
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer) (series_index.Client, error) {
+	if shipperMetrics == nil {
+		shipperMetrics = newMetrics(registerer)
+	}
+
 	i := indexClient{
 		cfg:     cfg,
-		metrics: newMetrics(registerer),
+		metrics: shipperMetrics,
 	}
 
 	err := i.init(name, storageClient, limits, ownsTenantFn, tableRange, registerer)

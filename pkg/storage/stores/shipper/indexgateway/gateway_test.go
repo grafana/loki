@@ -3,12 +3,14 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_math "github.com/grafana/loki/pkg/util/math"
@@ -127,7 +129,16 @@ func TestGateway_QueryIndex(t *testing.T) {
 			})
 		}
 		expectedQueryKey = util.QueryKey(query)
-		gateway.indexClient = mockIndexClient{response: &mockBatch{size: responseSize}}
+		gateway.indexClients = []IndexClientWithRange{{
+			IndexClient: mockIndexClient{response: &mockBatch{size: responseSize}},
+			TableRange: config.TableRange{
+				Start: 0,
+				End:   math.MaxInt64,
+				PeriodConfig: &config.PeriodConfig{
+					IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				},
+			},
+		}}
 
 		err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: []*logproto.IndexQuery{{
 			TableName:        query.TableName,

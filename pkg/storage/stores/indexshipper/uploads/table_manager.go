@@ -13,6 +13,8 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+var uploadMetrics *metrics
+
 type Config struct {
 	UploadInterval time.Duration
 	DBRetainPeriod time.Duration
@@ -38,12 +40,16 @@ type tableManager struct {
 }
 
 func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Registerer) (TableManager, error) {
+	if uploadMetrics == nil {
+		uploadMetrics = newMetrics(reg)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := tableManager{
 		cfg:           cfg,
 		storageClient: storageClient,
 		tables:        map[string]Table{},
-		metrics:       newMetrics(reg),
+		metrics:       uploadMetrics,
 		ctx:           ctx,
 		cancel:        cancel,
 	}

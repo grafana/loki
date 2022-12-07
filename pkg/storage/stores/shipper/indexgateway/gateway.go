@@ -107,20 +107,35 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 	var start int
 	for _, indexClient := range g.indexClients {
 		offset := 0
-		for i, query := range queries[start:] {
+		for _, query := range queries[start:] {
 			tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
 			if err != nil {
 				return err
 			}
 
 			if tableNumber == -1 || tableNumber < indexClient.TableRange.Start {
+				offset += 1
 				continue
 			}
 
+			break
+		}
+		// skip tables before the range
+		start += offset
+
+		offset = 0
+		for _, query := range queries[start:] {
+			tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
+			if err != nil {
+				return err
+			}
+
 			if !indexClient.TableRange.TableInRange(tableNumber, query.TableName) {
-				offset = i
+				// break at the end of the range
 				break
 			}
+
+			offset += 1
 		}
 
 		if offset == 0 {
