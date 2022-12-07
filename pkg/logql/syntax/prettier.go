@@ -7,6 +7,9 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// Doc:
+// 1. Differs with promql prettifer, by linefilter and pipelineexpr. Because even if we add \n, we indent to same level for these two so far.
+
 var (
 	maxCharsPerLine = 20
 )
@@ -24,8 +27,9 @@ func (e *MatchersExpr) Pretty(level int) string {
 // Here, left = `{foo="bar"}` and multistages would collection of each stage in pipeline, here `logfmt` and `level="error"`
 func (e *PipelineExpr) Pretty(level int) string {
 	if !needSplit(e) {
-		return e.String()
+		return indent(level) + e.String()
 	}
+
 	s := fmt.Sprintf("%s\n", e.Left.Pretty(level))
 	for i, ms := range e.MultiStages {
 		s += ms.Pretty(level + 1)
@@ -41,9 +45,34 @@ func (e *PipelineExpr) Pretty(level int) string {
 	return s
 }
 
-// e.g: `|= "error" != "memcache"`
+// e.g: `|= "error" != "memcache" |= ip("192.168.0.1")`
+// NOTE: here `ip` is Op in this expression.
 func (e *LineFilterExpr) Pretty(level int) string {
-	return ""
+	if !needSplit(e) {
+		return indent(level) + e.String()
+	}
+
+	var s string
+
+	if e.Left != nil {
+		// s += indent(level)
+		s += e.Left.Pretty(level)
+		// NOTE: Similar to PiplelinExpr, we also have to format every LineFilterExpr in new line. But with same indendation level.
+		// e.g:
+		// |= "error"
+		// != "memcached"
+		// |= ip("192.168.0.1")
+		s += "\n"
+	}
+
+	s += indent(level)
+
+	// We re-use LineFilterExpr's String() implementation to avoid duplication.
+	// We create new LineFilterExpr without `Left`.
+	ne := newLineFilterExpr(e.Ty, e.Op, e.Match)
+	s += ne.String()
+
+	return s
 }
 
 // e.g:
@@ -92,7 +121,7 @@ func (e *UnwrapExpr) Pretty(level int) string {
 // TODO: Change it to LogRangeExpr (to be consistent with other expressions)
 func (e *LogRange) Pretty(level int) string {
 	if !needSplit(e) {
-		return e.String()
+		return indent(level) + e.String()
 	}
 
 	s := e.Left.Pretty(level)

@@ -36,6 +36,17 @@ func TestPrettify(t *testing.T) {
     | logfmt [1m]
 )`,
 		},
+		{
+			name: "pipeline_line_filter",
+			in:   `count_over_time({job="loki", instance="localhost"}|= "error" != "memcached" |= ip("192.168.0.1") |logfmt[1m])`,
+			exp: `count_over_time(
+  {job="loki", instance="localhost"}
+    |= "error"
+    != "memcached"
+    |= ip("192.168.0.1")
+    | logfmt [1m]
+)`,
+		},
 	}
 
 	for _, c := range cases {
