@@ -141,10 +141,13 @@ func (e *LogRange) Pretty(level int) string {
 	return s
 }
 
-// e.g: count_over_time({foo="bar"}[5m offset 3h)
+// e.g: count_over_time({foo="bar"}[5m] offset 3h)
 // NOTE: why does offset doesn't work on just stream selector? e.g: `{foo="bar"}| offset 1h`? is it bug? or anything else?
 func (e *OffsetExpr) Pretty(level int) string {
-	return e.String() // TODO: fix it later
+	// using `model.Duration` as it can format ignoring zero units.
+	// e.g: time.Duration(2 * Hour) -> "2h0m0s"
+	// but model.Duration(2 * Hour) -> "2h"
+	return fmt.Sprintf(" %s %s", OpOffset, model.Duration(e.Offset))
 }
 
 // NOTE: Should I care about SampleExpr or LogSelectorExpr? (those are just abstract types)

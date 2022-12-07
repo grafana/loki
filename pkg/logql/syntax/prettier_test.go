@@ -60,13 +60,20 @@ func TestPrettify(t *testing.T) {
   | logfmt
   | label_format dst="{{.src}}"`,
 		},
-
 		{
 			name: "aggregation",
 			in:   `count_over_time({job="loki", instance="localhost"}|logfmt[1m])`,
 			exp: `count_over_time(
   {job="loki", instance="localhost"}
     | logfmt [1m]
+)`,
+		},
+		{
+			name: "aggregation_with_offset",
+			in:   `count_over_time({job="loki", instance="localhost"}|= "error"[5m] offset 20m)`,
+			exp: `count_over_time(
+  {job="loki", instance="localhost"}
+    |= "error" [5m] offset 20m
 )`,
 		},
 		{
