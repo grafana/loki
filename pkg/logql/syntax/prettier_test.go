@@ -12,12 +12,12 @@ import (
 // 1. test with offset. - DONE
 // 2. test with jsonparser - DONE
 // 3. test with unwrap - DONE
-// 4. nested aggregation -
+// 4. vector aggregation - DONE
 // 5. binary op and nested
 // 6. unary ops
 // 7. nested funcs + nested aggregation + nested binary ops.
 
-func TestPrettify(t *testing.T) {
+func TestFormat(t *testing.T) {
 	maxCharsPerLine = 20
 
 	cases := []struct {
@@ -111,7 +111,7 @@ func TestPrettify(t *testing.T) {
 	}
 }
 
-func TestPretty2(t *testing.T) {
+func TestFormat2(t *testing.T) {
 	maxCharsPerLine = 20
 
 	cases := []struct {
@@ -125,6 +125,46 @@ func TestPretty2(t *testing.T) {
 			exp: `{job="loki", namespace="loki-prod", container="nginx-ingress"}
   | json first_server="servers[0]",ua="request.headers[\"User-Agent\"]"
   | level="error"`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			fmt.Printf("%#v\n", expr)
+			require.NoError(t, err)
+			got := Prettify(expr)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestFormat_VectorAggregation(t *testing.T) {
+	maxCharsPerLine = 20
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "sum",
+			in:   `sum(count_over_time({foo="bar",namespace="loki",instance="localhost"}[5m])) by (container)`,
+			exp: `sum by (container)(
+  count_over_time(
+    {foo="bar", namespace="loki", instance="localhost"} [5m]
+  )
+)`,
+		},
+		{
+			name: "topk",
+			in:   `topk(5, count_over_time({foo="bar",namespace="loki",instance="localhost"}[5m])) by (container)`,
+			exp: `topk by (container)(
+  5,
+  count_over_time(
+    {foo="bar", namespace="loki", instance="localhost"} [5m]
+  )
+)`,
 		},
 	}
 

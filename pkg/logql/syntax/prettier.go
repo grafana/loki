@@ -183,33 +183,67 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 
 	s += e.Left.Pretty(level + 1)
 
-	s += "\n)"
+	s += "\n" + indent(level) + ")"
 
 	if e.Grouping != nil {
-		g := e.Grouping
-
-		var sb strings.Builder
-		if g.Without {
-			sb.WriteString(" without")
-		} else if len(g.Groups) > 0 {
-			sb.WriteString(" by")
-		}
-
-		if len(g.Groups) > 0 {
-			sb.WriteString(" (")
-			sb.WriteString(strings.Join(g.Groups, ", "))
-			sb.WriteString(")")
-		}
-
-		s += sb.String()
+		s += e.Grouping.Pretty(level)
 	}
 
 	return s
 }
 
-// e.g: sum by (container)(count_over_time({foo="bar"}[5m]))
+// e.g:
+// sum(count_over_time({foo="bar"}[5m])) by (container)
+// topk(10, count_over_time({foo="bar"}[5m])) by (container)
+
+// Syntax: <aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]
+// <aggr-op> - sum, avg, bottomk, topk, etc.
+// [parameters,] - optional params, used only by bottomk and topk for now.
+// <vector expression> - vector on which aggregation is done.
+// [without|by (<label list)] - optional labels to aggregate either with `by` or `without` clause.
 func (e *VectorAggregationExpr) Pretty(level int) string {
-	return ""
+	if !needSplit(e) {
+		return indent(level) + e.String()
+	}
+
+	var (
+		params []string
+		s      string
+	)
+
+	// level + 1 because arguments to function will be in newline.
+	left := e.Left.Pretty(level + 1)
+	switch e.Operation {
+	// e.Params default value (0) can mean a legit param for topk and bottomk
+	case OpTypeBottomK, OpTypeTopK:
+		params = []string{fmt.Sprintf("%s%d", indent(level+1), e.Params), left}
+
+	default:
+		if e.Params != 0 {
+			params = []string{fmt.Sprintf("%s%d", indent(level+1), e.Params), left}
+		} else {
+			params = []string{left}
+		}
+	}
+
+	s += e.Operation
+	if e.Grouping != nil {
+		s += e.Grouping.Pretty(level)
+	}
+
+	// (\n [params,\n])
+	s += "(\n"
+	for i, v := range params {
+		s += v
+		// LogQL doesn't allow `,` at the end of last argument.
+		if i < len(params)-1 {
+			s += ","
+		}
+		s += "\n"
+	}
+	s += indent(level) + ")"
+
+	return s
 }
 
 // e.g: Any operations involving
@@ -222,7 +256,7 @@ func (e *BinOpExpr) Pretty(level int) string {
 
 // e.g: 4.6
 func (e *LiteralExpr) Pretty(level int) string {
-	return ""
+	return commonPrefixIndent(level, e)
 }
 
 // e.g: label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*")
@@ -232,7 +266,30 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 
 // e.g: vector(5)
 func (e *VectorExpr) Pretty(level int) string {
-	return ""
+	return commonPrefixIndent(level, e)
+}
+
+// Grouping is techincally not expression type. But used in both range and vector aggregation (`by` and `without` clause)
+// So by implenting `Pretty` for Grouping, we can re use it for both.
+// NOTE: indent is ignored for `Grouping`, because grouping always stays in the same line of it's parent expression.
+
+// e.g:
+// by(container,namespace) -> by (container, namespace)
+func (g *Grouping) Pretty(_ int) string {
+	var s string
+
+	if g.Without {
+		s += " without"
+	} else if len(g.Groups) > 0 {
+		s += " by"
+	}
+
+	if len(g.Groups) > 0 {
+		s += " ("
+		s += strings.Join(g.Groups, ", ")
+		s += ")"
+	}
+	return s
 }
 
 // Helpers
