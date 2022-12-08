@@ -92,8 +92,14 @@ type astMapperware struct {
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	conf, err := ast.confs.GetConf(r)
 	logger := util_log.WithContext(ctx, ast.logger)
+	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
+	if err != nil {
+		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
+		return ast.next.Do(ctx, r)
+	}
+
+	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd()).Add(-maxOffset)))
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
@@ -271,8 +277,8 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (config.PeriodConfig, 
 }
 
 // GetConf will extract a shardable config corresponding to a request and the shardingconfigs
-func (confs ShardingConfigs) GetConf(r queryrangebase.Request) (config.PeriodConfig, error) {
-	conf, err := confs.ValidRange(r.GetStart(), r.GetEnd())
+func (confs ShardingConfigs) GetConf(start, end int64) (config.PeriodConfig, error) {
+	conf, err := confs.ValidRange(start, end)
 	// query exists across multiple sharding configs
 	if err != nil {
 		return conf, err
@@ -329,7 +335,7 @@ type seriesShardingHandler struct {
 }
 
 func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	conf, err := ss.confs.GetConf(r)
+	conf, err := ss.confs.GetConf(r.GetStart(), r.GetEnd())
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
