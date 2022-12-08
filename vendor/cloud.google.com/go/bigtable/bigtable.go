@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
 	btpb "google.golang.org/genproto/googleapis/bigtable/v2"
 	"google.golang.org/grpc"
@@ -38,6 +40,7 @@ import (
 )
 
 const prodAddr = "bigtable.googleapis.com:443"
+const mtlsProdAddr = "bigtable.mtls.googleapis.com:443"
 
 // Client is a client for reading and writing data to tables in an instance.
 //
@@ -64,7 +67,7 @@ func NewClient(ctx context.Context, project, instance string, opts ...option.Cli
 
 // NewClientWithConfig creates a new client with the given config.
 func NewClientWithConfig(ctx context.Context, project, instance string, config ClientConfig, opts ...option.ClientOption) (*Client, error) {
-	o, err := btopt.DefaultClientOptions(prodAddr, Scope, clientUserAgent)
+	o, err := btopt.DefaultClientOptions(prodAddr, mtlsProdAddr, Scope, clientUserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -76,13 +79,14 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		option.WithGRPCConnectionPool(4),
 		// Set the max size to correspond to server-side limits.
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<28), grpc.MaxCallRecvMsgSize(1<<28))),
-		// TODO(grpc/grpc-go#1388) using connection pool without WithBlock
-		// can cause RPCs to fail randomly. We can delete this after the issue is fixed.
-		option.WithGRPCDialOption(grpc.WithBlock()))
+	)
+	// Attempts direct access to spanner service over gRPC to improve throughput,
+	// whether the attempt is allowed is totally controlled by service owner.
+	o = append(o, internaloption.EnableDirectPath(true))
 	o = append(o, opts...)
 	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
-		return nil, fmt.Errorf("dialing: %v", err)
+		return nil, fmt.Errorf("dialing: %w", err)
 	}
 
 	return &Client{
@@ -123,6 +127,10 @@ func (c *Client) fullTableName(table string) string {
 	return fmt.Sprintf("projects/%s/instances/%s/tables/%s", c.project, c.instance, table)
 }
 
+func (c *Client) requestParamsHeaderValue(table string) string {
+	return fmt.Sprintf("table_name=%s&app_profile_id=%s", url.QueryEscape(c.fullTableName(table)), url.QueryEscape(c.appProfile))
+}
+
 // mergeOutgoingMetadata returns a context populated by the existing outgoing
 // metadata merged with the provided mds.
 func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
@@ -148,7 +156,7 @@ func (c *Client) Open(table string) *Table {
 	return &Table{
 		c:     c,
 		table: table,
-		md:    metadata.Pairs(resourcePrefixHeader, c.fullTableName(table)),
+		md:    metadata.Pairs(resourcePrefixHeader, c.fullTableName(table), requestParamsHeader, c.requestParamsHeaderValue(table)),
 	}
 }
 
@@ -179,8 +187,9 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 			AppProfileId: t.c.appProfile,
 			Rows:         arg.proto(),
 		}
+		settings := makeReadSettings(req)
 		for _, opt := range opts {
-			opt.set(req)
+			opt.set(&settings)
 		}
 		ctx, cancel := context.WithCancel(ctx) // for aborting the stream
 		defer cancel()
@@ -231,6 +240,13 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 					}
 				}
 			}
+
+			// Handle any incoming RequestStats. This should happen at most once.
+			if res.RequestStats != nil && settings.fullReadStatsFunc != nil {
+				stats := makeFullReadStats(res.RequestStats)
+				settings.fullReadStatsFunc(&stats)
+			}
+
 			if err := cr.Close(); err != nil {
 				// No need to prepare for a retry, this is an unretryable error.
 				return err
@@ -243,7 +259,7 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 }
 
 // ReadRow is a convenience implementation of a single-row reader.
-// A missing row will return a zero-length map and a nil error.
+// A missing row will return nil for both Row and error.
 func (t *Table) ReadRow(ctx context.Context, row string, opts ...ReadOption) (Row, error) {
 	var r Row
 	err := t.ReadRows(ctx, SingleRow(row), func(rr Row) bool {
@@ -445,9 +461,78 @@ func prefixSuccessor(prefix string) string {
 	return string(ans)
 }
 
+// ReadIterationStats captures information about the iteration of rows or cells over the course of
+// a read, e.g. how many results were scanned in a read operation versus the results returned.
+type ReadIterationStats struct {
+	// The cells returned as part of the request.
+	CellsReturnedCount int64
+
+	// The cells seen (scanned) as part of the request. This includes the count of cells returned, as
+	// captured below.
+	CellsSeenCount int64
+
+	// The rows returned as part of the request.
+	RowsReturnedCount int64
+
+	// The rows seen (scanned) as part of the request. This includes the count of rows returned, as
+	// captured below.
+	RowsSeenCount int64
+}
+
+// RequestLatencyStats provides a measurement of the latency of the request as it interacts with
+// different systems over its lifetime, e.g. how long the request took to execute within a frontend
+// server.
+type RequestLatencyStats struct {
+	// The latency measured by the frontend server handling this request, from when the request was
+	// received, to when this value is sent back in the response. For more context on the component
+	// that is measuring this latency, see: https://cloud.google.com/bigtable/docs/overview
+	FrontendServerLatency time.Duration
+}
+
+// FullReadStats captures all known information about a read.
+type FullReadStats struct {
+	// Iteration stats describe how efficient the read is, e.g. comparing rows seen vs. rows
+	// returned or cells seen vs cells returned can provide an indication of read efficiency
+	// (the higher the ratio of seen to retuned the better).
+	ReadIterationStats ReadIterationStats
+
+	// Request latency stats describe the time taken to complete a request, from the server
+	// side.
+	RequestLatencyStats RequestLatencyStats
+}
+
+// Returns a FullReadStats populated from a RequestStats. This assumes the stats view is
+// REQUEST_STATS_FULL. That is the only stats view currently supported.
+func makeFullReadStats(reqStats *btpb.RequestStats) FullReadStats {
+	statsView := reqStats.GetFullReadStatsView()
+	readStats := statsView.ReadIterationStats
+	latencyStats := statsView.RequestLatencyStats
+	return FullReadStats{
+		ReadIterationStats: ReadIterationStats{
+			CellsReturnedCount: readStats.CellsReturnedCount,
+			CellsSeenCount:     readStats.CellsSeenCount,
+			RowsReturnedCount:  readStats.RowsReturnedCount,
+			RowsSeenCount:      readStats.RowsSeenCount},
+		RequestLatencyStats: RequestLatencyStats{
+			FrontendServerLatency: latencyStats.FrontendServerLatency.AsDuration()}}
+}
+
+// FullReadStatsFunc describes a callback that receives a FullReadStats for evaluation.
+type FullReadStatsFunc func(*FullReadStats)
+
+// readSettings is a collection of objects that can be modified by ReadOption instances to apply settings.
+type readSettings struct {
+	req               *btpb.ReadRowsRequest
+	fullReadStatsFunc FullReadStatsFunc
+}
+
+func makeReadSettings(req *btpb.ReadRowsRequest) readSettings {
+	return readSettings{req, nil}
+}
+
 // A ReadOption is an optional argument to ReadRows.
 type ReadOption interface {
-	set(req *btpb.ReadRowsRequest)
+	set(settings *readSettings)
 }
 
 // RowFilter returns a ReadOption that applies f to the contents of read rows.
@@ -458,14 +543,27 @@ func RowFilter(f Filter) ReadOption { return rowFilter{f} }
 
 type rowFilter struct{ f Filter }
 
-func (rf rowFilter) set(req *btpb.ReadRowsRequest) { req.Filter = rf.f.proto() }
+func (rf rowFilter) set(settings *readSettings) { settings.req.Filter = rf.f.proto() }
 
 // LimitRows returns a ReadOption that will limit the number of rows to be read.
 func LimitRows(limit int64) ReadOption { return limitRows{limit} }
 
 type limitRows struct{ limit int64 }
 
-func (lr limitRows) set(req *btpb.ReadRowsRequest) { req.RowsLimit = lr.limit }
+func (lr limitRows) set(settings *readSettings) { settings.req.RowsLimit = lr.limit }
+
+// WithFullReadStats returns a ReadOption that will request FullReadStats
+// and invoke the given callback on the resulting FullReadStats.
+func WithFullReadStats(f FullReadStatsFunc) ReadOption { return withFullReadStats{f} }
+
+type withFullReadStats struct {
+	f FullReadStatsFunc
+}
+
+func (wrs withFullReadStats) set(settings *readSettings) {
+	settings.req.RequestStatsView = btpb.ReadRowsRequest_REQUEST_STATS_FULL
+	settings.fullReadStatsFunc = wrs.f
+}
 
 // mutationsAreRetryable returns true if all mutations are idempotent
 // and therefore retryable. A mutation is idempotent iff all cell timestamps
@@ -813,7 +911,7 @@ func Time(t time.Time) Timestamp { return Timestamp(t.UnixNano() / 1e3) }
 func Now() Timestamp { return Time(time.Now()) }
 
 // Time converts a Timestamp into a time.Time.
-func (ts Timestamp) Time() time.Time { return time.Unix(0, int64(ts)*1e3) }
+func (ts Timestamp) Time() time.Time { return time.Unix(int64(ts)/1e6, int64(ts)%1e6*1e3) }
 
 // TruncateToMilliseconds truncates a Timestamp to millisecond granularity,
 // which is currently the only granularity supported.

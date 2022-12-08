@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.7.0](https://github.com/googleapis/gax-go/compare/v2.6.0...v2.7.0) (2022-11-02)
+
+
+### Features
+
+* update google.golang.org/api to latest ([#240](https://github.com/googleapis/gax-go/issues/240)) ([f690a02](https://github.com/googleapis/gax-go/commit/f690a02c806a2903bdee943ede3a58e3a331ebd6))
+* **v2/apierror:** add apierror.FromWrappingError ([#238](https://github.com/googleapis/gax-go/issues/238)) ([9dbd96d](https://github.com/googleapis/gax-go/commit/9dbd96d59b9d54ceb7c025513aa8c1a9d727382f))
+
 ## [2.6.0](https://github.com/googleapis/gax-go/compare/v2.5.1...v2.6.0) (2022-10-13)
 
 
