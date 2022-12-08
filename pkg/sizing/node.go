@@ -9,27 +9,27 @@ type NodeType struct {
 }
 
 type NodePod struct {
-	cpuRequest    float64
-	cpuLimit      float64 // Or null
-	memoryRequest int
-	memoryLimit   int
-	rateMbSecond  float64
+	cpuRequest      float64
+	cpuLimit        float64 // Or null
+	memoryRequest   int
+	memoryLimit     int
+	rateBytesSecond float64
 }
 
 var StandardWrite = NodePod{
-	cpuRequest:    1,
-	cpuLimit:      2,
-	memoryRequest: 6,
-	memoryLimit:   12,
-	rateMbSecond:  3,
+	cpuRequest:      1,
+	cpuLimit:        2,
+	memoryRequest:   6,
+	memoryLimit:     12,
+	rateBytesSecond: 3 * 1024 * 1024,
 }
 
 var StandardRead = NodePod{
-	cpuRequest:    3,
-	cpuLimit:      0, // Undefined
-	memoryRequest: 6,
-	memoryLimit:   8,
-	rateMbSecond:  768,
+	cpuRequest:      3,
+	cpuLimit:        0, // Undefined
+	memoryRequest:   6,
+	memoryLimit:     8,
+	rateBytesSecond: 768 * 1024 * 1024,
 }
 
 var NodeTypesByProvider = map[string]map[string]NodeType{
