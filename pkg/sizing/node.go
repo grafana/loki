@@ -1,8 +1,7 @@
 package sizing
 
 type NodeType struct {
-	name string
-	//cloudType: CloudType;
+	name     string
 	cores    int
 	memoryGB int
 	readPod  NodePod
@@ -36,24 +35,21 @@ var StandardRead = NodePod{
 var NodeTypesByProvider = map[string]map[string]NodeType{
 	"AWS": {
 		"t2.xlarge": {
-			name: "t2.xlarge",
-			//cloudType: "AWS",
+			name:     "t2.xlarge",
 			cores:    4,
 			memoryGB: 16,
 			readPod:  StandardRead,
 			writePod: StandardWrite,
 		},
 		"t2.2xlarge": {
-			name: "t2.2xlarge",
-			//cloudType: "AWS",
+			name:     "t2.2xlarge",
 			cores:    8,
 			memoryGB: 32,
 			readPod:  StandardRead,
 			writePod: StandardWrite,
 		},
 		"t2.4xlarge": {
-			name: "t2.4xlarge",
-			//cloudType: "AWS",
+			name:     "t2.4xlarge",
 			cores:    16,
 			memoryGB: 64,
 			readPod:  StandardRead,
@@ -62,24 +58,21 @@ var NodeTypesByProvider = map[string]map[string]NodeType{
 	},
 	"GCP": {
 		"e2-standard-4": {
-			name: "e2-standard-4",
-			//cloudType: "GCP",
+			name:     "e2-standard-4",
 			cores:    4,
 			memoryGB: 16,
 			readPod:  StandardRead,
 			writePod: StandardWrite,
 		},
 		"e2-standard-8": {
-			name: "e2-standard-8",
-			//cloudType: "GCP",
+			name:     "e2-standard-8",
 			cores:    8,
 			memoryGB: 32,
 			readPod:  StandardRead,
 			writePod: StandardWrite,
 		},
 		"e2-standard-16": {
-			name: "e2-standard-16",
-			//cloudType: "GCP",
+			name:     "e2-standard-16",
 			cores:    16,
 			memoryGB: 64,
 			readPod:  StandardRead,

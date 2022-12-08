@@ -13,7 +13,7 @@ There are several methods of installing Loki and Promtail:
 - [Install and run locally](local/)
 - [Install from source](install-from-source/)
 
-The [Sizing Tool](sizing/) cna be used to determine the proper cluster sizing
+The [Sizing Tool](sizing/) can be used to determine the proper cluster sizing
 given an expected ingestion rate and query performance. 
 
 ## General process

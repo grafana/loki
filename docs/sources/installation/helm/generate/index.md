@@ -30,7 +30,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   <label>Log retention period</label>
   <input v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
 
-  <label>Query performance TODO: align horizontally</label>
+  <label>Query performance</label>
   <div style="display: inline-flex;">
   <input type="radio" id="basic" value="Basic" v-model="queryperf"/>
   <label for="basic">Basic</label>
