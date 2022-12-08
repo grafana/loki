@@ -83,9 +83,9 @@ func ConfigOptions(opt Options) config.Options {
 	}
 
 	if stackLimitsEnabled {
-		for tenant, override := range opt.Stack.Limits.Tenants {
+		for tenant, limits := range opt.Stack.Limits.Tenants {
 			so := overrides[tenant]
-			so.Stack = override
+			so.Limits = limits
 			overrides[tenant] = so
 		}
 	}

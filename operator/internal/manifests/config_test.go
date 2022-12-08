@@ -558,7 +558,7 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 							RefreshInterval: "1m",
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc"),
+									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
 									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
 								},
 								HeaderAuth: config.HeaderAuth{
@@ -596,33 +596,11 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						AlertManagerEnabled:             true,
-						UserWorkloadAlertManagerEnabled: true,
+						AlertManagerEnabled: true,
 					},
 				},
 			},
-			wantOptions: map[string]config.LokiOverrides{
-				"application": {
-					Ruler: config.RulerOverrides{
-						AlertManager: &config.AlertManagerConfig{
-							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
-							EnableV2:        true,
-							EnableDiscovery: true,
-							RefreshInterval: "1m",
-							Notifier: &config.NotifierConfig{
-								TLS: config.TLSConfig{
-									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc"),
-									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
-								},
-								HeaderAuth: config.HeaderAuth{
-									Type:            pointer.String("Bearer"),
-									CredentialsFile: pointer.String("/var/run/secrets/kubernetes.io/serviceaccount/token"),
-								},
-							},
-						},
-					},
-				},
-			},
+			wantOptions: nil,
 		},
 	}
 
@@ -873,8 +851,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						AlertManagerEnabled:             true,
-						UserWorkloadAlertManagerEnabled: true,
+						AlertManagerEnabled: true,
 					},
 				},
 			},

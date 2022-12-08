@@ -2,7 +2,7 @@
 overrides:
 {{ $opts := . }}
   {{- range $tenant, $overrides := .Overrides }}
-  {{ $spec := $overrides.Stack }}
+  {{ $spec := $overrides.Limits }}
   {{ $tenant }}:
   {{- if $l := $spec.IngestionLimits -}}
     {{ if $l.IngestionRate }}

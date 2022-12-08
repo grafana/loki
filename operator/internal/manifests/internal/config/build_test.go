@@ -447,7 +447,7 @@ overrides:
 		},
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
-				Stack: lokiv1.LimitsTemplateSpec{
+				Limits: lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             2,
 						MaxGlobalStreamsPerTenant: 1,
@@ -1868,7 +1868,7 @@ overrides:
 		},
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
-				Stack: lokiv1.LimitsTemplateSpec{
+				Limits: lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             2,
 						IngestionBurstSize:        5,

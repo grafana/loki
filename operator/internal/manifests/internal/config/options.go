@@ -37,8 +37,8 @@ type Options struct {
 }
 
 type LokiOverrides struct {
-	Stack lokiv1.LimitsTemplateSpec
-	Ruler RulerOverrides
+	Limits lokiv1.LimitsTemplateSpec
+	Ruler  RulerOverrides
 }
 
 type RulerOverrides struct {
@@ -57,13 +57,12 @@ type Address struct {
 
 // Ruler configuration
 type Ruler struct {
-	Enabled                       bool
-	RulesStorageDirectory         string
-	EvaluationInterval            string
-	PollInterval                  string
-	AlertManager                  *AlertManagerConfig
-	RemoteWrite                   *RemoteWriteConfig
-	UserWorkloadMonitoringEnabled bool
+	Enabled               bool
+	RulesStorageDirectory string
+	EvaluationInterval    string
+	PollInterval          string
+	AlertManager          *AlertManagerConfig
+	RemoteWrite           *RemoteWriteConfig
 }
 
 // AlertManagerConfig for ruler alertmanager config

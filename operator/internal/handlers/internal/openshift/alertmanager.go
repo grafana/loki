@@ -31,7 +31,7 @@ func AlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiStackSpec, k k8
 
 // UserWorkloadAlertManagerSVCExists returns true if the Openshift User Workload AlertManager is present in the cluster.
 func UserWorkloadAlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiStackSpec, k k8s.Client) (bool, error) {
-	if stack.Tenants == nil || (stack.Tenants.Mode != lokiv1.OpenshiftLogging && stack.Tenants.Mode != lokiv1.OpenshiftNetwork) {
+	if stack.Tenants == nil || stack.Tenants.Mode != lokiv1.OpenshiftLogging {
 		return false, nil
 	}
 
