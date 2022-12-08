@@ -104,7 +104,6 @@ func Test_getLabels(t *testing.T) {
 
 func Test_parseS3Log(t *testing.T) {
 	type args struct {
-		ctx       context.Context
 		b         *batch
 		labels    map[string]string
 		obj       io.ReadCloser
@@ -121,7 +120,6 @@ func Test_parseS3Log(t *testing.T) {
 			args: args{
 				batchSize: 1024, // Set large enough we don't try and send to promtail
 				filename:  "../testdata/vpcflowlog.log.gz",
-				ctx:       context.TODO(),
 				b: &batch{
 					streams: map[string]*logproto.Stream{},
 				},
@@ -136,7 +134,6 @@ func Test_parseS3Log(t *testing.T) {
 			args: args{
 				batchSize: 1024, // Set large enough we don't try and send to promtail
 				filename:  "../testdata/albaccesslog.log.gz",
-				ctx:       context.TODO(),
 				b: &batch{
 					streams: map[string]*logproto.Stream{},
 				},
@@ -149,10 +146,14 @@ func Test_parseS3Log(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var err error
 			batchSize = tt.args.batchSize
-			tt.args.obj, _ = os.Open(tt.args.filename)
+			tt.args.obj, err = os.Open(tt.args.filename)
+			if err != nil {
+				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
+			}
 
-			if err := parseS3Log(tt.args.ctx, tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
+			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
