@@ -101,10 +101,10 @@ loop:
 			break
 		}
 
-		u := uint32(nodeValue(f) >> (nodesBitsTextOffset + nodesBitsTextLength))
+		u := uint32(nodes.get(f) >> (nodesBitsTextOffset + nodesBitsTextLength))
 		icannNode = u&(1<<nodesBitsICANN-1) != 0
 		u >>= nodesBitsICANN
-		u = children[u&(1<<nodesBitsChildren-1)]
+		u = children.get(u & (1<<nodesBitsChildren - 1))
 		lo = u & (1<<childrenBitsLo - 1)
 		u >>= childrenBitsLo
 		hi = u & (1<<childrenBitsHi - 1)
@@ -154,18 +154,9 @@ func find(label string, lo, hi uint32) uint32 {
 	return notFound
 }
 
-func nodeValue(i uint32) uint64 {
-	off := uint64(i * (nodesBits / 8))
-	return uint64(nodes[off])<<32 |
-		uint64(nodes[off+1])<<24 |
-		uint64(nodes[off+2])<<16 |
-		uint64(nodes[off+3])<<8 |
-		uint64(nodes[off+4])
-}
-
 // nodeLabel returns the label for the i'th node.
 func nodeLabel(i uint32) string {
-	x := nodeValue(i)
+	x := nodes.get(i)
 	length := x & (1<<nodesBitsTextLength - 1)
 	x >>= nodesBitsTextLength
 	offset := x & (1<<nodesBitsTextOffset - 1)
@@ -188,4 +179,25 @@ func EffectiveTLDPlusOne(domain string) (string, error) {
 		return "", fmt.Errorf("publicsuffix: invalid public suffix %q for domain %q", suffix, domain)
 	}
 	return domain[1+strings.LastIndex(domain[:i], "."):], nil
+}
+
+type uint32String string
+
+func (u uint32String) get(i uint32) uint32 {
+	off := i * 4
+	return (uint32(u[off])<<24 |
+		uint32(u[off+1])<<16 |
+		uint32(u[off+2])<<8 |
+		uint32(u[off+3]))
+}
+
+type uint40String string
+
+func (u uint40String) get(i uint32) uint64 {
+	off := uint64(i * (nodesBits / 8))
+	return uint64(u[off])<<32 |
+		uint64(u[off+1])<<24 |
+		uint64(u[off+2])<<16 |
+		uint64(u[off+3])<<8 |
+		uint64(u[off+4])
 }
