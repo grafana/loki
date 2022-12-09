@@ -68,7 +68,6 @@ func NewResultsCacheMetrics(registerer prometheus.Registerer) *ResultsCacheMetri
 
 type CacheGenNumberLoader interface {
 	GetResultsCacheGenNumber(tenantIDs []string) string
-	Stop()
 }
 
 // ResultsCacheConfig is the config for the results cache.

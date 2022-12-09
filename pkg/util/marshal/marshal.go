@@ -3,7 +3,6 @@
 package marshal
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/gorilla/websocket"
@@ -21,7 +20,7 @@ import (
 func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
 	value, err := NewResultValue(v.Data)
 	if err != nil {
-		return fmt.Errorf("could not write JSON response: %w", err)
+		return err
 	}
 
 	q := loghttp.QueryResponse{

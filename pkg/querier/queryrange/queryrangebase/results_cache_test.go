@@ -1054,5 +1054,3 @@ func newMockCacheGenNumberLoader() CacheGenNumberLoader {
 func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
 	return ""
 }
-
-func (l mockCacheGenNumberLoader) Stop() {}
