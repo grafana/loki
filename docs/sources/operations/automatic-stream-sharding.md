@@ -9,16 +9,15 @@ weight: 110
 
 Automatic stream sharding will attempt to keep streams under a `desired_rate` by adding new labels and values to
 existing streams. When properly tuned, this should eliminate issues where log producers are rate limited due to the
-per-stream rate limit
+per-stream rate limit.
 
 ## The issue mitigated by automatic stream sharding
 
-Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesers and
+Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesters and
 Distributors. The general recommendation is to explore existing log streams for additional label values that are both
 useful for querying and sufficiently low cardinality. There are many cases, however, where no more labels can
-be extracted or cardinality for a label is dangerously large. To protect itself, Loki implements per-stream rate limits
-but the result is that some data is lost. The per-stream limit also needs human intervention to change. It's not well
-suited for changing when log volumes increase and decrease.
+be extracted, or cardinality for a label is dangerously large. To protect itself from such volume leading to operational failure, Loki implements per-stream rate limits;
+but the result is that some data is lost. The per-stream limit also needs human intervention to change, which is not ideal when log volumes increase and decrease.
 
 Automatic stream sharding is used to avoid large streams and rate limiting for any log stream by ensuring it is close to
 a configured `desired_rate`.
@@ -50,11 +49,9 @@ optional `logging_enabled` flag to enable debug logging of stream sharding.
 These metrics reveal information relevant to automatic stream sharding:
 
 - `loki_rate_store_refresh_failures_total`: The total number of failed attempts to refresh the distributor's view of
-  stream
-  rates
+  stream rates.
 - `loki_rate_store_streams`: The number of unique streams reported by all Ingesters. Sharded streams are reported as if
-  they
-  were unsharded.
+  they were unsharded.
 - `loki_rate_store_max_stream_shards`: The maximum number of shards for any tenant of the system.
 - `loki_rate_store_stream_shards`: A histogram of the distribution of shard counts across all streams.
 - `loki_rate_store_max_stream_rate_bytes`: The maximum stream size in bytes/second for any tenant of the system. Sharded
