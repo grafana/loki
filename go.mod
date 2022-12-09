@@ -118,7 +118,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20220715165016-ce338803bc1e
 	github.com/willf/bloom v2.0.3+incompatible
-	golang.org/x/oauth2 v0.1.0
+	golang.org/x/oauth2 v0.3.0
 	golang.org/x/text v0.5.0
 )
 
