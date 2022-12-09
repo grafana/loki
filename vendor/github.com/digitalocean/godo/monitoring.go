@@ -31,6 +31,11 @@ const (
 	LoadBalancerConnectionUtilizationPercent = "v1/insights/lbaas/connection_utilization_percent"
 	LoadBalancerDropletHealth                = "v1/insights/lbaas/droplet_health"
 	LoadBalancerTLSUtilizationPercent        = "v1/insights/lbaas/tls_connections_per_second_utilization_percent"
+
+	DbaasFifteenMinuteLoadAverage = "v1/dbaas/alerts/load_15_alerts"
+	DbaasMemoryUtilizationPercent = "v1/dbaas/alerts/memory_utilization_alerts"
+	DbaasDiskUtilizationPercent   = "v1/dbaas/alerts/disk_utilization_alerts"
+	DbaasCPUUtilizationPercent    = "v1/dbaas/alerts/cpu_alerts"
 )
 
 // MonitoringService is an interface for interfacing with the

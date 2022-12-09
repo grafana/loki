@@ -17,10 +17,11 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"golang.org/x/oauth2"
+	"golang.org/x/time/rate"
 )
 
 const (
-	libraryVersion = "1.84.1"
+	libraryVersion = "1.88.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -86,6 +87,9 @@ type Client struct {
 
 	// Optional extra HTTP headers to set on every request to the API.
 	headers map[string]string
+
+	// Optional rate limiter to ensure QoS.
+	rateLimiter *rate.Limiter
 }
 
 // RequestCompletionCallback defines the type of the request callback function
@@ -294,6 +298,15 @@ func SetRequestHeaders(headers map[string]string) ClientOpt {
 	}
 }
 
+// SetStaticRateLimit sets an optional client-side rate limiter that restricts
+// the number of queries per second that the client can send to enforce QoS.
+func SetStaticRateLimit(rps float64) ClientOpt {
+	return func(c *Client) error {
+		c.rateLimiter = rate.NewLimiter(rate.Limit(rps), 1)
+		return nil
+	}
+}
+
 // NewRequest creates an API request. A relative URL can be provided in urlStr, which will be resolved to the
 // BaseURL of the Client. Relative URLS should always be specified without a preceding slash. If specified, the
 // value pointed to by body is JSON encoded and included in as the request body.
@@ -377,6 +390,13 @@ func (r *Response) populateRate() {
 // pointed to by v, or returned as an error if an API error has occurred. If v implements the io.Writer interface,
 // the raw response will be written to v, without attempting to decode it.
 func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*Response, error) {
+	if c.rateLimiter != nil {
+		err := c.rateLimiter.Wait(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	resp, err := DoRequestWithClient(ctx, c.client, req)
 	if err != nil {
 		return nil, err

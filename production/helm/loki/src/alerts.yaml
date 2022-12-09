@@ -39,9 +39,9 @@ groups:
     for: 5m
     labels:
       severity: warning
-  name: 'loki_canaries_alerts',
+- name: 'loki_canaries_alerts'
   rules:
-  - alert: 'LokiCanaryLatency',
+  - alert: 'LokiCanaryLatency'
     annotations:
       message: |
         {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.

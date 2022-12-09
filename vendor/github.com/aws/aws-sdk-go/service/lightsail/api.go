@@ -16119,6 +16119,116 @@ func (c *Lightsail) UpdateDomainEntryWithContext(ctx aws.Context, input *UpdateD
 	return out, req.Send()
 }
 
+const opUpdateInstanceMetadataOptions = "UpdateInstanceMetadataOptions"
+
+// UpdateInstanceMetadataOptionsRequest generates a "aws/request.Request" representing the
+// client's request for the UpdateInstanceMetadataOptions operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See UpdateInstanceMetadataOptions for more information on using the UpdateInstanceMetadataOptions
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the UpdateInstanceMetadataOptionsRequest method.
+//	req, resp := client.UpdateInstanceMetadataOptionsRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateInstanceMetadataOptions
+func (c *Lightsail) UpdateInstanceMetadataOptionsRequest(input *UpdateInstanceMetadataOptionsInput) (req *request.Request, output *UpdateInstanceMetadataOptionsOutput) {
+	op := &request.Operation{
+		Name:       opUpdateInstanceMetadataOptions,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &UpdateInstanceMetadataOptionsInput{}
+	}
+
+	output = &UpdateInstanceMetadataOptionsOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// UpdateInstanceMetadataOptions API operation for Amazon Lightsail.
+//
+// Modifies the Amazon Lightsail instance metadata parameters on a running or
+// stopped instance. When you modify the parameters on a running instance, the
+// GetInstance or GetInstances API operation initially responds with a state
+// of pending. After the parameter modifications are successfully applied, the
+// state changes to applied in subsequent GetInstance or GetInstances API calls.
+// For more information, see Use IMDSv2 with an Amazon Lightsail instance (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configuring-instance-metadata-service)
+// in the Amazon Lightsail Developer Guide.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation UpdateInstanceMetadataOptions for usage and error information.
+//
+// Returned Error Types:
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateInstanceMetadataOptions
+func (c *Lightsail) UpdateInstanceMetadataOptions(input *UpdateInstanceMetadataOptionsInput) (*UpdateInstanceMetadataOptionsOutput, error) {
+	req, out := c.UpdateInstanceMetadataOptionsRequest(input)
+	return out, req.Send()
+}
+
+// UpdateInstanceMetadataOptionsWithContext is the same as UpdateInstanceMetadataOptions with the addition of
+// the ability to pass a context and additional request options.
+//
+// See UpdateInstanceMetadataOptions for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) UpdateInstanceMetadataOptionsWithContext(ctx aws.Context, input *UpdateInstanceMetadataOptionsInput, opts ...request.Option) (*UpdateInstanceMetadataOptionsOutput, error) {
+	req, out := c.UpdateInstanceMetadataOptionsRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opUpdateLoadBalancerAttribute = "UpdateLoadBalancerAttribute"
 
 // UpdateLoadBalancerAttributeRequest generates a "aws/request.Request" representing the
@@ -31271,6 +31381,14 @@ type GetInstanceMetricDataInput struct {
 	//    This metric data is available in 1-minute (60 seconds) granularity. Statistics:
 	//    The most useful statistic is Sum. Unit: The published unit is Count.
 	//
+	//    * MetadataNoToken - Reports the number of times that the instance metadata
+	//    service was successfully accessed without a token. This metric determines
+	//    if there are any processes accessing instance metadata by using Instance
+	//    Metadata Service Version 1, which doesn't use a token. If all requests
+	//    use token-backed sessions, such as Instance Metadata Service Version 2,
+	//    then the value is 0. Statistics: The most useful statistic is Sum. Unit:
+	//    The published unit is Count.
+	//
 	// MetricName is a required field
 	MetricName *string `locationName:"metricName" type:"string" required:"true" enum:"InstanceMetricName"`
 
@@ -34810,6 +34928,9 @@ type Instance struct {
 	// The region name and Availability Zone where the instance is located.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
+	// The metadata options for the Amazon Lightsail instance.
+	MetadataOptions *InstanceMetadataOptions `locationName:"metadataOptions" type:"structure"`
+
 	// The name the user gave the instance (e.g., Amazon_Linux-1GB-Ohio-1).
 	Name *string `locationName:"name" type:"string"`
 
@@ -34926,6 +35047,12 @@ func (s *Instance) SetIsStaticIp(v bool) *Instance {
 // SetLocation sets the Location field's value.
 func (s *Instance) SetLocation(v *ResourceLocation) *Instance {
 	s.Location = v
+	return s
+}
+
+// SetMetadataOptions sets the MetadataOptions field's value.
+func (s *Instance) SetMetadataOptions(v *InstanceMetadataOptions) *Instance {
+	s.MetadataOptions = v
 	return s
 }
 
@@ -35398,6 +35525,104 @@ func (s *InstanceHealthSummary) SetInstanceHealthReason(v string) *InstanceHealt
 // SetInstanceName sets the InstanceName field's value.
 func (s *InstanceHealthSummary) SetInstanceName(v string) *InstanceHealthSummary {
 	s.InstanceName = &v
+	return s
+}
+
+// The metadata options for the instance.
+type InstanceMetadataOptions struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether the HTTP metadata endpoint on your instances is enabled
+	// or disabled.
+	//
+	// If the value is disabled, you cannot access your instance metadata.
+	HttpEndpoint *string `locationName:"httpEndpoint" type:"string" enum:"HttpEndpoint"`
+
+	// Indicates whether the IPv6 endpoint for the instance metadata service is
+	// enabled or disabled.
+	HttpProtocolIpv6 *string `locationName:"httpProtocolIpv6" type:"string" enum:"HttpProtocolIpv6"`
+
+	// The desired HTTP PUT response hop limit for instance metadata requests. A
+	// larger number means that the instance metadata requests can travel farther.
+	HttpPutResponseHopLimit *int64 `locationName:"httpPutResponseHopLimit" type:"integer"`
+
+	// The state of token usage for your instance metadata requests.
+	//
+	// If the state is optional, you can choose whether to retrieve instance metadata
+	// with a signed token header on your request. If you retrieve the IAM role
+	// credentials without a token, the version 1.0 role credentials are returned.
+	// If you retrieve the IAM role credentials by using a valid signed token, the
+	// version 2.0 role credentials are returned.
+	//
+	// If the state is required, you must send a signed token header with all instance
+	// metadata retrieval requests. In this state, retrieving the IAM role credential
+	// always returns the version 2.0 credentials. The version 1.0 credentials are
+	// not available.
+	//
+	// Not all instance blueprints in Lightsail support version 2.0 credentials.
+	// Use the MetadataNoToken instance metric to track the number of calls to the
+	// instance metadata service that are using version 1.0 credentials. For more
+	// information, see Viewing instance metrics in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-viewing-instance-health-metrics)
+	// in the Amazon Lightsail Developer Guide.
+	HttpTokens *string `locationName:"httpTokens" type:"string" enum:"HttpTokens"`
+
+	// The state of the metadata option changes.
+	//
+	// The following states are possible:
+	//
+	//    * pending - The metadata options are being updated. The instance is not
+	//    yet ready to process metadata traffic with the new selection.
+	//
+	//    * applied - The metadata options have been successfully applied to the
+	//    instance.
+	State *string `locationName:"state" type:"string" enum:"InstanceMetadataState"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InstanceMetadataOptions) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InstanceMetadataOptions) GoString() string {
+	return s.String()
+}
+
+// SetHttpEndpoint sets the HttpEndpoint field's value.
+func (s *InstanceMetadataOptions) SetHttpEndpoint(v string) *InstanceMetadataOptions {
+	s.HttpEndpoint = &v
+	return s
+}
+
+// SetHttpProtocolIpv6 sets the HttpProtocolIpv6 field's value.
+func (s *InstanceMetadataOptions) SetHttpProtocolIpv6(v string) *InstanceMetadataOptions {
+	s.HttpProtocolIpv6 = &v
+	return s
+}
+
+// SetHttpPutResponseHopLimit sets the HttpPutResponseHopLimit field's value.
+func (s *InstanceMetadataOptions) SetHttpPutResponseHopLimit(v int64) *InstanceMetadataOptions {
+	s.HttpPutResponseHopLimit = &v
+	return s
+}
+
+// SetHttpTokens sets the HttpTokens field's value.
+func (s *InstanceMetadataOptions) SetHttpTokens(v string) *InstanceMetadataOptions {
+	s.HttpTokens = &v
+	return s
+}
+
+// SetState sets the State field's value.
+func (s *InstanceMetadataOptions) SetState(v string) *InstanceMetadataOptions {
+	s.State = &v
 	return s
 }
 
@@ -42540,6 +42765,140 @@ func (s *UpdateDomainEntryOutput) SetOperations(v []*Operation) *UpdateDomainEnt
 	return s
 }
 
+type UpdateInstanceMetadataOptionsInput struct {
+	_ struct{} `type:"structure"`
+
+	// Enables or disables the HTTP metadata endpoint on your instances. If this
+	// parameter is not specified, the existing state is maintained.
+	//
+	// If you specify a value of disabled, you cannot access your instance metadata.
+	HttpEndpoint *string `locationName:"httpEndpoint" type:"string" enum:"HttpEndpoint"`
+
+	// Enables or disables the IPv6 endpoint for the instance metadata service.
+	// This setting applies only when the HTTP metadata endpoint is enabled.
+	//
+	// This parameter is available only for instances in the Europe (Stockholm)
+	// Amazon Web Services Region (eu-north-1).
+	HttpProtocolIpv6 *string `locationName:"httpProtocolIpv6" type:"string" enum:"HttpProtocolIpv6"`
+
+	// The desired HTTP PUT response hop limit for instance metadata requests. A
+	// larger number means that the instance metadata requests can travel farther.
+	// If no parameter is specified, the existing state is maintained.
+	HttpPutResponseHopLimit *int64 `locationName:"httpPutResponseHopLimit" type:"integer"`
+
+	// The state of token usage for your instance metadata requests. If the parameter
+	// is not specified in the request, the default state is optional.
+	//
+	// If the state is optional, you can choose whether to retrieve instance metadata
+	// with a signed token header on your request. If you retrieve the IAM role
+	// credentials without a token, the version 1.0 role credentials are returned.
+	// If you retrieve the IAM role credentials by using a valid signed token, the
+	// version 2.0 role credentials are returned.
+	//
+	// If the state is required, you must send a signed token header with all instance
+	// metadata retrieval requests. In this state, retrieving the IAM role credential
+	// always returns the version 2.0 credentials. The version 1.0 credentials are
+	// not available.
+	HttpTokens *string `locationName:"httpTokens" type:"string" enum:"HttpTokens"`
+
+	// The name of the instance for which to update metadata parameters.
+	//
+	// InstanceName is a required field
+	InstanceName *string `locationName:"instanceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *UpdateInstanceMetadataOptionsInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "UpdateInstanceMetadataOptionsInput"}
+	if s.InstanceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("InstanceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetHttpEndpoint sets the HttpEndpoint field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpEndpoint(v string) *UpdateInstanceMetadataOptionsInput {
+	s.HttpEndpoint = &v
+	return s
+}
+
+// SetHttpProtocolIpv6 sets the HttpProtocolIpv6 field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpProtocolIpv6(v string) *UpdateInstanceMetadataOptionsInput {
+	s.HttpProtocolIpv6 = &v
+	return s
+}
+
+// SetHttpPutResponseHopLimit sets the HttpPutResponseHopLimit field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpPutResponseHopLimit(v int64) *UpdateInstanceMetadataOptionsInput {
+	s.HttpPutResponseHopLimit = &v
+	return s
+}
+
+// SetHttpTokens sets the HttpTokens field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpTokens(v string) *UpdateInstanceMetadataOptionsInput {
+	s.HttpTokens = &v
+	return s
+}
+
+// SetInstanceName sets the InstanceName field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetInstanceName(v string) *UpdateInstanceMetadataOptionsInput {
+	s.InstanceName = &v
+	return s
+}
+
+type UpdateInstanceMetadataOptionsOutput struct {
+	_ struct{} `type:"structure"`
+
+	// Describes the API operation.
+	Operation *Operation `locationName:"operation" type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsOutput) GoString() string {
+	return s.String()
+}
+
+// SetOperation sets the Operation field's value.
+func (s *UpdateInstanceMetadataOptionsOutput) SetOperation(v *Operation) *UpdateInstanceMetadataOptionsOutput {
+	s.Operation = v
+	return s
+}
+
 type UpdateLoadBalancerAttributeInput struct {
 	_ struct{} `type:"structure"`
 
@@ -43655,6 +44014,54 @@ func HeaderEnum_Values() []string {
 }
 
 const (
+	// HttpEndpointDisabled is a HttpEndpoint enum value
+	HttpEndpointDisabled = "disabled"
+
+	// HttpEndpointEnabled is a HttpEndpoint enum value
+	HttpEndpointEnabled = "enabled"
+)
+
+// HttpEndpoint_Values returns all elements of the HttpEndpoint enum
+func HttpEndpoint_Values() []string {
+	return []string{
+		HttpEndpointDisabled,
+		HttpEndpointEnabled,
+	}
+}
+
+const (
+	// HttpProtocolIpv6Disabled is a HttpProtocolIpv6 enum value
+	HttpProtocolIpv6Disabled = "disabled"
+
+	// HttpProtocolIpv6Enabled is a HttpProtocolIpv6 enum value
+	HttpProtocolIpv6Enabled = "enabled"
+)
+
+// HttpProtocolIpv6_Values returns all elements of the HttpProtocolIpv6 enum
+func HttpProtocolIpv6_Values() []string {
+	return []string{
+		HttpProtocolIpv6Disabled,
+		HttpProtocolIpv6Enabled,
+	}
+}
+
+const (
+	// HttpTokensOptional is a HttpTokens enum value
+	HttpTokensOptional = "optional"
+
+	// HttpTokensRequired is a HttpTokens enum value
+	HttpTokensRequired = "required"
+)
+
+// HttpTokens_Values returns all elements of the HttpTokens enum
+func HttpTokens_Values() []string {
+	return []string{
+		HttpTokensOptional,
+		HttpTokensRequired,
+	}
+}
+
+const (
 	// InstanceAccessProtocolSsh is a InstanceAccessProtocol enum value
 	InstanceAccessProtocolSsh = "ssh"
 
@@ -43755,6 +44162,22 @@ func InstanceHealthState_Values() []string {
 }
 
 const (
+	// InstanceMetadataStatePending is a InstanceMetadataState enum value
+	InstanceMetadataStatePending = "pending"
+
+	// InstanceMetadataStateApplied is a InstanceMetadataState enum value
+	InstanceMetadataStateApplied = "applied"
+)
+
+// InstanceMetadataState_Values returns all elements of the InstanceMetadataState enum
+func InstanceMetadataState_Values() []string {
+	return []string{
+		InstanceMetadataStatePending,
+		InstanceMetadataStateApplied,
+	}
+}
+
+const (
 	// InstanceMetricNameCpuutilization is a InstanceMetricName enum value
 	InstanceMetricNameCpuutilization = "CPUUtilization"
 
@@ -43778,6 +44201,9 @@ const (
 
 	// InstanceMetricNameBurstCapacityPercentage is a InstanceMetricName enum value
 	InstanceMetricNameBurstCapacityPercentage = "BurstCapacityPercentage"
+
+	// InstanceMetricNameMetadataNoToken is a InstanceMetricName enum value
+	InstanceMetricNameMetadataNoToken = "MetadataNoToken"
 )
 
 // InstanceMetricName_Values returns all elements of the InstanceMetricName enum
@@ -43791,6 +44217,7 @@ func InstanceMetricName_Values() []string {
 		InstanceMetricNameStatusCheckFailedSystem,
 		InstanceMetricNameBurstCapacityTime,
 		InstanceMetricNameBurstCapacityPercentage,
+		InstanceMetricNameMetadataNoToken,
 	}
 }
 
@@ -44675,6 +45102,9 @@ const (
 
 	// OperationTypeSetResourceAccessForBucket is a OperationType enum value
 	OperationTypeSetResourceAccessForBucket = "SetResourceAccessForBucket"
+
+	// OperationTypeUpdateInstanceMetadataOptions is a OperationType enum value
+	OperationTypeUpdateInstanceMetadataOptions = "UpdateInstanceMetadataOptions"
 )
 
 // OperationType_Values returns all elements of the OperationType enum
@@ -44759,6 +45189,7 @@ func OperationType_Values() []string {
 		OperationTypeUpdateBucketBundle,
 		OperationTypeUpdateBucket,
 		OperationTypeSetResourceAccessForBucket,
+		OperationTypeUpdateInstanceMetadataOptions,
 	}
 }
 

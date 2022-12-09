@@ -95,7 +95,7 @@ type Tag struct {
 	Resources *TaggedResources `json:"resources,omitempty"`
 }
 
-//TagCreateRequest represents the JSON structure of a request of that type.
+// TagCreateRequest represents the JSON structure of a request of that type.
 type TagCreateRequest struct {
 	Name string `json:"name"`
 }

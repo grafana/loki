@@ -44,7 +44,7 @@ func newRateStoreMetrics(reg prometheus.Registerer) *ratestoreMetrics {
 			Namespace: "loki",
 			Name:      "rate_store_stream_shards",
 			Help:      "The distribution of number of shards for a single stream reported by ingesters during a sync operation.",
-			Buckets:   []float64{0, 2, 4, 8, 16, 32, 64, 128},
+			Buckets:   []float64{0, 1, 2, 4, 8, 16, 32, 64, 128},
 		}),
 		maxStreamRate: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",

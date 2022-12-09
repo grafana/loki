@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Decouple the Loki Canary from the self-monitoring setup, which adds an unnecessary dependency on the Grafana Agent Operator.
 
+## 3.6.1
+
+- [BUGFIX] Fix regression that produced empty PrometheusRule alerts resource
+
 ## 3.6.0
 
 - [CHANGE] Bump Loki version to 2.7.0 and GEL version to 1.6.0
