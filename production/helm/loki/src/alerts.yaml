@@ -6,9 +6,9 @@ groups:
       message: |
         {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
     expr: |
-      100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[1m])) by (namespace, job, route)
+      100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
         /
-      sum(rate(loki_request_duration_seconds_count[1m])) by (namespace, job, route)
+      sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
         > 10
     for: 15m
     labels:
@@ -33,9 +33,9 @@ groups:
   - alert: LokiTooManyCompactorsRunning
     annotations:
       message: |
-        {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
+        {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
     expr: |
-      sum(loki_boltdb_shipper_compactor_running) by (namespace) > 1
+      sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
     for: 5m
     labels:
       severity: warning
@@ -46,7 +46,7 @@ groups:
       message: |
         {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
     expr: |
-      histogram_quantile(0.99, sum(rate(loki_canary_response_latency_seconds_bucket[5m])) by (le, namespace, cluster)) > 5
+      histogram_quantile(0.99, sum(rate(loki_canary_response_latency_seconds_bucket[5m])) by (le, namespace, job)) > 5
     for: '15m'
     labels:
       severity: 'warning'

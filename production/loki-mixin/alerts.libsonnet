@@ -7,9 +7,9 @@
           {
             alert: 'LokiRequestErrors',
             expr: |||
-              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[1m])) by (namespace, job, route)
+              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
                 /
-              sum(rate(loki_request_duration_seconds_count[1m])) by (namespace, job, route)
+              sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
                 > 10
             |||,
             'for': '15m',
@@ -54,7 +54,7 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (namespace) > 1
+              sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
             |||,
             'for': '5m',
             labels: {
@@ -62,7 +62,7 @@
             },
             annotations: {
               message: |||
-                {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
+                {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
               |||,
             },
           },
