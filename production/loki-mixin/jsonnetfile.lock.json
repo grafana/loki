@@ -8,8 +8,8 @@
           "subdir": "grafonnet"
         }
       },
-      "version": "6db00c292d3a1c71661fc875f90e0ec7caa538c2",
-      "sum": "gF8foHByYcB25jcUOBqP6jxk0OPifQMjPvKY0HaCk6w="
+      "version": "30280196507e0fe6fa978a3e0eaca3a62844f817",
+      "sum": "342u++/7rViR/zj2jeJOjshzglkZ1SY+hFNuyCBFMdc="
     },
     {
       "source": {
@@ -18,8 +18,8 @@
           "subdir": "grafana-builder"
         }
       },
-      "version": "3f71e00a64810075b5d5f969cc6d0e419cbdebc4",
-      "sum": "TieGrr7GyKjURk1+wXHFpdoCiwNaIVfZvyc5mbI9OM0="
+      "version": "e6a0083d9cc0f0ec79507397ce0e156d558f6efb",
+      "sum": "tDR6yT2GVfw0wTU12iZH+m01HrbIr6g/xN+/8nzNkU0="
     },
     {
       "source": {
@@ -28,8 +28,8 @@
           "subdir": "mixin-utils"
         }
       },
-      "version": "3f71e00a64810075b5d5f969cc6d0e419cbdebc4",
-      "sum": "v6fuqqQp9rHZbsxN9o79QzOpUlwYZEJ84DxTCZMCYeU="
+      "version": "e6a0083d9cc0f0ec79507397ce0e156d558f6efb",
+      "sum": "N1Uz6AJpnQXv4w8F6lxDqMwoT7azPVrpuhJ4N7Oqzcw="
     },
     {
       "source": {
@@ -38,8 +38,8 @@
           "subdir": "operations/mimir-mixin"
         }
       },
-      "version": "91986521f324c84a9cf869529bd901f077ddf8bc",
-      "sum": "eBp1Oo3j0YiI5hv9YrZb0lJQxEOC17rP3pZiKM/R3Zo="
+      "version": "c44a07dd4c4e38a19ba01d676555c3c84d30b461",
+      "sum": "E+LFcQFJ+hrJKNntpx27RzS0kOa5pn4V7ODeMwhnEy0="
     },
     {
       "source": {
@@ -48,8 +48,8 @@
           "subdir": "jsonnet/kube-prometheus/lib"
         }
       },
-      "version": "b1c474d8a1d7cd73df9bf4efe1680f1e6d9f5c17",
-      "sum": "2KXEfdW5YJem19w1VjQNvaTIOhdl8KFi4dvmUdWJtro="
+      "version": "f4618411fddf8b0647ae9666050a12753f33dce0",
+      "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
     }
   ],
   "legacyImports": false
