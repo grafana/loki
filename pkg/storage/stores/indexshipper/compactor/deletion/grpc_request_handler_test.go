@@ -33,7 +33,14 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 
 	compactor_client_grpc.RegisterCompactorServer(baseServer, h)
 	go func() {
-		require.NoError(t, baseServer.Serve(lis))
+		defer func() {
+			if err := recover(); err != nil {
+				t.Log("panic occurred:", err)
+			}
+		}()
+
+		err := baseServer.Serve(lis)
+		require.NoError(t, err, err.Error())
 	}()
 
 	conn, err := grpc.DialContext(context.Background(), "",
