@@ -109,7 +109,7 @@ func TestNewRulerStatefulSet_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T) {
-	sts := manifests.NewRulerStatefulSet(manifests.Options{
+	opts := manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -126,7 +126,10 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 				"tenant-b": {RuleFiles: []string{"rule-a-alerts.yaml", "rule-b-recs.yaml"}},
 			},
 		},
-	})
+
+		RulesConfigMapNames: []string{"config"},
+	}
+	sts := manifests.NewRulerStatefulSet(opts)
 
 	vs := sts.Spec.Template.Spec.Volumes
 
