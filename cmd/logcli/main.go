@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"net/url"
@@ -227,7 +226,7 @@ func main() {
 }
 
 func formatLogQL(r io.Reader, w io.Writer) error {
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
