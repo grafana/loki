@@ -7,11 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO
-// 3. Add server route /format_query
-// 1. Fill How it works docs.
-// 2. Official PR to loki repo.
-
 func TestFormat(t *testing.T) {
 	maxCharsPerLine = 20
 

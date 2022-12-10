@@ -1,3 +1,7 @@
+// LogQL formatter is inspired from PromQL formatter
+// https://github.com/prometheus/prometheus/blob/release-2.40/promql/parser/prettier.go
+// https://youtu.be/pjkWzDVxWk4?t=24469
+
 package syntax
 
 import (
@@ -10,16 +14,25 @@ import (
 
 // How LogQL formatter works?
 // =========================
-// General idea is to parse the LogQL query(string) and converts it into AST(expressions) first, then format each expression from bottom up (from leaf expressions to the root expression)
+// General idea is to parse the LogQL query(string) and converts it into AST(expressions) first, then format each expression from bottom up (from leaf expressions to the root expression). Every expression in AST has a level/depth (distance from the root), that is passed by it's parent.
 //
-// Formatting of each expression is done based on some general rules as follows
-// TODO: state about `maxCharsPerLine` limits. What expressions care about `split`.
-// standadizing
-// range aggregation - `by` at the end.
-// vector aggregation - `by` at the beginning.
-// Coments are not preserved at the momement (because once LogQL is parsed via `syntax.ParseExpr`, we loose all the comments). Basically our LogQL parser is unaware of comments at the moment (double check)
-// function argumetns are split with each arguments in separate line.
-// if parent node adds \n then it's children are indendent with current level + 1.
+// While prettifying an expression, we consider two things:
+// 1. Did the current expression's parent add a new line?
+// 2. Does the current expression exceeds `maxCharsPerLine` limit?
+//
+// The level of a expression determines if it should be indented or not.
+// The answer to the 1 is NO if the level passed is 0. This means, the
+// parent expression did not apply a new line, so the current Node must not
+// apply any indentation as prefix.
+// If level > 1, a new line is applied by the parent. So, the current expression
+// should prefix an indentation before writing any of its content. This indentation
+// will be ([level/depth of current expression] * "  ").
+//
+// The answer to 2 is YES if the normalized length of the current expression exceeds
+// the `maxCharsPerLine` limit. Hence, it applies the indentation equal to
+// its depth and increments the level by 1 before passing down the child.
+// If the answer is NO, the current expression returns the normalized string value of itself.
+//
 
 var (
 	// maxCharsPerLine is used to qualify whether some LogQL expressions are worth `splitting` into new lines.
@@ -124,18 +137,17 @@ func (e *JSONExpressionParser) Pretty(level int) string {
 
 // e.g: sum_over_time({foo="bar"} | logfmt | unwrap bytes_processed [5m])
 func (e *UnwrapExpr) Pretty(level int) string {
-	var sb strings.Builder
-	sb.WriteString(indent(level))
+	s := indent(level)
 
 	if e.Operation != "" {
-		sb.WriteString(fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, e.Operation, e.Identifier))
+		s += fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, e.Operation, e.Identifier)
 	} else {
-		sb.WriteString(fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, e.Identifier))
+		s += fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, e.Identifier)
 	}
 	for _, f := range e.PostFilters {
-		sb.WriteString(fmt.Sprintf("\n%s%s %s", indent(level), OpPipe, f))
+		s += fmt.Sprintf("\n%s%s %s", indent(level), OpPipe, f)
 	}
-	return sb.String() //
+	return s
 }
 
 // e.g: `{foo="bar"}|logfmt[5m]`
