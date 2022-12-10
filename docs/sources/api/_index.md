@@ -23,6 +23,7 @@ These endpoints are exposed by all components:
 - [`GET /config`](#list-current-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
+- [`GET /loki/api/v1/format-query`](#format-query)
 
 These endpoints are exposed by the querier and the query frontend:
 
@@ -220,7 +221,7 @@ gave this response:
 }
 ```
 
-If your cluster has 
+If your cluster has
 [Grafana Loki Multi-Tenancy](../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
@@ -702,6 +703,14 @@ GET /loki/api/v1/status/buildinfo
 ```
 
 `/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
+
+## Format query
+
+```
+GET /loki/api/v1/format_query?query="<logql-query>"
+```
+
+`/loki/api/v1/format_query` exposes endpoint to format LogQL queries. It is exposed by all the Loki components. It's mainly helpful in improve readability and debugging experience of LogQL queries.
 
 ## List series
 
@@ -1385,4 +1394,3 @@ This is helpful for scaling down WAL-enabled ingesters where we want to ensure o
 but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
-
