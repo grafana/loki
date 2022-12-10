@@ -183,6 +183,7 @@ func TestFormat_VectorAggregation(t *testing.T) {
 		})
 	}
 }
+
 func TestFormat_LabelReplace(t *testing.T) {
 	maxCharsPerLine = 20
 
@@ -218,3 +219,80 @@ func TestFormat_LabelReplace(t *testing.T) {
 	}
 }
 
+func TestFormat_BinOp(t *testing.T) {
+	maxCharsPerLine = 20
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "single binop",
+			in:   `sum(rate({job="loki", namespace="loki-prod", instance="localhost"}[5m]))/sum(count_over_time({job="loki", namespace="loki-prod", instance="localhost"}[5m]))`,
+			exp: `  sum(
+    rate(
+      {job="loki", namespace="loki-prod", instance="localhost"} [5m]
+    )
+  )
+/
+  sum(
+    count_over_time(
+      {job="loki", namespace="loki-prod", instance="localhost"} [5m]
+    )
+  )`,
+		},
+		{
+			name: "multiple binops",
+			in:   `sum(rate({job="loki"}[5m])) + sum(rate({job="loki-dev"}[5m])) / sum(rate({job="loki-prod"}[5m]))`,
+			exp: `  sum(
+    rate(
+      {job="loki"}[5m]
+    )
+  )
++
+    sum(
+      rate(
+        {job="loki-dev"}[5m]
+      )
+    )
+  /
+    sum(
+      rate(
+        {job="loki-prod"} [5m]
+      )
+    )`,
+		},
+		{
+			name: "multiple binops check precedence",
+			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
+			exp: `    sum(
+      rate(
+        {job="loki"}[5m]
+      )
+    )
+  /
+    sum(
+      rate(
+        {job="loki-dev"}[5m]
+      )
+    )
++
+  sum(
+    rate(
+      {job="loki-prod"} [5m]
+    )
+  )`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			fmt.Printf("%#v\n", expr)
+			require.NoError(t, err)
+			got := Prettify(expr)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}

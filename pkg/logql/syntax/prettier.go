@@ -251,7 +251,18 @@ func (e *VectorAggregationExpr) Pretty(level int) string {
 // "+", "-", "*", "/", "%", "^" (arithmetic)
 // "==", "!=", ">", ">=", "<", "<=" (comparison)
 func (e *BinOpExpr) Pretty(level int) string {
-	return ""
+	// TODO: handle e.Opts
+
+	s := indent(level)
+	if !needSplit(e) {
+		return s + e.String()
+	}
+
+	s = e.SampleExpr.Pretty(level+1) + "\n"
+	s += indent(level) + e.Op + "\n"
+	s += e.RHS.Pretty(level + 1)
+
+	return s
 }
 
 // e.g: 4.6
