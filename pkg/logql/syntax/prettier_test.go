@@ -13,7 +13,7 @@ import (
 // 2. test with jsonparser - DONE
 // 3. test with unwrap - DONE
 // 4. vector aggregation - DONE
-// 5. binary op and nested
+// 5. binary op and nested - DONE
 // 7. nested funcs + nested aggregation + nested binary ops.
 // 9. Add server route /format_query
 // 10. More tests similar to promql prettier_test.go
@@ -263,6 +263,11 @@ func TestFormat_BinOp(t *testing.T) {
       )
     )`,
 		},
+		// NOTE: LogQL binary arithmetic ops have following precedences rules
+		// 1. * / % - higher priority
+		// 2. + -  - lower priority.
+		// 3. Between same priority ops, whichever comes first takes precedence.
+		// Following `_precedence*` tests makes sure LogQL formatter respects that.
 		{
 			name: "multiple binops check precedence",
 			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
@@ -278,6 +283,114 @@ func TestFormat_BinOp(t *testing.T) {
       )
     )
 +
+  sum(
+    rate(
+      {job="loki-prod"} [5m]
+    )
+  )`,
+		},
+		{
+			name: "multiple binops check precedence2",
+			in:   `sum(rate({job="loki"}[5m])) - sum(rate({job="loki-stage"}[5m])) / sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
+			exp: `    sum(
+      rate(
+        {job="loki"}[5m]
+      )
+    )
+  -
+      sum(
+        rate(
+          {job="loki-stage"} [5m]
+        )
+      )
+    /
+      sum(
+        rate(
+          {job="loki-dev"}[5m]
+        )
+      )
++
+  sum(
+    rate(
+      {job="loki-prod"} [5m]
+    )
+  )`,
+		},
+		{
+			name: "multiple binops check precedence3",
+			in:   `sum(rate({job="loki"}[5m])) - sum(rate({job="loki-stage"}[5m])) % sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
+			exp: `    sum(
+      rate(
+        {job="loki"}[5m]
+      )
+    )
+  -
+      sum(
+        rate(
+          {job="loki-stage"} [5m]
+        )
+      )
+    %
+      sum(
+        rate(
+          {job="loki-dev"}[5m]
+        )
+      )
++
+  sum(
+    rate(
+      {job="loki-prod"} [5m]
+    )
+  )`,
+		},
+		{
+			name: "multiple binops check precedence4",
+			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-stage"}[5m])) % sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
+			exp: `      sum(
+        rate(
+          {job="loki"}[5m]
+        )
+      )
+    /
+      sum(
+        rate(
+          {job="loki-stage"} [5m]
+        )
+      )
+  %
+    sum(
+      rate(
+        {job="loki-dev"}[5m]
+      )
+    )
++
+  sum(
+    rate(
+      {job="loki-prod"} [5m]
+    )
+  )`,
+		},
+		{
+			name: "multiple binops check precedence5",
+			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-stage"}[5m])) % sum(rate({job="loki-dev"}[5m])) * sum(rate({job="loki-prod"}[5m]))`,
+			exp: `      sum(
+        rate(
+          {job="loki"}[5m]
+        )
+      )
+    /
+      sum(
+        rate(
+          {job="loki-stage"} [5m]
+        )
+      )
+  %
+    sum(
+      rate(
+        {job="loki-dev"}[5m]
+      )
+    )
+*
   sum(
     rate(
       {job="loki-prod"} [5m]
