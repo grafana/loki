@@ -183,3 +183,38 @@ func TestFormat_VectorAggregation(t *testing.T) {
 		})
 	}
 }
+func TestFormat_LabelReplace(t *testing.T) {
+	maxCharsPerLine = 20
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "label_replace",
+			in:   `label_replace(rate({job="api-server",service="a:c"}|= "err" [5m]), "foo", "$1", "service", "(.*):.*")`,
+			exp: `label_replace(
+  rate(
+    {job="api-server", service="a:c"}
+      |= "err" [5m]
+  ),
+  "foo",
+  "$1",
+  "service",
+  "(.*):.*"
+)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			fmt.Printf("%#v\n", expr)
+			require.NoError(t, err)
+			got := Prettify(expr)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+

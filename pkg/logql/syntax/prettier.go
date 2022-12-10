@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -258,9 +259,38 @@ func (e *LiteralExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-// e.g: label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*")
+// e.g: label_replace(rate({job="api-server",service="a:c"}[5m]), "foo", "$1", "service", "(.*):.*")
 func (e *LabelReplaceExpr) Pretty(level int) string {
-	return ""
+	s := indent(level)
+
+	if !needSplit(e) {
+		return s + e.String()
+	}
+
+	s += OpLabelReplace
+
+	s += "(\n"
+
+	params := []string{
+		e.Left.Pretty(level + 1),
+		indent(level+1) + strconv.Quote(e.Dst),
+		indent(level+1) + strconv.Quote(e.Replacement),
+		indent(level+1) + strconv.Quote(e.Src),
+		indent(level+1) + strconv.Quote(e.Regex),
+	}
+
+	for i, v := range params {
+		s += v
+		// LogQL doesn't allow `,` at the end of last argument.
+		if i < len(params)-1 {
+			s += ","
+		}
+		s += "\n"
+	}
+
+	s += indent(level) + ")"
+
+	return s
 }
 
 // e.g: vector(5)
