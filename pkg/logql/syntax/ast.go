@@ -35,8 +35,7 @@ func Clone(e Expr) (Expr, error) {
 // implicit holds default implementations
 type implicit struct{}
 
-func (implicit) logQLExpr()          {}
-func (implicit) Pretty(_ int) string { return "" }
+func (implicit) logQLExpr() {}
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {

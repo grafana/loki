@@ -8,11 +8,22 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// Doc:
-// 1. Differs with promql prettifer, by linefilter and pipelineexpr. Because even if we add \n, we indent to same level for these two so far.
+// How LogQL formatter works?
+// =========================
+// General idea is to parse the LogQL query(string) and converts it into AST(expressions) first, then format each expression from bottom up (from leaf expressions to the root expression)
+//
+// Formatting of each expression is done based on some general rules as follows
+// TODO: state about `maxCharsPerLine` limits. What expressions care about `split`.
+// standadizing
+// range aggregation - `by` at the end.
+// vector aggregation - `by` at the beginning.
+// Coments are not preserved at the momement (because once LogQL is parsed via `syntax.ParseExpr`, we loose all the comments). Basically our LogQL parser is unaware of comments at the moment (double check)
+// function argumetns are split with each arguments in separate line.
+// if parent node adds \n then it's children are indendent with current level + 1.
 
 var (
-	maxCharsPerLine = 20
+	// maxCharsPerLine is used to qualify whether some LogQL expressions are worth `splitting` into new lines.
+	maxCharsPerLine = 100
 )
 
 func Prettify(e Expr) string {
@@ -128,12 +139,8 @@ func (e *UnwrapExpr) Pretty(level int) string {
 }
 
 // e.g: `{foo="bar"}|logfmt[5m]`
-// TODO: Change it to LogRangeExpr (to be consistent with other expressions)
+// TODO(kavi): Rename `LogRange` -> `LogRangeExpr` (to be consistent with other expressions?)
 func (e *LogRange) Pretty(level int) string {
-	if !needSplit(e) {
-		return indent(level) + e.String()
-	}
-
 	s := e.Left.Pretty(level)
 
 	if e.Unwrap != nil {
@@ -154,16 +161,14 @@ func (e *LogRange) Pretty(level int) string {
 }
 
 // e.g: count_over_time({foo="bar"}[5m] offset 3h)
-// NOTE: why does offset doesn't work on just stream selector? e.g: `{foo="bar"}| offset 1h`? is it bug? or anything else?
-// Also offset expression never to be indended. It always goes with it's parent expr (usually RangeExpr).
+// TODO(kavi): why does offset doesn't work log queries? e.g: `{foo="bar"} offset 1h`? is it bug? or anything else?
+// NOTE: Also offset expression never to be indended. It always goes with it's parent expr (usually RangeExpr).
 func (e *OffsetExpr) Pretty(level int) string {
 	// using `model.Duration` as it can format ignoring zero units.
 	// e.g: time.Duration(2 * Hour) -> "2h0m0s"
 	// but model.Duration(2 * Hour) -> "2h"
 	return fmt.Sprintf(" %s %s", OpOffset, model.Duration(e.Offset))
 }
-
-// NOTE: Should I care about SampleExpr or LogSelectorExpr? (those are just abstract types)
 
 // e.g: count_over_time({foo="bar"}[5m])
 func (e *RangeAggregationExpr) Pretty(level int) string {
@@ -251,7 +256,6 @@ func (e *VectorAggregationExpr) Pretty(level int) string {
 // "+", "-", "*", "/", "%", "^" (arithmetic)
 // "==", "!=", ">", ">=", "<", "<=" (comparison)
 func (e *BinOpExpr) Pretty(level int) string {
-	// TODO: handle e.Opts
 
 	s := indent(level)
 	if !needSplit(e) {
@@ -259,7 +263,9 @@ func (e *BinOpExpr) Pretty(level int) string {
 	}
 
 	s = e.SampleExpr.Pretty(level+1) + "\n"
-	s += indent(level) + e.Op + "\n"
+
+	op := formatBinaryOp(e.Op, e.Opts)
+	s += indent(level) + op + "\n"
 	s += e.RHS.Pretty(level + 1)
 
 	return s
@@ -309,7 +315,7 @@ func (e *VectorExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-// Grouping is techincally not expression type. But used in both range and vector aggregation (`by` and `without` clause)
+// Grouping is techincally not expression type. But used in both range and vector aggregations (`by` and `without` clause)
 // So by implenting `Pretty` for Grouping, we can re use it for both.
 // NOTE: indent is ignored for `Grouping`, because grouping always stays in the same line of it's parent expression.
 
@@ -349,4 +355,40 @@ const indentString = "  "
 
 func indent(level int) string {
 	return strings.Repeat(indentString, level)
+}
+
+func formatBinaryOp(op string, opts *BinOpOptions) string {
+	if opts == nil {
+		return op
+	}
+
+	if opts.ReturnBool {
+		// e.g: ">= bool 1"
+		op += " bool"
+	}
+
+	if opts.VectorMatching != nil {
+		group := "" // default one-to-one
+		if opts.VectorMatching.Card == CardManyToOne {
+			group = OpGroupLeft
+		}
+		if opts.VectorMatching.Card == CardOneToMany {
+			group = OpGroupRight
+		}
+
+		if len(opts.VectorMatching.Include) > 0 {
+			// e.g: group_left (node, name)
+			group = fmt.Sprintf("%s (%s)", group, strings.Join(opts.VectorMatching.Include, ", "))
+		}
+
+		if len(opts.VectorMatching.MatchingLabels) > 0 {
+			on := OpOn
+			if !opts.VectorMatching.On {
+				on = OpIgnoring
+			}
+			// e.g: * on (cluster, namespace) group_left
+			op = fmt.Sprintf("%s %s (%s) %s", op, on, strings.Join(opts.VectorMatching.MatchingLabels, ", "), group)
+		}
+	}
+	return op
 }

@@ -1,25 +1,16 @@
 package syntax
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TODO:
-// 1. test with offset. - DONE
-// 2. test with jsonparser - DONE
-// 3. test with unwrap - DONE
-// 4. vector aggregation - DONE
-// 5. binary op and nested - DONE
-// 7. nested funcs + nested aggregation + nested binary ops.
-// 9. Add server route /format_query
-// 10. More tests similar to promql prettier_test.go
-
-// Not urgent
+// TODO
 // 1. Rename `pretty.*` -> `format.*`
+// 3. Add server route /format_query
+// 1. Fill How it works docs.
 // 2. Official PR to loki repo.
 
 func TestFormat(t *testing.T) {
@@ -103,27 +94,6 @@ func TestFormat(t *testing.T) {
     | logfmt [1m]
 )`,
 		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			expr, err := ParseExpr(c.in)
-			fmt.Printf("%#v\n", expr)
-			require.NoError(t, err)
-			got := Prettify(expr)
-			assert.Equal(t, c.exp, got)
-		})
-	}
-}
-
-func TestFormat2(t *testing.T) {
-	maxCharsPerLine = 20
-
-	cases := []struct {
-		name string
-		in   string
-		exp  string
-	}{
 		{
 			name: "jsonparserExpr",
 			in:   `{job="loki", namespace="loki-prod", container="nginx-ingress"}| json first_server="servers[0]", ua="request.headers[\"User-Agent\"]" | level="error"`,
@@ -136,7 +106,6 @@ func TestFormat2(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			expr, err := ParseExpr(c.in)
-			fmt.Printf("%#v\n", expr)
 			require.NoError(t, err)
 			got := Prettify(expr)
 			assert.Equal(t, c.exp, got)
@@ -176,7 +145,6 @@ func TestFormat_VectorAggregation(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			expr, err := ParseExpr(c.in)
-			fmt.Printf("%#v\n", expr)
 			require.NoError(t, err)
 			got := Prettify(expr)
 			assert.Equal(t, c.exp, got)
@@ -231,7 +199,6 @@ func TestFormat_LabelReplace(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			expr, err := ParseExpr(c.in)
-			fmt.Printf("%#v\n", expr)
 			require.NoError(t, err)
 			got := Prettify(expr)
 			assert.Equal(t, c.exp, got)
@@ -267,13 +234,13 @@ func TestFormat_BinOp(t *testing.T) {
 			in:   `sum(rate({job="loki"}[5m])) + sum(rate({job="loki-dev"}[5m])) / sum(rate({job="loki-prod"}[5m]))`,
 			exp: `  sum(
     rate(
-      {job="loki"}[5m]
+      {job="loki"} [5m]
     )
   )
 +
     sum(
       rate(
-        {job="loki-dev"}[5m]
+        {job="loki-dev"} [5m]
       )
     )
   /
@@ -293,13 +260,13 @@ func TestFormat_BinOp(t *testing.T) {
 			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
 			exp: `    sum(
       rate(
-        {job="loki"}[5m]
+        {job="loki"} [5m]
       )
     )
   /
     sum(
       rate(
-        {job="loki-dev"}[5m]
+        {job="loki-dev"} [5m]
       )
     )
 +
@@ -314,7 +281,7 @@ func TestFormat_BinOp(t *testing.T) {
 			in:   `sum(rate({job="loki"}[5m])) - sum(rate({job="loki-stage"}[5m])) / sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
 			exp: `    sum(
       rate(
-        {job="loki"}[5m]
+        {job="loki"} [5m]
       )
     )
   -
@@ -326,7 +293,7 @@ func TestFormat_BinOp(t *testing.T) {
     /
       sum(
         rate(
-          {job="loki-dev"}[5m]
+          {job="loki-dev"} [5m]
         )
       )
 +
@@ -341,7 +308,7 @@ func TestFormat_BinOp(t *testing.T) {
 			in:   `sum(rate({job="loki"}[5m])) - sum(rate({job="loki-stage"}[5m])) % sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
 			exp: `    sum(
       rate(
-        {job="loki"}[5m]
+        {job="loki"} [5m]
       )
     )
   -
@@ -353,7 +320,7 @@ func TestFormat_BinOp(t *testing.T) {
     %
       sum(
         rate(
-          {job="loki-dev"}[5m]
+          {job="loki-dev"} [5m]
         )
       )
 +
@@ -368,7 +335,7 @@ func TestFormat_BinOp(t *testing.T) {
 			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-stage"}[5m])) % sum(rate({job="loki-dev"}[5m])) + sum(rate({job="loki-prod"}[5m]))`,
 			exp: `      sum(
         rate(
-          {job="loki"}[5m]
+          {job="loki"} [5m]
         )
       )
     /
@@ -380,7 +347,7 @@ func TestFormat_BinOp(t *testing.T) {
   %
     sum(
       rate(
-        {job="loki-dev"}[5m]
+        {job="loki-dev"} [5m]
       )
     )
 +
@@ -395,7 +362,7 @@ func TestFormat_BinOp(t *testing.T) {
 			in:   `sum(rate({job="loki"}[5m])) / sum(rate({job="loki-stage"}[5m])) % sum(rate({job="loki-dev"}[5m])) * sum(rate({job="loki-prod"}[5m]))`,
 			exp: `      sum(
         rate(
-          {job="loki"}[5m]
+          {job="loki"} [5m]
         )
       )
     /
@@ -407,10 +374,25 @@ func TestFormat_BinOp(t *testing.T) {
   %
     sum(
       rate(
-        {job="loki-dev"}[5m]
+        {job="loki-dev"} [5m]
       )
     )
 *
+  sum(
+    rate(
+      {job="loki-prod"} [5m]
+    )
+  )`,
+		},
+		{
+			name: "binops with options", // options - on, ignoring, group_left, group_right
+			in:   `sum(rate({job="loki"}[5m])) * on(instance, job) group_left (node) sum(rate({job="loki-prod"}[5m]))`,
+			exp: `  sum(
+    rate(
+      {job="loki"} [5m]
+    )
+  )
+* on (instance, job) group_left (node)
   sum(
     rate(
       {job="loki-prod"} [5m]
@@ -422,7 +404,6 @@ func TestFormat_BinOp(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			expr, err := ParseExpr(c.in)
-			fmt.Printf("%#v\n", expr)
 			require.NoError(t, err)
 			got := Prettify(expr)
 			assert.Equal(t, c.exp, got)
