@@ -206,6 +206,26 @@ func TestFormat_LabelReplace(t *testing.T) {
   "(.*):.*"
 )`,
 		},
+		{
+			name: "label_replace_nested",
+			in:   `label_replace(label_replace(rate({job="api-server",service="a:c"}|= "err" [5m]), "foo", "$1", "service", "(.*):.*"), "foo", "$1", "service", "(.*):.*")`,
+			exp: `label_replace(
+  label_replace(
+    rate(
+      {job="api-server", service="a:c"}
+        |= "err" [5m]
+    ),
+    "foo",
+    "$1",
+    "service",
+    "(.*):.*"
+  ),
+  "foo",
+  "$1",
+  "service",
+  "(.*):.*"
+)`,
+		},
 	}
 
 	for _, c := range cases {
