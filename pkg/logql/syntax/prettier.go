@@ -95,9 +95,9 @@ func (e *LineFmtExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-// TODO: I have no idea yet about what it does. Later!
+// e.g: | decolorize
 func (e *DecolorizeExpr) Pretty(level int) string {
-	return ""
+	return e.String()
 }
 
 // e.g: | label_format dst="{{ .src }}"
@@ -202,14 +202,13 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 // <vector expression> - vector on which aggregation is done.
 // [without|by (<label list)] - optional labels to aggregate either with `by` or `without` clause.
 func (e *VectorAggregationExpr) Pretty(level int) string {
+	s := indent(level)
+
 	if !needSplit(e) {
-		return indent(level) + e.String()
+		return s + e.String()
 	}
 
-	var (
-		params []string
-		s      string
-	)
+	var params []string
 
 	// level + 1 because arguments to function will be in newline.
 	left := e.Left.Pretty(level + 1)

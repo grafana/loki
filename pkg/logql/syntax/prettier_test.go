@@ -14,8 +14,13 @@ import (
 // 3. test with unwrap - DONE
 // 4. vector aggregation - DONE
 // 5. binary op and nested
-// 6. unary ops
 // 7. nested funcs + nested aggregation + nested binary ops.
+// 9. Add server route /format_query
+// 10. More tests similar to promql prettier_test.go
+
+// Not urgent
+// 1. Rename `pretty.*` -> `format.*`
+// 2. Official PR to loki repo.
 
 func TestFormat(t *testing.T) {
 	maxCharsPerLine = 20
