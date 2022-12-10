@@ -8,7 +8,6 @@ import (
 )
 
 // TODO
-// 1. Rename `pretty.*` -> `format.*`
 // 3. Add server route /format_query
 // 1. Fill How it works docs.
 // 2. Official PR to loki repo.
