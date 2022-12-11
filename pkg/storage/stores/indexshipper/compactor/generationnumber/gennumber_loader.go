@@ -16,6 +16,12 @@ import (
 
 const reloadDuration = 5 * time.Minute
 
+type CacheGenClient interface {
+	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
+	Name() string
+	Stop()
+}
+
 type GenNumberLoader struct {
 	numberGetter CacheGenClient
 	numbers      map[string]string
@@ -33,6 +39,7 @@ func NewGenNumberLoader(g CacheGenClient, registerer prometheus.Registerer) *Gen
 		numberGetter: g,
 		numbers:      make(map[string]string),
 		metrics:      newGenLoaderMetrics(registerer),
+		quit:         make(chan struct{}),
 	}
 	go l.loop()
 
@@ -140,6 +147,7 @@ func (l *GenNumberLoader) getCacheGenNumber(userID string) string {
 
 func (l *GenNumberLoader) Stop() {
 	close(l.quit)
+	l.numberGetter.Stop()
 }
 
 type noopNumberGetter struct{}
@@ -151,3 +159,5 @@ func (g *noopNumberGetter) GetCacheGenerationNumber(_ context.Context, _ string)
 func (g *noopNumberGetter) Name() string {
 	return "noop-getter"
 }
+
+func (g *noopNumberGetter) Stop() {}

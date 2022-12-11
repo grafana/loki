@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package queryrangebase;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "pkg/logproto/logproto.proto";

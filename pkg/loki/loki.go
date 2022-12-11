@@ -46,6 +46,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
@@ -70,30 +71,31 @@ type Config struct {
 	UseBufferedLogger bool `yaml:"use_buffered_logger"`
 	UseSyncLogger     bool `yaml:"use_sync_logger"`
 
-	Common           common.Config            `yaml:"common,omitempty"`
-	Server           server.Config            `yaml:"server,omitempty"`
-	InternalServer   internalserver.Config    `yaml:"internal_server,omitempty"`
-	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
-	Querier          querier.Config           `yaml:"querier,omitempty"`
-	CompactorClient  compactor.ClientConfig   `yaml:"compactor_client,omitempty"`
-	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
-	IndexGateway     indexgateway.Config      `yaml:"index_gateway"`
-	ChunkStoreConfig config.ChunkStoreConfig  `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     config.SchemaConfig      `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
-	TableManager     index.TableManagerConfig `yaml:"table_manager,omitempty"`
-	Worker           worker.Config            `yaml:"frontend_worker,omitempty"`
-	Frontend         lokifrontend.Config      `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config             `yaml:"ruler,omitempty"`
-	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
-	RuntimeConfig    runtimeconfig.Config     `yaml:"runtime_config,omitempty"`
-	MemberlistKV     memberlist.KVConfig      `yaml:"memberlist"`
-	Tracing          tracing.Config           `yaml:"tracing"`
-	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
-	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
-	UsageReport      usagestats.Config        `yaml:"analytics"`
+	Common              common.Config               `yaml:"common,omitempty"`
+	Server              server.Config               `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty"`
+	Distributor         distributor.Config          `yaml:"distributor,omitempty"`
+	Querier             querier.Config              `yaml:"querier,omitempty"`
+	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty"`
+	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
+	IngesterClient      client.Config               `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
+	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
+	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
+	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
+	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
+	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
+	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
+	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
+	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
+	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
+	RuntimeConfig       runtimeconfig.Config        `yaml:"runtime_config,omitempty"`
+	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
+	Tracing             tracing.Config              `yaml:"tracing"`
+	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
+	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
+	UsageReport         usagestats.Config           `yaml:"analytics"`
 }
 
 // RegisterFlags registers flag.
@@ -116,7 +118,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.CompactorClient.RegisterFlags(f)
+	c.CompactorHTTPClient.RegisterFlags(f)
+	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)

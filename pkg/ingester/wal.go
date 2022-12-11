@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/flagext"
@@ -20,7 +20,7 @@ var (
 	recordPool = newRecordPool()
 )
 
-const walSegmentSize = wal.DefaultSegmentSize * 4
+const walSegmentSize = wlog.DefaultSegmentSize * 4
 const defaultCeiling = 4 << 30 // 4GB
 
 type WALConfig struct {
@@ -67,7 +67,7 @@ func (noopWAL) Stop() error          { return nil }
 
 type walWrapper struct {
 	cfg        WALConfig
-	wal        *wal.WAL
+	wal        *wlog.WL
 	metrics    *ingesterMetrics
 	seriesIter SeriesIter
 
@@ -81,7 +81,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wal.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
+	tsdbWAL, err := wlog.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}

@@ -117,6 +117,12 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			ts = message.Timestamp
 		}
 
+		// Create __heroku_drain_param_<name> labels from query parameters
+		params := r.URL.Query()
+		for k, v := range params {
+			lb.Set(fmt.Sprintf("__heroku_drain_param_%s", k), strings.Join(v, ","))
+		}
+
 		tenantIDHeaderValue := r.Header.Get("X-Scope-OrgID")
 		if tenantIDHeaderValue != "" {
 			// If present, first inject the tenant ID in, so it can be relabeled if necessary

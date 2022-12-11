@@ -1,5 +1,29 @@
 # Change Log
 
+## [v1.88.0] - 2022-10-31
+
+- #573 - @kamaln7 - apps: add ListBuildpacks, UpgradeBuildpack
+- #572 - @ghostlandr - Apps: add project id as a parameter to CreateApp and to the App struct
+- #570 - @kraai - Fix copy-and-paste error in comment
+- #568 - @StephenVarela - LBAAS-2321 Add project_id to load balancers structs
+
+## [v1.87.0] - 2022-10-12
+
+- #564 - @DWizGuy58 - Add public monitoring alert policies for dbaas
+- #565 - @dylanrhysscott - CON-5657 (Re-)expose public HA enablement flags in godo
+- #563 - @andrewsomething - Add option to configure a rate.Limiter for the client.
+
+## [v1.86.0] - 2022-09-23
+
+- #561 - @jonfriesen - apps: add docr image deploy on push
+
+## [v1.85.0] - 2022-09-21
+
+- #560 - @andrewsomething - Bump golang.org/x/net (fixes: #557).
+- #559 - @kamaln7 - apps: update component spec interfaces
+- #555 - @kamaln7 - apps: add accessor methods and spec helpers
+- #556 - @kamaln7 - update CI for go 1.18 & 1.19
+
 ## [v1.84.1] - 2022-09-16
 
 - #554 - @andrewsomething - reserved IPs: project_id should have omitempty in create req.

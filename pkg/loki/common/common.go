@@ -43,6 +43,9 @@ type Config struct {
 
 	// CompactorAddress is the http address of the compactor in the form http://host:port
 	CompactorAddress string `yaml:"compactor_address"`
+
+	// CompactorAddress is the grpc address of the compactor in the form host:port
+	CompactorGRPCAddress string `yaml:"compactor_grpc_address"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -57,6 +60,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
+	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
 }
 
 type Storage struct {

@@ -26,11 +26,13 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jwt"
+	"google.golang.org/api/impersonate"
 )
 
 const (
-	envProjID     = "GCLOUD_TESTS_GOLANG_PROJECT_ID"
-	envPrivateKey = "GCLOUD_TESTS_GOLANG_KEY"
+	envProjID      = "GCLOUD_TESTS_GOLANG_PROJECT_ID"
+	envPrivateKey  = "GCLOUD_TESTS_GOLANG_KEY"
+	envImpersonate = "GCLOUD_TESTS_IMPERSONATE_CREDENTIALS"
 )
 
 // ProjID returns the project ID to use in integration tests, or the empty
@@ -52,6 +54,12 @@ func Credentials(ctx context.Context, scopes ...string) *google.Credentials {
 // will return nil. CredentialsEnv will log.Fatal if the token source is
 // specified but missing or invalid.
 func CredentialsEnv(ctx context.Context, envVar string, scopes ...string) *google.Credentials {
+	if impKey := os.Getenv(envImpersonate); impKey == "true" {
+		return &google.Credentials{
+			TokenSource: impersonatedTokenSource(ctx, scopes),
+			ProjectID:   "dulcet-port-762",
+		}
+	}
 	key := os.Getenv(envVar)
 	if key == "" { // Try for application default credentials.
 		creds, err := google.FindDefaultCredentials(ctx, scopes...)
@@ -88,6 +96,9 @@ func TokenSource(ctx context.Context, scopes ...string) oauth2.TokenSource {
 // return nil. TokenSourceEnv will log.Fatal if the token source is specified but
 // missing or invalid.
 func TokenSourceEnv(ctx context.Context, envVar string, scopes ...string) oauth2.TokenSource {
+	if impKey := os.Getenv(envImpersonate); impKey == "true" {
+		return impersonatedTokenSource(ctx, scopes)
+	}
 	key := os.Getenv(envVar)
 	if key == "" { // Try for application default credentials.
 		ts, err := google.DefaultTokenSource(ctx, scopes...)
@@ -102,6 +113,17 @@ func TokenSourceEnv(ctx context.Context, envVar string, scopes ...string) oauth2
 		log.Fatal(err)
 	}
 	return conf.TokenSource(ctx)
+}
+
+func impersonatedTokenSource(ctx context.Context, scopes []string) oauth2.TokenSource {
+	ts, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+		TargetPrincipal: "kokoro@dulcet-port-762.iam.gserviceaccount.com",
+		Scopes:          scopes,
+	})
+	if err != nil {
+		log.Fatalf("Unable to impersonate credentials, exiting: %v", err)
+	}
+	return ts
 }
 
 // JWTConfig reads the JSON private key file whose name is in the default
