@@ -712,7 +712,7 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 
 // compactorAddress returns the configured address of the compactor.
 // It prefers grpc address over http. If the address is grpc then the bool would be true otherwise false
-func (t *Loki) compactorAddress() (string, error) {
+func (t *Loki) compactorAddress() (string, bool, error) {
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read)
 	if t.Cfg.isModuleEnabled(All) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
 		// In single binary or read modes, this module depends on Server
