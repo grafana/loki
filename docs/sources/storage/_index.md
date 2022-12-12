@@ -53,6 +53,8 @@ Also known as "boltdb-shipper" during development (and is still the schema `stor
 
 As of 2.0, this is the recommended index storage type, performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
 
+We have added experimental support of [TSDB index store](../operations/storage/tsdb) which improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+
 ### Cassandra
 
 Cassandra can also be utilized for the index store and aside from the [boltdb-shipper](../operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
