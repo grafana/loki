@@ -64,7 +64,7 @@ type funcBasedListener struct {
 	failedFn     func(from State, failure error)
 }
 
-func (f *funcBasedListener) Starting() {
+func (f funcBasedListener) Starting() {
 	if f.startingFn != nil {
 		f.startingFn()
 	}
