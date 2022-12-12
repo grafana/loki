@@ -1,4 +1,4 @@
-.PHONY: loki-distributed down add-repos update-repos prepare build-latest-image
+.PHONY: loki-distributed down add-repos update-repos prepare prepare-gel build-latest-image
 
 IMAGE_TAG := $(shell ../../../tools/image-tag)
 EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
@@ -10,7 +10,7 @@ loki-distributed: prepare build-latest-image
 	sleep 5
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/loki-distributed
 
-enterprise-logs: prepare
+enterprise-logs: prepare-gel
 	$(CURDIR)/scripts/create_cluster.sh enterprise-logs $(REGISTRY_PORT)
 	# wait 5s for the cluster to be ready
 	sleep 5
@@ -23,6 +23,12 @@ helm-cluster: prepare
 	# wait 5s for the cluster to be ready
 	sleep 5
 	$(MAKE) -C $(CURDIR) apply-helm-cluster
+
+loki: prepare
+	$(CURDIR)/scripts/create_cluster.sh loki $(REGISTRY_PORT)
+	# wait 5s for the cluster to be ready
+	sleep 5
+	$(MAKE) -C $(CURDIR) apply-loki
 	
 apply-enterprise-logs:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/enterprise-logs
@@ -30,10 +36,14 @@ apply-enterprise-logs:
 apply-helm-cluster:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/helm-cluster
 
+apply-loki:
+	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/loki
+
 down:
 	k3d cluster delete loki-distributed
 	k3d cluster delete enterprise-logs
 	k3d cluster delete helm-cluster
+	k3d cluster delete loki
 
 add-repos:
 	helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
@@ -72,7 +82,8 @@ secrets/gel.jwt:
 	mkdir -p secrets/
 	op document get "loki/gel.jwt" --output=$(CURDIR)/secrets/gel.jwt
 
-prepare: create-registry update-repos secrets
+prepare: create-registry update-repos
+prepare-gel: prepare secrets
 
 build-latest-image:
 	make -C $(CURDIR)/../../.. loki-image

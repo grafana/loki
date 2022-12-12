@@ -25,9 +25,18 @@ spec:
     - action: labelmap
       regex: __meta_kubernetes_pod_label_(.+)
     - action: replace
-      replacement: "{{ $.Release.Namespace }}/$1"
+      replacement: "$1"
+      separator: "-"
       sourceLabels:
-        - __meta_kubernetes_pod_controller_name
+        - __meta_kubernetes_pod_label_app_kubernetes_io_instance
+        - __meta_kubernetes_pod_label_app_kubernetes_io_component
+      targetLabel: __service__
+    - action: replace
+      replacement: "$1"
+      separator: "/"
+      sourceLabels:
+        - __meta_kubernetes_namespace
+        - __service__
       targetLabel: job
     - action: replace
       sourceLabels:
