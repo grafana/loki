@@ -32,6 +32,7 @@
 
 * [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
 * [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+* [7597](https://github.com/grafana/loki/pull/7597) **redbaron**: allow ratelimiting by label
 
 ##### Fixes
 * [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
