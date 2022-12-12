@@ -71,6 +71,8 @@ type Config struct {
 	UseBufferedLogger bool `yaml:"use_buffered_logger"`
 	UseSyncLogger     bool `yaml:"use_sync_logger"`
 
+	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty"`
+
 	Common              common.Config               `yaml:"common,omitempty"`
 	Server              server.Config               `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty"`
@@ -113,6 +115,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
 	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
 	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
+
+	//TODO(trevorwhitney): flip this to false with Loki 3.0
+	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
+		"The default will be flipped to false in the next Loki release.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -227,6 +233,13 @@ func (c *Config) Validate() error {
 
 	if err := AdjustForTimeoutsMigration(c); err != nil {
 		return err
+	}
+
+	// Honor the legacy scalable deployment topology
+	if c.LegacyReadTarget {
+		if c.isModuleEnabled(Backend) {
+			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
+		}
 	}
 
 	return nil
@@ -586,6 +599,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
 	mm.RegisterModule(Write, nil)
+	mm.RegisterModule(Backend, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
@@ -608,26 +622,31 @@ func (t *Loki) setupModuleManager() error {
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
-		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor, IndexGateway},
+		Read:                     {QueryFrontend, Querier},
 		Write:                    {Ingester, Distributor},
+		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
 		MemberlistKV:             {Server},
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
+	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
+	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the querier
-	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[Querier] = append(deps[Querier], QueryScheduler)
 	}
 
 	// If the query scheduler and query frontend are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the query frontend
-	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	if t.Cfg.LegacyReadTarget {
+		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway)
 	}
 
 	if t.Cfg.InternalServer.Enable {
