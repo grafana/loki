@@ -1,24 +1,33 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
+{{- if and $isSimpleScalable (.Values.read.legacyReadTarget ) }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.backendFullname" . }}
+  name: {{ include "loki.readFullname" . }}
   labels:
-    {{- include "loki.backendLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+    {{- include "loki.readLabels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.backend.replicas }}
+  replicas: {{ .Values.read.replicas }}
   podManagementPolicy: Parallel
   updateStrategy:
     rollingUpdate:
       partition: 0
-  serviceName: {{ include "loki.backendFullname" . }}-headless
+  serviceName: {{ printf "%s-headless" (include "loki.readFullname" .) }}
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  {{- if (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) }}
+  {{/*
+    Data on the read nodes is easy to replace, so we want to always delete PVCs to make
+    operation easier, and will rely on re-fetching data when needed.
+  */}}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+  {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+      {{- include "loki.readSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -26,15 +35,15 @@ spec:
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.backend.podAnnotations }}
+        {{- with .Values.read.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.backendSelectorLabels" . | nindent 8 }}
-        {{- with .Values.backend.selectorLabels }}
+        app.kubernetes.io/part-of: memberlist
+        {{- include "loki.readSelectorLabels" . | nindent 8 }}
+        {{- with .Values.read.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
-        app.kubernetes.io/part-of: memberlist
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
@@ -42,19 +51,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.backendPriorityClassName" . | nindent 6 }}
+      {{- include "loki.readPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.read.terminationGracePeriodSeconds }}
       containers:
-        - name: backend
+        - name: read
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=backend
-            - -legacy-read-mode=false
-            {{- with .Values.backend.extraArgs }}
+            - -target={{ .Values.read.targetModule }}
+            {{- with .Values.read.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -67,11 +75,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.backend.extraEnv }}
+          {{- with .Values.read.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.backend.extraEnvFrom }}
+          {{- with .Values.read.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -82,30 +90,34 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
+            - name: tmp
+              mountPath: /tmp
             - name: data
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
             {{- end}}
-            {{- with .Values.backend.extraVolumeMounts }}
+            {{- with .Values.read.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
-            {{- toYaml .Values.backend.resources | nindent 12 }}
-      {{- with .Values.backend.affinity }}
+            {{- toYaml .Values.read.resources | nindent 12 }}
+      {{- with .Values.read.affinity }}
       affinity:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.backend.nodeSelector }}
+      {{- with .Values.read.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.backend.tolerations }}
+      {{- with .Values.read.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: config
           {{- if .Values.loki.existingSecretForConfig }}
           secret:
@@ -123,7 +135,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.backend.extraVolumes }}
+        {{- with .Values.read.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   volumeClaimTemplates:
@@ -132,10 +144,14 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        {{- with .Values.backend.persistence.storageClass }}
+        {{- with .Values.read.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
         resources:
           requests:
-            storage: {{ .Values.backend.persistence.size | quote }}
+            storage: {{ .Values.read.persistence.size | quote }}
+        {{- with .Values.read.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
 {{- end }}

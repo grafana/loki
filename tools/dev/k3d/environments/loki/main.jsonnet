@@ -44,6 +44,9 @@ local spec = (import './spec.json').spec;
           labels: { release: 'prometheus' },
         },
       },
+      read+: {
+        legacyReadTarget: false,
+      },
       minio+: {
         enabled: true,
       },

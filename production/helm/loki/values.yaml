@@ -806,6 +806,9 @@ write:
 
 # Configuration for the read pod(s)
 read:
+  # -- Set to false to enable the new 3-target mode (read, write, backend) that will be the default
+  # in future version of Loki
+  legacyReadTarget: true
   # -- Number of replicas for the read
   replicas: 3
   autoscaling:
@@ -867,6 +870,17 @@ read:
   nodeSelector: {}
   # -- Tolerations for read pods
   tolerations: []
+  persistence:
+    # -- Size of persistent disk
+    size: 10Gi
+    # -- Storage class to be used.
+    # If defined, storageClassName: <storageClass>.
+    # If set to "-", storageClassName: "", which disables dynamic provisioning.
+    # If empty or set to null, no storageClassName spec is
+    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+    storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the backend pod(s)
 backend:
