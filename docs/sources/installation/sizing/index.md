@@ -99,7 +99,7 @@ createApp({
   methods: {
     async fetchNodeTypes() {
       const url = `${API_URL}/nodes`
-      this.nodes = await (await fetch(url),{mode: 'cors'}).json()
+      this.nodes = await (await fetch(url,{mode: 'cors'})).json()
     }
   }
 }).mount('#app')
