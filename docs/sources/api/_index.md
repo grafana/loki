@@ -23,7 +23,7 @@ These endpoints are exposed by all components:
 - [`GET /config`](#list-current-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
-- [`GET /loki/api/v1/format-query`](#format-query)
+- [`GET /loki/api/v1/format_query`](#format-query)
 
 These endpoints are exposed by the querier and the query frontend:
 
