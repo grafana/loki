@@ -235,6 +235,13 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Honor the legacy scalable deployment topology
+	if c.LegacyReadTarget {
+		if c.isModuleEnabled(Backend) {
+			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
+		}
+	}
+
 	return nil
 }
 
@@ -638,12 +645,7 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
-	// Honor the legacy scalable deployment topology
 	if t.Cfg.LegacyReadTarget {
-		if t.Cfg.isModuleEnabled(Backend) {
-			return fmt.Errorf("cannot run backend target with legacy read mode")
-		}
-
 		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway)
 	}
 
