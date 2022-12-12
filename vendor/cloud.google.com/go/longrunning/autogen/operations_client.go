@@ -209,7 +209,8 @@ func (c *OperationsClient) setGoogleClientInfo(keyval ...string) {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *OperationsClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
@@ -338,7 +339,8 @@ func NewOperationsClient(ctx context.Context, opts ...option.ClientOption) (*Ope
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *operationsGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
 }
@@ -430,7 +432,7 @@ func (c *operationsRESTClient) Close() error {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: This method always returns nil.
 func (c *operationsRESTClient) Connection() *grpc.ClientConn {
 	return nil
 }
@@ -814,11 +816,12 @@ func (c *operationsRESTClient) WaitOperation(ctx context.Context, req *longrunni
 	if req.GetName() != "" {
 		params.Add("name", fmt.Sprintf("%v", req.GetName()))
 	}
-	if req.GetTimeout().GetNanos() != 0 {
-		params.Add("timeout.nanos", fmt.Sprintf("%v", req.GetTimeout().GetNanos()))
-	}
-	if req.GetTimeout().GetSeconds() != 0 {
-		params.Add("timeout.seconds", fmt.Sprintf("%v", req.GetTimeout().GetSeconds()))
+	if req.GetTimeout() != nil {
+		timeout, err := protojson.Marshal(req.GetTimeout())
+		if err != nil {
+			return nil, err
+		}
+		params.Add("timeout", string(timeout))
 	}
 
 	baseUrl.RawQuery = params.Encode()

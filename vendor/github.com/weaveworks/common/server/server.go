@@ -126,8 +126,8 @@ var infinty = time.Duration(math.MaxInt64)
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPListenAddress, "server.http-listen-address", "", "HTTP server listen address.")
 	f.StringVar(&cfg.HTTPListenNetwork, "server.http-listen-network", DefaultNetwork, "HTTP server listen network, default tcp")
-	f.StringVar(&cfg.CipherSuites, "server.tls-cipher-suites", "", "Comma-separated list of cipher suites to use. If blank, the default Go cipher suites will be used.")
-	f.StringVar(&cfg.MinVersion, "server.tls-min-version", "", "Minimum TLS version to use. If blank, the Go TLS minimum version will be used.")
+	f.StringVar(&cfg.CipherSuites, "server.tls-cipher-suites", "", "Comma-separated list of cipher suites to use. If blank, the default Go cipher suites is used.")
+	f.StringVar(&cfg.MinVersion, "server.tls-min-version", "", "Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11, VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSCertPath, "server.http-tls-cert-path", "", "HTTP server cert path.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSKeyPath, "server.http-tls-key-path", "", "HTTP server key path.")
 	f.StringVar(&cfg.HTTPTLSConfig.ClientAuth, "server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
@@ -260,7 +260,7 @@ func New(cfg Config) (*Server, error) {
 	var httpTLSConfig *tls.Config
 	if len(cfg.HTTPTLSConfig.TLSCertPath) > 0 && len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
-		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSStruct{
+		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
 			TLSCertPath:  cfg.HTTPTLSConfig.TLSCertPath,
 			TLSKeyPath:   cfg.HTTPTLSConfig.TLSKeyPath,
 			ClientAuth:   cfg.HTTPTLSConfig.ClientAuth,
@@ -275,7 +275,7 @@ func New(cfg Config) (*Server, error) {
 	var grpcTLSConfig *tls.Config
 	if len(cfg.GRPCTLSConfig.TLSCertPath) > 0 && len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
-		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSStruct{
+		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
 			TLSCertPath:  cfg.GRPCTLSConfig.TLSCertPath,
 			TLSKeyPath:   cfg.GRPCTLSConfig.TLSKeyPath,
 			ClientAuth:   cfg.GRPCTLSConfig.ClientAuth,

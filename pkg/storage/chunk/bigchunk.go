@@ -249,7 +249,7 @@ func addToOverflowChunk(s model.SamplePair) (Data, error) {
 func firstTime(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, chunkenc.Iterator, error) {
 	var first int64
 	iter = c.Iterator(iter)
-	if iter.Next() {
+	if iter.Next() != chunkenc.ValNone {
 		first, _ = iter.At()
 	}
 	return first, iter, iter.Err()

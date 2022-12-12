@@ -2,6 +2,15 @@ syntax = "proto3";
 
 package httpgrpc;
 
+import "gogoproto/gogo.proto";
+
+option (gogoproto.equal_all) = true;
+option (gogoproto.gostring_all) =  true;
+option (gogoproto.stringer_all) =  true;
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
 option go_package = "github.com/weaveworks/common/httpgrpc";
 
 service HTTP {

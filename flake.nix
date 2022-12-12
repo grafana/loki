@@ -46,16 +46,16 @@
           {
             buildGoModule = args:
               prev.buildGoModule (args // rec {
-                version = "1.8.1";
+                version = "1.11.0";
 
                 src = prev.fetchFromGitHub {
                   owner = "norwoodj";
                   repo = "helm-docs";
                   rev = "v${version}";
-                  sha256 = "sha256-OpS/CYBb2Ll6ktvEhqkw/bWMSrFa4duidK3Glu8EnPw=";
+                  sha256 = "sha256-476ZhjRwHlNJFkHzY8qQ7WbAUUpFNSoxXLGX9esDA/E=";
                 };
 
-                vendorSha256 = "sha256-FpmeOQ8nV+sEVu2+nY9o9aFbCpwSShQUFOmyzwEQ9Pw=";
+                vendorSha256 = "sha256-xXwunk9rmzZEtqmSo8biuXnAjPp7fqWdQ+Kt9+Di9N8=";
 
                 ldflags = [
                   "-w"

@@ -446,7 +446,7 @@ Configuration is specified in a`heroku_drain` block within the Promtail `scrape_
       - source_labels: ['__heroku_drain_host']
         target_label: 'host'
       - source_labels: ['__heroku_drain_app']
-        target_label: 'app'
+        target_label: 'source'
       - source_labels: ['__heroku_drain_proc']
         target_label: 'proc'
       - source_labels: ['__heroku_drain_log_id']
@@ -464,6 +464,25 @@ with a command like the following:
 
 ```
 heroku drains:add [http|https]://HOSTNAME:8080/heroku/api/v1/drain -a HEROKU_APP_NAME
+```
+
+### Getting the Heroku application name
+
+Note that the `__heroku_drain_app` label will contain the source of the log line, either `app` or `heroku` and not the name of the heroku application.
+
+The easiest way to provide the actual application name is to include a query parameter when creating the heroku drain and then relabel that parameter in your scraping config, for example:
+
+```
+heroku drains:add [http|https]://HOSTNAME:8080/heroku/api/v1/drain?app_name=HEROKU_APP_NAME -a HEROKU_APP_NAME
+
+```
+
+And then in a relabel_config:
+
+```yaml
+    relabel_configs:
+      - source_labels: ['__heroku_drain_param_app_name']
+        target_label: 'app'
 ```
 
 It also supports `relabeling` and `pipeline` stages just like other targets.

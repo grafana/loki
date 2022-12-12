@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -281,6 +281,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	parallelism := MinWeightedParallelism(
+		ctx,
 		tenantIDs,
 		rt.configs,
 		rt.limits,
@@ -358,11 +359,27 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 // the resulting parallelism will be
 // 0.5 * 10 + 0.5 * 100 = 60
 func WeightedParallelism(
+	ctx context.Context,
 	configs []config.PeriodConfig,
 	user string,
 	l Limits,
 	start, end model.Time,
 ) int {
+	logger := util_log.WithContext(ctx, util_log.Logger)
+
+	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
+	regMaxQueryParallelism := l.MaxQueryParallelism(user)
+	if tsdbMaxQueryParallelism+regMaxQueryParallelism == 0 {
+		level.Info(logger).Log("msg", "querying disabled for tenant")
+		return 0
+	}
+
+	// query end before start would anyways error out so just short circuit and return 1
+	if end < start {
+		level.Warn(logger).Log("msg", "query end time before start, letting downstream code handle it gracefully", "start", start, "end", end)
+		return 1
+	}
+
 	// Return first index of desired period configs
 	i := sort.Search(len(configs), func(i int) bool {
 		// return true when there is no overlap with query & current
@@ -419,8 +436,14 @@ func WeightedParallelism(
 	}
 
 	totalDur := int(tsdbDur + otherDur)
-	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
-	regMaxQueryParallelism := l.MaxQueryParallelism(user)
+	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
+	// let the downstream code handle it.
+	if totalDur == 0 {
+		level.Warn(logger).Log("msg", "could not determine query overlaps on tsdb vs non-tsdb schemas, likely due to query not overlapping any of the schema configs,"+
+			"letting downstream code handle it gracefully", "start", start, "end", end)
+		return 1
+	}
+
 	tsdbPart := int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
 	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
 
@@ -435,8 +458,8 @@ func WeightedParallelism(
 	if (tsdbMaxQueryParallelism > 0 && tsdbDur > 0) || (regMaxQueryParallelism > 0 && otherDur > 0) {
 		return 1
 	}
-	return 0
 
+	return 0
 }
 
 func minMaxModelTime(a, b model.Time) (min, max model.Time) {
@@ -446,9 +469,10 @@ func minMaxModelTime(a, b model.Time) (min, max model.Time) {
 	return b, a
 }
 
-func MinWeightedParallelism(tenantIDs []string, configs []config.PeriodConfig, l Limits, start, end model.Time) int {
+func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []config.PeriodConfig, l Limits, start, end model.Time) int {
 	return validation.SmallestPositiveIntPerTenant(tenantIDs, func(user string) int {
 		return WeightedParallelism(
+			ctx,
 			configs,
 			user,
 			l,

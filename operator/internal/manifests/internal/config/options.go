@@ -198,6 +198,7 @@ type TLSServerNames struct {
 }
 
 type GRPCServerNames struct {
+	Compactor     string
 	IndexGateway  string
 	Ingester      string
 	QueryFrontend string
@@ -205,6 +206,5 @@ type GRPCServerNames struct {
 }
 
 type HTTPServerNames struct {
-	Compactor string
-	Querier   string
+	Querier string
 }

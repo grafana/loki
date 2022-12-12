@@ -1,5 +1,33 @@
 # Changes
 
+## [0.7.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.6.0...iam/v0.7.0) (2022-11-03)
+
+
+### Features
+
+* **iam:** rewrite signatures in terms of new location ([3c4b2b3](https://github.com/googleapis/google-cloud-go/commit/3c4b2b34565795537aac1661e6af2442437e34ad))
+
+## [0.6.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.5.0...iam/v0.6.0) (2022-10-25)
+
+
+### Features
+
+* **iam:** start generating stubs dir ([de2d180](https://github.com/googleapis/google-cloud-go/commit/de2d18066dc613b72f6f8db93ca60146dabcfdcc))
+
+## [0.5.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.4.0...iam/v0.5.0) (2022-09-28)
+
+
+### Features
+
+* **iam:** remove ListApplicablePolicies ([52dddd1](https://github.com/googleapis/google-cloud-go/commit/52dddd1ed89fbe77e1859311c3b993a77a82bfc7))
+
+## [0.4.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.3.0...iam/v0.4.0) (2022-09-06)
+
+
+### Features
+
+* **iam:** start generating apiv2 ([#6605](https://github.com/googleapis/google-cloud-go/issues/6605)) ([a6004e7](https://github.com/googleapis/google-cloud-go/commit/a6004e762f782869cd85688937475744f7b17e50))
+
 ## [0.3.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.2.0...iam/v0.3.0) (2022-02-23)
 
 

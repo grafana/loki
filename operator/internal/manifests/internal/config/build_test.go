@@ -2440,12 +2440,12 @@ querier:
   max_concurrent: 2
   query_ingesters_within: 3h
   tail_max_duration: 1h
-delete_client:
+compactor_grpc_client:
   tls_enabled: true
-  tls_cert_path: /var/run/tls/http/tls.crt
-  tls_key_path: /var/run/tls/http/tls.key
+  tls_cert_path: /var/run/tls/grpc/tls.crt
+  tls_key_path: /var/run/tls/grpc/tls.key
   tls_ca_path: /var/run/tls/ca.pem
-  tls_server_name: compactor-http.svc
+  tls_server_name: compactor-grpc.svc
   tls_cipher_suites: cipher1,cipher2
   tls_min_version: VersionTLS12
 query_range:
@@ -2568,14 +2568,14 @@ overrides:
 			},
 			ServerNames: TLSServerNames{
 				GRPC: GRPCServerNames{
+					Compactor:     "compactor-grpc.svc",
 					IndexGateway:  "index-gateway-grpc.svc",
 					Ingester:      "ingester-grpc.svc",
 					QueryFrontend: "query-frontend-grpc.svc",
 					Ruler:         "ruler-grpc.svc",
 				},
 				HTTP: HTTPServerNames{
-					Compactor: "compactor-http.svc",
-					Querier:   "querier-http.svc",
+					Querier: "querier-http.svc",
 				},
 			},
 		},

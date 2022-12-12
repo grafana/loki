@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"context"
 	"flag"
 	"net/http"
 	"strings"
@@ -431,8 +432,9 @@ func NewMetricTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
-			func(tenantIDs []string, r queryrangebase.Request) int {
+			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
 				return MinWeightedParallelism(
+					ctx,
 					tenantIDs,
 					schema.Configs,
 					limits,

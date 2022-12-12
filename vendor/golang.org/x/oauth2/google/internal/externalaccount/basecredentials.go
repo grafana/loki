@@ -74,12 +74,14 @@ var (
 		regexp.MustCompile(`(?i)^sts\.googleapis\.com$`),
 		regexp.MustCompile(`(?i)^sts\.[^\.\s\/\\]+\.googleapis\.com$`),
 		regexp.MustCompile(`(?i)^[^\.\s\/\\]+-sts\.googleapis\.com$`),
+		regexp.MustCompile(`(?i)^sts-[^\.\s\/\\]+\.p\.googleapis\.com$`),
 	}
 	validImpersonateURLPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`^[^\.\s\/\\]+\.iamcredentials\.googleapis\.com$`),
 		regexp.MustCompile(`^iamcredentials\.googleapis\.com$`),
 		regexp.MustCompile(`^iamcredentials\.[^\.\s\/\\]+\.googleapis\.com$`),
 		regexp.MustCompile(`^[^\.\s\/\\]+-iamcredentials\.googleapis\.com$`),
+		regexp.MustCompile(`^iamcredentials-[^\.\s\/\\]+\.p\.googleapis\.com$`),
 	}
 	validWorkforceAudiencePattern *regexp.Regexp = regexp.MustCompile(`//iam\.googleapis\.com/locations/[^/]+/workforcePools/`)
 )

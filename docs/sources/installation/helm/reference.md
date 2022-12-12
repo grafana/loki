@@ -129,15 +129,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.image.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
-			<td><pre lang="json">
-"v1.4.0"
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
 			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
@@ -477,7 +468,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.5.2"
+"v1.6.0"
 </pre>
 </td>
 		</tr>
