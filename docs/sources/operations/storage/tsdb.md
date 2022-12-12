@@ -6,7 +6,7 @@ title: TSDB
 :warning: TSDB is still an experimental feature. It is not recommended to be used in production environments.
 
 With TSDB index store, you can run Grafana Loki without any dependency on NoSQL stores for storing index.
-It works the same way as [boltdb-shipper](./boltdb-shipper) index store but with reduced TCO and better query performance.
+It works the same way as [boltdb-shipper](./boltdb-shipper) index store, but with reduced TCO and better query performance.
 Loki uses [Prometheus TSDB format](https://github.com/prometheus/prometheus/tree/main/tsdb#tsdb) for storing the index with 
 some tweaks on top of it for query planning.
 
@@ -36,14 +36,14 @@ storage_config:
 ```
 
 This would run Loki with TSDB index storing TSDB files locally at `/loki/index` and chunks at configured `GCS_BUCKET_NAME`.
-It would also keep shipping TSDB files periodically to same configured bucket.
+It would also keep shipping TSDB files periodically to the same configured bucket.
 It would also keep downloading TSDB files from shared bucket uploaded by other ingesters to `/loki/tsdb-cache` folder locally.
 
 ## Operational Details
 
 Operationally, TSDB works the same way as BoltDB Shipper except the index format is different.
-All the [Operational details for BoltDB Shipper](./boltdb-shipper#operational-details) apply to TSDB as well.
-However, there as some additional details to TSDB index store which are mentioned below.
+All the [operational details for BoltDB Shipper](./boltdb-shipper#operational-details) apply to TSDB as well.
+However, there are some additional details to TSDB index store which are mentioned below.
 
 ### Dynamic Query Sharding
 
