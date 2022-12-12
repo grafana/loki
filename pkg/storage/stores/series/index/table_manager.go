@@ -29,7 +29,6 @@ const (
 	writeLabel = "write"
 
 	bucketRetentionEnforcementInterval = 12 * time.Hour
-	bucketBlockSizeRetentionInterval   = time.Hour / 12 // 5 minutes
 )
 
 type tableManagerMetrics struct {
@@ -168,8 +167,7 @@ type TableManager struct {
 	metrics      *tableManagerMetrics
 	extraTables  []ExtraTables
 
-	bucketRetentionLoop          services.Service
-	bucketBlockSizeRetentionLoop services.Service
+	bucketRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
@@ -203,11 +201,7 @@ func (m *TableManager) starting(ctx context.Context) error {
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
 		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
-	} else if m.bucketClient != nil { // FIXME: Need to check valid conditions and/or modify this if...else conditions
-		m.bucketBlockSizeRetentionLoop = services.NewTimerService(bucketBlockSizeRetentionInterval, nil, m.bucketBlockSizeRetentionIteration, nil)
-		return services.StartAndAwaitRunning(ctx, m.bucketBlockSizeRetentionLoop)
 	}
-
 	return nil
 }
 
@@ -317,22 +311,6 @@ func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
-	}
-
-	// don't return error, otherwise timer service would stop.
-	return nil
-}
-
-func (m *TableManager) bucketBlockSizeRetentionIteration(ctx context.Context) error {
-	diskUsage, error := util_storage.DiskUsage("/tmp") // FIXME: We need to get SizeBasedRetentionPercentage from FSConfig
-
-	if error != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", error)
-	}
-
-	err := m.bucketClient.DeleteChunksBasedOnBlockSize(ctx, diskUsage)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
 
 	// don't return error, otherwise timer service would stop.

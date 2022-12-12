@@ -72,24 +72,25 @@ var (
 )
 
 type Config struct {
-	WorkingDirectory          string          `yaml:"working_directory"`
-	SharedStoreType           string          `yaml:"shared_store"`
-	SharedStoreKeyPrefix      string          `yaml:"shared_store_key_prefix"`
-	CompactionInterval        time.Duration   `yaml:"compaction_interval"`
-	ApplyRetentionInterval    time.Duration   `yaml:"apply_retention_interval"`
-	RetentionEnabled          bool            `yaml:"retention_enabled"`
-	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
-	DeleteBatchSize           int             `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
-	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
-	UploadParallelism         int             `yaml:"upload_parallelism"`
-	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
-	RunOnce                   bool            `yaml:"_"`
-	TablesToCompact           int             `yaml:"tables_to_compact"`
-	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
+	WorkingDirectory             string          `yaml:"working_directory"`
+	SharedStoreType              string          `yaml:"shared_store"`
+	SharedStoreKeyPrefix         string          `yaml:"shared_store_key_prefix"`
+	CompactionInterval           time.Duration   `yaml:"compaction_interval"`
+	ApplyRetentionInterval       time.Duration   `yaml:"apply_retention_interval"`
+	RetentionEnabled             bool            `yaml:"retention_enabled"`
+	RetentionDeleteDelay         time.Duration   `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount     int             `yaml:"retention_delete_worker_count"`
+	RetentionDiskSpacePercentage int             `yaml:"retention_disk_space_percentage"`
+	RetentionTableTimeout        time.Duration   `yaml:"retention_table_timeout"`
+	DeleteBatchSize              int             `yaml:"delete_batch_size"`
+	DeleteRequestCancelPeriod    time.Duration   `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval            time.Duration   `yaml:"delete_max_interval"`
+	MaxCompactionParallelism     int             `yaml:"max_compaction_parallelism"`
+	UploadParallelism            int             `yaml:"upload_parallelism"`
+	CompactorRing                util.RingConfig `yaml:"compactor_ring,omitempty"`
+	RunOnce                      bool            `yaml:"_"`
+	TablesToCompact              int             `yaml:"tables_to_compact"`
+	SkipLatestNTables            int             `yaml:"skip_latest_n_tables"`
 
 	// Deprecated
 	DeletionMode string `yaml:"deletion_mode"`
@@ -154,6 +155,7 @@ type Compactor struct {
 	DeleteRequestsGRPCHandler *deletion.GRPCRequestHandler
 	deleteRequestsManager     *deletion.DeleteRequestsManager
 	expirationChecker         retention.ExpirationChecker
+	sizeBasedRetention        *retention.SizeBasedRetentionCleaner
 	metrics                   *metrics
 	running                   bool
 	wg                        sync.WaitGroup
@@ -328,6 +330,12 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 		return errors.Wrap(err, "unable to start compactor subservices")
 	}
 
+	if c.sizeBasedRetention != nil {
+		c.sizeBasedRetention.RetentionLoop = services.NewTimerService(c.sizeBasedRetention.RetentionLoopInterval, nil,
+			c.sizeBasedRetention.RunIteration, nil)
+		services.StartAndAwaitRunning(ctx, c.sizeBasedRetention.RetentionLoop)
+	}
+
 	// The BasicLifecycler does not automatically move state to ACTIVE such that any additional work that
 	// someone wants to do can be done before becoming ACTIVE. For the query compactor we don't currently
 	// have any additional work so we can become ACTIVE right away.
@@ -354,6 +362,10 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 		return err
 	}
 	level.Info(util_log.Logger).Log("msg", "compactor is ACTIVE in the ring")
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -545,6 +557,7 @@ func (c *Compactor) RegisterIndexCompactor(indexType string, indexCompactor Inde
 }
 
 func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) error {
+
 	status := statusSuccess
 	start := time.Now()
 

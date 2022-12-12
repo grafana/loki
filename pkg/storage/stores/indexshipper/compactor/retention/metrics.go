@@ -74,3 +74,30 @@ func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
 		}, []string{"table", "status"}),
 	}
 }
+
+type cleanupMetrics struct {
+	chunksProcessedTotal            *prometheus.CounterVec
+	chunksDeletedTotal              *prometheus.CounterVec
+	cleanupProcessedDurationSeconds *prometheus.HistogramVec
+}
+
+func newCleanupMetrics(r prometheus.Registerer) *cleanupMetrics {
+	return &cleanupMetrics{
+		chunksProcessedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_cleanup_chunks_processed_total",
+			Help:      "Total amount of chunks processed for each user per cleanup. Empty string for user_id is for common index",
+		}, []string{"table", "user_id", "action"}),
+		chunksDeletedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_cleanup_chunks_deleted_count_total",
+			Help:      "Total count of chunks deleted per table.",
+		}, []string{"table"}),
+		cleanupProcessedDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_cleanup_table_processed_duration_seconds",
+			Help:      "Time (in seconds) spent in deleting table chunks",
+			Buckets:   []float64{1, 2.5, 5, 10, 20, 40, 90, 360, 600, 1800},
+		}, []string{"table", "status"}),
+	}
+}

@@ -27,6 +27,10 @@ var chunkBucket = []byte("chunks")
 
 const (
 	markersFolder = "markers"
+
+	// sizeBasedRetentionEnforcementInterval sets the timer interval to check and clean up chunks if the
+	// disk space usage is too high on local filesystem stores
+	sizeBasedRetentionEnforcementInterval = 60 * time.Second
 )
 
 type ChunkRef struct {
