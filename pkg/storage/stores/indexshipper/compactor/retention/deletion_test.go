@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
+	retention "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	util_storage "github.com/grafana/loki/pkg/util"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
@@ -31,7 +31,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
 	diskUsage.UsedPercent = 100.0
 	diskUsage.All = bytesFullDisk
 
-	require.NoError(t, DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
+	require.NoError(t, retention.DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
 	files, _ = ioutil.ReadDir(".")
 	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
 }
@@ -53,7 +53,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
 	diskUsage, _ := util_storage.DiskUsage(chunksDir)
 	diskUsage.UsedPercent = float64(sizeBasedRetentionPercentage - 10) // 70 < 80 No need to delete
 	diskUsage.All = bytesFullDisk
-	require.NoError(t, DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
+	require.NoError(t, retention.DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
 	files, _ = ioutil.ReadDir(".")
 	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
 }
