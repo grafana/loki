@@ -180,13 +180,13 @@ querier:
   query_ingesters_within: 3h
   tail_max_duration: 1h
   max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
-{{- if .Gates.HTTPEncryption }}
-delete_client:
+{{- if .Gates.GRPCEncryption }}
+compactor_grpc_client:
   tls_enabled: true
-  tls_cert_path: {{ .TLS.Paths.HTTP.Certificate }}
-  tls_key_path: {{ .TLS.Paths.HTTP.Key }}
+  tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+  tls_key_path: {{ .TLS.Paths.GRPC.Key }}
   tls_ca_path: {{ .TLS.Paths.CA }}
-  tls_server_name: {{ .TLS.ServerNames.HTTP.Compactor }}
+  tls_server_name: {{ .TLS.ServerNames.GRPC.Compactor }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}
   tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}

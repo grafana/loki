@@ -18,7 +18,7 @@ var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"mod": func(i, j int) bool { return i%j == 0 },
 	"humanFloat": func(f float64) string {
-		return fmt.Sprintf("%.2g", f)
+		return fmt.Sprintf("%.3g", f)
 	},
 	"timeOrEmptyString": func(t time.Time) string {
 		if t.IsZero() {
