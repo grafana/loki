@@ -31,6 +31,10 @@ Entries should include a reference to the pull request that introduced the chang
 **BREAKING**: Configuration values for Loki Canary moved from `monitoring.selfMonitoring.lokiCanary` to `monitoring.lokiCanary`
 
 - [ENHANCEMENT] Decouple the Loki Canary from the self-monitoring setup, which adds an unnecessary dependency on the Grafana Agent Operator.
+## 4.0.0
+
+- [CHANGE] **BREAKING** Remove `enterprise.nginxConfig.file`. Both enterprise and gateway configurations now share the same nginx config. Admin routes will 404 on OSS deployments.
+- [FEATURE] Added new simple deployment target `backend`. Running 3 targets for simple deployment will soon be the default in Loki. This new target allows the `read` target to be run as a deployment and auto-scaled.
 
 ## 3.6.1
 
