@@ -1,6 +1,7 @@
 // This directory was copied and adapted from https://github.com/grafana/agent/tree/main/pkg/metrics.
 // We cannot vendor the agent in since the agent vendors loki in, which would cause a cyclic dependency.
 // NOTE: many changes have been made to the original code for our use-case.
+
 package cleaner
 
 import (
@@ -14,7 +15,7 @@ type Config struct {
 	Period time.Duration `yaml:"period,omitempty"`
 }
 
-func (c Config) RegisterFlags(f *flag.FlagSet) {
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&c.MinAge, "ruler.wal-cleaner.min-age", DefaultCleanupAge, "The minimum age of a WAL to consider for cleaning.")
-	f.DurationVar(&c.Period, "ruler.wal-cleaer.period", DefaultCleanupPeriod, "How often to run the WAL cleaner.")
+	f.DurationVar(&c.Period, "ruler.wal-cleaner.period", DefaultCleanupPeriod, "How often to run the WAL cleaner. 0 = disabled.")
 }

@@ -51,8 +51,10 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
 	throwaway.IntVar(&c.ReplicationFactor, "common.replication-factor", 3, "How many ingesters incoming data should be replicated to.")
-	c.Storage.RegisterFlagsWithPrefix("common.storage", throwaway)
-	c.Ring.RegisterFlagsWithPrefix("", "collectors/", throwaway)
+	c.Storage.RegisterFlagsWithPrefix("common.storage.", f)
+	c.Storage.RegisterFlagsWithPrefix("common.storage.", throwaway)
+	c.Ring.RegisterFlagsWithPrefix("common.storage.", "collectors/", f)
+	c.Ring.RegisterFlagsWithPrefix("common.storage.", "collectors/", throwaway)
 
 	// instance related flags.
 	c.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
@@ -74,11 +76,11 @@ type Storage struct {
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	s.S3.RegisterFlagsWithPrefix(prefix+".s3", f)
-	s.GCS.RegisterFlagsWithPrefix(prefix+".gcs", f)
-	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
-	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
-	s.BOS.RegisterFlagsWithPrefix(prefix+".bos", f)
+	s.S3.RegisterFlagsWithPrefix(prefix, f)
+	s.GCS.RegisterFlagsWithPrefix(prefix, f)
+	s.Azure.RegisterFlagsWithPrefix(prefix, f)
+	s.Swift.RegisterFlagsWithPrefix(prefix, f)
+	s.BOS.RegisterFlagsWithPrefix(prefix, f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 }
