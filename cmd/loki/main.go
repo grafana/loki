@@ -21,6 +21,11 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+func exit(code int) {
+	util_log.Flush()
+	os.Exit(code)
+}
+
 func main() {
 	var config loki.ConfigWrapper
 
@@ -41,7 +46,7 @@ func main() {
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &logging.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
-		os.Exit(1)
+		exit(1)
 	}
 	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
@@ -49,7 +54,7 @@ func main() {
 	// and CLI flags parsed.
 	if err := config.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	if config.PrintConfig {
@@ -66,7 +71,7 @@ func main() {
 
 	if config.VerifyConfig {
 		level.Info(util_log.Logger).Log("msg", "config is valid")
-		os.Exit(0)
+		exit(0)
 	}
 
 	if config.Tracing.Enabled {
@@ -97,7 +102,7 @@ func main() {
 
 	if config.ListTargets {
 		t.ListTargets()
-		os.Exit(0)
+		exit(0)
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
