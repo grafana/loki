@@ -113,7 +113,7 @@ This is helpful to find high cardinality labels.
 `)
 	seriesQuery = newSeriesQuery(seriesCmd)
 
-	fmtCmd = app.Command("fmt", "Formats LogQL query.")
+	fmtCmd = app.Command("fmt", "Formats a LogQL query.")
 )
 
 func main() {
