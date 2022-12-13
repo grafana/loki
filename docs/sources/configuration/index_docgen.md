@@ -239,11 +239,12 @@ Configures the `server` of the launched module(s).
 [grpc_listen_conn_limit: <int> | default = 0]
 
 # Comma-separated list of cipher suites to use. If blank, the default Go cipher
-# suites will be used.
+# suites is used.
 # CLI flag: -server.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
-# Minimum TLS version to use. If blank, the Go TLS minimum version will be used.
+# Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
+# VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
 # CLI flag: -server.tls-min-version
 [tls_min_version: <string> | default = ""]
 
@@ -763,23 +764,23 @@ storage:
   [type: <string> | default = ""]
 
   # Configures backend rule storage for Azure.
-  # The CLI flags prefix for this block configuration is: ruler.storage
+  # The CLI flags prefix for this block configuration is: ruler.storage.azure
   [azure: <azure_storage_config>]
 
   # Configures backend rule storage for GCS.
-  # The CLI flags prefix for this block configuration is: ruler.storage
+  # The CLI flags prefix for this block configuration is: ruler.storage.gcs
   [gcs: <gcs_storage_config>]
 
   # Configures backend rule storage for S3.
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage.s3
   [s3: <s3_storage_config>]
 
   # Configures backend rule storage for Baidu Object Storage (BOS).
-  # The CLI flags prefix for this block configuration is: ruler.storage
+  # The CLI flags prefix for this block configuration is: ruler.storage.baidubce
   [bos: <bos_storage_config>]
 
   # Configures backend rule storage for Swift.
-  # The CLI flags prefix for this block configuration is: ruler.storage
+  # The CLI flags prefix for this block configuration is: ruler.storage.swift
   [swift: <swift_storage_config>]
 
   # Configures backend rule storage for a local file system directory.
@@ -804,7 +805,7 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled, then requests to Alertmanager use the v2 API.
+# If enabled requests to Alertmanager will utilize the V2 API.
 # CLI flag: -ruler.alertmanager-use-v2
 [enable_alertmanager_v2: <boolean> | default = false]
 
@@ -1038,7 +1039,7 @@ wal_cleaner:
   [min_age: <duration> | default = 12h]
 
   # How often to run the WAL cleaner. 0 = disabled.
-  # CLI flag: -ruler.wal-cleaner.period
+  # CLI flag: -ruler.wal-cleaer.period
   [period: <duration> | default = 0s]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write
@@ -1622,10 +1623,12 @@ aws:
 
 # The azure_storage_config block configures the connection to Azure object
 # storage backend.
+# The CLI flags prefix for this block configuration is: azure
 [azure: <azure_storage_config>]
 
 # The bos_storage_config block configures the connection to Baidu Object Storage
 # (BOS) object storage backend.
+# The CLI flags prefix for this block configuration is: baidubce
 [bos: <bos_storage_config>]
 
 # Configures storing indexes in Bigtable. Required fields only required when
@@ -1656,6 +1659,7 @@ bigtable:
 
 # Configures storing chunks in GCS. Required fields only required when gcs is
 # defined in config.
+# The CLI flags prefix for this block configuration is: gcs
 [gcs: <gcs_storage_config>]
 
 # Configures storing chunks and/or the index in Cassandra.
@@ -1792,6 +1796,7 @@ filesystem:
 
 # The swift_storage_config block configures the connection to OpenStack Object
 # Storage (Swift) object storage backend.
+# The CLI flags prefix for this block configuration is: swift
 [swift: <swift_storage_config>]
 
 grpc_store:
@@ -2918,50 +2923,53 @@ Common configuration to be shared between multiple modules. If a more specific c
 storage:
   # The s3_storage_config block configures the connection to Amazon S3 object
   # storage backend.
-  # The CLI flags prefix for this block configuration is: common
+  # The CLI flags prefix for this block configuration is: common.storage.s3s3
   [s3: <s3_storage_config>]
 
   # The gcs_storage_config block configures the connection to Google Cloud
   # Storage object storage backend.
-  # The CLI flags prefix for this block configuration is: common.storage
+  # The CLI flags prefix for this block configuration is: common.storage.gcsgcs
   [gcs: <gcs_storage_config>]
 
   # The azure_storage_config block configures the connection to Azure object
   # storage backend.
-  # The CLI flags prefix for this block configuration is: common.storage
+  # The CLI flags prefix for this block configuration is:
+  # common.storage.azureazure
   [azure: <azure_storage_config>]
 
   # The bos_storage_config block configures the connection to Baidu Object
   # Storage (BOS) object storage backend.
-  # The CLI flags prefix for this block configuration is: common.storage
+  # The CLI flags prefix for this block configuration is:
+  # common.storage.bosbaidubce
   [bos: <bos_storage_config>]
 
   # The swift_storage_config block configures the connection to OpenStack Object
   # Storage (Swift) object storage backend.
-  # The CLI flags prefix for this block configuration is: common.storage
+  # The CLI flags prefix for this block configuration is:
+  # common.storage.swiftswift
   [swift: <swift_storage_config>]
 
   filesystem:
     # Directory to store chunks in.
-    # CLI flag: -common.storage..filesystem.chunk-directory
+    # CLI flag: -common.storage.filesystem.chunk-directory
     [chunks_directory: <string> | default = ""]
 
     # Directory to store rules in.
-    # CLI flag: -common.storage..filesystem.rules-directory
+    # CLI flag: -common.storage.filesystem.rules-directory
     [rules_directory: <string> | default = ""]
 
   hedging:
     # If set to a non-zero value a second request will be issued at the provided
     # duration. Default is 0 (disabled)
-    # CLI flag: -common.storage.hedge-requests-at
+    # CLI flag: -common.storagehedge-requests-at
     [at: <duration> | default = 0s]
 
     # The maximum of hedge requests allowed.
-    # CLI flag: -common.storage.hedge-requests-up-to
+    # CLI flag: -common.storagehedge-requests-up-to
     [up_to: <int> | default = 2]
 
     # The maximum of hedge requests allowed per seconds.
-    # CLI flag: -common.storage.hedge-max-per-second
+    # CLI flag: -common.storagehedge-max-per-second
     [max_per_second: <int> | default = 5]
 
 [persist_tokens: <boolean>]
@@ -2972,76 +2980,76 @@ ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
     # inmemory, memberlist, multi.
-    # CLI flag: -common.storage.ring.store
+    # CLI flag: -common.storagering.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -common.storage.ring.prefix
+    # CLI flag: -common.storagering.prefix
     [prefix: <string> | default = "collectors/"]
 
     # Configuration for a Consul client. Only applies if store is consul.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
+    # The CLI flags prefix for this block configuration is: common.storagering
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if store is etcd.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
+    # The CLI flags prefix for this block configuration is: common.storagering
     [etcd: <etcd>]
 
     multi:
       # Primary backend storage used by multi-client.
-      # CLI flag: -common.storage.ring.multi.primary
+      # CLI flag: -common.storagering.multi.primary
       [primary: <string> | default = ""]
 
       # Secondary backend storage used by multi-client.
-      # CLI flag: -common.storage.ring.multi.secondary
+      # CLI flag: -common.storagering.multi.secondary
       [secondary: <string> | default = ""]
 
       # Mirror writes to secondary store.
-      # CLI flag: -common.storage.ring.multi.mirror-enabled
+      # CLI flag: -common.storagering.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
       # Timeout for storing value to secondary store.
-      # CLI flag: -common.storage.ring.multi.mirror-timeout
+      # CLI flag: -common.storagering.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
   # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -common.storage.ring.heartbeat-period
+  # CLI flag: -common.storagering.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
   # the ring. 0 = never (timeout disabled).
-  # CLI flag: -common.storage.ring.heartbeat-timeout
+  # CLI flag: -common.storagering.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
   # File path where tokens are stored. If empty, tokens are not stored at
   # shutdown and restored at startup.
-  # CLI flag: -common.storage.ring.tokens-file-path
+  # CLI flag: -common.storagering.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
   # True to enable zone-awareness and replicate blocks across different
   # availability zones.
-  # CLI flag: -common.storage.ring.zone-awareness-enabled
+  # CLI flag: -common.storagering.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
   # Instance ID to register in the ring.
-  # CLI flag: -common.storage.ring.instance-id
+  # CLI flag: -common.storagering.instance-id
   [instance_id: <string> | default = "<hostname>"]
 
   # Name of network interface to read address from.
-  # CLI flag: -common.storage.ring.instance-interface-names
+  # CLI flag: -common.storagering.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
   # Port to advertise in the ring (defaults to server.grpc-listen-port).
-  # CLI flag: -common.storage.ring.instance-port
+  # CLI flag: -common.storagering.instance-port
   [instance_port: <int> | default = 0]
 
   # IP address to advertise in the ring.
-  # CLI flag: -common.storage.ring.instance-addr
+  # CLI flag: -common.storagering.instance-addr
   [instance_addr: <string> | default = ""]
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.
-  # CLI flag: -common.storage.ring.instance-availability-zone
+  # CLI flag: -common.storagering.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
 [instance_interface_names: <list of strings>]
@@ -3062,7 +3070,7 @@ ring:
 Configuration for a Consul client. Only applies if store is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `boltdb.shipper.compactor.ring`
-- `common.storage.ring`
+- `common.storagering`
 - `distributor.ring`
 - `index-gateway.ring`
 - `query-scheduler.ring`
@@ -3106,7 +3114,7 @@ Configuration for a Consul client. Only applies if store is `consul`. The suppor
 Configuration for an ETCD v3 client. Only applies if store is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `boltdb.shipper.compactor.ring`
-- `common.storage.ring`
+- `common.storagering`
 - `distributor.ring`
 - `index-gateway.ring`
 - `query-scheduler.ring`
@@ -3610,89 +3618,90 @@ fifocache:
 
 The `azure_storage_config` block configures the connection to Azure object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common.storage`
-- `ruler.storage`
+- `azure`
+- `common.storage.azureazure`
+- `ruler.storage.azure`
 
 &nbsp;
 
 ```yaml
 # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,
 # AzureGermanCloud, AzureUSGovernment.
-# CLI flag: -<prefix>.azure.environment
+# CLI flag: -<prefix>.environment
 [environment: <string> | default = "AzureGlobal"]
 
 # Azure storage account name.
-# CLI flag: -<prefix>.azure.account-name
+# CLI flag: -<prefix>.account-name
 [account_name: <string> | default = ""]
 
 # Azure storage account key.
-# CLI flag: -<prefix>.azure.account-key
+# CLI flag: -<prefix>.account-key
 [account_key: <string> | default = ""]
 
 # Name of the storage account blob container used to store chunks. This
 # container must be created before running cortex.
-# CLI flag: -<prefix>.azure.container-name
+# CLI flag: -<prefix>.container-name
 [container_name: <string> | default = "loki"]
 
 # Azure storage endpoint suffix without schema. The storage account name will be
 # prefixed to this value to create the FQDN.
-# CLI flag: -<prefix>.azure.endpoint-suffix
+# CLI flag: -<prefix>.endpoint-suffix
 [endpoint_suffix: <string> | default = ""]
 
 # Use Managed Identity to authenticate to the Azure storage account.
-# CLI flag: -<prefix>.azure.use-managed-identity
+# CLI flag: -<prefix>.use-managed-identity
 [use_managed_identity: <boolean> | default = false]
 
 # User assigned identity ID to authenticate to the Azure storage account.
-# CLI flag: -<prefix>.azure.user-assigned-id
+# CLI flag: -<prefix>.user-assigned-id
 [user_assigned_id: <string> | default = ""]
 
 # Use Service Principal to authenticate through Azure OAuth.
-# CLI flag: -<prefix>.azure.use-service-principal
+# CLI flag: -<prefix>.use-service-principal
 [use_service_principal: <boolean> | default = false]
 
 # Azure Service Principal ID(GUID).
-# CLI flag: -<prefix>.azure.client-id
+# CLI flag: -<prefix>.client-id
 [client_id: <string> | default = ""]
 
 # Azure Service Principal secret key.
-# CLI flag: -<prefix>.azure.client-secret
+# CLI flag: -<prefix>.client-secret
 [client_secret: <string> | default = ""]
 
 # Azure Tenant ID is used to authenticate through Azure OAuth.
-# CLI flag: -<prefix>.azure.tenant-id
+# CLI flag: -<prefix>.tenant-id
 [tenant_id: <string> | default = ""]
 
 # Chunk delimiter for blob ID to be used
-# CLI flag: -<prefix>.azure.chunk-delimiter
+# CLI flag: -<prefix>.chunk-delimiter
 [chunk_delimiter: <string> | default = "-"]
 
 # Preallocated buffer size for downloads.
-# CLI flag: -<prefix>.azure.download-buffer-size
+# CLI flag: -<prefix>.download-buffer-size
 [download_buffer_size: <int> | default = 512000]
 
 # Preallocated buffer size for uploads.
-# CLI flag: -<prefix>.azure.upload-buffer-size
+# CLI flag: -<prefix>.upload-buffer-size
 [upload_buffer_size: <int> | default = 256000]
 
 # Number of buffers used to used to upload a chunk.
-# CLI flag: -<prefix>.azure.download-buffer-count
+# CLI flag: -<prefix>.download-buffer-count
 [upload_buffer_count: <int> | default = 1]
 
 # Timeout for requests made against azure blob storage.
-# CLI flag: -<prefix>.azure.request-timeout
+# CLI flag: -<prefix>.request-timeout
 [request_timeout: <duration> | default = 30s]
 
 # Number of retries for a request which times out.
-# CLI flag: -<prefix>.azure.max-retries
+# CLI flag: -<prefix>.max-retries
 [max_retries: <int> | default = 5]
 
 # Minimum time to wait before retrying a request.
-# CLI flag: -<prefix>.azure.min-retry-delay
+# CLI flag: -<prefix>.min-retry-delay
 [min_retry_delay: <duration> | default = 10ms]
 
 # Maximum time to wait before retrying a request.
-# CLI flag: -<prefix>.azure.max-retry-delay
+# CLI flag: -<prefix>.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
@@ -3700,8 +3709,9 @@ The `azure_storage_config` block configures the connection to Azure object stora
 
 The `gcs_storage_config` block configures the connection to Google Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common.storage`
-- `ruler.storage`
+- `common.storage.gcsgcs`
+- `gcs`
+- `ruler.storage.gcs`
 
 &nbsp;
 
@@ -3709,30 +3719,30 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # Name of GCS bucket. Please refer to
 # https://cloud.google.com/docs/authentication/production for more information
 # about how to configure authentication.
-# CLI flag: -<prefix>.gcs.bucketname
+# CLI flag: -<prefix>.bucketname
 [bucket_name: <string> | default = ""]
 
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
 # creation.
-# CLI flag: -<prefix>.gcs.service-account
+# CLI flag: -<prefix>.service-account
 [service_account: <string> | default = ""]
 
 # The size of the buffer that GCS client for each PUT request. 0 to disable
 # buffering.
-# CLI flag: -<prefix>.gcs.chunk-buffer-size
+# CLI flag: -<prefix>.chunk-buffer-size
 [chunk_buffer_size: <int> | default = 0]
 
 # The duration after which the requests to GCS should be timed out.
-# CLI flag: -<prefix>.gcs.request-timeout
+# CLI flag: -<prefix>.request-timeout
 [request_timeout: <duration> | default = 0s]
 
 # Enable OpenCensus (OC) instrumentation for all requests.
-# CLI flag: -<prefix>.gcs.enable-opencensus
+# CLI flag: -<prefix>.enable-opencensus
 [enable_opencensus: <boolean> | default = true]
 
 # Enable HTTP2 connections.
-# CLI flag: -<prefix>.gcs.enable-http2
+# CLI flag: -<prefix>.enable-http2
 [enable_http2: <boolean> | default = true]
 ```
 
@@ -3740,8 +3750,8 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 
 The `s3_storage_config` block configures the connection to Amazon S3 object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common`
-- `ruler`
+- `common.storage.s3s3`
+- `ruler.storage.s3`
 
 &nbsp;
 
@@ -3749,93 +3759,93 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
-# CLI flag: -<prefix>.storage.s3.url
+# CLI flag: -<prefix>.url
 [s3: <url>]
 
 # Set this to `true` to force the request to use path-style addressing.
-# CLI flag: -<prefix>.storage.s3.force-path-style
+# CLI flag: -<prefix>.force-path-style
 [s3forcepathstyle: <boolean> | default = false]
 
 # Comma separated list of bucket names to evenly distribute chunks over.
 # Overrides any buckets specified in s3.url flag
-# CLI flag: -<prefix>.storage.s3.buckets
+# CLI flag: -<prefix>.buckets
 [bucketnames: <string> | default = ""]
 
 # S3 Endpoint to connect to.
-# CLI flag: -<prefix>.storage.s3.endpoint
+# CLI flag: -<prefix>.endpoint
 [endpoint: <string> | default = ""]
 
 # AWS region to use.
-# CLI flag: -<prefix>.storage.s3.region
+# CLI flag: -<prefix>.region
 [region: <string> | default = ""]
 
 # AWS Access Key ID
-# CLI flag: -<prefix>.storage.s3.access-key-id
+# CLI flag: -<prefix>.access-key-id
 [access_key_id: <string> | default = ""]
 
 # AWS Secret Access Key
-# CLI flag: -<prefix>.storage.s3.secret-access-key
+# CLI flag: -<prefix>.secret-access-key
 [secret_access_key: <string> | default = ""]
 
 # Disable https on s3 connection.
-# CLI flag: -<prefix>.storage.s3.insecure
+# CLI flag: -<prefix>.insecure
 [insecure: <boolean> | default = false]
 
 # Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
 # s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-# CLI flag: -<prefix>.storage.s3.sse-encryption
+# CLI flag: -<prefix>.sse-encryption
 [sse_encryption: <boolean> | default = false]
 
 http_config:
   # The maximum amount of time an idle connection will be held open.
-  # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
+  # CLI flag: -<prefix>.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
 
   # If non-zero, specifies the amount of time to wait for a server's response
   # headers after fully writing the request.
-  # CLI flag: -<prefix>.storage.s3.http.response-header-timeout
+  # CLI flag: -<prefix>.http.response-header-timeout
   [response_header_timeout: <duration> | default = 0s]
 
   # Set to true to skip verifying the certificate chain and hostname.
-  # CLI flag: -<prefix>.storage.s3.http.insecure-skip-verify
+  # CLI flag: -<prefix>.http.insecure-skip-verify
   [insecure_skip_verify: <boolean> | default = false]
 
   # Path to the trusted CA file that signed the SSL certificate of the S3
   # endpoint.
-  # CLI flag: -<prefix>.storage.s3.http.ca-file
+  # CLI flag: -<prefix>.http.ca-file
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
 # are: v4, v2.
-# CLI flag: -<prefix>.storage.s3.signature-version
+# CLI flag: -<prefix>.signature-version
 [signature_version: <string> | default = "v4"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-  # CLI flag: -<prefix>.storage.s3.sse.type
+  # CLI flag: -<prefix>.sse.type
   [type: <string> | default = ""]
 
   # KMS Key ID used to encrypt objects in S3
-  # CLI flag: -<prefix>.storage.s3.sse.kms-key-id
+  # CLI flag: -<prefix>.sse.kms-key-id
   [kms_key_id: <string> | default = ""]
 
   # KMS Encryption Context used for object encryption. It expects JSON formatted
   # string.
-  # CLI flag: -<prefix>.storage.s3.sse.kms-encryption-context
+  # CLI flag: -<prefix>.sse.kms-encryption-context
   [kms_encryption_context: <string> | default = ""]
 
 # Configures back off when S3 get Object.
 backoff_config:
   # Minimum backoff time when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.min-backoff
+  # CLI flag: -<prefix>.min-backoff
   [min_period: <duration> | default = 100ms]
 
   # Maximum backoff time when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.max-backoff
+  # CLI flag: -<prefix>.max-backoff
   [max_period: <duration> | default = 3s]
 
   # Maximum number of times to retry when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.max-retries
+  # CLI flag: -<prefix>.max-retries
   [max_retries: <int> | default = 5]
 ```
 
@@ -3843,26 +3853,27 @@ backoff_config:
 
 The `bos_storage_config` block configures the connection to Baidu Object Storage (BOS) object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common.storage`
-- `ruler.storage`
+- `baidubce`
+- `common.storage.bosbaidubce`
+- `ruler.storage.baidubce`
 
 &nbsp;
 
 ```yaml
 # Name of BOS bucket.
-# CLI flag: -<prefix>.bos.bucket-name
+# CLI flag: -<prefix>.bucket-name
 [bucket_name: <string> | default = ""]
 
 # BOS endpoint to connect to.
-# CLI flag: -<prefix>.bos.endpoint
+# CLI flag: -<prefix>.endpoint
 [endpoint: <string> | default = "bj.bcebos.com"]
 
 # Baidu Cloud Engine (BCE) Access Key ID.
-# CLI flag: -<prefix>.bos.access-key-id
+# CLI flag: -<prefix>.access-key-id
 [access_key_id: <string> | default = ""]
 
 # Baidu Cloud Engine (BCE) Secret Access Key.
-# CLI flag: -<prefix>.bos.secret-access-key
+# CLI flag: -<prefix>.secret-access-key
 [secret_access_key: <string> | default = ""]
 ```
 
@@ -3870,86 +3881,87 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 
 The `swift_storage_config` block configures the connection to OpenStack Object Storage (Swift) object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common.storage`
-- `ruler.storage`
+- `common.storage.swiftswift`
+- `ruler.storage.swift`
+- `swift`
 
 &nbsp;
 
 ```yaml
 # OpenStack Swift authentication API version. 0 to autodetect.
-# CLI flag: -<prefix>.swift.auth-version
+# CLI flag: -<prefix>.auth-version
 [auth_version: <int> | default = 0]
 
 # OpenStack Swift authentication URL
-# CLI flag: -<prefix>.swift.auth-url
+# CLI flag: -<prefix>.auth-url
 [auth_url: <string> | default = ""]
 
 # OpenStack Swift username.
-# CLI flag: -<prefix>.swift.username
+# CLI flag: -<prefix>.username
 [username: <string> | default = ""]
 
 # OpenStack Swift user's domain name.
-# CLI flag: -<prefix>.swift.user-domain-name
+# CLI flag: -<prefix>.user-domain-name
 [user_domain_name: <string> | default = ""]
 
 # OpenStack Swift user's domain ID.
-# CLI flag: -<prefix>.swift.user-domain-id
+# CLI flag: -<prefix>.user-domain-id
 [user_domain_id: <string> | default = ""]
 
 # OpenStack Swift user ID.
-# CLI flag: -<prefix>.swift.user-id
+# CLI flag: -<prefix>.user-id
 [user_id: <string> | default = ""]
 
 # OpenStack Swift API key.
-# CLI flag: -<prefix>.swift.password
+# CLI flag: -<prefix>.password
 [password: <string> | default = ""]
 
 # OpenStack Swift user's domain ID.
-# CLI flag: -<prefix>.swift.domain-id
+# CLI flag: -<prefix>.domain-id
 [domain_id: <string> | default = ""]
 
 # OpenStack Swift user's domain name.
-# CLI flag: -<prefix>.swift.domain-name
+# CLI flag: -<prefix>.domain-name
 [domain_name: <string> | default = ""]
 
 # OpenStack Swift project ID (v2,v3 auth only).
-# CLI flag: -<prefix>.swift.project-id
+# CLI flag: -<prefix>.project-id
 [project_id: <string> | default = ""]
 
 # OpenStack Swift project name (v2,v3 auth only).
-# CLI flag: -<prefix>.swift.project-name
+# CLI flag: -<prefix>.project-name
 [project_name: <string> | default = ""]
 
 # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
 # differs the from user domain.
-# CLI flag: -<prefix>.swift.project-domain-id
+# CLI flag: -<prefix>.project-domain-id
 [project_domain_id: <string> | default = ""]
 
 # Name of the OpenStack Swift project's domain (v3 auth only), only needed if it
 # differs from the user domain.
-# CLI flag: -<prefix>.swift.project-domain-name
+# CLI flag: -<prefix>.project-domain-name
 [project_domain_name: <string> | default = ""]
 
 # OpenStack Swift Region to use (v2,v3 auth only).
-# CLI flag: -<prefix>.swift.region-name
+# CLI flag: -<prefix>.region-name
 [region_name: <string> | default = ""]
 
 # Name of the OpenStack Swift container to put chunks in.
-# CLI flag: -<prefix>.swift.container-name
+# CLI flag: -<prefix>.container-name
 [container_name: <string> | default = ""]
 
 # Max retries on requests error.
-# CLI flag: -<prefix>.swift.max-retries
+# CLI flag: -<prefix>.max-retries
 [max_retries: <int> | default = 3]
 
 # Time after which a connection attempt is aborted.
-# CLI flag: -<prefix>.swift.connect-timeout
+# CLI flag: -<prefix>.connect-timeout
 [connect_timeout: <duration> | default = 10s]
 
 # Time after which an idle request is aborted. The timeout watchdog is reset
 # each time some data is received, so the timeout triggers after X time no data
 # is received on a request.
-# CLI flag: -<prefix>.swift.request-timeout
+# CLI flag: -<prefix>.request-timeout
 [request_timeout: <duration> | default = 5s]
 ```
 
