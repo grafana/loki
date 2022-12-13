@@ -19,11 +19,11 @@
     multi_zone_ingester_max_unavailable: 25,
 
     loki+: {
-     ingester+: {
+      ingester+: {
         lifecycler+: {
           ring+: (if $._config.multi_zone_ingester_enabled then { zone_awareness_enabled: $._config.multi_zone_ingester_enabled } else {}),
         } + (if $._config.multi_zone_ingester_enabled then { availability_zone: '${AVAILABILITY_ZONE}' } else {}),
-      }
+      },
     },
   },
 
@@ -40,9 +40,9 @@
 
     $.ingester_container +
     container.withArgs($.util.mapToFlags(
-        $.ingester_args + zone_args
+      $.ingester_args + zone_args
     )) +
-    container.withEnvMixin([{name: 'AVAILABILITY_ZONE', value: zone_name}]),
+    container.withEnvMixin([{ name: 'AVAILABILITY_ZONE', value: zone_name }]),
 
   newIngesterZoneStatefulSet(zone, container)::
     local name = 'ingester-zone-%s' % zone;

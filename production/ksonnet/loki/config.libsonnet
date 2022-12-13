@@ -1,4 +1,4 @@
-  {
+{
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
