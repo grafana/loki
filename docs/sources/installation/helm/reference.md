@@ -28,6 +28,195 @@ This is the generated reference for the Loki Helm Chart values.
 	</thead>
 	<tbody>
 		<tr>
+			<td>backend.affinity</td>
+			<td>string</td>
+			<td>Affinity for backend pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td><pre lang="">
+Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the backend</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the backend image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the backend image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the backend image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for backend pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the backend</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the backend</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.selectorLabels</td>
+			<td>object</td>
+			<td>Additional selector labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for ingestor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td><pre lang="json">
+300
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.adminApi</td>
 			<td>object</td>
 			<td>If enabled, the correct admin_client storage will be configured. If disabled while running enterprise, make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.</td>
@@ -765,15 +954,6 @@ false
     "secretName": "loki-gateway-tls"
   }
 ]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>gateway.lifecycle</td>
-			<td>object</td>
-			<td>Lifecycle for the gateway container</td>
-			<td><pre lang="json">
-{}
 </pre>
 </td>
 		</tr>
@@ -2496,11 +2676,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>read.lifecycle</td>
-			<td>object</td>
-			<td>Lifecycle for the read container</td>
+			<td>read.legacyReadTarget</td>
+			<td>bool</td>
+			<td>Set to false to enable the new 3-target mode (read, write, backend) that will be the default in future version of Loki</td>
 			<td><pre lang="json">
-{}
+true
 </pre>
 </td>
 		</tr>
@@ -2510,15 +2690,6 @@ null
 			<td>Node selector for read pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
-			<td>bool</td>
-			<td>Enable StatefulSetAutoDeletePVC feature</td>
-			<td><pre lang="json">
-true
 </pre>
 </td>
 		</tr>
@@ -3130,15 +3301,6 @@ null
 			<td>Docker image tag for the write image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>write.lifecycle</td>
-			<td>object</td>
-			<td>Lifecycle for the write container</td>
-			<td><pre lang="json">
-{}
 </pre>
 </td>
 		</tr>
