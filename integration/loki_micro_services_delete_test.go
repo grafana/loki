@@ -10,15 +10,12 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
-
-	"github.com/grafana/loki/pkg/storage"
 )
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
 	clu := cluster.New()
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -120,8 +117,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, err)
 		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 1)
 
-		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientWithShipper()
 		require.NoError(t, tQuerier.Restart())
 	})
 
@@ -174,7 +169,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	// Query lines
 	t.Run("query", func(t *testing.T) {
 		// restart querier to make it sync the index
-		storage.ResetBoltDBIndexClientWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
