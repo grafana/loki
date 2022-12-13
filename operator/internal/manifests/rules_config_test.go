@@ -184,7 +184,7 @@ func testOptions_withSharding() *manifests.Options {
 		},
 		Tenants: manifests.Tenants{
 			Configs: map[string]manifests.TenantConfig{
-				"tenant-a": {RuleFiles: []string{"rule-a-alerts.yaml"}},
+				"tenant-a": {RuleFiles: []string{"sharding-test-rules-0.yaml"}},
 			},
 		},
 		AlertingRules: alertingRules,

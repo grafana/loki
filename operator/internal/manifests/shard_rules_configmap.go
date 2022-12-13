@@ -31,13 +31,6 @@ func NewShardedConfigMap(template *corev1.ConfigMap, namePrefix string) *Sharded
 	}
 }
 
-/* func (cm *ShardedConfigMap) AppendData(key string, data string) {
-	if cm == nil {
-		return
-	}
-	cm.data[key] = data
-} */
-
 func (cm *ShardedConfigMap) newConfigMapShard(index int) *corev1.ConfigMap {
 	newShardCM := cm.template.DeepCopy()
 	newShardCM.Data = make(map[string]string)
