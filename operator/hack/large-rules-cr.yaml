@@ -8,7 +8,7 @@ metadata:
 spec:
   tenantID: "infrastructure"
   groups:
-    - name: LokiOperatorHighReconciliationError
+    - name: alerting-rule-1
       rules:
         - alert: HighPercentageError
           expr: |
@@ -3429,7 +3429,7 @@ metadata:
 spec:
   tenantID: "infrastructure"
   groups:
-    - name: alerting-rule-1
+    - name: recording-rule-1
       interval: 10m
       rules:
         - record: "loki:operator:errors:rate10m"
