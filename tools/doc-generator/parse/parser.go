@@ -60,6 +60,11 @@ func (b *ConfigBlock) Add(entry *ConfigEntry) {
 type EntryKind string
 
 const (
+	fieldString        = "string"
+	fieldRelabelConfig = "relabel_config..."
+)
+
+const (
 	KindBlock EntryKind = "block"
 	KindField EntryKind = "field"
 	KindSlice EntryKind = "slice"
@@ -334,13 +339,13 @@ func getFieldCustomType(t reflect.Type) (string, bool) {
 	case reflect.TypeOf(time.Duration(0)).String():
 		return "duration", true
 	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
-		return "string", true
+		return fieldString, true
 	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
-		return "string", true
+		return fieldString, true
 	case reflect.TypeOf([]*util.RelabelConfig{}).String():
-		return "relabel_config...", true
+		return fieldRelabelConfig, true
 	case reflect.TypeOf([]*relabel.Config{}).String():
-		return "relabel_config...", true
+		return fieldRelabelConfig, true
 	case reflect.TypeOf([]*util_validation.BlockedQuery{}).String():
 		return "blocked_query...", true
 	case reflect.TypeOf([]*prometheus_config.RemoteWriteConfig{}).String():
@@ -388,7 +393,7 @@ func getFieldType(t reflect.Type) (string, error) {
 	case reflect.Float64:
 		return "float", nil
 	case reflect.String:
-		return "string", nil
+		return fieldString, nil
 	case reflect.Slice:
 		// Get the type of elements
 		elemType, err := getFieldType(t.Elem())
@@ -417,13 +422,13 @@ func getCustomFieldType(t reflect.Type) (string, bool) {
 	case reflect.TypeOf(time.Duration(0)).String():
 		return "duration", true
 	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
-		return "string", true
+		return fieldString, true
 	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
-		return "string", true
+		return fieldString, true
 	case reflect.TypeOf([]*relabel.Config{}).String():
-		return "relabel_config...", true
+		return fieldRelabelConfig, true
 	case reflect.TypeOf([]*util.RelabelConfig{}).String():
-		return "relabel_config...", true
+		return fieldRelabelConfig, true
 	case reflect.TypeOf(&prometheus_config.RemoteWriteConfig{}).String():
 		return "remote_write_config...", true
 	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
@@ -471,7 +476,7 @@ func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue 
 			Required:     isFieldRequired(field),
 			FieldFlag:    fieldFlag.Name,
 			FieldDesc:    getFieldDescription(cfg, field, fieldFlag.Usage),
-			FieldType:    "string",
+			FieldType:    fieldString,
 			FieldDefault: getFieldDefault(field, fieldFlag.DefValue),
 		}, nil
 	}
@@ -503,7 +508,7 @@ func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue 
 			Required:     isFieldRequired(field),
 			FieldFlag:    fieldFlag.Name,
 			FieldDesc:    getFieldDescription(cfg, field, fieldFlag.Usage),
-			FieldType:    "string",
+			FieldType:    fieldString,
 			FieldDefault: getFieldDefault(field, fieldFlag.DefValue),
 		}, nil
 	}

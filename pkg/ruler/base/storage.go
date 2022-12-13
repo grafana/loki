@@ -36,7 +36,7 @@ type RuleStoreConfig struct {
 	Azure azure.BlobStorageConfig   `yaml:"azure" doc:"description=Configures backend rule storage for Azure."`
 	GCS   gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures backend rule storage for GCS."`
 	S3    aws.S3Config              `yaml:"s3" doc:"description=Configures backend rule storage for S3."`
-	BOS   baidubce.BOSStorageConfig `yaml:"bos" doc:"description=Configures backend rule storage for Baidu Object Storage (BOS).""`
+	BOS   baidubce.BOSStorageConfig `yaml:"bos" doc:"description=Configures backend rule storage for Baidu Object Storage (BOS)."`
 	Swift openstack.SwiftConfig     `yaml:"swift" doc:"description=Configures backend rule storage for Swift."`
 	Local local.Config              `yaml:"local" doc:"description=Configures backend rule storage for a local file system directory."`
 
