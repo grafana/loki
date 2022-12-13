@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"net/url"
 	"testing"
 	"time"
 
@@ -1750,4 +1751,11 @@ func Test_FailQuery(t *testing.T) {
 	require.Error(t, err)
 	_, _, err = rvm.Parse(`topk(0, sum(count_over_time({app="foo"} | json |  __error__="" [15m])))`)
 	require.Error(t, err)
+
+	req, err := url.ParseQuery(`query=topk%2810%2C+sum+by%28namespace%29+%28count_over_time%28%7Bapplication%3D%22nginx%22%2C+site%21%3D%22eu-west-1-dev%22%7D+%7C%3D+%60%2Fartifactory%2F%60+%21%3D+%60api%60+%21%3D+%60binarystore%60+%7C+regexp+%60%60+%5B86400s%5D%29%29%29&time=1670419405856000000`)
+	if err == nil {
+		qr := req.Get("query")
+		_, _, err = rvm.Parse(qr)
+		require.Error(t, err)
+	}
 }
