@@ -16,8 +16,7 @@ read:
 write:
   replicas: 1
 monitoring:
-  selfMonitoring:
-    lokiCanary:
-      enabled: false
+  lokiCanary:
+    enabled: false
 test:
   enabled: false
