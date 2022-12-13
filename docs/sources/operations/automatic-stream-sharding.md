@@ -11,7 +11,7 @@ Automatic stream sharding will attempt to keep streams under a `desired_rate` by
 existing streams. When properly tuned, this should eliminate issues where log producers are rate limited due to the
 per-stream rate limit.
 
-## The issue mitigated by automatic stream sharding
+## When to use automatic stream sharding
 
 Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesters and
 Distributors. The general recommendation is to explore existing log streams for additional label values that are both
@@ -19,8 +19,8 @@ useful for querying and sufficiently low cardinality. There are many cases, howe
 be extracted, or cardinality for a label is dangerously large. To protect itself from such volume leading to operational failure, Loki implements per-stream rate limits;
 but the result is that some data is lost. The per-stream limit also needs human intervention to change, which is not ideal when log volumes increase and decrease.
 
-Automatic stream sharding is used to avoid large streams and rate limiting for any log stream by ensuring it is close to
-a configured `desired_rate`.
+Loki uses automatic stream sharding to avoid rate limiting and large streams for any log stream by ensuring it is close
+to a configured `desired_rate`.
 
 ## How automatic stream sharding works
 
@@ -36,7 +36,7 @@ Because automatic stream sharding is reactive and relies on successive calls to 
 always somewhat behind. As a result, the actual size of sharded streams will always be higher than the `desired_rate`.
 In practice, this is still sufficient to keep log producers from being rate limited by per-stream rate limits.
 
-## Configuration
+## Enabling and configuring automatic stream sharding
 
 Enable automatic sharding by setting the global or per-tenant override `shard_streams`. This configuration contains
 an `enabled` flag to turn the feature on, a `desired_rate` configuration for the desired stream rate, and an
@@ -44,9 +44,10 @@ optional `logging_enabled` flag to enable debug logging of stream sharding.
 
 *NOTE*: Setting `logging_enabled` may affect the ingestion performance of Loki.
 
-## Automatic Stream Sharding metrics
+## Automatic stream sharding metrics
 
-These metrics reveal information relevant to automatic stream sharding:
+Use these metrics to help tune Loki so that it is sharding streams aggressively enough to avoid the per-stream rate
+limit:
 
 - `loki_rate_store_refresh_failures_total`: The total number of failed attempts to refresh the distributor's view of
   stream rates.
@@ -62,6 +63,3 @@ These metrics reveal information relevant to automatic stream sharding:
   bytes/second.
 - `loki_stream_sharding_count`: The total number of times that streams have been sharded. Useful for calculating the
   sharding rate.
-
-Use these metrics to help tune Loki so that it is sharding streams aggressively enough to avoid the per-stream rate
-limit.
