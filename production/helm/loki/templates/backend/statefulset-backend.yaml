@@ -52,7 +52,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=backend
+            - -target={{ .Values.backend.targetModule }}
             - -legacy-read-mode=false
             {{- with .Values.backend.extraArgs }}
             {{- toYaml . | nindent 12 }}

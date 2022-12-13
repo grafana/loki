@@ -806,9 +806,6 @@ write:
 
 # Configuration for the read pod(s)
 read:
-  # -- Set to false to enable the new 3-target mode (read, write, backend) that will be the default
-  # in future version of Loki
-  legacyReadTarget: true
   # -- Number of replicas for the read
   replicas: 3
   autoscaling:
@@ -841,6 +838,9 @@ read:
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
+  # -- Set to false to enable the new 3-target mode (read, write, backend) that will be the default
+  # in future version of Loki
+  legacyReadTarget: true
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -901,6 +901,8 @@ backend:
   selectorLabels: {}
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the read
+  targetModule: "backend"
   # -- Additional CLI args for the backend
   extraArgs: []
   # -- Environment variables to add to the backend pods
