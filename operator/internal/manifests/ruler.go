@@ -99,8 +99,9 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	for _, name := range opts.RulesConfigMapNames {
+
 		volumes = append(volumes, corev1.Volume{
-			Name: rulesStorageVolumeName + name,
+			Name: rulesStorageVolumeName + "-" + name,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					DefaultMode: &defaultConfigMapMode,
@@ -111,11 +112,10 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 				},
 			},
 		})
-
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      rulesStorageVolumeName + name,
 			ReadOnly:  false,
-			MountPath: rulesStorageDirectory,
+			MountPath: fmt.Sprintf("%s/%s", rulesStorageDirectory, name),
 		})
 	}
 

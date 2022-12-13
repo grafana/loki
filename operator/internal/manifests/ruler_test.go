@@ -126,7 +126,6 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 				"tenant-b": {RuleFiles: []string{"rule-a-alerts.yaml", "rule-b-recs.yaml"}},
 			},
 		},
-
 		RulesConfigMapNames: []string{"config"},
 	}
 	sts := manifests.NewRulerStatefulSet(opts)
