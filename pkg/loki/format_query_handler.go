@@ -16,7 +16,7 @@ func formatQueryHandler() http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/text")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 
 		fmt.Fprintf(w, "%s", syntax.Prettify(expr))
