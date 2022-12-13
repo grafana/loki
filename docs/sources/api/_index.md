@@ -707,10 +707,14 @@ GET /loki/api/v1/status/buildinfo
 ## Format query
 
 ```
-GET /loki/api/v1/format_query?query="<logql-query>"
+GET /loki/api/v1/format_query
+POST /loki/api/v1/format_query
 ```
 
-`/loki/api/v1/format_query` exposes endpoint to format LogQL queries. It is exposed by all the Loki components. It's mainly helpful in improve readability and debugging experience of LogQL queries.
+Params:
+- `query`: A LogQL query string. Can be passed as URL param (`?query=<query>`) in case of both `GET` and `POST`. Or as form value in case of `POST`.
+
+`/loki/api/v1/format_query` exposes endpoint to format LogQL queries. It returns error if passed LogQL is invalid. It is exposed by all the Loki components. It's mainly helpful in improving readability and debugging experience of LogQL queries.
 
 ## List series
 

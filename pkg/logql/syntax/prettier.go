@@ -36,7 +36,7 @@ import (
 
 var (
 	// maxCharsPerLine is used to qualify whether some LogQL expressions are worth `splitting` into new lines.
-	maxCharsPerLine = 70
+	maxCharsPerLine = 100
 )
 
 func Prettify(e Expr) string {
