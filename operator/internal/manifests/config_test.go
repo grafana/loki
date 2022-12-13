@@ -797,56 +797,6 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 							},
 							Endpoints: []string{"http://my-alertmanager"},
 						},
-						Overrides: map[string]v1beta1.RulerOverrides{
-							"application": {
-								AlertManagerOverrides: &v1beta1.AlertManagerSpec{
-									ExternalURL:    "external",
-									ExternalLabels: map[string]string{"external": "label"},
-									EnableV2:       false,
-									Endpoints:      []string{"http://application-alertmanager"},
-									DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
-										EnableSRV:       false,
-										RefreshInterval: "3m",
-									},
-									Client: &v1beta1.AlertManagerClientConfig{
-										TLS: &v1beta1.AlertManagerClientTLSConfig{
-											ServerName: pointer.String("application.svc"),
-											CAPath:     pointer.String("/tenant/application/alertmanager/ca.crt"),
-											CertPath:   pointer.String("/tenant/application/alertmanager/cert.crt"),
-											KeyPath:    pointer.String("/tenant/application/alertmanager/cert.key"),
-										},
-										HeaderAuth: &v1beta1.AlertManagerClientHeaderAuth{
-											Type:        pointer.String("Bearer"),
-											Credentials: pointer.String("letmeinplz"),
-										},
-									},
-								},
-							},
-							"other-tenant": {
-								AlertManagerOverrides: &v1beta1.AlertManagerSpec{
-									ExternalURL:    "external1",
-									ExternalLabels: map[string]string{"external1": "label1"},
-									EnableV2:       false,
-									Endpoints:      []string{"http://other-alertmanager"},
-									DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
-										EnableSRV:       true,
-										RefreshInterval: "5m",
-									},
-									Client: &v1beta1.AlertManagerClientConfig{
-										TLS: &v1beta1.AlertManagerClientTLSConfig{
-											ServerName: pointer.String("other.svc"),
-											CAPath:     pointer.String("/tenant/other/alertmanager/ca.crt"),
-											CertPath:   pointer.String("/tenant/other/alertmanager/cert.crt"),
-											KeyPath:    pointer.String("/tenant/other/alertmanager/cert.key"),
-										},
-										BasicAuth: &v1beta1.AlertManagerClientBasicAuth{
-											Username: pointer.String("user"),
-											Password: pointer.String("pass"),
-										},
-									},
-								},
-							},
-						},
 					},
 				},
 				OpenShiftOptions: openshift.Options{
@@ -855,56 +805,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 					},
 				},
 			},
-			wantOptions: map[string]config.LokiOverrides{
-				"application": {
-					Ruler: config.RulerOverrides{
-						AlertManager: &config.AlertManagerConfig{
-							ExternalURL:     "external",
-							Hosts:           "http://application-alertmanager",
-							EnableV2:        false,
-							EnableDiscovery: false,
-							RefreshInterval: "3m",
-							ExternalLabels:  map[string]string{"external": "label"},
-							Notifier: &config.NotifierConfig{
-								TLS: config.TLSConfig{
-									ServerName: pointer.String("application.svc"),
-									CAPath:     pointer.String("/tenant/application/alertmanager/ca.crt"),
-									CertPath:   pointer.String("/tenant/application/alertmanager/cert.crt"),
-									KeyPath:    pointer.String("/tenant/application/alertmanager/cert.key"),
-								},
-								HeaderAuth: config.HeaderAuth{
-									Type:        pointer.String("Bearer"),
-									Credentials: pointer.String("letmeinplz"),
-								},
-							},
-						},
-					},
-				},
-				"other-tenant": {
-					Ruler: config.RulerOverrides{
-						AlertManager: &config.AlertManagerConfig{
-							ExternalURL:     "external1",
-							Hosts:           "http://other-alertmanager",
-							EnableV2:        false,
-							EnableDiscovery: true,
-							RefreshInterval: "5m",
-							ExternalLabels:  map[string]string{"external1": "label1"},
-							Notifier: &config.NotifierConfig{
-								TLS: config.TLSConfig{
-									ServerName: pointer.String("other.svc"),
-									CAPath:     pointer.String("/tenant/other/alertmanager/ca.crt"),
-									CertPath:   pointer.String("/tenant/other/alertmanager/cert.crt"),
-									KeyPath:    pointer.String("/tenant/other/alertmanager/cert.key"),
-								},
-								BasicAuth: config.BasicAuth{
-									Username: pointer.String("user"),
-									Password: pointer.String("pass"),
-								},
-							},
-						},
-					},
-				},
-			},
+			wantOptions: nil,
 		},
 	}
 
