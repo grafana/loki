@@ -1750,4 +1750,6 @@ func Test_FailQuery(t *testing.T) {
 	require.Error(t, err)
 	_, _, err = rvm.Parse(`topk(0, sum(count_over_time({app="foo"} | json |  __error__="" [15m])))`)
 	require.Error(t, err)
+	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp[1d])))`)
+	require.Error(t, err)
 }
