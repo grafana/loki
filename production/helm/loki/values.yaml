@@ -1142,6 +1142,10 @@ networkPolicy:
 tracing:
   jaegerAgentHost: ""
 
+# Override auto-detection of scalable deployment
+deployment:
+  singleBinary: ""
+
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

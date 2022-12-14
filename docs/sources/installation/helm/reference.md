@@ -235,6 +235,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>deployment.singleBinary</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.adminApi</td>
 			<td>object</td>
 			<td>If enabled, the correct admin_client storage will be configured. If disabled while running enterprise, make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.</td>

@@ -26,14 +26,24 @@ singleBinary fullname
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
+{{- $singleBinary := (.Values.deployment.singleBinary | toString) }}
+{{- if ne $singleBinary "" }}
+  {{- ne $singleBinary "true" }}
+{{- else }}
   {{- eq (include "loki.isUsingObjectStorage" . ) "true" }}
+{{- end -}}
 {{- end -}}
 
 {{/*
 Return if deployment mode is single binary
 */}}
 {{- define "loki.deployment.isSingleBinary" -}}
+{{- $singleBinary := (.Values.deployment.singleBinary | toString) }}
+{{- if ne $singleBinary "" }}
+  {{- eq $singleBinary "true" }}
+{{- else }}
   {{- eq (include "loki.isUsingObjectStorage" . ) "false" }}
+{{- end -}}
 {{- end -}}
 
 {{/*
