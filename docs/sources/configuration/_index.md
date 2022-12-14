@@ -670,7 +670,7 @@ The `frontend` block configures the Loki query-frontend.
 # query-scheduler and querier, which uses it to send the query response back to
 # query-frontend.
 # CLI flag: -frontend.instance-interface-names
-[instance_interface_names: <list of strings> | default = [en0]]
+[instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
