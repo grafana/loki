@@ -714,7 +714,7 @@ POST /loki/api/v1/format_query
 Params:
 - `query`: A LogQL query string. Can be passed as URL param (`?query=<query>`) in case of both `GET` and `POST`. Or as form value in case of `POST`.
 
-`/loki/api/v1/format_query` exposes endpoint to format LogQL queries. It returns error if passed LogQL is invalid. It is exposed by all the Loki components. It's mainly helpful in improving readability and debugging experience of LogQL queries.
+The `/loki/api/v1/format_query` endpoint allows to format LogQL queries. It returns an error if the passed LogQL is invalid. It is exposed by all Loki components and helps to improve readability and the debugging experience of LogQL queries.
 
 ## List series
 
