@@ -22,7 +22,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net"
 
@@ -127,24 +126,14 @@ func New(server ...string) *Client {
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
-	c := Client{selector: ss}
-
-	// TODO: make configurable
-	shards := 128
-
-	c.connMaps = make([]*connMap, 0, shards)
-	for i := 0; i < shards; i++ {
-		c.connMaps = append(c.connMaps, &connMap{})
-	}
-	return &c
+	return &Client{selector: ss}
 }
 
 // Client is a memcache client.
 // It is safe for unlocked use by multiple concurrent goroutines.
 type Client struct {
-	// Dialer specifies a custom dialer used to dial new connections to a server.
+	// DialTimeout specifies a custom dialer used to dial new connections to a server.
 	DialTimeout func(network, address string, timeout time.Duration) (net.Conn, error)
-
 	// Timeout specifies the socket read/write timeout.
 	// If zero, DefaultTimeout is used.
 	Timeout time.Duration
@@ -157,12 +146,10 @@ type Client struct {
 	// be set to a number higher than your peak parallel requests.
 	MaxIdleConns int
 
+	Pool BytesPool
+
 	selector ServerSelector
 
-	connMaps []*connMap
-}
-
-type connMap struct {
 	lk       sync.Mutex
 	freeconn map[string][]*conn
 }
@@ -196,6 +183,15 @@ type conn struct {
 	c    *Client
 }
 
+// BytesPool is a pool of bytes that can be reused.
+type BytesPool interface {
+	// Get returns a new byte slice that has a capacity at least the same as the
+	// requested size.
+	Get(sz int) (*[]byte, error)
+	// Put returns a byte slice to the pool.
+	Put(b *[]byte)
+}
+
 // release returns this connection back to the client's free pool
 func (cn *conn) release() {
 	cn.c.putFreeConn(cn.addr, cn)
@@ -217,47 +213,32 @@ func (cn *conn) condRelease(err *error) {
 	}
 }
 
-func (c *Client) cmFor(addr string) *connMap {
-	return c.connMaps[int(hash(addr))%len(c.connMaps)]
-}
-
 func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
-	cm := c.cmFor(addr.String())
-	cm.lk.Lock()
-	defer cm.lk.Unlock()
-
-	if cm.freeconn == nil {
-		cm.freeconn = make(map[string][]*conn)
+	c.lk.Lock()
+	defer c.lk.Unlock()
+	if c.freeconn == nil {
+		c.freeconn = make(map[string][]*conn)
 	}
-	freelist := cm.freeconn[addr.String()]
+	freelist := c.freeconn[addr.String()]
 	if len(freelist) >= c.maxIdleConns() {
 		cn.nc.Close()
 		return
 	}
-	cm.freeconn[addr.String()] = append(freelist, cn)
-}
-
-func hash(s string) uint32 {
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	return h.Sum32()
+	c.freeconn[addr.String()] = append(freelist, cn)
 }
 
 func (c *Client) getFreeConn(addr net.Addr) (cn *conn, ok bool) {
-	cm := c.cmFor(addr.String())
-	cm.lk.Lock()
-	defer cm.lk.Unlock()
-
-	if cm.freeconn == nil {
+	c.lk.Lock()
+	defer c.lk.Unlock()
+	if c.freeconn == nil {
 		return nil, false
 	}
-
-	freelist, ok := cm.freeconn[addr.String()]
+	freelist, ok := c.freeconn[addr.String()]
 	if !ok || len(freelist) == 0 {
 		return nil, false
 	}
 	cn = freelist[len(freelist)-1]
-	cm.freeconn[addr.String()] = freelist[:len(freelist)-1]
+	c.freeconn[addr.String()] = freelist[:len(freelist)-1]
 	return cn, true
 }
 
@@ -287,11 +268,11 @@ func (cte *ConnectTimeoutError) Error() string {
 }
 
 func (c *Client) dial(addr net.Addr) (net.Conn, error) {
-	if c.DialTimeout == nil {
-		c.DialTimeout = net.DialTimeout
+	dialTimeout := c.DialTimeout
+	if dialTimeout == nil {
+		dialTimeout = net.DialTimeout
 	}
-
-	nc, err := net.DialTimeout(addr.Network(), addr.String(), c.netTimeout())
+	nc, err := dialTimeout(addr.Network(), addr.String(), c.netTimeout())
 	if err == nil {
 		return nc, nil
 	}
@@ -400,7 +381,7 @@ func (c *Client) getFromAddr(addr net.Addr, keys []string, cb func(*Item)) error
 		if err := rw.Flush(); err != nil {
 			return err
 		}
-		if err := parseGetResponse(rw.Reader, cb); err != nil {
+		if err := c.parseGetResponse(rw.Reader, cb); err != nil {
 			return err
 		}
 		return nil
@@ -513,7 +494,7 @@ func (c *Client) GetMulti(keys []string) (map[string]*Item, error) {
 	}
 
 	var err error
-	for range keyMap {
+	for _ = range keyMap {
 		if ge := <-ch; ge != nil {
 			err = ge
 		}
@@ -523,7 +504,7 @@ func (c *Client) GetMulti(keys []string) (map[string]*Item, error) {
 
 // parseGetResponse reads a GET response from r and calls cb for each
 // read and allocated Item
-func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
+func (c *Client) parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
 	for {
 		line, err := r.ReadSlice('\n')
 		if err != nil {
@@ -537,14 +518,27 @@ func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
 		if err != nil {
 			return err
 		}
-		it.Value = make([]byte, size+2)
+		buffSize := size + 2
+		if c.Pool != nil {
+			v, err := c.Pool.Get(buffSize)
+			if err != nil {
+				return err
+			}
+			it.Value = (*v)[:buffSize]
+		} else {
+			it.Value = make([]byte, buffSize)
+		}
 		_, err = io.ReadFull(r, it.Value)
 		if err != nil {
-			it.Value = nil
+			if c.Pool != nil {
+				c.Pool.Put(&it.Value)
+			}
 			return err
 		}
 		if !bytes.HasSuffix(it.Value, crlf) {
-			it.Value = nil
+			if c.Pool != nil {
+				c.Pool.Put(&it.Value)
+			}
 			return fmt.Errorf("memcache: corrupt get result read")
 		}
 		it.Value = it.Value[:size]
@@ -555,17 +549,49 @@ func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
 // scanGetResponseLine populates it and returns the declared size of the item.
 // It does not read the bytes of the item.
 func scanGetResponseLine(line []byte, it *Item) (size int, err error) {
-	pattern := "VALUE %s %d %d %d\r\n"
-	dest := []interface{}{&it.Key, &it.Flags, &size, &it.casid}
-	if bytes.Count(line, space) == 3 {
-		pattern = "VALUE %s %d %d\r\n"
-		dest = dest[:3]
-	}
-	n, err := fmt.Sscanf(string(line), pattern, dest...)
-	if err != nil || n != len(dest) {
+	errf := func(line []byte) (int, error) {
 		return -1, fmt.Errorf("memcache: unexpected line in get response: %q", line)
 	}
-	return size, nil
+	if !bytes.HasPrefix(line, []byte("VALUE ")) || !bytes.HasSuffix(line, []byte("\r\n")) {
+		return errf(line)
+	}
+	s := string(line[6 : len(line)-2])
+	var rest string
+	var found bool
+	it.Key, rest, found = cut(s, ' ')
+	if !found {
+		return errf(line)
+	}
+	val, rest, found := cut(rest, ' ')
+	if !found {
+		return errf(line)
+	}
+	flags64, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
+		return errf(line)
+	}
+	it.Flags = uint32(flags64)
+	val, rest, found = cut(rest, ' ')
+	size64, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
+		return errf(line)
+	}
+	if !found { // final CAS ID is optional.
+		return int(size64), nil
+	}
+	it.casid, err = strconv.ParseUint(rest, 10, 64)
+	if err != nil {
+		return errf(line)
+	}
+	return int(size64), nil
+}
+
+// Similar to strings.Cut in Go 1.18, but sep can only be 1 byte.
+func cut(s string, sep byte) (before, after string, found bool) {
+	if i := strings.IndexByte(s, sep); i >= 0 {
+		return s[:i], s[i+1:], true
+	}
+	return s, "", false
 }
 
 // Set writes the given item, unconditionally.
