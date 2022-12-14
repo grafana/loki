@@ -54,14 +54,13 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     Defines how long the ingested logs should be kept.
     </span>
     <span v-else-if="help === 'queryperf'">
-    Defines the expected query performance. Basic is... Super is...
+    Defines the expected query performance. Basic enables 3mbps. Super should be chosen if more query throughput is required.
     </span>
   </blockquote>
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-
-<style>
+.<style>
 
 #app label.icon.question::after {
   content: '\f29c';
