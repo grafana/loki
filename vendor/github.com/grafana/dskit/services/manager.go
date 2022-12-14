@@ -304,7 +304,7 @@ type funcBasedManagerListener struct {
 	failure func(service Service)
 }
 
-func (f *funcBasedManagerListener) Healthy() {
+func (f funcBasedManagerListener) Healthy() {
 	if f.healthy != nil {
 		f.healthy()
 	}
