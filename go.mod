@@ -52,11 +52,11 @@ require (
 	github.com/grafana/dskit v0.0.0-20221212120341-3e308a49441b
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+	github.com/grafana/tail v0.0.0-20221214082743-3a1c242a4d7b
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.15.3
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/hpcloud/tail v1.0.0
 	github.com/imdario/mergo v0.3.12
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 	github.com/influxdata/telegraf v1.16.3
@@ -308,8 +308,6 @@ require (
 
 // Upgrade to run with gRPC 1.3.0 and above.
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
-
-replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20221013162612-e88cf3c7a8f6
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
