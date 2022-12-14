@@ -44,6 +44,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid ruler remote-write config: %w", err)
 	}
 
+	if err := c.WALCleaner.Validate(); err != nil {
+		return fmt.Errorf("invalid ruler wal cleaner config: %w", err)
+	}
+
 	return nil
 }
 
