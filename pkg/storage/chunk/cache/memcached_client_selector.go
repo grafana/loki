@@ -5,9 +5,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/cespare/xxhash"
 	"github.com/facette/natsort"
+	"github.com/grafana/gomemcache/memcache"
 )
 
 // MemcachedJumpHashSelector implements the memcache.ServerSelector
@@ -47,7 +47,7 @@ func DefaultMemcachedJumpHashSelector() *MemcachedJumpHashSelector {
 // staticAddr caches the Network() and String() values from
 // any net.Addr.
 //
-// Copied from github.com/bradfitz/gomemcache/selector.go.
+// Copied from github.com/grafana/gomemcache/selector.go.
 type staticAddr struct {
 	network, str string
 }

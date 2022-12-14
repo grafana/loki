@@ -3,7 +3,7 @@ package cache_test
 import (
 	"sync"
 
-	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/grafana/gomemcache/memcache"
 )
 
 type mockMemcache struct {

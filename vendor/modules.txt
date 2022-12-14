@@ -280,9 +280,6 @@ github.com/beorn7/perks/quantile
 # github.com/bmatcuk/doublestar v1.2.2
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
-# github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b => github.com/owen-d/gomemcache v0.0.0-20220719101501-ce4268ea75ae
-## explicit; go 1.12
-github.com/bradfitz/gomemcache/memcache
 # github.com/buger/jsonparser v1.1.1
 ## explicit; go 1.13
 github.com/buger/jsonparser
@@ -711,6 +708,9 @@ github.com/grafana/dskit/tenant
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
+# github.com/grafana/gomemcache v0.0.0-20221213170046-b5da8a745d41
+## explicit; go 1.12
+github.com/grafana/gomemcache/memcache
 # github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 ## explicit; go 1.17
 github.com/grafana/regexp
@@ -1953,7 +1953,6 @@ sigs.k8s.io/yaml
 # github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-# github.com/bradfitz/gomemcache => github.com/owen-d/gomemcache v0.0.0-20220719101501-ce4268ea75ae
 # github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
 # google.golang.org/grpc => google.golang.org/grpc v1.45.0
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe

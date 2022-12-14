@@ -18,7 +18,6 @@ require (
 	github.com/aws/aws-sdk-go v1.44.128
 	github.com/baidubce/bce-sdk-go v0.9.111
 	github.com/bmatcuk/doublestar v1.2.2
-	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/buger/jsonparser v1.1.1
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cespare/xxhash v1.1.0
@@ -51,6 +50,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/dskit v0.0.0-20221212120341-3e308a49441b
 	github.com/grafana/go-gelf/v2 v2.0.1
+	github.com/grafana/gomemcache v0.0.0-20221213170046-b5da8a745d41
 	github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 	github.com/grafana/tail v0.0.0-20221214082743-3a1c242a4d7b
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -317,10 +317,6 @@ replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-
-// Same as Cortex
-// Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
-replace github.com/bradfitz/gomemcache => github.com/owen-d/gomemcache v0.0.0-20220719101501-ce4268ea75ae
 
 replace github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
 
