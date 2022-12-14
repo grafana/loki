@@ -15,7 +15,7 @@ depending on which mode Loki is launched in.
 
 Configuration examples can be found in the [Configuration Examples](examples/) document.
 
-## Printing Loki Config At Runtime
+## Printing Loki config at runtime
 
 If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
 Loki will dump the entire config object it has created from the built-in defaults combined first with
@@ -34,14 +34,14 @@ is especially useful in making sure your config files and flags are being read a
 `-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so
 that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
 
-## Reload At Runtime
+## Reload at runtime
 
 Promtail can reload its configuration at runtime. If the new configuration
 is not well-formed, the changes will not be applied.
 A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
 sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
 
-## Configuration File Reference
+## Configuration file reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
 command line. The value can be a list of comma separated paths, then the first
@@ -460,7 +460,7 @@ rate_store:
 Configures the `querier`. Only appropriate when running all modules or just the querier.
 
 ```yaml
-# Maximum duration for which the live tailing requests should be served.
+# Maximum duration for which the live tailing requests are served.
 # CLI flag: -querier.tail-max-duration
 [tail_max_duration: <duration> | default = 1h]
 
@@ -990,7 +990,7 @@ ring:
 # CLI flag: -ruler.flush-period
 [flush_period: <duration> | default = 1m]
 
-# Enable the ruler api.
+# Enable the ruler API.
 # CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = true]
 
@@ -1319,7 +1319,7 @@ wal:
   # CLI flag: -ingester.wal-enabled
   [enabled: <boolean> | default = true]
 
-  # Directory where the WAL data should be stored and/or recovered from.
+  # Directory where the WAL data is stored and/or recovered from.
   # CLI flag: -ingester.wal-dir
   [dir: <string> | default = "wal"]
 
