@@ -40,7 +40,7 @@ func (cfg *WALConfig) Validate() error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory where the WAL data should be stored and/or recovered from.")
+	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory where the WAL data is stored and/or recovered from.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", true, "Enable writing of ingested data into WAL.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
