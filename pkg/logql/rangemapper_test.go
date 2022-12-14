@@ -1752,7 +1752,7 @@ func Test_FailQuery(t *testing.T) {
 	_, _, err = rvm.Parse(`topk(0, sum(count_over_time({app="foo"} | json |  __error__="" [15m])))`)
 	require.Error(t, err)
 
-	// Fix for bug where missing or empty parameters for regexp and pattern parsers threw a panic
+	// Check fixes for bug where missing or empty parameters for regexp and pattern parsers threw a panic
 	// Missing parameter to regexp parser
 	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp [1d])))`)
 	require.ErrorIs(t, err, logqlmodel.ErrParse)
