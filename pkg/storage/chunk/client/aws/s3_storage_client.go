@@ -103,7 +103,8 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "S3 Endpoint to connect to.")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
-	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
+	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", os.Getenv("AWS_ACCESS_KEY_ID"), "AWS Access Key ID")
+	cfg.SecretAccessKey = flagext.SecretWithValue(os.Getenv("AWS_SECRET_ACCESS_KEY"))
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
