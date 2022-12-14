@@ -1730,6 +1730,128 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.annotations</td>
+			<td>object</td>
+			<td>Additional annotations for the `loki-canary` Daemonset</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.enabled</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI arguments for the `loki-canary' command</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image</td>
+			<td>object</td>
+			<td>Image to use for loki canary</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.pullPolicy</td>
+			<td>string</td>
+			<td>Docker image pull policy</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry</td>
+			<td><pre lang="json">
+"docker.io"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository</td>
+			<td><pre lang="json">
+"grafana/loki-canary"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.tag</td>
+			<td>string</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the canary</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
@@ -1870,128 +1992,6 @@ null
 			<td>Alternative namespace for LogsInstance resources</td>
 			<td><pre lang="json">
 null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the `loki-canary` Daemonset</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.enabled</td>
-			<td>bool</td>
-			<td></td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.extraArgs</td>
-			<td>list</td>
-			<td>Additional CLI arguments for the `loki-canary' command</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.extraEnv</td>
-			<td>list</td>
-			<td>Environment variables to add to the canary pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.extraEnvFrom</td>
-			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the canary pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.image</td>
-			<td>object</td>
-			<td>Image to use for loki canary</td>
-			<td><pre lang="json">
-{
-  "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "grafana/loki-canary",
-  "tag": null
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.image.pullPolicy</td>
-			<td>string</td>
-			<td>Docker image pull policy</td>
-			<td><pre lang="json">
-"IfNotPresent"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.image.registry</td>
-			<td>string</td>
-			<td>The Docker registry</td>
-			<td><pre lang="json">
-"docker.io"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.image.repository</td>
-			<td>string</td>
-			<td>Docker image repository</td>
-			<td><pre lang="json">
-"grafana/loki-canary"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.image.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for canary pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.resources</td>
-			<td>object</td>
-			<td>Resource requests and limits for the canary</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.lokiCanary.tolerations</td>
-			<td>list</td>
-			<td>Tolerations for canary pods</td>
-			<td><pre lang="json">
-[]
 </pre>
 </td>
 		</tr>
