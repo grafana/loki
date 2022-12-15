@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -296,7 +296,9 @@ func (w *Watcher) segments(dir string) ([]int, error) {
 		}
 		refs = append(refs, k)
 	}
-	slices.Sort(refs)
+	// why is this here? re: ahh for checking that wal segments are sequential
+	//slices.Sort(refs)
+	sort.Ints(refs)
 	for i := 0; i < len(refs)-1; i++ {
 		if refs[i]+1 != refs[i+1] {
 			return nil, errors.New("segments are not sequential")
@@ -419,7 +421,7 @@ func (w *Watcher) watch(segmentNum int, tail bool) error {
 }
 
 func (w *Watcher) garbageCollectSeries(segmentNum int) error {
-	dir, _, err := LastCheckpoint(w.walDir)
+	dir, _, err := wal.LastCheckpoint(w.walDir)
 	if err != nil && err != record.ErrNotFound {
 		return errors.Wrap(err, "tsdb.LastCheckpoint")
 	}
@@ -558,7 +560,7 @@ func (w *Watcher) readSegment(r *wal.LiveReader, segmentNum int, tail bool) erro
 
 // Go through all series in a segment updating the segmentNum, so we can delete older series.
 // Used with readCheckpoint - implements segmentReadFn.
-func (w *Watcher) readSegmentForGC(r *LiveReader, segmentNum int, _ bool) error {
+func (w *Watcher) readSegmentForGC(r *wal.LiveReader, segmentNum int, _ bool) error {
 	var (
 		dec    record.Decoder
 		series []record.RefSeries
@@ -594,7 +596,7 @@ func (w *Watcher) SetStartTime(t time.Time) {
 	w.startTimestamp = timestamp.FromTime(t)
 }
 
-type segmentReadFn func(w *Watcher, r *LiveReader, segmentNum int, tail bool) error
+type segmentReadFn func(w *Watcher, r *wal.LiveReader, segmentNum int, tail bool) error
 
 // Read all the series records from a Checkpoint directory.
 func (w *Watcher) readCheckpoint(checkpointDir string, readFn segmentReadFn) error {
@@ -615,13 +617,13 @@ func (w *Watcher) readCheckpoint(checkpointDir string, readFn segmentReadFn) err
 			return errors.Wrap(err, "getSegmentSize")
 		}
 
-		sr, err := OpenReadSegment(SegmentName(checkpointDir, seg))
+		sr, err := wal.OpenReadSegment(wal.SegmentName(checkpointDir, seg))
 		if err != nil {
 			return errors.Wrap(err, "unable to open segment")
 		}
 		defer sr.Close()
 
-		r := NewLiveReader(w.logger, w.readerMetrics, sr)
+		r := wal.NewLiveReader(w.logger, w.readerMetrics, sr)
 		if err := readFn(w, r, index, false); errors.Cause(err) != io.EOF && err != nil {
 			return errors.Wrap(err, "readSegment")
 		}
@@ -654,7 +656,7 @@ func checkpointNum(dir string) (int, error) {
 // Get size of segment.
 func getSegmentSize(dir string, index int) (int64, error) {
 	i := int64(-1)
-	fi, err := os.Stat(SegmentName(dir, index))
+	fi, err := os.Stat(wal.SegmentName(dir, index))
 	if err == nil {
 		i = fi.Size()
 	}
