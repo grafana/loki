@@ -237,10 +237,10 @@ func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManager
 			}
 		}
 
-		if ha := clt.BasicAuth; ha != nil {
+		if ba := clt.BasicAuth; ba != nil {
 			conf.Notifier.BasicAuth = config.BasicAuth{
-				Username: ha.Username,
-				Password: ha.Password,
+				Username: ba.Username,
+				Password: ba.Password,
 			}
 		}
 	}

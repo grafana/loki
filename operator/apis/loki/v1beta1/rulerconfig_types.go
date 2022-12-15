@@ -127,28 +127,100 @@ type AlertManagerSpec struct {
 	Client *AlertManagerClientConfig `json:"client,omitempty"`
 }
 
+// AlertManagerClientConfig defines the configuration for the connection to the alertmanager.
 type AlertManagerClientConfig struct {
-	TLS        *AlertManagerClientTLSConfig  `json:"tls,omitempty"`
+	// Defines the TLS configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="TLS"
+	TLS *AlertManagerClientTLSConfig `json:"tls,omitempty"`
+
+	// Defines the Header authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Header Auth"
 	HeaderAuth *AlertManagerClientHeaderAuth `json:"headerAuth,omitempty"`
-	BasicAuth  *AlertManagerClientBasicAuth  `json:"basicAuth,omitempty"`
+
+	// Defines the Basic authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Basic Auth"
+	BasicAuth *AlertManagerClientBasicAuth `json:"basicAuth,omitempty"`
 }
 
+// AlertManagerClientBasicAuth defines the Basic authN configuration for the connection to the alertmanager.
 type AlertManagerClientBasicAuth struct {
+	// The Username for the Basic authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Username"
 	Username *string `json:"username,omitempty"`
+
+	// The Password for the Basic authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Password"
 	Password *string `json:"password,omitempty"`
 }
 
+// AlertManagerClientHeaderAuth defines the Header configuration for the connection to the alertmanager.
 type AlertManagerClientHeaderAuth struct {
-	Type            *string `json:"type,omitempty"`
-	Credentials     *string `json:"credentials,omitempty"`
+	// The authentication type for the Header authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Type"
+	Type *string `json:"type,omitempty"`
+
+	// The credentials for the Header authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Credentials"
+	Credentials *string `json:"credentials,omitempty"`
+
+	// The credentials file for the Header authentication configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Credentials File"
 	CredentialsFile *string `json:"credentialsFile,omitempty"`
 }
 
+// AlertManagerClientTLSConfig defines the TLQ configuration for the connection to the alertmanager.
 type AlertManagerClientTLSConfig struct {
-	CAPath     *string `json:"caPath,omitempty"`
+	// The CA path for the TLS configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA Path"
+	CAPath *string `json:"caPath,omitempty"`
+
+	// The Server Name for the TLS configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Server Name"
 	ServerName *string `json:"serverName,omitempty"`
-	CertPath   *string `json:"certPath,omitempty"`
-	KeyPath    *string `json:"keyPath,omitempty"`
+
+	// The Certificate Path for the TLS configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cert Path"
+	CertPath *string `json:"certPath,omitempty"`
+
+	// The Key Path for the TLS configuration for the AlertManager connection.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Path"
+	KeyPath *string `json:"keyPath,omitempty"`
 }
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.
