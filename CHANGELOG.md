@@ -51,6 +51,7 @@ Check the history of the branch FIXME.
 
 ##### Fixes
 
+* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
 * [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
 
 ##### Changes
