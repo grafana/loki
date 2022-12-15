@@ -749,7 +749,7 @@ spec:
         path: alertmanager.client
       - description: Defines the Basic authentication configuration for the AlertManager
           connection.
-        displayName: Basic Auth
+        displayName: Basic Authentication
         path: alertmanager.client.basicAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
@@ -761,9 +761,9 @@ spec:
           AlertManager connection.
         displayName: Username
         path: alertmanager.client.basicAuth.username
-      - description: Defines the Header authentication configuration for the AlertManager
-          connection.
-        displayName: Header Auth
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
         path: alertmanager.client.headerAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
@@ -779,7 +779,7 @@ spec:
           for the AlertManager connection.
         displayName: Type
         path: alertmanager.client.headerAuth.type
-      - description: Defines the TLS configuration for the AlertManager connection.
+      - description: TLS configuration for reaching the alertmanager endpoints.
         displayName: TLS
         path: alertmanager.client.tls
         x-descriptors:
@@ -791,7 +791,7 @@ spec:
           connection.
         displayName: Cert Path
         path: alertmanager.client.tls.certPath
-      - description: The Key Path for the TLS configuration for the AlertManager connection.
+      - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: alertmanager.client.tls.keyPath
       - description: The Server Name for the TLS configuration for the AlertManager
@@ -904,7 +904,7 @@ spec:
         path: overrides.alertmanager.client
       - description: Defines the Basic authentication configuration for the AlertManager
           connection.
-        displayName: Basic Auth
+        displayName: Basic Authentication
         path: overrides.alertmanager.client.basicAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
@@ -916,9 +916,9 @@ spec:
           AlertManager connection.
         displayName: Username
         path: overrides.alertmanager.client.basicAuth.username
-      - description: Defines the Header authentication configuration for the AlertManager
-          connection.
-        displayName: Header Auth
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
         path: overrides.alertmanager.client.headerAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
@@ -934,7 +934,7 @@ spec:
           for the AlertManager connection.
         displayName: Type
         path: overrides.alertmanager.client.headerAuth.type
-      - description: Defines the TLS configuration for the AlertManager connection.
+      - description: TLS configuration for reaching the alertmanager endpoints.
         displayName: TLS
         path: overrides.alertmanager.client.tls
         x-descriptors:
@@ -946,7 +946,7 @@ spec:
           connection.
         displayName: Cert Path
         path: overrides.alertmanager.client.tls.certPath
-      - description: The Key Path for the TLS configuration for the AlertManager connection.
+      - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: overrides.alertmanager.client.tls.keyPath
       - description: The Server Name for the TLS configuration for the AlertManager
