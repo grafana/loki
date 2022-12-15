@@ -2,13 +2,14 @@ package client
 
 import (
 	"fmt"
-	"sort"
+
 	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
@@ -71,57 +72,36 @@ func (b *batch) add(entry api.Entry) error {
 	return nil
 }
 
-func labelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
+func labelsMapToString(ls model.LabelSet, without model.LabelName) string {
 	var b strings.Builder
-	var labelsSize int
-	lstrs := make([]string, 0, len(ls))
+	totalSize := 2
+	lstrs := make([]model.LabelName, 0, len(ls))
 
-Outer:
 	for l, v := range ls {
-		for _, w := range without {
-			if l == w {
-				continue Outer
-			}
+		if l == without {
+			continue
 		}
 
-		str, s := labelNameValueToString(b, l, v)
-		lstrs = append(lstrs, str)
-		labelsSize += s
-	}
-	if len(lstrs) == 0 {
-		return "{}"
+		lstrs = append(lstrs, l)
+		totalSize += len(l) + 2 + len(v) + 3
 	}
 
-	sort.Strings(lstrs)
-	return labelListToString(b, labelsSize, lstrs)
-}
+	b.Grow(totalSize)
+	b.WriteByte('{')
+	slices.Sort(lstrs)
+	for i, l := range lstrs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
 
-// labelListToString replicates 'fmt.Sprintf("{%s}", strings.Join(lstrs, ", "))', but in a more efficent way. We achieve this by using a string.Builder and keeping track of the size at an earlier stage
-func labelListToString(b strings.Builder, labelsSize int, lstrs []string) string {
-	b.Reset()
-	b.Grow(labelsSize + 2 + (2 * (len(lstrs) - 1)))
-	b.WriteString("{")
-	for i := 0; i < len(lstrs)-1; i++ {
-		b.WriteString(lstrs[i])
-		b.WriteString(", ")
+		b.WriteString(string(l))
+		b.WriteString(`="`)
+		b.WriteString(strings.ReplaceAll(string(ls[l]), `"`, `\"`))
+		b.WriteString(`"`)
 	}
-	// Write the last element seperatly so we have no trailing comma (', ')
-	b.WriteString(lstrs[len(lstrs)-1])
-	b.WriteString("}")
+	b.WriteByte('}')
+
 	return b.String()
-}
-
-// labelNameValueToString replicates 'fmt.Sprintf("%s=%q", l, v)', but in a more efficent way. We achieve this by using a string.Builder. We also return the size for a later concatenation.
-func labelNameValueToString(b strings.Builder, l model.LabelName, v model.LabelValue) (string, int) {
-	// The strings.Builder
-	b.Reset()
-	stringSize := len(l) + len(v) + 3 // 3 for the equals (=) and two quotes (")
-	b.Grow(stringSize)
-	b.WriteString(string(l))
-	b.WriteString("=\"")
-	b.WriteString(string(v))
-	b.WriteString("\"")
-	return b.String(), stringSize
 }
 
 // sizeBytes returns the current batch size in bytes

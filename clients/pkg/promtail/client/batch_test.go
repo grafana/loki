@@ -165,6 +165,10 @@ func TestHashCollisions(t *testing.T) {
 	}
 }
 
+// store the result to a package level variable
+// so the compiler cannot eliminate the Benchmark itself.
+var result string
+
 func BenchmarkLabelsMapToString(b *testing.B) {
 	labelSet := make(model.LabelSet)
 	labelSet["label"] = "value"
@@ -172,9 +176,11 @@ func BenchmarkLabelsMapToString(b *testing.B) {
 	labelSet["label2"] = "value"
 	labelSet["__tenant_id__"] = "value"
 
-	ReservedLabelTenantID := "__tenant_id__"
 	b.ResetTimer()
+	var r string
 	for i := 0; i < b.N; i++ {
-		_ = labelsMapToString(labelSet, model.LabelName(ReservedLabelTenantID))
+		// store in r prevent the compiler eliminating the function call.
+		r = labelsMapToString(labelSet, ReservedLabelTenantID)
 	}
+	result = r
 }
