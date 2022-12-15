@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"strconv"
 
 	"strings"
 	"time"
@@ -96,7 +97,7 @@ func labelsMapToString(ls model.LabelSet, without model.LabelName) string {
 
 		b.WriteString(string(l))
 		b.WriteString(`="`)
-		b.WriteString(strings.ReplaceAll(string(ls[l]), `"`, `\"`))
+		b.WriteString(strconv.Quote(string(ls[l])))
 		b.WriteString(`"`)
 	}
 	b.WriteByte('}')
