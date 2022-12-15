@@ -6,7 +6,6 @@
 
 ##### Enhancements
 * [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap
-
 * [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
 * [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
 * [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
@@ -15,24 +14,29 @@
 * [7785](https://github.com/grafana/loki/pull/7785) **dannykopping**: Add query blocker for queries and rules.
 * [7804](https://github.com/grafana/loki/pull/7804) **sandeepsukhani**: Use grpc for communicating with compactor for query time filtering of data requested for deletion.
 * [7817](https://github.com/grafana/loki/pull/7817) **kavirajk**: fix(memcached): panic on send on closed channel.
+* [7916](https://github.com/grafana/loki/pull/7916) **ssncferreira**: Add `doc-generator` tool to generate configuration flags documentation.
 
 ##### Fixes
 
+* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
 * [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
-
 * [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix multitenant querying.
-
 * [7784](https://github.com/grafana/loki/pull/7784) **isodude**: Fix default values of connect addresses for compactor and querier workers to work with IPv6.
+* [7880](https://github.com/grafana/loki/pull/7880) **sandeepsukhani**: consider range and offset in queries while looking for schema config for query sharding.
+* [7937](https://github.com/grafana/loki/pull/7937) **ssncferreira**: Deprecate CLI flag `-ruler.wal-cleaer.period` and replace it with `-ruler.wal-cleaner.period`.
+* [7906](https://github.com/grafana/loki/pull/7906) **kavirajk**: Add API endpoint that formats LogQL expressions and support new `fmt` subcommand in `logcli` to format LogQL query.
 
 ##### Changes
 
 #### Promtail
 
+* [7619](https://github.com/grafana/loki/pull/7619) **cadrake**: Add ability to pass query params to heroku drain targets for relabelling.
 
 ##### Enhancements
 
 * [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
 * [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+* [7597](https://github.com/grafana/loki/pull/7597) **redbaron**: allow ratelimiting by label
 
 ##### Fixes
 * [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
@@ -48,6 +52,10 @@
 
 #### Jsonnet
 
+#### Build 
+
+* [7938](https://github.com/grafana/loki/pull/7938) **ssncferreira**: Add DroneCI pipeline step to validate configuration flags documentation generation.
+
 ### Notes
 
 This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
@@ -57,6 +65,16 @@ Check the history of the branch FIXME.
 ### Dependencies
 
 * Go Version: 1.19
+
+## 2.7.1
+
+#### Loki
+
+##### Fixes
+* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
+
+##### Changes
+* [7877](https://github.com/grafana/loki/pull/7877)A **trevorwhitney**: Due to a known bug with experimental new delete mode feature, the default delete mode has been changed to `filter-only`.
 
 ## 2.7.0
 
@@ -83,7 +101,6 @@ Check the history of the branch FIXME.
 * [6952](https://github.com/grafana/loki/pull/6952) **DylanGuedes**: Experimental: Introduce a new feature named stream sharding.
 
 ##### Fixes
-* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
 * [7426](https://github.com/grafana/loki/pull/7426) **periklis**: Add missing compactor delete client tls client config
 * [7238](https://github.com/grafana/loki/pull/7328) **periklis**: Fix internal server bootstrap for query frontend
 * [7288](https://github.com/grafana/loki/pull/7288) **ssncferreira**: Fix query mapping in AST mapper `rangemapper` to support the new `VectorExpr` expression.
@@ -138,6 +155,7 @@ Check the history of the branch FIXME.
 
 #### Jsonnet
 * [6189](https://github.com/grafana/loki/pull/6189) **irizzant**: Add creation of a `ServiceMonitor` object for Prometheus scraping through configuration parameter `create_service_monitor`. Simplify mixin usage by adding (https://github.com/prometheus-operator/kube-prometheus) library.
+* [6662](https://github.com/grafana/loki/pull/6662) **Whyeasy**: Fixes memberlist error when using a stateful ruler.
 
 
 ### Notes

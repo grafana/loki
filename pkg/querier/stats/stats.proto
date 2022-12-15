@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package stats;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 
 option go_package = "github.com/grafana/loki/pkg/querier/stats";

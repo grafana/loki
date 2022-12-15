@@ -221,7 +221,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
-	maxParallelism := MinWeightedParallelism(tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
+	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err
@@ -276,25 +276,35 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 	return reqs, nil
 }
 
-// maxRangeVectorDuration returns the maximum range vector duration within a LogQL query.
-func maxRangeVectorDuration(q string) (time.Duration, error) {
-	expr, err := syntax.ParseSampleExpr(q)
+// maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
+func maxRangeVectorAndOffsetDuration(q string) (time.Duration, time.Duration, error) {
+	expr, err := syntax.ParseExpr(q)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	var max time.Duration
+
+	if _, ok := expr.(syntax.SampleExpr); !ok {
+		return 0, 0, nil
+	}
+	
+	var maxRVDuration, maxOffset time.Duration
 	expr.Walk(func(e interface{}) {
-		if r, ok := e.(*syntax.LogRange); ok && r.Interval > max {
-			max = r.Interval
+		if r, ok := e.(*syntax.LogRange); ok {
+			if r.Interval > maxRVDuration {
+				maxRVDuration = r.Interval
+			}
+			if r.Offset > maxOffset {
+				maxOffset = r.Offset
+			}
 		}
 	})
-	return max, nil
+	return maxRVDuration, maxOffset, nil
 }
 
 // reduceSplitIntervalForRangeVector reduces the split interval for a range query based on the duration of the range vector.
 // Large range vector durations will not be split into smaller intervals because it can cause the queries to be slow by over-processing data.
 func reduceSplitIntervalForRangeVector(r queryrangebase.Request, interval time.Duration) (time.Duration, error) {
-	maxRange, err := maxRangeVectorDuration(r.GetQuery())
+	maxRange, _, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
 	if err != nil {
 		return 0, err
 	}
