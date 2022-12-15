@@ -1759,7 +1759,7 @@ func Test_FailQuery(t *testing.T) {
 	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp ` + "``" + ` [1d])))`)
 	require.ErrorIs(t, err, logqlmodel.ErrParse)
 	// Empty parameter to pattern parser
-	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | pattern ` + "``" + ` [1d])))`)
+	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | pattern ` + `""` + ` [1d])))`)
 	require.ErrorIs(t, err, logqlmodel.ErrParse)
 	// Empty parameter to json parser
 	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`)
