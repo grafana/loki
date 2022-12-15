@@ -2,6 +2,7 @@ package storage
 
 import (
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -11,7 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -43,6 +48,60 @@ func TestFactoryStop(t *testing.T) {
 	require.NoError(t, err)
 
 	store.Stop()
+}
+
+func TestNamedStores(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := shipper.Config{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	boltdbShipperConfig.SharedStoreType = "filesystem.named-store"
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+
+	cfg := Config{
+		NamedStores: NamedStores{
+			Filesystem: map[string]local.FSConfig{
+				"named-store": {Directory: path.Join(tempDir, "chunks")},
+			},
+		},
+		BoltDBShipperConfig: boltdbShipperConfig,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(parseDate("2019-01-01"))},
+				IndexType:  "boltdb-shipper",
+				ObjectType: "filesystem.named-store",
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 168,
+				},
+			},
+		},
+	}
+
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	t.Run("refer to named store", func(t *testing.T) {
+		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		require.NoError(t, err)
+
+		store.Stop()
+	})
+
+	t.Run("refer to unrecognized store", func(t *testing.T) {
+		schemaConfig := schemaConfig
+		schemaConfig.Configs[0].ObjectType = "filesystem.not-found"
+		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Unrecognized named filesystem storage config filesystem.not-found")
+	})
 }
 
 func TestCassandraInMultipleSchemas(t *testing.T) {
