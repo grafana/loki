@@ -616,7 +616,7 @@ func streamingAggregator(r *syntax.RangeAggregationExpr) (RangeStreamingAgg, err
 	case syntax.OpRangeTypeMax:
 		return &MaxOverTime{}, nil
 	case syntax.OpRangeTypeMin:
-		return &MinOverTime{}, nil
+		return &MinOverTime{min: math.NaN()}, nil
 	case syntax.OpRangeTypeStddev:
 		return &StddevOverTime{}, nil
 	case syntax.OpRangeTypeStdvar:
