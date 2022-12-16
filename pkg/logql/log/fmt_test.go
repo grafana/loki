@@ -461,6 +461,16 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				{Name: "ts", Value: "1661518453"},
 			},
 		},
+		{
+			"count",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "test" }}`)}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "count", Value: "1"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
