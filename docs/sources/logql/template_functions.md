@@ -700,9 +700,9 @@ Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` 
 
 ## count
 
-`count` counts occurrences of the regex (`regexsubstr`) in (`src`).
+`count` counts occurrences of the regex (`regex`) in (`src`).
 
-Signature: `count(regexsubstr string, src string) int`
+Signature: `count(regex string, src string) int`
 
 Examples:
 
