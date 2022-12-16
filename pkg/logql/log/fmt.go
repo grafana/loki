@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -42,6 +43,10 @@ var (
 		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllLiteralString(s, repl)
+		},
+		"count": func(substr string, s string) string {
+			count := strings.Count(s, substr)
+			return strconv.FormatInt(int64(count), 10)
 		},
 	}
 

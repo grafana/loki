@@ -23,6 +23,17 @@ func Test_lineFormatter_Format(t *testing.T) {
 		in      []byte
 	}{
 		{
+			"count",
+			newMustLineFormatter(
+				`{{.foo | count "abc" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("3"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
