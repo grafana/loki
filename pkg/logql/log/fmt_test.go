@@ -34,6 +34,17 @@ func Test_lineFormatter_Format(t *testing.T) {
 			nil,
 		},
 		{
+			"count regex",
+			newMustLineFormatter(
+				`{{.foo | count "a|b|c" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("9"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
@@ -469,6 +480,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				{Name: "foo", Value: "blip"},
 				{Name: "bar", Value: "blop"},
 				{Name: "count", Value: "1"},
+			},
+		},
+		{
+			"count regex no matches",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "notmatching.*" }}`)}),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "count", Value: "0"},
 			},
 		},
 	}

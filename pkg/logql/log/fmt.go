@@ -43,8 +43,13 @@ var (
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllLiteralString(s, repl)
 		},
-		"count": func(substr string, s string) int {
-			return strings.Count(s, substr)
+		"count": func(regexsubstr string, s string) int {
+			r := regexp.MustCompile(regexsubstr)
+			matches := r.FindAllStringIndex(s, -1)
+			if matches == nil {
+				return 0
+			}
+			return len(matches)
 		},
 	}
 
