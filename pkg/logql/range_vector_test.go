@@ -379,28 +379,29 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 		name          string
 		expectedValue float64
 		op            string
+		negative      bool
 	}{
-		{"rate", 1.5e+09, syntax.OpRangeTypeRate},
-		{"rate counter", 9.999999999999999e+08, syntax.OpRangeTypeRateCounter},
-		{"count", 3., syntax.OpRangeTypeCount},
-		{"bytes rate", 3e+09, syntax.OpRangeTypeBytesRate},
-		{"bytes", 6., syntax.OpRangeTypeBytes},
-		{"sum", 6., syntax.OpRangeTypeSum},
-		{"avg", 2., syntax.OpRangeTypeAvg},
-		{"max", 3., syntax.OpRangeTypeMax},
-		{"min", 1., syntax.OpRangeTypeMin},
-		{"std dev", 0.816496580927726, syntax.OpRangeTypeStddev},
-		{"std vara", 0.6666666666666666, syntax.OpRangeTypeStdvar},
-		{"quantile", 2.98, syntax.OpRangeTypeQuantile},
-		{"first", 1., syntax.OpRangeTypeFirst},
-		{"last", 3., syntax.OpRangeTypeLast},
-		{"absent", 1., syntax.OpRangeTypeAbsent},
+		{"rate", 1.5e+09, syntax.OpRangeTypeRate, false},
+		{"rate counter", 9.999999999999999e+08, syntax.OpRangeTypeRateCounter, false},
+		{"count", 3., syntax.OpRangeTypeCount, false},
+		{"bytes rate", 3e+09, syntax.OpRangeTypeBytesRate, false},
+		{"bytes", 6., syntax.OpRangeTypeBytes, false},
+		{"sum", 6., syntax.OpRangeTypeSum, false},
+		{"avg", 2., syntax.OpRangeTypeAvg, false},
+		{"max", -1, syntax.OpRangeTypeMax, true},
+		{"min", 1., syntax.OpRangeTypeMin, false},
+		{"std dev", 0.816496580927726, syntax.OpRangeTypeStddev, false},
+		{"std vara", 0.6666666666666666, syntax.OpRangeTypeStdvar, false},
+		{"quantile", 2.98, syntax.OpRangeTypeQuantile, false},
+		{"first", 1., syntax.OpRangeTypeFirst, false},
+		{"last", 3., syntax.OpRangeTypeLast, false},
+		{"absent", 1., syntax.OpRangeTypeAbsent, false},
 	}
 
 	var start, end int64 = 4, 4 // Instant query
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
-			it, err := newRangeVectorIterator(sampleIter(),
+			it, err := newRangeVectorIterator(sampleIter(tt.negative),
 				&syntax.RangeAggregationExpr{Left: &syntax.LogRange{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)
@@ -413,18 +414,25 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	}
 }
 
-func sampleIter() iter.PeekingSampleIterator {
+func sampleIter(negative bool) iter.PeekingSampleIterator {
 	return iter.NewPeekingSampleIterator(
 		iter.NewSortSampleIterator([]iter.SampleIterator{
 			iter.NewSeriesIterator(logproto.Series{
 				Labels: labelFoo.String(),
 				Samples: []logproto.Sample{
-					{Timestamp: 2, Hash: 1, Value: 1.},
-					{Timestamp: 3, Hash: 2, Value: 2.},
-					{Timestamp: 4, Hash: 3, Value: 3.},
+					{Timestamp: 2, Hash: 1, Value: value(1., negative)},
+					{Timestamp: 3, Hash: 2, Value: value(2., negative)},
+					{Timestamp: 4, Hash: 3, Value: value(3., negative)},
 				},
 				StreamHash: labelFoo.Hash(),
 			}),
 		}),
 	)
+}
+
+func value(value float64, negative bool) float64 {
+	if negative {
+		return -1. * value
+	}
+	return value
 }
