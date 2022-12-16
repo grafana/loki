@@ -14,7 +14,7 @@ type Pod struct {
 }
 
 type Loki struct {
-	AuthEnabled bool `json:"authEnabled"`
+	AuthEnabled bool `json:"auth_enabled"`
 }
 
 type Read struct {
