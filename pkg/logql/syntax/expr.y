@@ -59,6 +59,7 @@ import (
   UnwrapExpr              *UnwrapExpr
   DecolorizeExpr          *DecolorizeExpr
   OffsetExpr              *OffsetExpr
+  IgnoreErrorsExpr        *IgnoreErrorsExpr 
 }
 
 %start root
@@ -98,6 +99,7 @@ import (
 %type <LineFilter>            lineFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
+%type <IgnoreErrorsExpr>      ignoreErrorsExpr
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
@@ -117,7 +119,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE
+                  DECOLORIZE IGNORE_ERRORS
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -254,6 +256,7 @@ pipelineStage:
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE decolorizeExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
+  | PIPE ignoreErrorsExpr        { $$ = $2 }
   ;
 
 filterOp:
@@ -356,6 +359,10 @@ numberFilter:
     | IDENTIFIER NEQ NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
     | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+    ;
+
+ignoreErrorsExpr:
+     IGNORE_ERRORS matcher { $$ = newIgnoreErrorsExpr(log.NewStringLabelFilter($2)) }
     ;
 
 // Operator precedence only works if each of these is listed separately.

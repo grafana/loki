@@ -110,6 +110,10 @@ func (e *LabelParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
+func (e *IgnoreErrorsExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g: | level!="error"
 func (e *LabelFilterExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)

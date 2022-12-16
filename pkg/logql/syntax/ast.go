@@ -446,6 +446,25 @@ func (e *DecolorizeExpr) String() string {
 }
 func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
 
+type IgnoreErrorsExpr struct {
+	filter *log.StringLabelFilter
+	implicit
+}
+
+func newIgnoreErrorsExpr(filter *log.StringLabelFilter) *IgnoreErrorsExpr {
+	return &IgnoreErrorsExpr{filter: filter}
+}
+
+func (e *IgnoreErrorsExpr) Shardable() bool { return true }
+
+func (e *IgnoreErrorsExpr) Stage() (log.Stage, error) {
+	return log.NewIgnoreErrors(e.filter)
+}
+func (e *IgnoreErrorsExpr) String() string {
+	return fmt.Sprintf("%s %s %s", OpPipe, OpIgnoreErrors, e.filter.String())
+}
+func (e *IgnoreErrorsExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -723,6 +742,8 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
+
+	OpIgnoreErrors = "ignore_errors"
 )
 
 func IsComparisonOperator(op string) bool {
