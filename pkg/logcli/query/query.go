@@ -65,6 +65,8 @@ type Query struct {
 	FetchSchemaFromStorage bool
 	ParallelDuration       time.Duration
 	ParallelMaxWorkers     int
+	PartFilePrefix         string
+	OverwriteCompleted     bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -84,6 +86,18 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 
 	var resp *loghttp.QueryResponse
 	var err error
+
+	partFile, shouldSkip := q.createPartFile()
+
+	if shouldSkip {
+		return
+	}
+
+	if partFile != nil {
+		defer partFile.Close()
+
+		out = out.WithWriter(partFile)
+	}
 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
@@ -165,6 +179,45 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			}
 		}
 	}
+
+	if partFile != nil {
+		if err := partFile.Complete(); err != nil {
+			log.Fatalln(err)
+		}
+	}
+}
+
+func (q *Query) outputFilename() string {
+	return fmt.Sprintf("%s-%d-%d.part", q.PartFilePrefix, q.Start.Unix(), q.End.Unix())
+}
+
+// createPartFile returns a PartFile if the PartFilePrefix is set.
+// The bool value shows if the part file already exists, and this range should be skipped.
+func (q *Query) createPartFile() (*PartFile, bool) {
+	if q.PartFilePrefix == "" {
+		return nil, false
+	}
+
+	partFile := NewPartFile(q.outputFilename())
+
+	if !q.OverwriteCompleted {
+		// If we already have the completed file, no need to download it again.
+		// The user can delete the files if they want to download parts again.
+		exists, err := partFile.Exists()
+		if err != nil {
+			log.Fatalf("Query failed: %s\n", err)
+		}
+		if exists {
+			log.Printf("Skip range: %s - %s: already downloaded\n", q.Start, q.End)
+			return nil, true
+		}
+	}
+
+	if err := partFile.CreateTemp(); err != nil {
+		log.Fatalf("Query failed: %s\n", err)
+	}
+
+	return partFile, false
 }
 
 func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) {

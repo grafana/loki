@@ -28,3 +28,11 @@ func (o *RawOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLab
 	}
 	fmt.Fprintln(o.w, line)
 }
+
+// WithWriter returns a copy of the LogOutput with the writer set to the given writer
+func (o RawOutput) WithWriter(w io.Writer) LogOutput {
+	return &RawOutput{
+		w:       w,
+		options: o.options,
+	}
+}
