@@ -747,18 +747,16 @@ spec:
       - description: Client configuration for reaching the alertmanager endpoint.
         displayName: TLS Config
         path: alertmanager.client
-      - description: Defines the Basic authentication configuration for the AlertManager
-          connection.
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
         displayName: Basic Authentication
         path: alertmanager.client.basicAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: The Password for the Basic authentication configuration for the
-          AlertManager connection.
+      - description: The subject's password for the basic authentication configuration.
         displayName: Password
         path: alertmanager.client.basicAuth.password
-      - description: The Username for the Basic authentication configuration for the
-          AlertManager connection.
+      - description: The subject's username for the basic authentication configuration.
         displayName: Username
         path: alertmanager.client.basicAuth.username
       - description: Header authentication configuration for reaching the alertmanager
@@ -767,16 +765,14 @@ spec:
         path: alertmanager.client.headerAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: The credentials for the Header authentication configuration for
-          the AlertManager connection.
+      - description: The credentials for the header authentication configuration.
         displayName: Credentials
         path: alertmanager.client.headerAuth.credentials
-      - description: The credentials file for the Header authentication configuration
-          for the AlertManager connection.
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
         displayName: Credentials File
         path: alertmanager.client.headerAuth.credentialsFile
-      - description: The authentication type for the Header authentication configuration
-          for the AlertManager connection.
+      - description: The authentication type for the header authentication configuration.
         displayName: Type
         path: alertmanager.client.headerAuth.type
       - description: TLS configuration for reaching the alertmanager endpoints.
@@ -784,18 +780,16 @@ spec:
         path: alertmanager.client.tls
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: The CA path for the TLS configuration for the AlertManager connection.
+      - description: The CA certificate file path for the TLS configuration.
         displayName: CA Path
         path: alertmanager.client.tls.caPath
-      - description: The Certificate Path for the TLS configuration for the AlertManager
-          connection.
+      - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: alertmanager.client.tls.certPath
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: alertmanager.client.tls.keyPath
-      - description: The Server Name for the TLS configuration for the AlertManager
-          connection.
+      - description: The server name to validate in the alertmanager server certificates.
         displayName: Server Name
         path: alertmanager.client.tls.serverName
       - description: Defines the configuration for DNS-based discovery of AlertManager
@@ -902,18 +896,16 @@ spec:
       - description: Client configuration for reaching the alertmanager endpoint.
         displayName: TLS Config
         path: overrides.alertmanager.client
-      - description: Defines the Basic authentication configuration for the AlertManager
-          connection.
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
         displayName: Basic Authentication
         path: overrides.alertmanager.client.basicAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: The Password for the Basic authentication configuration for the
-          AlertManager connection.
+      - description: The subject's password for the basic authentication configuration.
         displayName: Password
         path: overrides.alertmanager.client.basicAuth.password
-      - description: The Username for the Basic authentication configuration for the
-          AlertManager connection.
+      - description: The subject's username for the basic authentication configuration.
         displayName: Username
         path: overrides.alertmanager.client.basicAuth.username
       - description: Header authentication configuration for reaching the alertmanager
@@ -922,16 +914,14 @@ spec:
         path: overrides.alertmanager.client.headerAuth
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: The credentials for the Header authentication configuration for
-          the AlertManager connection.
+      - description: The credentials for the header authentication configuration.
         displayName: Credentials
         path: overrides.alertmanager.client.headerAuth.credentials
-      - description: The credentials file for the Header authentication configuration
-          for the AlertManager connection.
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
         displayName: Credentials File
         path: overrides.alertmanager.client.headerAuth.credentialsFile
-      - description: The authentication type for the Header authentication configuration
-          for the AlertManager connection.
+      - description: The authentication type for the header authentication configuration.
         displayName: Type
         path: overrides.alertmanager.client.headerAuth.type
       - description: TLS configuration for reaching the alertmanager endpoints.
@@ -939,18 +929,16 @@ spec:
         path: overrides.alertmanager.client.tls
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: The CA path for the TLS configuration for the AlertManager connection.
+      - description: The CA certificate file path for the TLS configuration.
         displayName: CA Path
         path: overrides.alertmanager.client.tls.caPath
-      - description: The Certificate Path for the TLS configuration for the AlertManager
-          connection.
+      - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: overrides.alertmanager.client.tls.certPath
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: overrides.alertmanager.client.tls.keyPath
-      - description: The Server Name for the TLS configuration for the AlertManager
-          connection.
+      - description: The server name to validate in the alertmanager server certificates.
         displayName: Server Name
         path: overrides.alertmanager.client.tls.serverName
       - description: Defines the configuration for DNS-based discovery of AlertManager

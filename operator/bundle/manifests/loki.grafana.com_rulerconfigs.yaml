@@ -49,16 +49,16 @@ spec:
                       endpoint.
                     properties:
                       basicAuth:
-                        description: Defines the Basic authentication configuration
-                          for the AlertManager connection.
+                        description: Basic authentication configuration for reaching
+                          the alertmanager endpoints.
                         properties:
                           password:
-                            description: The Password for the Basic authentication
-                              configuration for the AlertManager connection.
+                            description: The subject's password for the basic authentication
+                              configuration.
                             type: string
                           username:
-                            description: The Username for the Basic authentication
-                              configuration for the AlertManager connection.
+                            description: The subject's username for the basic authentication
+                              configuration.
                             type: string
                         type: object
                       headerAuth:
@@ -66,16 +66,16 @@ spec:
                           the alertmanager endpoints.
                         properties:
                           credentials:
-                            description: The credentials for the Header authentication
-                              configuration for the AlertManager connection.
+                            description: The credentials for the header authentication
+                              configuration.
                             type: string
                           credentialsFile:
                             description: The credentials file for the Header authentication
-                              configuration for the AlertManager connection.
+                              configuration. It is mutually exclusive with `credentials`.
                             type: string
                           type:
-                            description: The authentication type for the Header authentication
-                              configuration for the AlertManager connection.
+                            description: The authentication type for the header authentication
+                              configuration.
                             type: string
                         type: object
                       tls:
@@ -83,20 +83,20 @@ spec:
                           endpoints.
                         properties:
                           caPath:
-                            description: The CA path for the TLS configuration for
-                              the AlertManager connection.
+                            description: The CA certificate file path for the TLS
+                              configuration.
                             type: string
                           certPath:
-                            description: The Certificate Path for the TLS configuration
-                              for the AlertManager connection.
+                            description: The client-side certificate file path for
+                              the TLS configuration.
                             type: string
                           keyPath:
                             description: The client-side key file path for the TLS
                               configuration.
                             type: string
                           serverName:
-                            description: The Server Name for the TLS configuration
-                              for the AlertManager connection.
+                            description: The server name to validate in the alertmanager
+                              server certificates.
                             type: string
                         type: object
                     type: object
@@ -251,16 +251,16 @@ spec:
                             endpoint.
                           properties:
                             basicAuth:
-                              description: Defines the Basic authentication configuration
-                                for the AlertManager connection.
+                              description: Basic authentication configuration for
+                                reaching the alertmanager endpoints.
                               properties:
                                 password:
-                                  description: The Password for the Basic authentication
-                                    configuration for the AlertManager connection.
+                                  description: The subject's password for the basic
+                                    authentication configuration.
                                   type: string
                                 username:
-                                  description: The Username for the Basic authentication
-                                    configuration for the AlertManager connection.
+                                  description: The subject's username for the basic
+                                    authentication configuration.
                                   type: string
                               type: object
                             headerAuth:
@@ -268,18 +268,17 @@ spec:
                                 reaching the alertmanager endpoints.
                               properties:
                                 credentials:
-                                  description: The credentials for the Header authentication
-                                    configuration for the AlertManager connection.
+                                  description: The credentials for the header authentication
+                                    configuration.
                                   type: string
                                 credentialsFile:
                                   description: The credentials file for the Header
-                                    authentication configuration for the AlertManager
-                                    connection.
+                                    authentication configuration. It is mutually exclusive
+                                    with `credentials`.
                                   type: string
                                 type:
-                                  description: The authentication type for the Header
-                                    authentication configuration for the AlertManager
-                                    connection.
+                                  description: The authentication type for the header
+                                    authentication configuration.
                                   type: string
                               type: object
                             tls:
@@ -287,20 +286,20 @@ spec:
                                 endpoints.
                               properties:
                                 caPath:
-                                  description: The CA path for the TLS configuration
-                                    for the AlertManager connection.
+                                  description: The CA certificate file path for the
+                                    TLS configuration.
                                   type: string
                                 certPath:
-                                  description: The Certificate Path for the TLS configuration
-                                    for the AlertManager connection.
+                                  description: The client-side certificate file path
+                                    for the TLS configuration.
                                   type: string
                                 keyPath:
                                   description: The client-side key file path for the
                                     TLS configuration.
                                   type: string
                                 serverName:
-                                  description: The Server Name for the TLS configuration
-                                    for the AlertManager connection.
+                                  description: The server name to validate in the
+                                    alertmanager server certificates.
                                   type: string
                               type: object
                           type: object

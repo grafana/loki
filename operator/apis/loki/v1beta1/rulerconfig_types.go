@@ -143,7 +143,7 @@ type AlertManagerClientConfig struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Header Authentication"
 	HeaderAuth *AlertManagerClientHeaderAuth `json:"headerAuth,omitempty"`
 
-	// Defines the Basic authentication configuration for the AlertManager connection.
+	// Basic authentication configuration for reaching the alertmanager endpoints.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -153,14 +153,14 @@ type AlertManagerClientConfig struct {
 
 // AlertManagerClientBasicAuth defines the basic authentication configuration for reaching alertmanager endpoints.
 type AlertManagerClientBasicAuth struct {
-	// The Username for the Basic authentication configuration for the AlertManager connection.
+	// The subject's username for the basic authentication configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Username"
 	Username *string `json:"username,omitempty"`
 
-	// The Password for the Basic authentication configuration for the AlertManager connection.
+	// The subject's password for the basic authentication configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -170,21 +170,21 @@ type AlertManagerClientBasicAuth struct {
 
 // AlertManagerClientHeaderAuth defines the header configuration reaching alertmanager endpoints.
 type AlertManagerClientHeaderAuth struct {
-	// The authentication type for the Header authentication configuration for the AlertManager connection.
+	// The authentication type for the header authentication configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Type"
 	Type *string `json:"type,omitempty"`
 
-	// The credentials for the Header authentication configuration for the AlertManager connection.
+	// The credentials for the header authentication configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Credentials"
 	Credentials *string `json:"credentials,omitempty"`
 
-	// The credentials file for the Header authentication configuration for the AlertManager connection.
+	// The credentials file for the Header authentication configuration. It is mutually exclusive with `credentials`.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -194,21 +194,21 @@ type AlertManagerClientHeaderAuth struct {
 
 // AlertManagerClientTLSConfig defines the TLS configuration for reaching alertmanager endpoints.
 type AlertManagerClientTLSConfig struct {
-	// The CA path for the TLS configuration for the AlertManager connection.
+	// The CA certificate file path for the TLS configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA Path"
 	CAPath *string `json:"caPath,omitempty"`
 
-	// The Server Name for the TLS configuration for the AlertManager connection.
+	// The server name to validate in the alertmanager server certificates.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Server Name"
 	ServerName *string `json:"serverName,omitempty"`
 
-	// The Certificate Path for the TLS configuration for the AlertManager connection.
+	// The client-side certificate file path for the TLS configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
