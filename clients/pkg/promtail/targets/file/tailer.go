@@ -41,9 +41,22 @@ type tailer struct {
 	done    chan struct{}
 
 	decoder *encoding.Decoder
+
+	// polling defines behavior of `tailer` when used in `follow` mode.
+	// setting to true watches file changes by periodic polling,
+	// disabling it uses platform-independent interface for file system notifications(e.g: inotify on Linux.)
+	polling bool
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string) (*tailer, error) {
+func newTailer(
+	metrics *Metrics,
+	logger log.Logger,
+	handler api.EntryHandler,
+	positions positions.Positions,
+	path string,
+	encoding string,
+	polling bool,
+) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -61,7 +74,7 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow:    true,
-		Poll:      true,
+		Poll:      polling,
 		ReOpen:    true,
 		MustExist: true,
 		Location: &tail.SeekInfo{

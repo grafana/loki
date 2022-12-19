@@ -28,6 +28,11 @@ const (
 type Config struct {
 	SyncPeriod time.Duration `mapstructure:"sync_period" yaml:"sync_period"`
 	Stdin      bool          `mapstructure:"stdin" yaml:"stdin"`
+
+	// TailerPolling defines behavior of `tailer` when used in `follow` mode.
+	// setting to true watches file changes by periodic polling,
+	// disabling it uses platform-independent interface for file system notifications(e.g: inotify on Linux.)
+	TailerPolling bool `mapstructure:"tailer_polling"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -35,6 +40,7 @@ type Config struct {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.SyncPeriod, prefix+"target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
 	f.BoolVar(&cfg.Stdin, prefix+"stdin", false, "Set to true to pipe logs to promtail.")
+	f.BoolVar(&cfg.TailerPolling, prefix+"target.tailer-polling", false, "By default uses platform-independent interface for file system notifications(e.g: inotify on Linux.). Set to true to use polling based watcher")
 }
 
 // RegisterFlags register flags.
@@ -330,7 +336,7 @@ func (t *FileTarget) startTailing(ps []string) {
 			reader = decompressor
 		} else {
 			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding, t.targetConfig.TailerPolling)
 			if err != nil {
 				level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 				continue
