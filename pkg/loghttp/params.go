@@ -59,14 +59,14 @@ func determineBounds(now time.Time, startString, endString, sinceString string) 
 	if sinceString != "" {
 		d, err := model.ParseDuration(sinceString)
 		if err != nil {
-			return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'since' parameter:")
+			return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'since' parameter")
 		}
 		since = time.Duration(d)
 	}
 
 	end, err := parseTimestamp(endString, now)
 	if err != nil {
-		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'end' parameter:")
+		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'end' parameter")
 	}
 
 	// endOrNow is used to apply a default for the start time or an offset if 'since' is provided.
@@ -79,7 +79,7 @@ func determineBounds(now time.Time, startString, endString, sinceString string) 
 
 	start, err := parseTimestamp(startString, endOrNow.Add(-since))
 	if err != nil {
-		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'start' parameter:")
+		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'start' parameter")
 	}
 
 	return start, end, nil
