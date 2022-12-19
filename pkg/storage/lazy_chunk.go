@@ -24,8 +24,9 @@ type LazyChunk struct {
 
 	// cache of overlapping block.
 	// We use the offset of the block as key since it's unique per chunk.
-	overlappingBlocks       map[int]iter.CacheEntryIterator
-	overlappingSampleBlocks map[int]iter.CacheSampleIterator
+	overlappingBlocks         map[int]iter.CacheEntryIterator
+	overlappingSampleBlocks   map[int]iter.CacheSampleIterator
+	overlappingExemplarBlocks map[int]iter.CacheExemplarIterator
 }
 
 // Iterator returns an entry iterator.
@@ -166,6 +167,68 @@ func (c *LazyChunk) SampleIterator(
 	// build the final iterator bound to the requested time range.
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewNonOverlappingSampleIterator(its),
+		from.UnixNano(),
+		through.UnixNano(),
+	), nil
+}
+
+// ExemplarIterator returns an sample iterator.
+// The iterator returned will cache overlapping block's entries with the next chunk if passed.
+// This way when we re-use them for ordering across batches we don't re-decompress the data again.
+func (c *LazyChunk) ExemplarIterator(
+	ctx context.Context,
+	from, through time.Time,
+	extractor log.StreamSampleExtractor,
+	nextChunk *LazyChunk,
+) (iter.ExemplarIterator, error) {
+	// If the chunk is not already loaded, then error out.
+	if c.Chunk.Data == nil {
+		return nil, errors.New("chunk is not loaded")
+	}
+
+	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
+	blocks := lokiChunk.Blocks(from, through)
+	if len(blocks) == 0 {
+		return iter.NoopIterator, nil
+	}
+	its := make([]iter.ExemplarIterator, 0, len(blocks))
+
+	for _, b := range blocks {
+		// if we have already processed and cache block let's use it.
+		if cache, ok := c.overlappingExemplarBlocks[b.Offset()]; ok {
+			cache.Reset()
+			its = append(its, cache)
+			continue
+		}
+		// if the block is overlapping cache it with the next chunk boundaries.
+		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
+			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
+			it := iter.NewCachedExemplarIterator(b.ExemplarIterator(ctx, extractor), b.Entries())
+			its = append(its, it)
+			if c.overlappingExemplarBlocks == nil {
+				c.overlappingExemplarBlocks = make(map[int]iter.CacheExemplarIterator)
+			}
+			c.overlappingExemplarBlocks[b.Offset()] = it
+			continue
+		}
+		if nextChunk != nil {
+			if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
+				delete(c.overlappingSampleBlocks, b.Offset())
+				if err := cache.Wrapped().Close(); err != nil {
+					level.Warn(util_log.Logger).Log(
+						"msg", "failed to close cache block sample iterator",
+						"err", err,
+					)
+				}
+			}
+		}
+		// non-overlapping block with the next chunk are not cached.
+		its = append(its, b.ExemplarIterator(ctx, extractor))
+	}
+
+	// build the final iterator bound to the requested time range.
+	return iter.NewTimeRangedExemplarIterator(
+		iter.NewNonOverlappingExemplarIterator(its),
 		from.UnixNano(),
 		through.UnixNano(),
 	), nil

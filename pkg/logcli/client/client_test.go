@@ -2,8 +2,12 @@ package client
 
 import (
 	"encoding/base64"
+	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
 	"net/http"
+	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -77,4 +81,24 @@ func Test_getHTTPRequestHeader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_queryExemplar(t *testing.T) {
+	apiURL := "http://localhost:3100"
+	URL, err := url.Parse(apiURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logCLIClient := &DefaultClient{
+		Address: URL.String(),
+	}
+	logql := `sum by(job,instance,userid,job_id)(sum_over_time({metrics="flink_taskmanager_job_task_numBytesInRemotePerSecond", job="downsampling"} | json | job_id=~"123" | sessionClusterId="456" | unwrap value[30s]))`
+	start := time.Now().Add(-5 * time.Minute)
+	end := time.Now()
+	exemplar, err := logCLIClient.QueryExemplar(logql, 1, start, end, logproto.FORWARD, end.Sub(start), end.Sub(start), false)
+	if err != nil {
+		return
+	}
+	fmt.Println("exemplar:", exemplar)
+
 }

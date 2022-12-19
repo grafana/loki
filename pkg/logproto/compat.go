@@ -90,6 +90,11 @@ func copyStringToBuffer(in string, buf []byte) (string, []byte) {
 
 	return yoloString(buf[0:l]), buf[l:]
 }
+func FromExemplarLabelsToLabelAdapters(ls labels.Labels, line []byte) []LabelAdapter {
+	newLs := append(ls, labels.Label{Name: "_line", Value: string(line)})
+	adapters := *(*[]LabelAdapter)(unsafe.Pointer(&newLs))
+	return adapters
+}
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.

@@ -17,6 +17,8 @@ service Querier {
 
   rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {}
 
+  rpc QueryExemplars(SampleQueryRequest) returns (stream SampleQueryResponse ){}
+
   rpc Label(LabelRequest) returns (LabelResponse) {}
 
   rpc Tail(TailRequest) returns (stream TailResponse) {}
@@ -162,6 +164,15 @@ message Sample {
   uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
 }
 
+message Exemplar {
+  // Exemplar labels, different than series labels
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+  double value = 2;
+  int64 timestamp_ms = 3;
+  uint64 hash = 4 [(gogoproto.jsontag) = "hash"];
+
+}
+
 // LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
 message LegacySample {
   double value = 1;
@@ -174,7 +185,11 @@ message Series {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "samples"
   ];
-  uint64 streamHash = 3 [(gogoproto.jsontag) = "streamHash"];
+  repeated Exemplar exemplars = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "samples"
+  ];
+  uint64 streamHash = 4 [(gogoproto.jsontag) = "streamHash"];
 }
 
 message TailRequest {

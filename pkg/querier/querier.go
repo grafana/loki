@@ -214,6 +214,53 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
 
+func (q *SingleTenantQuerier) SelectExemplars(ctx context.Context, params logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	var err error
+	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	if err != nil {
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+	}
+
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+
+	iters := []iter.ExemplarIterator{}
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+		queryRequestCopy := *params.SampleQueryRequest
+		newParams := logql.SelectSampleParams{
+			SampleQueryRequest: &queryRequestCopy,
+		}
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
+
+		ingesterIters, err := q.ingesterQuerier.SelectExemplar(ctx, newParams)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, ingesterIters...)
+	}
+
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		params.Start = storeQueryInterval.start
+		params.End = storeQueryInterval.end
+
+		storeIter, err := q.store.SelectExemplars(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, storeIter)
+	}
+	return iter.NewMergeExemplarIterator(ctx, iters), nil
+}
+
 func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {

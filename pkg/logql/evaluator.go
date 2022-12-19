@@ -107,6 +107,7 @@ func GetRangeType(q Params) QueryRangeType {
 type Evaluator interface {
 	SampleEvaluator
 	EntryEvaluator
+	ExemplarEvaluator
 }
 
 type SampleEvaluator interface {

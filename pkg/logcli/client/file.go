@@ -203,6 +203,11 @@ type querier struct {
 	labels labels.Labels
 }
 
+func (q *querier) SelectExemplars(ctx context.Context, params logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	return nil, fmt.Errorf("Exemplars Query: %w", ErrNotSupported)
+
+}
+
 func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := params.LogSelector()
 	if err != nil {

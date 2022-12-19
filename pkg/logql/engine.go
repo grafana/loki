@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/prometheus/prometheus/model/exemplar"
 	"math"
 	"sort"
 	"strings"
@@ -107,6 +108,7 @@ func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
 type Querier interface {
 	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
+	SelectExemplars(context.Context, SelectSampleParams) (iter.ExemplarIterator, error)
 }
 
 // EngineOpts is the list of options to use with the LogQL query engine.
@@ -482,4 +484,5 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
+	exemplars   []exemplar.Exemplar
 }

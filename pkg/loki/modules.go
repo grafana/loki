@@ -374,6 +374,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.querierAPI),
 		).Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
 
+		"/loki/api/v1/query_exemplars": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.ExemplarsQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.ExemplarsQueryHandler)),
+
 		"/loki/api/v1/label":               querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/loki/api/v1/labels":              querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/loki/api/v1/label/{name}/values": querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
@@ -385,7 +390,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			httpMiddleware,
 			querier.WrapQuerySpanAndTimeout("query.LogQuery", t.querierAPI),
 		).Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
-
 		"/api/prom/label":               querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/api/prom/label/{name}/values": querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/api/prom/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
@@ -812,6 +816,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		defaultHandler = frontendHandler
 	}
 	t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/query_exemplars").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(frontendHandler)

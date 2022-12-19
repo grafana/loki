@@ -28,6 +28,7 @@ import (
 const (
 	queryPath         = "/loki/api/v1/query"
 	queryRangePath    = "/loki/api/v1/query_range"
+	queryExemplarPath = "/loki/api/v1/query_exemplars"
 	labelsPath        = "/loki/api/v1/labels"
 	labelValuesPath   = "/loki/api/v1/label/%s/values"
 	seriesPath        = "/loki/api/v1/series"
@@ -41,6 +42,7 @@ var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
 type Client interface {
 	Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error)
 	QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
+	QueryExemplar(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
 	ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
 	ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
 	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
@@ -107,6 +109,30 @@ func (c *DefaultClient) QueryRange(queryStr string, limit int, start, end time.T
 	}
 
 	return c.doQuery(queryRangePath, params.Encode(), quiet)
+}
+
+// QueryExemplar uses the /api/v1/query_exemplars endpoint to execute a range query
+// excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
+// nolint:interfacer
+func (c *DefaultClient) QueryExemplar(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetString("query", queryStr)
+	params.SetInt32("limit", limit)
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("direction", direction.String())
+
+	// The step is optional, so we do set it only if provided,
+	// otherwise we do leverage on the API defaults
+	if step != 0 {
+		params.SetFloat("step", step.Seconds())
+	}
+
+	if interval != 0 {
+		params.SetFloat("interval", interval.Seconds())
+	}
+
+	return c.doQuery(queryExemplarPath, params.Encode(), quiet)
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names

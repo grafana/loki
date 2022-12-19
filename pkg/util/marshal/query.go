@@ -2,14 +2,15 @@ package marshal
 
 import (
 	"fmt"
-	"strconv"
-
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/util/jsonutil"
+	"strconv"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -253,6 +254,15 @@ func encodeResult(v parser.Value, s *jsoniter.Stream) error {
 
 		encodeMatrix(m, s)
 
+	case loghttp.ResultTypeExemplar:
+		m, ok := v.(logqlmodel.Exemplars)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for matrix", m)
+		}
+
+		encodeExemplars(m, s)
+
 	default:
 		s.WriteNil()
 		return fmt.Errorf("v1 endpoints do not support type %s", v.Type())
@@ -410,4 +420,68 @@ func encodeSampleStream(stream promql.Series, s *jsoniter.Stream) {
 		encodeValue(p.T, p.V, s)
 	}
 	s.WriteArrayEnd()
+}
+
+func encodeExemplars(m logqlmodel.Exemplars, s *jsoniter.Stream) {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	for i, sampleStream := range m {
+		if i > 0 {
+			s.WriteMore()
+		}
+		encodeExemplarStream(sampleStream, s)
+		s.Flush()
+	}
+}
+
+func encodeExemplarStream(stream exemplar.QueryResult, s *jsoniter.Stream) {
+	s.WriteObjectStart()
+	defer s.WriteObjectEnd()
+
+	s.WriteObjectField("metric")
+	encodeMetric(stream.SeriesLabels, s)
+
+	s.WriteMore()
+	s.WriteObjectField("values")
+	s.WriteArrayStart()
+	for i, p := range stream.Exemplars {
+		if i > 0 {
+			s.WriteMore()
+		}
+		marshalExemplarJSON(p, s)
+	}
+	s.WriteArrayEnd()
+}
+
+// marshalExemplarJSON writes.
+//
+//	{
+//	   labels: <labels>,
+//	   value: "<string>",
+//	   timestamp: <float>
+//	}
+func marshalExemplarJSON(p exemplar.Exemplar, stream *jsoniter.Stream) {
+	stream.WriteObjectStart()
+
+	// "labels" key.
+	stream.WriteObjectField(`labels`)
+	lbls, err := p.Labels.MarshalJSON()
+	if err != nil {
+		stream.Error = err
+		return
+	}
+	stream.SetBuffer(append(stream.Buffer(), lbls...))
+
+	// "value" key.
+	stream.WriteMore()
+	stream.WriteObjectField(`value`)
+	jsonutil.MarshalValue(p.Value, stream)
+
+	// "timestamp" key.
+	stream.WriteMore()
+	stream.WriteObjectField(`timestamp`)
+	jsonutil.MarshalTimestamp(p.Ts, stream)
+
+	stream.WriteObjectEnd()
 }

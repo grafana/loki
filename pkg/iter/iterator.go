@@ -19,10 +19,11 @@ type noOpIterator struct{}
 
 var NoopIterator = noOpIterator{}
 
-func (noOpIterator) Next() bool              { return false }
-func (noOpIterator) Error() error            { return nil }
-func (noOpIterator) Labels() string          { return "" }
-func (noOpIterator) StreamHash() uint64      { return 0 }
-func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }
-func (noOpIterator) Sample() logproto.Sample { return logproto.Sample{} }
-func (noOpIterator) Close() error            { return nil }
+func (noOpIterator) Next() bool                  { return false }
+func (noOpIterator) Error() error                { return nil }
+func (noOpIterator) Labels() string              { return "" }
+func (noOpIterator) StreamHash() uint64          { return 0 }
+func (noOpIterator) Entry() logproto.Entry       { return logproto.Entry{} }
+func (noOpIterator) Sample() logproto.Sample     { return logproto.Sample{} }
+func (noOpIterator) Exemplar() logproto.Exemplar { return logproto.Exemplar{} }
+func (noOpIterator) Close() error                { return nil }

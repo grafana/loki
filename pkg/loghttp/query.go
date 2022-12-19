@@ -63,10 +63,11 @@ type ResultType string
 
 // ResultType values
 const (
-	ResultTypeStream = "streams"
-	ResultTypeScalar = "scalar"
-	ResultTypeVector = "vector"
-	ResultTypeMatrix = "matrix"
+	ResultTypeStream   = "streams"
+	ResultTypeScalar   = "scalar"
+	ResultTypeVector   = "vector"
+	ResultTypeMatrix   = "matrix"
+	ResultTypeExemplar = "exemplars"
 )
 
 // ResultValue interface mimics the promql.Value interface

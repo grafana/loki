@@ -161,4 +161,5 @@ type Block interface {
 	Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
 	SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator
+	ExemplarIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.ExemplarIterator
 }

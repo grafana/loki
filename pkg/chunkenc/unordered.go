@@ -48,6 +48,12 @@ type HeadBlock interface {
 		maxt int64,
 		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
+	ExemplarIterator(
+		ctx context.Context,
+		mint,
+		maxt int64,
+		extractor log.StreamSampleExtractor,
+	) iter.ExemplarIterator
 	Format() HeadBlockFmt
 }
 
@@ -320,6 +326,58 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		seriesRes = append(seriesRes, *s)
 	}
 	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		return nil
+	})
+}
+
+func (hb *unorderedHeadBlock) ExemplarIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.ExemplarIterator {
+	series := map[string]*logproto.Series{}
+	baseHash := extractor.BaseLabels().Hash()
+	_ = hb.forEntries(
+		ctx,
+		logproto.FORWARD,
+		mint,
+		maxt,
+		func(ts int64, line string) error {
+			value, parsedLabels, ok := extractor.ProcessString(ts, line)
+			if !ok {
+				return nil
+			}
+			var (
+				found bool
+				s     *logproto.Series
+			)
+			lbs := parsedLabels.String()
+			s, found = series[lbs]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lbs,
+					Exemplars:  ExemplarsPool.Get(hb.lines).([]logproto.Exemplar)[:0],
+					StreamHash: baseHash,
+				}
+				series[lbs] = s
+			}
+			s.Exemplars = append(s.Exemplars, logproto.Exemplar{
+				TimestampMs: ts,
+				Value:       value,
+				Labels:      logproto.FromExemplarLabelsToLabelAdapters(parsedLabels.Labels(), []byte(line)),
+				Hash:        xxhash.Sum64(unsafeGetBytes(line)),
+			})
+			return nil
+		},
+	)
+
+	if len(series) == 0 {
+		return iter.NoopIterator
+	}
+	seriesRes := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		seriesRes = append(seriesRes, *s)
+	}
+	return iter.ExemplarIteratorWithClose(iter.NewMultiExemplarSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}

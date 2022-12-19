@@ -162,6 +162,7 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectExemplars(ctx context.Context, req logql.SelectSampleParams) (iter.ExemplarIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
@@ -751,6 +752,46 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
 	return sendSampleBatches(ctx, it, queryServer)
+}
+
+func (i *Ingester) QueryExemplars(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QueryExemplarsServer) error {
+	// initialize stats collection for ingester queries.
+	_, ctx := stats.NewContext(queryServer.Context())
+
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
+	it, err := instance.QueryExemplar(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	if err != nil {
+		return err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    start,
+			End:      end,
+			Selector: req.Selector,
+			Shards:   req.Shards,
+			Deletes:  req.Deletes,
+		}}
+		storeItr, err := i.store.SelectExemplars(ctx, storeReq)
+		if err != nil {
+			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			return err
+		}
+
+		it = iter.NewMergeExemplarIterator(ctx, []iter.ExemplarIterator{it, storeItr})
+	}
+
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+
+	return sendExemplarBatches(ctx, it, queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.

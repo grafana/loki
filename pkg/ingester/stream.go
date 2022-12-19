@@ -566,6 +566,43 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	return iter.NewSortSampleIterator(iterators), nil
 }
 
+// Returns an ExemplarIterator.
+func (s *stream) ExemplarIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.ExemplarIterator, error) {
+	s.chunkMtx.RLock()
+	defer s.chunkMtx.RUnlock()
+	iterators := make([]iter.ExemplarIterator, 0, len(s.chunks))
+
+	var lastMax time.Time
+	ordered := true
+
+	for _, c := range s.chunks {
+		mint, maxt := c.chunk.Bounds()
+
+		// skip this chunk
+		if through.Before(mint) || maxt.Before(from) {
+			continue
+		}
+
+		if mint.Before(lastMax) {
+			ordered = false
+		}
+		lastMax = maxt
+
+		if itr := c.chunk.ExemplarIterator(ctx, from, through, extractor); itr != nil {
+			iterators = append(iterators, itr)
+		}
+	}
+
+	if statsCtx != nil {
+		statsCtx.AddIngesterTotalChunkMatched(int64(len(iterators)))
+	}
+
+	if ordered {
+		return iter.NewNonOverlappingExemplarIterator(iterators), nil
+	}
+	return iter.NewSortExemplarIterator(iterators), nil
+}
+
 func (s *stream) addTailer(t *tailer) {
 	s.tailerMtx.Lock()
 	defer s.tailerMtx.Unlock()

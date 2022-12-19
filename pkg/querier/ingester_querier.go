@@ -135,6 +135,22 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 	return iterators, nil
 }
 
+func (q *IngesterQuerier) SelectExemplar(ctx context.Context, params logql.SelectSampleParams) ([]iter.ExemplarIterator, error) {
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+		stats.FromContext(ctx).AddIngesterReached(1)
+		return client.QueryExemplars(ctx, params.SampleQueryRequest)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	iterators := make([]iter.ExemplarIterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewExemplarQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
+	}
+	return iterators, nil
+}
+
 func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Label(ctx, req)

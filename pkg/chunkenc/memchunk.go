@@ -896,6 +896,47 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 	)
 }
 
+func (c *MemChunk) ExemplarIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.ExemplarIterator {
+	mint, maxt := from.UnixNano(), through.UnixNano()
+	its := make([]iter.ExemplarIterator, 0, len(c.blocks)+1)
+
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
+	for _, b := range c.blocks {
+		// skip this block
+		if maxt < b.mint || b.maxt < mint {
+			continue
+		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+		its = append(its, encBlock{c.encoding, b}.ExemplarIterator(ctx, extractor))
+	}
+
+	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
+		its = append(its, c.head.ExemplarIterator(ctx, mint, maxt, extractor))
+	}
+
+	var it iter.ExemplarIterator
+	if ordered {
+		it = iter.NewNonOverlappingExemplarIterator(its)
+	} else {
+		it = iter.NewSortExemplarIterator(its)
+	}
+
+	return iter.NewTimeRangedExemplarIterator(
+		it,
+		mint,
+		maxt,
+	)
+}
+
 // Blocks implements Chunk
 func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
@@ -957,6 +998,13 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 type encBlock struct {
 	enc Encoding
 	block
+}
+
+func (b encBlock) ExemplarIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.ExemplarIterator {
+	if len(b.b) == 0 {
+		return iter.NoopIterator
+	}
+	return newExemplarIterator(ctx, getReaderPool(b.enc), b.b, extractor)
 }
 
 func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
@@ -1094,6 +1142,59 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		seriesRes = append(seriesRes, *s)
 	}
 	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		return nil
+	})
+}
+
+func (hb *headBlock) ExemplarIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.ExemplarIterator {
+	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
+		return iter.NoopIterator
+	}
+	stats := stats.FromContext(ctx)
+	stats.AddHeadChunkLines(int64(len(hb.entries)))
+	series := map[string]*logproto.Series{}
+	baseHash := extractor.BaseLabels().Hash()
+
+	for _, e := range hb.entries {
+		stats.AddHeadChunkBytes(int64(len(e.s)))
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
+		if !ok {
+			continue
+		}
+		var (
+			found bool
+			s     *logproto.Series
+		)
+
+		lbs := parsedLabels.String()
+		if s, found = series[lbs]; !found {
+			s = &logproto.Series{
+				Labels:     lbs,
+				Exemplars:  ExemplarsPool.Get(len(hb.entries)).([]logproto.Exemplar)[:0],
+				StreamHash: baseHash,
+			}
+			series[lbs] = s
+		}
+
+		s.Exemplars = append(s.Exemplars, logproto.Exemplar{
+			TimestampMs: e.t,
+			Value:       value,
+			Labels:      logproto.FromExemplarLabelsToLabelAdapters(parsedLabels.Labels(), []byte(e.s)),
+			Hash:        xxhash.Sum64(unsafeGetBytes(e.s)),
+		})
+	}
+
+	if len(series) == 0 {
+		return iter.NoopIterator
+	}
+	seriesRes := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		seriesRes = append(seriesRes, *s)
+	}
+	return iter.ExemplarIteratorWithClose(iter.NewMultiExemplarSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
@@ -1330,5 +1431,47 @@ func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
+	return e.cur
+}
+
+//
+
+func newExemplarIterator(ctx context.Context, pool ReaderPool, b []byte, extractor log.StreamSampleExtractor) iter.ExemplarIterator {
+	it := &exemplarBufferedIterator{
+		bufferedIterator: newBufferedIterator(ctx, pool, b),
+		extractor:        extractor,
+	}
+	return it
+}
+
+type exemplarBufferedIterator struct {
+	*bufferedIterator
+
+	extractor log.StreamSampleExtractor
+
+	cur        logproto.Exemplar
+	currLabels log.LabelsResult
+}
+
+func (e *exemplarBufferedIterator) Next() bool {
+	for e.bufferedIterator.Next() {
+		val, lbs, ok := e.extractor.Process(e.currTs, e.currLine)
+		if !ok {
+			continue
+		}
+		e.currLabels = lbs
+		e.cur.Value = val
+		e.cur.Hash = xxhash.Sum64(e.currLine)
+		e.cur.TimestampMs = e.currTs
+		e.cur.Labels = logproto.FromExemplarLabelsToLabelAdapters(lbs.Labels(), e.currLine)
+		return true
+	}
+	return false
+}
+func (e *exemplarBufferedIterator) Labels() string { return e.currLabels.String() }
+
+func (e *exemplarBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
+
+func (e *exemplarBufferedIterator) Exemplar() logproto.Exemplar {
 	return e.cur
 }

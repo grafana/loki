@@ -231,6 +231,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 type errorQuerier struct{}
 
+func (q errorQuerier) SelectExemplars(ctx context.Context, params SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	return nil, errors.New("unimplemented")
 }

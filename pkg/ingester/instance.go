@@ -439,6 +439,58 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	return iter.NewSortSampleIterator(iters), nil
 }
 
+func (i *instance) QueryExemplar(ctx context.Context, req logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := stats.FromContext(ctx)
+	var iters []iter.ExemplarIterator
+
+	var shard *astmapper.ShardAnnotation
+	shards, err := logql.ParseShards(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+	if len(shards) > 1 {
+		return nil, errors.New("only one shard per ingester query is supported")
+	}
+	if len(shards) == 1 {
+		shard = &shards[0]
+	}
+
+	err = i.forMatchingStreams(
+		ctx,
+		req.Start,
+		expr.Selector().Matchers(),
+		shard,
+		func(stream *stream) error {
+			iter, err := stream.ExemplarIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
+			if err != nil {
+				return err
+			}
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortExemplarIterator(iters), nil
+}
+
 // Label returns the label names or values depending on the given request
 // Without label matchers the label names and values are retrieved from the index directly.
 // If label matchers are given only the matching streams are fetched from the index.
@@ -801,6 +853,32 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
+		if err != nil {
+			return err
+		}
+		if len(batch.Series) == 0 {
+			return nil
+		}
+
+		stats.AddIngesterBatch(int64(size))
+		batch.Stats = stats.Ingester()
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
+			return err
+		}
+
+		stats.Reset()
+
+	}
+	return nil
+}
+
+func sendExemplarBatches(ctx context.Context, it iter.ExemplarIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	stats := stats.FromContext(ctx)
+	for !isDone(ctx) {
+		batch, size, err := iter.ReadExemplarBatch(it, queryBatchSampleSize)
 		if err != nil {
 			return err
 		}

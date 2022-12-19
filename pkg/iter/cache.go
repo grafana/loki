@@ -196,3 +196,101 @@ func (it *cachedSampleIterator) Close() error {
 	it.Reset()
 	return it.closeErr
 }
+
+//
+
+type CacheExemplarIterator interface {
+	ExemplarIterator
+	Wrapped() ExemplarIterator
+	Reset()
+}
+
+// cachedIterator is an iterator that caches iteration to be replayed later on.
+type cachedExemplarIterator struct {
+	cache   []exemplarWithLabels
+	wrapped ExemplarIterator
+
+	curr int
+
+	closeErr error
+	iterErr  error
+}
+
+// newSampleCachedIterator creates an iterator that cache iteration result and can be iterated again
+// after closing it without re-using the underlaying iterator `it`.
+func NewCachedExemplarIterator(it ExemplarIterator, cap int) CacheExemplarIterator {
+	c := &cachedExemplarIterator{
+		wrapped: it,
+		cache:   make([]exemplarWithLabels, 0, cap),
+		curr:    -1,
+	}
+	return c
+}
+
+func (it *cachedExemplarIterator) Wrapped() ExemplarIterator {
+	return it.wrapped
+}
+
+func (it *cachedExemplarIterator) Reset() {
+	it.curr = -1
+}
+
+func (it *cachedExemplarIterator) consumeWrapped() bool {
+	if it.Wrapped() == nil {
+		return false
+	}
+	ok := it.Wrapped().Next()
+	// we're done with the base iterator.
+	if !ok {
+		it.closeErr = it.Wrapped().Close()
+		it.iterErr = it.Wrapped().Error()
+		it.wrapped = nil
+		return false
+	}
+	// we're caching entries
+	it.cache = append(it.cache, exemplarWithLabels{Exemplar: it.Wrapped().Exemplar(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
+	it.curr++
+	return true
+}
+
+func (it *cachedExemplarIterator) Next() bool {
+	if len(it.cache) == 0 && it.Wrapped() == nil {
+		return false
+	}
+	if it.curr+1 >= len(it.cache) {
+		if it.Wrapped() != nil {
+			return it.consumeWrapped()
+		}
+		return false
+	}
+	it.curr++
+	return true
+}
+
+func (it *cachedExemplarIterator) Exemplar() logproto.Exemplar {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return logproto.Exemplar{}
+	}
+	return it.cache[it.curr].Exemplar
+}
+
+func (it *cachedExemplarIterator) Labels() string {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return ""
+	}
+	return it.cache[it.curr].labels
+}
+
+func (it *cachedExemplarIterator) StreamHash() uint64 {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return 0
+	}
+	return it.cache[it.curr].streamHash
+}
+
+func (it *cachedExemplarIterator) Error() error { return it.iterErr }
+
+func (it *cachedExemplarIterator) Close() error {
+	it.Reset()
+	return it.closeErr
+}

@@ -50,6 +50,8 @@ var (
 
 	// SamplesPool pooling array of samples [512,1024,...,16k]
 	SamplesPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]logproto.Sample, 0, size) })
+	// ExemplarsPool pooling array of exemplarsPool [512,1024,...,16k]
+	ExemplarsPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]logproto.Exemplar, 0, size) })
 
 	// Pool of crc32 hash
 	crc32HashPool = sync.Pool{

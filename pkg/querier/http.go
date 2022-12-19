@@ -100,6 +100,42 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ExemplarsQueryHandler is a http.HandlerFunc for Exemplars queries.
+func (q *QuerierAPI) ExemplarsQueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := loghttp.ParseRangeQuery(r)
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	ctx := r.Context()
+	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Start,
+		request.End,
+		request.Step,
+		request.Interval,
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.engine.ExemplarQuerier(params)
+	result, err := query.SelectExemplars(ctx)
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+}
+
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 	request, err := loghttp.ParseInstantQuery(r)

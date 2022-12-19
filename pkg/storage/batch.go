@@ -451,6 +451,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
 }
 
+// sample
 type sampleBatchIterator struct {
 	*batchChunkIterator
 	curr iter.SampleIterator
@@ -819,4 +820,143 @@ outer:
 	}
 
 	return css
+}
+
+// exemplar
+type exemplarBatchIterator struct {
+	*batchChunkIterator
+	curr iter.ExemplarIterator
+	err  error
+
+	ctx       context.Context
+	cancel    context.CancelFunc
+	extractor syntax.SampleExtractor
+}
+
+func newExemplarBatchIterator(
+	ctx context.Context,
+	schemas config.SchemaConfig,
+	metrics *ChunkMetrics,
+	chunks []*LazyChunk,
+	batchSize int,
+	matchers []*labels.Matcher,
+	extractor syntax.SampleExtractor,
+	start, end time.Time,
+	chunkFilterer chunk.Filterer,
+) (iter.ExemplarIterator, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	return &exemplarBatchIterator{
+		extractor:          extractor,
+		ctx:                ctx,
+		cancel:             cancel,
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
+	}, nil
+}
+
+func (it *exemplarBatchIterator) Labels() string {
+	return it.curr.Labels()
+}
+
+func (it *exemplarBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
+}
+
+func (it *exemplarBatchIterator) Error() error {
+	if it.err != nil {
+		return it.err
+	}
+	if it.curr != nil && it.curr.Error() != nil {
+		return it.curr.Error()
+	}
+	if it.ctx.Err() != nil {
+		return it.ctx.Err()
+	}
+	return nil
+}
+
+func (it *exemplarBatchIterator) Close() error {
+	it.cancel()
+	if it.curr != nil {
+		return it.curr.Close()
+	}
+	return nil
+}
+
+func (it *exemplarBatchIterator) Exemplar() logproto.Exemplar {
+	return it.curr.Exemplar()
+}
+
+func (it *exemplarBatchIterator) Next() bool {
+	// for loop to avoid recursion
+	for it.ctx.Err() == nil {
+		if it.curr != nil && it.curr.Next() {
+			return true
+		}
+		// close previous iterator
+		if it.curr != nil {
+			it.err = it.curr.Close()
+		}
+		next := it.batchChunkIterator.Next()
+		if next == nil {
+			return false
+		}
+		if next.err != nil {
+			it.err = next.err
+			return false
+		}
+		var err error
+		it.curr, err = it.newChunksIterator(next)
+		if err != nil {
+			it.err = err
+			return false
+		}
+	}
+	return false
+}
+
+// newChunksIterator creates an iterator over a set of lazychunks.
+func (it *exemplarBatchIterator) newChunksIterator(b *chunkBatch) (iter.ExemplarIterator, error) {
+	iters, err := it.buildIterators(b.chunksBySeries, b.from, b.through, b.nextChunk)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortExemplarIterator(iters), nil
+}
+
+func (it *exemplarBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.ExemplarIterator, error) {
+	result := make([]iter.ExemplarIterator, 0, len(chks))
+	for _, chunks := range chks {
+		if len(chunks) != 0 && len(chunks[0]) != 0 {
+			streamExtractor := it.extractor.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels(nil))
+			iterator, err := it.buildHeapIterator(chunks, from, through, streamExtractor, nextChunk)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, iterator)
+		}
+	}
+
+	return result, nil
+}
+
+func (it *exemplarBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractor log.StreamSampleExtractor, nextChunk *LazyChunk) (iter.ExemplarIterator, error) {
+	result := make([]iter.ExemplarIterator, 0, len(chks))
+
+	for i := range chks {
+		iterators := make([]iter.ExemplarIterator, 0, len(chks[i]))
+		for j := range chks[i] {
+			if !chks[i][j].IsValid {
+				continue
+			}
+			iterator, err := chks[i][j].ExemplarIterator(it.ctx, from, through, streamExtractor, nextChunk)
+			if err != nil {
+				return nil, err
+			}
+			iterators = append(iterators, iterator)
+		}
+		result = append(result, iter.NewNonOverlappingExemplarIterator(iterators))
+	}
+
+	return iter.NewMergeExemplarIterator(it.ctx, result), nil
 }
