@@ -77,10 +77,12 @@ func (b *batch) replay(entry api.Entry) {
 	}
 }
 
-func xxx(entry api.Entry, wal WAL) error {
+func writeEntryToWAL(entry api.Entry, wal WAL, tenantID string) error {
 	// Reset wal record slices
 	walRecord.RefEntries = walRecord.RefEntries[:0]
 	walRecord.Series = walRecord.Series[:0]
+	// todo: maybe the UserID in wal records is used in some other way
+	walRecord.UserID = tenantID
 
 	// todo: log the error
 	defer func() {

@@ -9,10 +9,9 @@ import (
 
 	"github.com/prometheus/prometheus/tsdb/record"
 
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/util/wal"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
+	"github.com/grafana/loki/pkg/ingester"
 
 	"github.com/grafana/loki/pkg/logproto"
 
@@ -125,7 +124,7 @@ func Test_WAL_WriteAndConsume(t *testing.T) {
 			ReservedLabelTenantID: "tenant1",
 		},
 		Entry: logproto.Entry{
-			Line: "test",
+			Line: "test 2",
 		},
 	}
 	expectedWALPath := path.Join(
@@ -136,13 +135,21 @@ func Test_WAL_WriteAndConsume(t *testing.T) {
 	t.Logf("Expected wal path: %s", expectedWALPath)
 
 	consumer := newSimpleConsumer()
-	watcher := NewVanillaWALWatcher(consumer)
+	watcher := NewWALWatcher(expectedWALPath, consumer)
+	watcher.Start()
+	defer watcher.Stop()
+
+	// testing logs
 	dirs, err := os.ReadDir(expectedWALPath)
 	require.NoError(t, err)
 	t.Logf("files in wal dir: %v", dirs)
-	reader, closer, err := wal.NewWalReader(expectedWALPath, -1)
-	require.NoError(t, err)
-	defer closer.Close()
-	err = watcher.Watch(reader)
-	require.NoError(t, err)
+
+	// todo: why is this propagation time needed
+	time.Sleep(2 * time.Second)
+
+	require.Len(t, consumer.Entries["tenant1"], 2)
+
+	// todo assert as well over the series
+	t.Logf("series: %v", consumer.Series)
+	t.Logf("entries: %v", consumer.Entries)
 }

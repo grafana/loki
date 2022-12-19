@@ -393,7 +393,7 @@ func (c *client) run() {
 			e, tenantID := c.processEntry(e)
 			// Get WAL, and write entry to it
 			w, _ := c.wal.getWAL(tenantID)
-			xxx(e, w)
+			writeEntryToWAL(e, w, tenantID)
 
 			batch, ok := batches[tenantID]
 
