@@ -39,6 +39,11 @@ type Config struct {
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
 
+	// When enabled, Promtail will not retry batches that get a
+	// 429 'Too Many Requests' response from the distributor. Helps
+	// prevent HOL blocking in multitenant deployments.
+	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
+
 	// deprecated use StreamLagLabels from config.Config instead
 	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
 }

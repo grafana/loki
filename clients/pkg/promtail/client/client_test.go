@@ -43,15 +43,16 @@ type receivedReq struct {
 
 func TestClient_Handle(t *testing.T) {
 	tests := map[string]struct {
-		clientBatchSize      int
-		clientBatchWait      time.Duration
-		clientMaxRetries     int
-		clientTenantID       string
-		serverResponseStatus int
-		inputEntries         []api.Entry
-		inputDelay           time.Duration
-		expectedReqs         []receivedReq
-		expectedMetrics      string
+		clientBatchSize       int
+		clientBatchWait       time.Duration
+		clientMaxRetries      int
+		clientTenantID        string
+		clientDropRateLimited bool
+		serverResponseStatus  int
+		inputEntries          []api.Entry
+		inputDelay            time.Duration
+		expectedReqs          []receivedReq
+		expectedMetrics       string
 	}{
 		"batch log entries together until the batch size is reached": {
 			clientBatchSize:      10,
@@ -183,6 +184,28 @@ func TestClient_Handle(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 0
 			`,
 		},
+		"do not retry in case of 429 when client is configured to drop rate limited batches": {
+			clientBatchSize:       10,
+			clientBatchWait:       10 * time.Millisecond,
+			clientMaxRetries:      3,
+			clientDropRateLimited: true,
+			serverResponseStatus:  429,
+			inputEntries:          []api.Entry{logEntries[0]},
+			expectedReqs: []receivedReq{
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+			},
+			expectedMetrics: `
+				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
+				# TYPE promtail_dropped_entries_total counter
+				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
+				# TYPE promtail_sent_entries_total counter
+				promtail_sent_entries_total{host="__HOST__"} 0
+			`,
+		},
 		"batch log entries together honoring the client tenant ID": {
 			clientBatchSize:      100,
 			clientBatchWait:      100 * time.Millisecond,
@@ -258,14 +281,15 @@ func TestClient_Handle(t *testing.T) {
 
 			// Instance the client
 			cfg := Config{
-				URL:            serverURL,
-				BatchWait:      testData.clientBatchWait,
-				BatchSize:      testData.clientBatchSize,
-				Client:         config.HTTPClientConfig{},
-				BackoffConfig:  backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
-				ExternalLabels: lokiflag.LabelSet{},
-				Timeout:        1 * time.Second,
-				TenantID:       testData.clientTenantID,
+				URL:                    serverURL,
+				BatchWait:              testData.clientBatchWait,
+				BatchSize:              testData.clientBatchSize,
+				DropRateLimitedBatches: testData.clientDropRateLimited,
+				Client:                 config.HTTPClientConfig{},
+				BackoffConfig:          backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
+				ExternalLabels:         lokiflag.LabelSet{},
+				Timeout:                1 * time.Second,
+				TenantID:               testData.clientTenantID,
 			}
 
 			m := NewMetrics(reg, nil)
