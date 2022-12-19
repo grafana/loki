@@ -511,23 +511,27 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 	return lf
 }
 
-// Test_Panic checks if a custom function that use regular expressions panics.
-// This panic is caught inside the text/template library when the function is called.
-func Test_Panic(t *testing.T) {
-	require.Panics(t, func() {
+func Test_InvalidRegex(t *testing.T) {
+	t.Run("regexReplaceAll", func(t *testing.T) {
 		cntFunc := functionMap["regexReplaceAll"]
-		f := cntFunc.(func(string, string, string) string)
-		f("a|b|\\q", "input", "replacement")
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("a|b|\\q", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
 	})
-	require.Panics(t, func() {
+	t.Run("regexReplaceAllLiteral", func(t *testing.T) {
 		cntFunc := functionMap["regexReplaceAllLiteral"]
-		f := cntFunc.(func(string, string, string) string)
-		f("\\h", "input", "replacement")
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("\\h", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
 	})
-	require.Panics(t, func() {
+	t.Run("count", func(t *testing.T) {
 		cntFunc := functionMap["count"]
-		f := cntFunc.(func(string, string) int)
-		f("a|b|\\K", "input")
+		f := cntFunc.(func(string, string) (int, error))
+		ret, err := f("a|b|\\K", "input")
+		require.Error(t, err)
+		require.Empty(t, ret)
 	})
 }
 
