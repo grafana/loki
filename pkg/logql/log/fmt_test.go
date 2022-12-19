@@ -511,6 +511,26 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 	return lf
 }
 
+// Test_Panic checks if a custom function that use regular expressions panics.
+// This panic is caught inside the text/template library when the function is called.
+func Test_Panic(t *testing.T) {
+	require.Panics(t, func() {
+		cntFunc := functionMap["regexReplaceAll"]
+		f := cntFunc.(func(string, string, string) string)
+		f("a|b|\\q", "input", "replacement")
+	})
+	require.Panics(t, func() {
+		cntFunc := functionMap["regexReplaceAllLiteral"]
+		f := cntFunc.(func(string, string, string) string)
+		f("\\h", "input", "replacement")
+	})
+	require.Panics(t, func() {
+		cntFunc := functionMap["count"]
+		f := cntFunc.(func(string, string) int)
+		f("a|b|\\K", "input")
+	})
+}
+
 func Test_validate(t *testing.T) {
 	tests := []struct {
 		name    string
