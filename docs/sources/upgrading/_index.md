@@ -57,7 +57,6 @@ ruler:
     period: 5s
 ```
 
-<<<<<<< HEAD
 ### Querier
 
 #### query-frontend k8s headless service changed to load balanced service
