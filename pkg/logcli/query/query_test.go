@@ -509,6 +509,11 @@ type testQueryClient struct {
 	orgID           string
 }
 
+func (t *testQueryClient) QueryExemplar(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	q := logql.NewMockQuerier(0, testStreams)
 	e := logql.NewEngine(logql.EngineOpts{}, q, logql.NoLimits, log.NewNopLogger())
