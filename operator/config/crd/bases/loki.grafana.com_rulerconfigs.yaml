@@ -39,6 +39,62 @@ spec:
                 description: Defines alert manager configuration to notify on firing
                   alerts.
                 properties:
+                  client:
+                    description: Client configuration for reaching the alertmanager
+                      endpoint.
+                    properties:
+                      basicAuth:
+                        description: Basic authentication configuration for reaching
+                          the alertmanager endpoints.
+                        properties:
+                          password:
+                            description: The subject's password for the basic authentication
+                              configuration.
+                            type: string
+                          username:
+                            description: The subject's username for the basic authentication
+                              configuration.
+                            type: string
+                        type: object
+                      headerAuth:
+                        description: Header authentication configuration for reaching
+                          the alertmanager endpoints.
+                        properties:
+                          credentials:
+                            description: The credentials for the header authentication
+                              configuration.
+                            type: string
+                          credentialsFile:
+                            description: The credentials file for the Header authentication
+                              configuration. It is mutually exclusive with `credentials`.
+                            type: string
+                          type:
+                            description: The authentication type for the header authentication
+                              configuration.
+                            type: string
+                        type: object
+                      tls:
+                        description: TLS configuration for reaching the alertmanager
+                          endpoints.
+                        properties:
+                          caPath:
+                            description: The CA certificate file path for the TLS
+                              configuration.
+                            type: string
+                          certPath:
+                            description: The client-side certificate file path for
+                              the TLS configuration.
+                            type: string
+                          keyPath:
+                            description: The client-side key file path for the TLS
+                              configuration.
+                            type: string
+                          serverName:
+                            description: The server name to validate in the alertmanager
+                              server certificates.
+                            type: string
+                        type: object
+                    type: object
                   discovery:
                     description: Defines the configuration for DNS-based discovery
                       of AlertManager hosts.
@@ -177,6 +233,209 @@ spec:
                 description: Interval on how frequently to evaluate rules.
                 pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
                 type: string
+              overrides:
+                additionalProperties:
+                  description: RulerOverrides defines the overrides applied per-tenant.
+                  properties:
+                    alertmanager:
+                      description: AlertManagerOverrides defines the overrides to
+                        apply to the alertmanager config.
+                      properties:
+                        client:
+                          description: Client configuration for reaching the alertmanager
+                            endpoint.
+                          properties:
+                            basicAuth:
+                              description: Basic authentication configuration for
+                                reaching the alertmanager endpoints.
+                              properties:
+                                password:
+                                  description: The subject's password for the basic
+                                    authentication configuration.
+                                  type: string
+                                username:
+                                  description: The subject's username for the basic
+                                    authentication configuration.
+                                  type: string
+                              type: object
+                            headerAuth:
+                              description: Header authentication configuration for
+                                reaching the alertmanager endpoints.
+                              properties:
+                                credentials:
+                                  description: The credentials for the header authentication
+                                    configuration.
+                                  type: string
+                                credentialsFile:
+                                  description: The credentials file for the Header
+                                    authentication configuration. It is mutually exclusive
+                                    with `credentials`.
+                                  type: string
+                                type:
+                                  description: The authentication type for the header
+                                    authentication configuration.
+                                  type: string
+                              type: object
+                            tls:
+                              description: TLS configuration for reaching the alertmanager
+                                endpoints.
+                              properties:
+                                caPath:
+                                  description: The CA certificate file path for the
+                                    TLS configuration.
+                                  type: string
+                                certPath:
+                                  description: The client-side certificate file path
+                                    for the TLS configuration.
+                                  type: string
+                                keyPath:
+                                  description: The client-side key file path for the
+                                    TLS configuration.
+                                  type: string
+                                serverName:
+                                  description: The server name to validate in the
+                                    alertmanager server certificates.
+                                  type: string
+                              type: object
+                          type: object
+                        discovery:
+                          description: Defines the configuration for DNS-based discovery
+                            of AlertManager hosts.
+                          properties:
+                            enableSRV:
+                              description: Use DNS SRV records to discover Alertmanager
+                                hosts.
+                              type: boolean
+                            refreshInterval:
+                              default: 1m
+                              description: How long to wait between refreshing DNS
+                                resolutions of Alertmanager hosts.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                          type: object
+                        enableV2:
+                          description: If enabled, then requests to Alertmanager use
+                            the v2 API.
+                          type: boolean
+                        endpoints:
+                          description: List of AlertManager URLs to send notifications
+                            to. Each Alertmanager URL is treated as a separate group
+                            in the configuration. Multiple Alertmanagers in HA per
+                            group can be supported by using DNS resolution (See EnableDNSDiscovery).
+                          items:
+                            type: string
+                          type: array
+                        externalLabels:
+                          additionalProperties:
+                            type: string
+                          description: Additional labels to add to all alerts.
+                          type: object
+                        externalUrl:
+                          description: URL for alerts return path.
+                          type: string
+                        notificationQueue:
+                          description: Defines the configuration for the notification
+                            queue to AlertManager hosts.
+                          properties:
+                            capacity:
+                              default: 10000
+                              description: Capacity of the queue for notifications
+                                to be sent to the Alertmanager.
+                              format: int32
+                              type: integer
+                            forGracePeriod:
+                              default: 10m
+                              description: Minimum duration between alert and restored
+                                "for" state. This is maintained only for alerts with
+                                configured "for" time greater than the grace period.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                            forOutageTolerance:
+                              default: 1h
+                              description: Max time to tolerate outage for restoring
+                                "for" state of alert.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                            resendDelay:
+                              default: 1m
+                              description: Minimum amount of time to wait before resending
+                                an alert to Alertmanager.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                            timeout:
+                              default: 10s
+                              description: HTTP timeout duration when sending notifications
+                                to the Alertmanager.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                          type: object
+                        relabelConfigs:
+                          description: List of alert relabel configurations.
+                          items:
+                            description: 'RelabelConfig allows dynamic rewriting of
+                              the label set, being applied to samples before ingestion.
+                              It defines `<metric_relabel_configs>` and `<alert_relabel_configs>`
+                              sections of Prometheus configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                            properties:
+                              action:
+                                default: replace
+                                description: Action to perform based on regex matching.
+                                  Default is 'replace'
+                                enum:
+                                - drop
+                                - hashmod
+                                - keep
+                                - labeldrop
+                                - labelkeep
+                                - labelmap
+                                - replace
+                                type: string
+                              modulus:
+                                description: Modulus to take of the hash of the source
+                                  label values.
+                                format: int64
+                                type: integer
+                              regex:
+                                default: (.*)
+                                description: Regular expression against which the
+                                  extracted value is matched. Default is '(.*)'
+                                type: string
+                              replacement:
+                                default: $1
+                                description: Replacement value against which a regex
+                                  replace is performed if the regular expression matches.
+                                  Regex capture groups are available. Default is '$1'
+                                type: string
+                              separator:
+                                default: ;
+                                description: Separator placed between concatenated
+                                  source label values. default is ';'.
+                                type: string
+                              sourceLabels:
+                                description: The source labels select values from
+                                  existing labels. Their content is concatenated using
+                                  the configured separator and matched against the
+                                  configured regular expression for the replace, keep,
+                                  and drop actions.
+                                items:
+                                  type: string
+                                type: array
+                              targetLabel:
+                                description: Label to which the resulting value is
+                                  written in a replace action. It is mandatory for
+                                  replace actions. Regex capture groups are available.
+                                type: string
+                            required:
+                            - sourceLabels
+                            type: object
+                          type: array
+                      required:
+                      - endpoints
+                      type: object
+                  type: object
+                description: Overrides defines the config overrides to be applied
+                  per-tenant.
+                type: object
               pollInterval:
                 default: 1m
                 description: Interval on how frequently to poll for new rule definitions.

@@ -11,6 +11,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -194,14 +195,14 @@ func ConfigureRulerStatefulSet(
 }
 
 // ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
-func ConfigureOptions(configOpt *config.Options) error {
+func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monitorServerName string) error {
 	if configOpt.Ruler.AlertManager == nil {
 		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
 	}
 
 	if len(configOpt.Ruler.AlertManager.Hosts) == 0 {
 		amc := &config.AlertManagerConfig{
-			Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, monitoringNamespace),
 			EnableV2:        true,
 			EnableDiscovery: true,
 			RefreshInterval: "1m",
@@ -211,6 +212,51 @@ func ConfigureOptions(configOpt *config.Options) error {
 			return kverrors.Wrap(err, "failed merging AlertManager config")
 		}
 	}
+
+	// Check user workload is enbaled.
+	if !uwam {
+		return nil
+	}
+
+	// Configure user-workload alertmanager when.
+	if len(configOpt.Overrides) == 0 {
+		configOpt.Overrides = map[string]config.LokiOverrides{}
+	}
+
+	lokiOverrides, ok := configOpt.Overrides[tenantApplication]
+	if ok {
+		return nil
+	}
+
+	lokiOverrides = config.LokiOverrides{
+		Ruler: config.RulerOverrides{
+			AlertManager: &config.AlertManagerConfig{},
+		},
+	}
+
+	configOpt.Overrides[tenantApplication] = lokiOverrides
+	amOverride := &config.AlertManagerConfig{
+		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
+		EnableV2:        true,
+		EnableDiscovery: true,
+		RefreshInterval: "1m",
+		Notifier: &config.NotifierConfig{
+			TLS: config.TLSConfig{
+				ServerName: pointer.String(monitorServerName),
+				CAPath:     &caPath,
+			},
+			HeaderAuth: config.HeaderAuth{
+				CredentialsFile: &token,
+				Type:            pointer.String("Bearer"),
+			},
+		},
+	}
+
+	if err := mergo.Merge(lokiOverrides.Ruler.AlertManager, amOverride); err != nil {
+		return kverrors.Wrap(err, "failed merging application tenant AlertManager config")
+	}
+
+	configOpt.Overrides[tenantApplication] = lokiOverrides
 
 	return nil
 }
