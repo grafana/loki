@@ -2166,6 +2166,11 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 type statsQuerier struct{}
 
+func (q statsQuerier) SelectExemplars(ctx context.Context, params SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (statsQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
@@ -2197,6 +2202,11 @@ func TestEngine_Stats(t *testing.T) {
 }
 
 type metaQuerier struct{}
+
+func (q metaQuerier) SelectExemplars(ctx context.Context, params SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
 
 func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
@@ -2265,6 +2275,11 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 type errorIteratorQuerier struct {
 	samples []iter.SampleIterator
 	entries []iter.EntryIterator
+}
+
+func (e errorIteratorQuerier) SelectExemplars(ctx context.Context, params SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
@@ -2475,6 +2490,11 @@ type querierRecorder struct {
 	streams map[string][]logproto.Stream
 	series  map[string][]logproto.Series
 	match   bool
+}
+
+func (q *querierRecorder) SelectExemplars(ctx context.Context, params SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *querierRecorder {

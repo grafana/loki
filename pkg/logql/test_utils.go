@@ -33,6 +33,11 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
+func (q MockQuerier) SelectExemplars(ctx context.Context, params SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (q MockQuerier) SelectLogs(ctx context.Context, req SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
