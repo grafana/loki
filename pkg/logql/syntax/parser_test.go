@@ -1563,7 +1563,7 @@ func TestParse(t *testing.T) {
 					newLabelFmtExpr([]log.LabelFmt{
 						log.NewRenameLabelFmt("foo", "bar"),
 						log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-					}),
+					}, false),
 				},
 			},
 		},
@@ -1589,7 +1589,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -1656,7 +1656,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -1687,7 +1687,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -1876,7 +1876,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -1907,7 +1907,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -1938,7 +1938,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -1969,7 +1969,7 @@ func TestParse(t *testing.T) {
 						newLabelFmtExpr([]log.LabelFmt{
 							log.NewRenameLabelFmt("foo", "bar"),
 							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-						}),
+						}, false),
 					},
 				},
 					5*time.Minute,
@@ -2004,7 +2004,7 @@ func TestParse(t *testing.T) {
 							newLabelFmtExpr([]log.LabelFmt{
 								log.NewRenameLabelFmt("foo", "bar"),
 								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-							}),
+							}, false),
 						},
 					},
 						5*time.Minute,
@@ -2043,7 +2043,7 @@ func TestParse(t *testing.T) {
 							newLabelFmtExpr([]log.LabelFmt{
 								log.NewRenameLabelFmt("foo", "bar"),
 								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-							}),
+							}, false),
 						},
 					},
 						5*time.Minute,
@@ -2082,7 +2082,7 @@ func TestParse(t *testing.T) {
 							newLabelFmtExpr([]log.LabelFmt{
 								log.NewRenameLabelFmt("foo", "bar"),
 								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-							}),
+							}, false),
 						},
 					},
 						5*time.Minute,
@@ -2121,7 +2121,7 @@ func TestParse(t *testing.T) {
 							newLabelFmtExpr([]log.LabelFmt{
 								log.NewRenameLabelFmt("foo", "bar"),
 								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-							}),
+							}, false),
 						},
 					},
 						5*time.Minute,
@@ -2160,7 +2160,7 @@ func TestParse(t *testing.T) {
 							newLabelFmtExpr([]log.LabelFmt{
 								log.NewRenameLabelFmt("foo", "bar"),
 								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-							}),
+							}, false),
 						},
 					},
 						5*time.Minute,
@@ -2199,7 +2199,7 @@ func TestParse(t *testing.T) {
 							newLabelFmtExpr([]log.LabelFmt{
 								log.NewRenameLabelFmt("foo", "bar"),
 								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-							}),
+							}, false),
 						},
 					},
 						5*time.Minute,
@@ -2249,7 +2249,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2281,7 +2281,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2330,7 +2330,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2362,7 +2362,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2411,7 +2411,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2443,7 +2443,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2492,7 +2492,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2524,7 +2524,7 @@ func TestParse(t *testing.T) {
 								newLabelFmtExpr([]log.LabelFmt{
 									log.NewRenameLabelFmt("foo", "bar"),
 									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-								}),
+								}, false),
 							},
 						},
 							5*time.Minute,
@@ -2641,7 +2641,7 @@ func TestParse(t *testing.T) {
 									newLabelFmtExpr([]log.LabelFmt{
 										log.NewRenameLabelFmt("foo", "bar"),
 										log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-									}),
+									}, false),
 								},
 							},
 								5*time.Minute,
@@ -2673,7 +2673,7 @@ func TestParse(t *testing.T) {
 									newLabelFmtExpr([]log.LabelFmt{
 										log.NewRenameLabelFmt("foo", "bar"),
 										log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
-									}),
+									}, false),
 								},
 							},
 								5*time.Minute,

@@ -365,8 +365,9 @@ func newMustLineFormatter(tmpl string) *LineFormatter {
 
 func Test_labelsFormatter_Format(t *testing.T) {
 	tests := []struct {
-		name  string
-		fmter *LabelsFormatter
+		name         string
+		fmter        *LabelsFormatter
+		renameErrors bool
 
 		in   labels.Labels
 		want labels.Labels
@@ -374,6 +375,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "foo", Value: "blip and blop"}, {Name: "bar", Value: "blop"}},
 		},
@@ -383,6 +385,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				NewTemplateLabelFmt("blip", "{{.foo}} and {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "blip and blop"}, {Name: "bar", Value: "blip"}},
 		},
@@ -392,12 +395,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				NewTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
 		},
 		{
 			"math",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("status", "{{div .status 100 }}")}),
+			false,
 			labels.Labels{{Name: "status", Value: "200"}},
 			labels.Labels{{Name: "status", Value: "2"}},
 		},
@@ -406,12 +411,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{
 				NewTemplateLabelFmt("blip", `{{.foo | default "-" }} and {{.bar}}`),
 			}),
+			false,
 			labels.Labels{{Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
 		},
 		{
 			"template error",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{replace \"test\" .foo}}")}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -423,6 +430,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"line",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("line", "{{ __line__ }}")}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -433,6 +441,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"timestamp",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | date \"2006-01-02\" }}")}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -443,12 +452,23 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"timestamp_unix",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | unixEpoch }}")}),
+			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
 				{Name: "bar", Value: "blop"},
 				{Name: "ts", Value: "1661518453"},
 			},
+		},
+		{
+			"rename errors",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("error", "__error__"),
+				NewRenameLabelFmt("error_details", "__error_details__"),
+			}),
+			true,
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "error", Value: errJSON}, {Name: "", Value: ""}},
 		},
 	}
 
@@ -463,8 +483,66 @@ func Test_labelsFormatter_Format(t *testing.T) {
 	}
 }
 
+func Test_labelsFormatter_Rename_Errors_Format(t *testing.T) {
+	tests := []struct {
+		name         string
+		fmter        *LabelsFormatter
+		renameErrors bool
+
+		errorString        string
+		errorDetailsString string
+
+		in   labels.Labels
+		want labels.Labels
+	}{
+		{
+			"rename __error__",
+			mustNewLabelsFormatterRenameErrors([]LabelFmt{
+				NewRenameLabelFmt("error", "__error__"),
+			}),
+			true,
+			errJSON,
+			"logfmt syntax error",
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "error", Value: errJSON}, {Name: logqlmodel.ErrorDetailsLabel, Value: "logfmt syntax error"}},
+		},
+		{
+			"rename __error__ and __error_details ",
+			mustNewLabelsFormatterRenameErrors([]LabelFmt{
+				NewRenameLabelFmt("error", "__error__"),
+				NewRenameLabelFmt("error_details", "__error_details__"),
+			}),
+			true,
+			errJSON,
+			"logfmt syntax error",
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "error", Value: errJSON}, {Name: "error_details", Value: "logfmt syntax error"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
+			builder.Reset()
+			builder.SetErr(tt.errorString)
+			builder.SetErrorDetails(tt.errorDetailsString)
+			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, builder.LabelsResult().Labels())
+		})
+	}
+}
+
 func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
-	lf, err := NewLabelsFormatter(fmts)
+	lf, err := NewLabelsFormatter(fmts, false)
+	if err != nil {
+		panic(err)
+	}
+	return lf
+}
+
+func mustNewLabelsFormatterRenameErrors(fmts []LabelFmt) *LabelsFormatter {
+	lf, err := NewLabelsFormatter(fmts, true)
 	if err != nil {
 		panic(err)
 	}
@@ -473,17 +551,22 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 
 func Test_validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		fmts    []LabelFmt
-		wantErr bool
+		name             string
+		fmts             []LabelFmt
+		fmtRenameErrrors bool
+		wantErr          bool
 	}{
-		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
-		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
-		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, true},
+		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false, false},
+		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, false, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, false, true},
+		{"label error __error__", []LabelFmt{NewRenameLabelFmt("error", "bar")}, true, true},
+		{"label no error __error__", []LabelFmt{NewRenameLabelFmt("error", logqlmodel.ErrorLabel)}, true, false},
+		{"label error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", "bar")}, true, true},
+		{"label no error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", logqlmodel.ErrorDetailsLabel)}, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validate(tt.fmts); (err != nil) != tt.wantErr {
+			if err := validate(tt.fmts, tt.fmtRenameErrrors); (err != nil) != tt.wantErr {
 				t.Errorf("validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

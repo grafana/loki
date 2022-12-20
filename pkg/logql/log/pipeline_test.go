@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -134,6 +135,50 @@ var (
 	resSample     float64
 )
 
+func TestIgnoreErrorsPipeline(t *testing.T) {
+	fmt.Printf("running test\n")
+	stages := []Stage{
+		NewLogfmtParser(),
+		NewIgnoreErrors(NewStringLabelFilter(&labels.Matcher{Type: labels.MatchEqual, Name: logqlmodel.ErrorLabel, Value: errLogfmt})),
+		NewAndLabelFilter(
+			NewDurationLabelFilter(LabelFilterGreaterThan, "duration", 10*time.Millisecond),
+			NewNumericLabelFilter(LabelFilterEqual, "status", 200.0),
+		),
+		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
+		NewJSONParser(),
+
+		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
+	}
+	p := NewPipeline(stages)
+	lines := [][]byte{
+		[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116`),
+		[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+	}
+	lbs := labels.Labels{
+		{Name: "cluster", Value: "ops-tool1"},
+		{Name: "name", Value: "querier"},
+		{Name: "pod", Value: "querier-5896759c79-q7q9h"},
+		// {Name: "stream", Value: "stderr"},
+		// {Name: "container", Value: "querier"},
+		// {Name: "namespace", Value: "loki-dev"},
+		// {Name: "job", Value: "loki-dev/querier"},
+		// {Name: "pod_template_hash", Value: "5896759c79"},
+	}
+
+	sp := p.ForStream(lbs)
+	for _, line := range lines {
+		final_line, final_lbs, valid := sp.Process(0, line)
+		fmt.Printf("line=%s\n", final_line)
+		fmt.Printf("lbls=%v\n", final_lbs)
+		fmt.Printf("valid=%v\n", valid)
+		require.Equal(t, errJSON, final_lbs.Labels().Get(logqlmodel.ErrorLabel))
+		if final_lbs.Labels().Has(logqlmodel.ErrorLabel) {
+			fmt.Printf("Contains label")
+		}
+
+	}
+
+}
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
