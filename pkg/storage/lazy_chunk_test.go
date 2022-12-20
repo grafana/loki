@@ -173,6 +173,11 @@ type fakeBlock struct {
 	mint, maxt int64
 }
 
+func (f fakeBlock) ExemplarIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.ExemplarIterator {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (fakeBlock) Entries() int     { return 0 }
 func (fakeBlock) Offset() int      { return 0 }
 func (f fakeBlock) MinTime() int64 { return f.mint }
