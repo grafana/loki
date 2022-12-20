@@ -266,6 +266,11 @@ type mockStore struct {
 	chunks map[string][]chunk.Chunk
 }
 
+func (s *mockStore) SelectExemplars(ctx context.Context, req logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
