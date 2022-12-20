@@ -17,7 +17,7 @@ service Querier {
 
   rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {}
 
-  rpc QueryExemplars(SampleQueryRequest) returns (stream SampleQueryResponse ){}
+  rpc QueryExemplars(SampleQueryRequest) returns (stream SampleQueryResponse) {}
 
   rpc Label(LabelRequest) returns (LabelResponse) {}
 
@@ -166,11 +166,13 @@ message Sample {
 
 message Exemplar {
   // Exemplar labels, different than series labels
-  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+  repeated LabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter"
+  ];
   double value = 2;
   int64 timestamp_ms = 3;
   uint64 hash = 4 [(gogoproto.jsontag) = "hash"];
-
 }
 
 // LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
