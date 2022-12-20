@@ -44,6 +44,11 @@ type FileClient struct {
 	engine      *logql.Engine
 }
 
+func (f *FileClient) QueryExemplar(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // NewFileClient returns the new instance of FileClient for the given `io.ReadCloser`
 func NewFileClient(r io.ReadCloser) *FileClient {
 	lbs := []labels.Label{
