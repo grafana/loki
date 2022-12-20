@@ -80,6 +80,18 @@ If you are not using Query Scheduler, then to avoid any issues on the Read path 
 * Rollout changes to `queriers`.
 * Roll out the rest of the changes.
 
+### General
+
+#### Chunk Download Statistics
+
+Two new statistics are logged when queries complete: _store chunk download time_ and _cache chunk download time_. Having these two stats in `metrics.go` lines can help operators attribute query latency to chunk retrieval.
+
+These values represent the _total_ time taken to fetch chunks from both the store and the chunks cache in the given query.
+
+These new stats have been also added to the response when using `--stats` with `logcli`:
+- `Querier.ChunksDownloadTime`
+- `Cache.Chunk.DownloadTime`
+
 ## 2.7.0
 
 ### Loki
