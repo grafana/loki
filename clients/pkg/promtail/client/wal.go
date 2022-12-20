@@ -24,6 +24,8 @@ type WAL interface {
 	// Log marshalls the records and writes it into the WAL.
 	Log(*ingester.WALRecord) error
 	Delete() error
+	Sync() error
+	Dir() string
 }
 
 type noopWAL struct{}
@@ -34,6 +36,14 @@ func (n noopWAL) Log(*ingester.WALRecord) error {
 
 func (n noopWAL) Delete() error {
 	return nil
+}
+
+func (n noopWAL) Sync() error {
+	return nil
+}
+
+func (n noopWAL) Dir() string {
+	return ""
 }
 
 type walWrapper struct {
@@ -100,6 +110,15 @@ func (w *walWrapper) Log(record *ingester.WALRecord) error {
 
 	}
 	return nil
+}
+
+// Sync flushes changes to disk. Mainly to be used for testing.
+func (w *walWrapper) Sync() error {
+	return w.wal.Sync()
+}
+
+func (w *walWrapper) Dir() string {
+	return w.wal.Dir()
 }
 
 type resettingPool struct {

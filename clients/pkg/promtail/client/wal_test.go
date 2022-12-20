@@ -1,11 +1,14 @@
 package client
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path"
 	"testing"
 	"time"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 
 	"github.com/prometheus/prometheus/tsdb/record"
 
@@ -109,6 +112,8 @@ func Test_WAL_WriteAndConsume(t *testing.T) {
 		},
 	}, nil, 0, log.NewNopLogger())
 	require.NoError(t, err)
+	sync, err := getSyncCall(c)
+	require.NoError(t, err, "client does not implement sync")
 
 	// defer c.Stop()
 	c.Chan() <- api.Entry{
@@ -135,7 +140,7 @@ func Test_WAL_WriteAndConsume(t *testing.T) {
 	t.Logf("Expected wal path: %s", expectedWALPath)
 
 	consumer := newSimpleConsumer()
-	watcher := NewWALWatcher(expectedWALPath, consumer)
+	watcher := NewWALWatcher(expectedWALPath, consumer, util_log.Logger)
 	watcher.Start()
 	defer watcher.Stop()
 
@@ -144,14 +149,26 @@ func Test_WAL_WriteAndConsume(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("files in wal dir: %v", dirs)
 
-	// todo: why is this propagation time needed
-	time.Sleep(2 * time.Second)
+	require.NoError(t, sync(), "failed to force wal to sync")
 
 	require.Len(t, consumer.Entries["tenant1"], 2)
 
 	// todo assert as well over the series
 	t.Logf("series: %v", consumer.Series)
 	t.Logf("entries: %v", consumer.Entries)
+}
+
+type syncer interface {
+	Sync() error
+}
+
+// getSyncCall extracts the WAL sync method from the Client implementation, used for doing an fsync on the WAL
+// when testing.
+func getSyncCall(client Client) (func() error, error) {
+	if clientSync, ok := client.(syncer); ok {
+		return clientSync.Sync, nil
+	}
+	return nil, fmt.Errorf("client does not implement Sync() error")
 }
 
 func Test_WAL_WriteAfterWatcherIsStarted(t *testing.T) {
@@ -164,7 +181,9 @@ func Test_WAL_WriteAfterWatcherIsStarted(t *testing.T) {
 	t.Logf("Expected wal path: %s", expectedWALPath)
 
 	consumer := newSimpleConsumer()
-	watcher := NewWALWatcher(expectedWALPath, consumer)
+
+	stdOutLog := log.NewLogfmtLogger(os.Stdout)
+	watcher := NewWALWatcher(expectedWALPath, consumer, stdOutLog)
 	watcher.Start()
 	defer watcher.Stop()
 
@@ -179,6 +198,8 @@ func Test_WAL_WriteAfterWatcherIsStarted(t *testing.T) {
 		},
 	}, nil, 0, log.NewNopLogger())
 	require.NoError(t, err)
+	sync, err := getSyncCall(c)
+	require.NoError(t, err)
 
 	// defer c.Stop()
 	c.Chan() <- api.Entry{
@@ -198,17 +219,34 @@ func Test_WAL_WriteAfterWatcherIsStarted(t *testing.T) {
 		},
 	}
 
-	//// testing logs
-	//dirs, err := os.ReadDir(expectedWALPath)
-	//require.NoError(t, err)
-	//t.Logf("files in wal dir: %v", dirs)
-	//
-	// todo: why is this propagation time needed
-	time.Sleep(2 * time.Second)
+	require.NoError(t, sync())
+	// Since the wal watcher runs on a loop every 20msec for an open segment read, need a small Sleep here
+	require.NoError(t, WaitForCondition(func() bool {
+		return len(consumer.Entries) > 0
+	}, 100*time.Millisecond, time.Second))
 
 	require.Len(t, consumer.Entries["tenant1"], 2)
 
 	// todo assert as well over the series
 	t.Logf("series: %v", consumer.Series)
 	t.Logf("entries: %v", consumer.Entries)
+}
+
+type Condition func() bool
+
+func WaitForCondition(cond Condition, checkEvery, timeout time.Duration) error {
+	checkTicker := time.NewTicker(checkEvery)
+	defer checkTicker.Stop()
+	timeoutFire := time.After(timeout)
+	for {
+		select {
+		case <-checkTicker.C:
+			// perform check, and succeed if condition is met
+			if cond() {
+				return nil
+			}
+		case <-timeoutFire:
+			return fmt.Errorf("failed to meet condition")
+		}
+	}
 }

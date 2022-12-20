@@ -32,10 +32,8 @@ type WALReader interface {
 }
 
 type WALConsumer interface {
-	NumWorkers() int
 	SetStream(tenantID string, series record.RefSeries) error
 	Push(tenantID string, entries ingester.RefEntries) error
-	Done() <-chan struct{}
 }
 
 // Based in the implementation of prometheus wal watcher
@@ -50,13 +48,14 @@ type WALWatcher struct {
 	MaxSegment int
 }
 
-func NewWALWatcher(walDir string, consumer WALConsumer) *WALWatcher {
+func NewWALWatcher(walDir string, consumer WALConsumer, logger log.Logger) *WALWatcher {
 	return &WALWatcher{
 		walDir:     walDir,
 		consumer:   consumer,
 		quit:       make(chan struct{}),
 		done:       make(chan struct{}),
 		MaxSegment: -1,
+		logger:     logger,
 	}
 }
 
@@ -76,7 +75,7 @@ func (w *WALWatcher) loop() {
 	for !isClosed(w.quit) {
 		//w.SetStartTime(time.Now())
 		if err := w.Run(); err != nil {
-			//level.Error(w.logger).Log("msg", "error tailing WAL", "err", err)
+			level.Error(w.logger).Log("msg", "error tailing WAL", "err", err)
 		}
 
 		select {
@@ -122,9 +121,10 @@ func (w *WALWatcher) Run() error {
 	// todo: change me when decided if we should do checkpoints
 	currentSegment := lastSegment
 	//level.Debug(w.logger).Log("msg", "Tailing WAL", "lastCheckpoint", lastCheckpoint, "checkpointIndex", checkpointIndex, "currentSegment", currentSegment, "lastSegment", lastSegment)
+	level.Debug(w.logger).Log("msg", "Tailing WAL", "currentSegment", currentSegment, "lastSegment", lastSegment)
 	for !isClosed(w.quit) {
 		//w.currentSegmentMetric.Set(float64(currentSegment))
-		//level.Debug(w.logger).Log("msg", "Processing segment", "currentSegment", currentSegment)
+		level.Debug(w.logger).Log("msg", "Processing segment", "currentSegment", currentSegment)
 
 		// On start, after reading the existing WAL for series records, we have a pointer to what is the latest segment.
 		// On subsequent calls to this function, currentSegment will have been incremented and we should open that segment.
@@ -192,7 +192,7 @@ func isClosed(c chan struct{}) bool {
 }
 
 // Use tail true to indicate that the reader is currently on a segment that is
-// actively being written to. If false, assume it's a full segment and we're
+// actively being written to. If false, assume it's a full segment, and we're
 // replaying it on start to cache the series records.
 func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 	segment, err := wal.OpenReadSegment(wal.SegmentName(w.walDir, segmentNum))

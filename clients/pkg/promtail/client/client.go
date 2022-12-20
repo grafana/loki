@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/tsdb/record"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -259,7 +261,12 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 	}
 
 	c.wg.Add(1)
-	go c.run()
+
+	if cfg.WAL.Enabled {
+		go c.runWithWAL()
+	} else {
+		go c.runSendSide(c.entries)
+	}
 	return c, nil
 }
 
@@ -356,7 +363,21 @@ func (c *client) replayWAL() error {
 	return nil
 }
 
-func (c *client) run() {
+func (c *client) runWithWAL() {
+	receiveAndWriteToWAL := func() {
+		for e := range c.entries {
+			e, tenantID := c.processEntry(e)
+			// Get WAL, and write entry to it
+			w, _ := c.wal.getWAL(tenantID)
+			// todo pablo: no error here, should be checked?
+			_ = writeEntryToWAL(e, w, tenantID)
+		}
+	}
+	go receiveAndWriteToWAL()
+	go c.runSendSide(c.wal.Chan())
+}
+
+func (c *client) runSendSide(entries chan api.Entry) {
 	batches := map[string]*batch{}
 
 	// Given the client handles multiple batches (1 per tenant) and each batch
@@ -385,7 +406,7 @@ func (c *client) run() {
 
 	for {
 		select {
-		case e, ok := <-c.entries:
+		case e, ok := <-entries:
 
 			if !ok {
 				return
@@ -393,7 +414,8 @@ func (c *client) run() {
 			e, tenantID := c.processEntry(e)
 			// Get WAL, and write entry to it
 			w, _ := c.wal.getWAL(tenantID)
-			writeEntryToWAL(e, w, tenantID)
+			// todo pablo: no error here, should be checked?
+			_ = writeEntryToWAL(e, w, tenantID)
 
 			batch, ok := batches[tenantID]
 
@@ -599,6 +621,7 @@ func (c *client) getTenantID(labels model.LabelSet) string {
 // Stop the client.
 func (c *client) Stop() {
 	c.once.Do(func() { close(c.entries) })
+	c.wal.Stop()
 	c.wg.Wait()
 }
 
@@ -626,28 +649,96 @@ func (c *client) Name() string {
 	return c.name
 }
 
+func (c *client) Sync() error {
+	for _, wal := range c.wal.tenantWALs {
+		if err := wal.Sync(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type clientWAL struct {
-	client     *client
-	tenantWALs map[string]WAL
+	client      *client
+	tenantWALs  map[string]WAL
+	readChannel chan api.Entry
+	watchers    map[string]stoppable
+}
+
+type stoppable interface {
+	Stop()
 }
 
 func newClientWAL(c *client) clientWAL {
 	return clientWAL{
-		client:     c,
-		tenantWALs: make(map[string]WAL),
+		client:      c,
+		tenantWALs:  make(map[string]WAL),
+		readChannel: make(chan api.Entry),
+		watchers:    make(map[string]stoppable),
 	}
+}
+
+// Chan returns an api.Entry channel where all WAL watchers write to.
+func (c *clientWAL) Chan() chan api.Entry {
+	return c.readChannel
 }
 
 func (c *clientWAL) getWAL(tenant string) (WAL, error) {
 	if w, ok := c.tenantWALs[tenant]; ok {
 		return w, nil
 	}
+	// new wal created, start WAL and watcher to read channel
 	wal, err := newWAL(c.client.logger, c.client.metrics.registerer, c.client.cfg.WAL, c.client.name, tenant)
 	if err != nil {
 		level.Error(c.client.logger).Log("msg", "could not start WAL", "err", err)
 		// set the wall to noop
 		return nil, err
 	}
+	consumer := newClientConsumer(c.readChannel, c.client.logger)
+	watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
+	go watcher.Run()
+	c.watchers[tenant] = watcher
 	c.tenantWALs[tenant] = wal
 	return wal, nil
+}
+
+func (c *clientWAL) Stop() {
+	for _, watcher := range c.watchers {
+		watcher.Stop()
+	}
+	close(c.readChannel)
+}
+
+type clientConsumer struct {
+	series      map[uint64]model.LabelSet
+	pushChannel chan api.Entry
+	logger      log.Logger
+}
+
+func newClientConsumer(pushChannel chan api.Entry, logger log.Logger) *clientConsumer {
+	return &clientConsumer{
+		series:      map[uint64]model.LabelSet{},
+		pushChannel: pushChannel,
+		logger:      logger,
+	}
+}
+
+func (c *clientConsumer) SetStream(tenantID string, series record.RefSeries) error {
+	c.series[uint64(series.Ref)] = util.MapToModelLabelSet(series.Labels.Map())
+	return nil
+}
+
+func (c *clientConsumer) Push(tenantID string, samples ingester.RefEntries) error {
+	var entry api.Entry
+	if l, ok := c.series[uint64(samples.Ref)]; ok {
+		entry.Labels = l
+		for _, e := range samples.Entries {
+			entry.Entry = e
+			c.pushChannel <- entry
+		}
+	} else {
+		// if series is not present for sample, just log for now
+		level.Debug(c.logger).Log("series for sample not found")
+	}
+	return nil
 }
