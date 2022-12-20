@@ -133,11 +133,13 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
 		"cache_chunk_bytes_stored", stats.Caches.Chunk.BytesSent,
 		"cache_chunk_bytes_fetched", stats.Caches.Chunk.BytesReceived,
-		"cache_chunk_download_time", stats.Caches.Chunk.CacheChunksDownloadTime(),
+		"cache_chunk_download_time", stats.Caches.Chunk.CacheDownloadTime(),
 		"cache_index_req", stats.Caches.Index.EntriesRequested,
 		"cache_index_hit", stats.Caches.Index.EntriesFound,
+		"cache_index_download_time", stats.Caches.Index.CacheDownloadTime(),
 		"cache_result_req", stats.Caches.Result.EntriesRequested,
 		"cache_result_hit", stats.Caches.Result.EntriesFound,
+		"cache_result_download_time", stats.Caches.Index.CacheDownloadTime(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -169,7 +168,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	log, ctx := spanlogger.New(ctx, "ChunkStore.FetchChunks")
 	defer log.Span.Finish()
 
-	start := time.Now()
 	// Now fetch the actual chunk data from Memcache / S3
 	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
 	if err != nil {
@@ -179,9 +177,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	if err != nil {
 		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
-
-	st := stats.FromContext(ctx)
-	st.AddCacheChunksDownloadTime(stats.ChunkCache, time.Since(start))
 
 	var fromStorage []chunk.Chunk
 	if len(missing) > 0 {
@@ -195,6 +190,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		bytes += c.Size()
 	}
 
+	st := stats.FromContext(ctx)
 	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 

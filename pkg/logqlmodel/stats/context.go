@@ -201,11 +201,11 @@ func (c *Cache) Merge(m Cache) {
 	c.Requests += m.Requests
 	c.BytesSent += m.BytesSent
 	c.BytesReceived += m.BytesReceived
-	c.ChunksDownloadTime += m.ChunksDownloadTime
+	c.DownloadTime += m.DownloadTime
 }
 
-func (c *Cache) CacheChunksDownloadTime() time.Duration {
-	return time.Duration(c.ChunksDownloadTime)
+func (c *Cache) CacheDownloadTime() time.Duration {
+	return time.Duration(c.DownloadTime)
 }
 
 // Merge merges two results of statistics.
@@ -352,14 +352,14 @@ func (c *Context) AddCacheBytesSent(t CacheType, i int) {
 	atomic.AddInt64(&stats.BytesSent, int64(i))
 }
 
-// AddCacheChunksDownloadTime measures the time to download the chunks from cache
-func (c *Context) AddCacheChunksDownloadTime(t CacheType, i time.Duration) {
+// AddCacheDownloadTime measures the time to download the data from cache
+func (c *Context) AddCacheDownloadTime(t CacheType, i time.Duration) {
 	stats := c.getCacheStatsByType(t)
 	if stats == nil {
 		return
 	}
 
-	atomic.AddInt64(&stats.ChunksDownloadTime, int64(i))
+	atomic.AddInt64(&stats.DownloadTime, int64(i))
 }
 
 // AddCacheRequest counts the number of fetch/store requests to the cache
@@ -437,18 +437,20 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Chunk.EntriesStored", c.Chunk.EntriesStored,
 		"Cache.Chunk.BytesSent", humanize.Bytes(uint64(c.Chunk.BytesSent)),
 		"Cache.Chunk.BytesReceived", humanize.Bytes(uint64(c.Chunk.BytesReceived)),
-		"Cache.Chunk.DownloadTime", time.Duration(uint64(c.Chunk.ChunksDownloadTime)),
+		"Cache.Chunk.DownloadTime", c.Chunk.CacheDownloadTime(),
 		"Cache.Index.Requests", c.Index.Requests,
 		"Cache.Index.EntriesRequested", c.Index.EntriesRequested,
 		"Cache.Index.EntriesFound", c.Index.EntriesFound,
 		"Cache.Index.EntriesStored", c.Index.EntriesStored,
 		"Cache.Index.BytesSent", humanize.Bytes(uint64(c.Index.BytesSent)),
 		"Cache.Index.BytesReceived", humanize.Bytes(uint64(c.Index.BytesReceived)),
+		"Cache.Index.DownloadTime", c.Index.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
 		"Cache.Result.EntriesFound", c.Result.EntriesFound,
 		"Cache.Result.EntriesStored", c.Result.EntriesStored,
 		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
 		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
+		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 	)
 }
