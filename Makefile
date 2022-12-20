@@ -7,6 +7,7 @@
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-drone-drift, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
+.PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 
@@ -70,6 +71,13 @@ RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
 # Promtail UI files
 PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
 PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
+
+# Documentation source path
+DOC_SOURCES_PATH := docs/sources
+
+# Configuration flags documentation
+DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configuration/index.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/configuration/_index.md
 
 ##########
 # Docker #
@@ -718,6 +726,16 @@ format:
 		-type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+# Documentation related commands
+
+doc: ## Generates the config file documentation
+	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+
+check-doc: ## Check the documentation files are up to date
+check-doc: doc
+	@find . -name "*.md" | xargs git diff --exit-code -- \
+	|| (echo "Please update generated documentation by running 'make doc' and committing the changes" && false)
 
 ###################
 # Example Configs #

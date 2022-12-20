@@ -44,6 +44,42 @@ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
+### Ruler
+
+#### CLI flag `ruler.wal-cleaer.period` deprecated
+
+CLI flag `ruler.wal-cleaer.period` is now deprecated and replaced with a typo fix `ruler.wal-cleaner.period`.
+The yaml configuration remains unchanged:
+
+```yaml
+ruler:
+  wal_cleaner:
+    period: 5s
+```
+
+### Querier
+
+#### query-frontend k8s headless service changed to load balanced service
+
+*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](https://grafana.com/docs/loki/latest/installation/tanka/)
+
+The `query-frontend` k8s service was previously headless and was used for two purposes:
+* Distributing the Loki query requests amongst all the available Query Frontend pods.
+* Discover IPs of Query Frontend pods from Queriers to connect as workers.
+
+The problem here is that a headless service does not support load balancing and leaves it up to the client to balance the load.
+Additionally, a load-balanced service does not let us discover the IPs of the underlying pods.
+
+To meet both these requirements, we have made the following changes:
+* Changed the existing `query-frontend` k8s service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
+* Added `query-frontend-headless` to discover QF pod IPs from queriers to connect as workers.
+
+If you are deploying Loki with Query Scheduler by setting [query_scheduler_enabled](https://github.com/grafana/loki/blob/cc4ab7487ab3cd3b07c63601b074101b0324083b/production/ksonnet/loki/config.libsonnet#L18) config to `true`, then there is nothing to do here for this change.
+If you are not using Query Scheduler, then to avoid any issues on the Read path until the rollout finishes, it would be good to follow below steps:
+* Create just the `query-frontend-headless` service without applying any changes to the `query-frontend` service.
+* Rollout changes to `queriers`.
+* Roll out the rest of the changes.
+
 ## 2.7.0
 
 ### Loki

@@ -190,6 +190,13 @@ steps:
   image: grafana/loki-build-image:0.25.0
   name: loki
 - commands:
+  - make BUILD_IN_CONTAINER=false check-doc
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.25.0
+  name: check-doc
+- commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
@@ -1613,6 +1620,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: a993b5d815323a831ad4b7f3264e7d6726774cdf4a041f4818af50f366101079
+hmac: 12435dae603e73b3afd6cf014e723b8ff84c04d4476917c72d5f9b81251d43ad
 
 ...

@@ -23,6 +23,7 @@ These endpoints are exposed by all components:
 - [`GET /config`](#list-current-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
+- [`GET /loki/api/v1/format_query`](#format-query)
 
 These endpoints are exposed by the querier and the query frontend:
 
@@ -702,6 +703,18 @@ GET /loki/api/v1/status/buildinfo
 ```
 
 `/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
+
+## Format query
+
+```
+GET /loki/api/v1/format_query
+POST /loki/api/v1/format_query
+```
+
+Params:
+- `query`: A LogQL query string. Can be passed as URL param (`?query=<query>`) in case of both `GET` and `POST`. Or as form value in case of `POST`.
+
+The `/loki/api/v1/format_query` endpoint allows to format LogQL queries. It returns an error if the passed LogQL is invalid. It is exposed by all Loki components and helps to improve readability and the debugging experience of LogQL queries.
 
 ## List series
 

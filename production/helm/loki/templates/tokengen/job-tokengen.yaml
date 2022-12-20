@@ -15,6 +15,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
     "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "0"
 spec:
   backoffLimit: 6
   completions: 1
