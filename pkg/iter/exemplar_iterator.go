@@ -11,15 +11,14 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// ExemplarIterator iterates over samples in time-order.
+// ExemplarIterator iterates over exemplars in time-order.
 type ExemplarIterator interface {
 	Iterator
-	// todo(ctovena) we should add `Seek(t int64) bool`
-	// This way we can skip when ranging over samples.
+	// This way we can skip when ranging over exemplars.
 	Exemplar() logproto.Exemplar
 }
 
-// PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
+// PeekingExemplarIterator is a exemplar iterator that can peek exemplar without moving the current exemplar.
 type PeekingExemplarIterator interface {
 	ExemplarIterator
 	Peek() (string, logproto.Exemplar, bool)
@@ -146,7 +145,7 @@ func (h exemplarIteratorHeap) Less(i, j int) bool {
 	return s1.TimestampMs < s2.TimestampMs
 }
 
-// mergeSampleIterator iterates over a heap of iterators by merging samples.
+// mergeExemplarIterator iterates over a heap of iterators by merging exemplars.
 type mergeExemplarIterator struct {
 	heap       *exemplarIteratorHeap
 	is         []ExemplarIterator
@@ -163,10 +162,10 @@ type mergeExemplarIterator struct {
 	errs   []error
 }
 
-// NewMergeSampleIterator returns a new iterator which uses a heap to merge together samples for multiple iterators and deduplicate if any.
+// NewMergeExemplarIterator returns a new iterator which uses a heap to merge together exemplars for multiple iterators and deduplicate if any.
 // The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
-// If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
+// If you don't need to deduplicate exemplar, use `NewSortExemplarIterator` instead.
 func NewMergeExemplarIterator(ctx context.Context, is []ExemplarIterator) ExemplarIterator {
 	h := exemplarIteratorHeap{
 		its: make([]ExemplarIterator, 0, len(is)),
@@ -246,15 +245,15 @@ func (i *mergeExemplarIterator) Next() bool {
 Outer:
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
-		sample := next.Exemplar()
-		if len(i.buffer) > 0 && (i.buffer[0].streamHash != next.StreamHash() || i.buffer[0].TimestampMs != sample.TimestampMs) {
+		exemplar := next.Exemplar()
+		if len(i.buffer) > 0 && (i.buffer[0].streamHash != next.StreamHash() || i.buffer[0].TimestampMs != exemplar.TimestampMs) {
 			break
 		}
 		heap.Pop(i.heap)
 		previous := i.buffer
 		var dupe bool
 		for _, t := range previous {
-			if t.Exemplar.Hash == sample.Hash {
+			if t.Exemplar.Hash == exemplar.Hash {
 				i.stats.AddDuplicates(1)
 				dupe = true
 				break
@@ -262,7 +261,7 @@ Outer:
 		}
 		if !dupe {
 			i.buffer = append(i.buffer, exemplarWithLabels{
-				Exemplar:   sample,
+				Exemplar:   exemplar,
 				labels:     next.Labels(),
 				streamHash: next.StreamHash(),
 			})
@@ -272,19 +271,19 @@ Outer:
 			if !next.Next() {
 				continue Outer
 			}
-			sample := next.Exemplar()
+			exemplar := next.Exemplar()
 			if next.StreamHash() != i.buffer[0].streamHash ||
-				sample.TimestampMs != i.buffer[0].TimestampMs {
+				exemplar.TimestampMs != i.buffer[0].TimestampMs {
 				break
 			}
 			for _, t := range previous {
-				if t.Hash == sample.Hash {
+				if t.Hash == exemplar.Hash {
 					i.stats.AddDuplicates(1)
 					continue inner
 				}
 			}
 			i.buffer = append(i.buffer, exemplarWithLabels{
-				Exemplar:   sample,
+				Exemplar:   exemplar,
 				labels:     next.Labels(),
 				streamHash: next.StreamHash(),
 			})
@@ -346,7 +345,7 @@ func (i *mergeExemplarIterator) Close() error {
 	return nil
 }
 
-// sortSampleIterator iterates over a heap of iterators by sorting samples.
+// sortExemplarIterator iterates over a heap of iterators by sorting exemplars.
 type sortExemplarIterator struct {
 	heap       *exemplarIteratorHeap
 	is         []ExemplarIterator
@@ -356,10 +355,10 @@ type sortExemplarIterator struct {
 	errs []error
 }
 
-// NewSortSampleIterator returns a new SampleIterator that sorts samples by ascending timestamp the input iterators.
-// The iterator only order sample across given `is` iterators, it does not sort samples within individual iterator.
+// NewSortExemplarIterator returns a new ExemplarIterator that sorts exemplars by ascending timestamp the input iterators.
+// The iterator only order exemplar across given `is` iterators, it does not sort exemplars within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
-// When timestamp is equal, the iterator sorts samples by their label alphabetically.
+// When timestamp is equal, the iterator sorts exemplars by their label alphabetically.
 func NewSortExemplarIterator(is []ExemplarIterator) ExemplarIterator {
 	if len(is) == 0 {
 		return NoopIterator
@@ -465,14 +464,14 @@ type exemplarQueryClientIterator struct {
 	curr   ExemplarIterator
 }
 
-// QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
+// QueryExemplarClient is GRPC stream client with only method used by the ExemplarQueryClientIterator
 type QueryExemplarClient interface {
 	Recv() (*logproto.SampleQueryResponse, error)
 	Context() context.Context
 	CloseSend() error
 }
 
-// NewQueryClientIterator returns an iterator over a QueryClient.
+// NewExemplarQueryClientIterator returns an iterator over a QueryClient.
 func NewExemplarQueryClientIterator(client QuerySampleClient) ExemplarIterator {
 	return &exemplarQueryClientIterator{
 		client: client,
@@ -515,7 +514,7 @@ func (i *exemplarQueryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-// NewSampleQueryResponseIterator returns an iterator over a SampleQueryResponse.
+// NewExemplarQueryResponseIterator returns an iterator over a ExemplarIterator.
 func NewExemplarQueryResponseIterator(resp *logproto.SampleQueryResponse) ExemplarIterator {
 	return NewMultiExemplarSeriesIterator(resp.Series)
 }
@@ -564,7 +563,7 @@ func NewMultiExemplarSeriesIterator(series []logproto.Series) ExemplarIterator {
 	return NewSortExemplarIterator(is)
 }
 
-// NewSeriesIterator iterates over sample in a series.
+// NewSeriesExemplarIterator iterates over exemplar in a series.
 func NewSeriesExemplarIterator(series logproto.Series) ExemplarIterator {
 	return &seriesExemplarIterator{
 		i:      -1,
@@ -603,7 +602,7 @@ type nonOverlappingExemplarIterator struct {
 	curr      ExemplarIterator
 }
 
-// NewNonOverlappingSampleIterator gives a chained iterator over a list of iterators.
+// NewNonOverlappingExemplarIterator gives a chained iterator over a list of iterators.
 func NewNonOverlappingExemplarIterator(iterators []ExemplarIterator) ExemplarIterator {
 	return &nonOverlappingExemplarIterator{
 		iterators: iterators,
@@ -669,7 +668,7 @@ type timeRangedExemplarIterator struct {
 	mint, maxt int64
 }
 
-// NewTimeRangedSampleIterator returns an iterator which filters entries by time range.
+// NewTimeRangedExemplarIterator returns an iterator which filters entries by time range.
 func NewTimeRangedExemplarIterator(it ExemplarIterator, mint, maxt int64) ExemplarIterator {
 	return &timeRangedExemplarIterator{
 		ExemplarIterator: it,
@@ -714,7 +713,7 @@ func ReadExemplarBatch(i ExemplarIterator, size uint32) (*logproto.SampleQueryRe
 		seriesCount int
 	)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, hash, sample := i.Labels(), i.StreamHash(), i.Exemplar()
+		labels, hash, exemplar := i.Labels(), i.StreamHash(), i.Exemplar()
 		streams, ok := series[hash]
 		if !ok {
 			streams = map[string]*logproto.Series{}
@@ -729,7 +728,7 @@ func ReadExemplarBatch(i ExemplarIterator, size uint32) (*logproto.SampleQueryRe
 			}
 			streams[labels] = s
 		}
-		s.Exemplars = append(s.Exemplars, sample)
+		s.Exemplars = append(s.Exemplars, exemplar)
 	}
 
 	result := logproto.SampleQueryResponse{
