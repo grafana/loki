@@ -283,6 +283,11 @@ type storeMock struct {
 	util.ExtendedMock
 }
 
+func (s *storeMock) SelectExemplars(ctx context.Context, req logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
@@ -487,6 +492,11 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 
 type querierMock struct {
 	util.ExtendedMock
+}
+
+func (q *querierMock) SelectExemplars(ctx context.Context, params logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func newQuerierMock() *querierMock {
