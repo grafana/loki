@@ -201,6 +201,11 @@ func (c *Cache) Merge(m Cache) {
 	c.Requests += m.Requests
 	c.BytesSent += m.BytesSent
 	c.BytesReceived += m.BytesReceived
+	c.ChunksDownloadTime += m.ChunksDownloadTime
+}
+
+func (c *Cache) CacheChunksDownloadTime() time.Duration {
+	return time.Duration(c.ChunksDownloadTime)
 }
 
 // Merge merges two results of statistics.
@@ -347,6 +352,16 @@ func (c *Context) AddCacheBytesSent(t CacheType, i int) {
 	atomic.AddInt64(&stats.BytesSent, int64(i))
 }
 
+// AddCacheChunksDownloadTime measures the time to download the chunks from cache
+func (c *Context) AddCacheChunksDownloadTime(t CacheType, i time.Duration) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.ChunksDownloadTime, int64(i))
+}
+
 // AddCacheRequest counts the number of fetch/store requests to the cache
 func (c *Context) AddCacheRequest(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
@@ -422,6 +437,7 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Chunk.EntriesStored", c.Chunk.EntriesStored,
 		"Cache.Chunk.BytesSent", humanize.Bytes(uint64(c.Chunk.BytesSent)),
 		"Cache.Chunk.BytesReceived", humanize.Bytes(uint64(c.Chunk.BytesReceived)),
+		"Cache.Chunk.DownloadTime", time.Duration(uint64(c.Chunk.ChunksDownloadTime)),
 		"Cache.Index.Requests", c.Index.Requests,
 		"Cache.Index.EntriesRequested", c.Index.EntriesRequested,
 		"Cache.Index.EntriesFound", c.Index.EntriesFound,
