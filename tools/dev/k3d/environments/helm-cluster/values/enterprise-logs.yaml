@@ -1,11 +1,26 @@
 ---
+loki:
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+    s3:
+      endpoint: minio.minio.svc.cluster.local:9000
+      secretAccessKey: supersecret
+      accessKeyId: loki
+      s3ForcePathStyle: true
+      insecure: true
 enterprise:
   enabled: true
-  adminTokenSecret: "gel-admin-token"
+  adminTokenSecret: gel-admin-token
   provisioner:
-    provisionedSecretPrefix: "provisioned-secret"
+    provisionedSecretPrefix: provisioned-secret
     tenants:
       - loki
+  useExternalLicense: true
+  externalLicenseName: gel-license
+  cluster_name: enterprise-logs-test-fixture
 monitoring:
   selfMonitoring+:
     tenant: "loki"

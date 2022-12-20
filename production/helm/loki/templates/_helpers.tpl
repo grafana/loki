@@ -153,15 +153,7 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
-s3:
-  endpoint: {{ include "loki.minio" $ }}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
-  secret_access_key: {{ $.Values.minio.rootPassword }}
-  access_key_id: {{ $.Values.minio.rootUser }}
-  s3forcepathstyle: true
-  insecure: true
-{{- else if eq .Values.loki.storage.type "s3" -}}
+{{- if eq .Values.loki.storage.type "s3" -}}
 {{- with .Values.loki.storage.s3 }}
 s3:
   {{- with .s3 }}
@@ -235,11 +227,7 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
-type: "s3"
-s3:
-  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
-{{- else if eq .Values.loki.storage.type "s3" -}}
+{{- if eq .Values.loki.storage.type "s3" -}}
 {{- with .Values.loki.storage.s3 }}
 type: "s3"
 s3:
@@ -292,7 +280,7 @@ azure:
 
 {{/* Predicate function to determin if custom ruler config should be included */}}
 {{- define "loki.shouldIncludeRulerConfig" }}
-{{- or (not (empty .Values.loki.rulerConfig)) (.Values.minio.enabled) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
+{{- or (not (empty .Values.loki.rulerConfig)) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
 {{- end }}
 
 {{/* Loki ruler config */}}
@@ -424,15 +412,6 @@ Params:
 {{- printf "%s" (include "loki.fullname" .ctx) }}
 {{- else }}
 {{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Create the service endpoint including port for MinIO.
-*/}}
-{{- define "loki.minio" -}}
-{{- if .Values.minio.enabled -}}
-{{- printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString) -}}
 {{- end -}}
 {{- end -}}
 

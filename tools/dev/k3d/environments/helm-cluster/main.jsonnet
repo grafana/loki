@@ -54,7 +54,6 @@ local spec = (import './spec.json').spec;
   loki_datasource:: datasource.new('loki', lokiGatewayUrl, type='loki', default=true) +
                     datasource.withBasicAuth(tenant, '${PROVISIONED_TENANT_TOKEN}'),
 
-  grafanaNamespace: k.core.v1.namespace.new('grafana'),
   grafana: grafana
            + grafana.withAnonymous()
            + grafana.withImage('grafana/grafana-enterprise:8.2.5')
@@ -75,9 +74,23 @@ local spec = (import './spec.json').spec;
            + grafana.addDatasource('prometheus', $.prometheus_datasource)
            + grafana.addDatasource('loki', $.loki_datasource)
            + {
+             local configMap = k.core.v1.configMap,
+             [config]+:
+               configMap.metadata.withNamespace('loki')
+             for config in [
+               'grafana_ini_config_map',
+               'grafana_datasource_config_map',
+               'notification_channel_config_map',
+               'dashboard_provisioning_config_map',
+             ]
+           }
+           + {
+             grafana_service+: k.core.v1.service.metadata.withNamespace('loki'),
+
              local container = k.core.v1.container,
              grafana_deployment+:
-               k.apps.v1.deployment.hostVolumeMount(
+               k.apps.v1.deployment.metadata.withNamespace('loki')
+               + k.apps.v1.deployment.hostVolumeMount(
                  name='enterprise-logs-app',
                  hostPath='/var/lib/grafana/plugins/grafana-enterprise-logs-app/dist',
                  path='/grafana-enterprise-logs-app',
@@ -127,4 +140,44 @@ local spec = (import './spec.json').spec;
                  }
                ),
            },
+
+  minioNamespace: k.core.v1.namespace.new('minio'),
+  minio: helm.template('minio', '../../charts/minio', {
+    namespace: 'minio',
+    values: {
+      replicas: 1,
+      // Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
+      // https://docs.min.io/docs/minio-erasure-code-quickstart-guide
+      // Since we only have 1 replica, that means 2 drives must be used.
+      drivesPerNode: 2,
+      rootUser: 'loki',
+      rootPassword: 'supersecret',
+      buckets: [
+        {
+          name: 'chunks',
+          policy: 'none',
+          purge: false,
+        },
+        {
+          name: 'ruler',
+          policy: 'none',
+          purge: false,
+        },
+        {
+          name: 'admin',
+          policy: 'none',
+          purge: false,
+        },
+      ],
+      persistence: {
+        size: '5Gi',
+      },
+      resources: {
+        requests: {
+          cpu: '100m',
+          memory: '128Mi',
+        },
+      },
+    },
+  }),
 }
