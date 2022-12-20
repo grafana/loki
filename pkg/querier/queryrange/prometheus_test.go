@@ -54,7 +54,8 @@ var emptyStats = `"stats": {
 			"entriesStored": 0,
 			"bytesReceived": 0,
 			"bytesSent": 0,
-			"requests": 0
+			"requests": 0,
+			"downloadTime": 0
 		},
 		"index": {
 			"entriesFound": 0,
@@ -62,7 +63,8 @@ var emptyStats = `"stats": {
 			"entriesStored": 0,
 			"bytesReceived": 0,
 			"bytesSent": 0,
-			"requests": 0
+			"requests": 0,
+			"downloadTime": 0
 		},
 		"result": {
 			"entriesFound": 0,
@@ -70,7 +72,8 @@ var emptyStats = `"stats": {
 			"entriesStored": 0,
 			"bytesReceived": 0,
 			"bytesSent": 0,
-			"requests": 0
+			"requests": 0,
+			"downloadTime": 0
 		}
 	},
 	"summary": {
@@ -80,7 +83,7 @@ var emptyStats = `"stats": {
 		"queueTime": 0,
 		"subqueries": 0,
 		"totalBytesProcessed":0,
-                "totalEntriesReturned":0,
+		"totalEntriesReturned":0,
 		"totalLinesProcessed":0
 	}
 }`
