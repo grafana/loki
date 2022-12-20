@@ -167,15 +167,8 @@ func TestIgnoreErrorsPipeline(t *testing.T) {
 
 	sp := p.ForStream(lbs)
 	for _, line := range lines {
-		final_line, final_lbs, valid := sp.Process(0, line)
-		fmt.Printf("line=%s\n", final_line)
-		fmt.Printf("lbls=%v\n", final_lbs)
-		fmt.Printf("valid=%v\n", valid)
+		_, final_lbs, _ := sp.Process(0, line)
 		require.Equal(t, errJSON, final_lbs.Labels().Get(logqlmodel.ErrorLabel))
-		if final_lbs.Labels().Has(logqlmodel.ErrorLabel) {
-			fmt.Printf("Contains label")
-		}
-
 	}
 
 }
