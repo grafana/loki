@@ -348,8 +348,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		// Immediately drop rate limited batches to avoid HOL blocking for other tenants not experiencing throttling
 		if c.cfg.DropRateLimitedBatches && status == 429 {
 			level.Warn(c.logger).Log("msg", "dropping batch due to rate limiting applied at ingester")
-			c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-			c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+			c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(bufBytes)
+			c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(entriesCount))
 			return
 		}
 
