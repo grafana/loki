@@ -88,9 +88,12 @@ func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        DayTime             `yaml:"from"`         // used when working with config
-	IndexType   string              `yaml:"store"`        // type of index client to use.
-	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
+	// used when working with config
+	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
+	// type of index client to use.
+	IndexType string `yaml:"store"`
+	// type of object client to use; if omitted, defaults to store.
+	ObjectType  string              `yaml:"object_store"`
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks"`

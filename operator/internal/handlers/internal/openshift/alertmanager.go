@@ -28,3 +28,20 @@ func AlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiStackSpec, k k8
 
 	return err == nil, nil
 }
+
+// UserWorkloadAlertManagerSVCExists returns true if the Openshift User Workload AlertManager is present in the cluster.
+func UserWorkloadAlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiStackSpec, k k8s.Client) (bool, error) {
+	if stack.Tenants == nil || stack.Tenants.Mode != lokiv1.OpenshiftLogging {
+		return false, nil
+	}
+
+	var svc corev1.Service
+	key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringUserwWrkloadNS}
+
+	err := k.Get(ctx, key, &svc)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return false, kverrors.Wrap(err, "failed to lookup user workload alertmanager service", "name", key)
+	}
+
+	return err == nil, nil
+}

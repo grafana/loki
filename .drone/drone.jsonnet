@@ -548,6 +548,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         commands: ['apk add make bash && make lint-scripts'],
       },
       make('loki', container=false) { depends_on: ['check-generated-files'] },
+      make('check-doc', container=false) { depends_on: ['loki'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],

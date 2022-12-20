@@ -17,6 +17,13 @@ limit:
 
   # The cap in the quantity of burst lines that Promtail will push to Loki
   [burst: <int>]
+   
+  # Ratelimit each label value independently. If label is not found, log line is not
+  # considered for ratelimiting. Drop must be true if this is set.
+  [by_label_name: <string>]  
+    
+  # When ratelimiting by label is enabled, keep track of this many last used labels
+  [max_distinct_labels: <int> | default = 10000]  
 
   # When drop is true, log lines that exceed the current rate limit will be discarded.
   # When drop is false, log lines that exceed the current rate limit will only wait
@@ -56,3 +63,18 @@ Given the pipeline:
 ```
 
 Would throttle any log line and drop logs when rate limit.
+
+#### Ratelimit by a label
+
+Given the pipeline:
+
+```yaml
+- limit:
+    rate: 10
+    burst: 10
+    drop: true
+    by_label_name: "namespace"
+```
+
+Would ratelimit messages originating from each namespace independently.
+Any message without namespace label will not be ratelimited.
