@@ -57,6 +57,7 @@ ruler:
     period: 5s
 ```
 
+<<<<<<< HEAD
 ### Querier
 
 #### query-frontend k8s headless service changed to load balanced service
@@ -82,15 +83,11 @@ If you are not using Query Scheduler, then to avoid any issues on the Read path 
 
 ### General
 
-#### Chunk Download Statistics
+#### Store & Cache Statistics
 
-Two new statistics are logged when queries complete: _store chunk download time_ and _cache chunk download time_. Having these two stats in `metrics.go` lines can help operators attribute query latency to chunk retrieval.
+Statistics are now logged in `metrics.go` lines about how long it takes to download chunks from the store, as well as how long it takes to download chunks, index query, and result cache responses from cache.
 
-These values represent the _total_ time taken to fetch chunks from both the store and the chunks cache in the given query.
-
-These new stats have been also added to the response when using `--stats` with `logcli`:
-- `Querier.ChunksDownloadTime`
-- `Cache.Chunk.DownloadTime`
+These statistics are also displayed when using `--stats` with LogCLI.
 
 ## 2.7.0
 
