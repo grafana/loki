@@ -62,7 +62,6 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.read.targetModule }}
-            - -legacy-read-mode=true
             {{- with .Values.read.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
