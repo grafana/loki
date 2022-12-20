@@ -458,7 +458,7 @@ func newIgnoreErrorsExpr(filter *log.StringLabelFilter) *IgnoreErrorsExpr {
 func (e *IgnoreErrorsExpr) Shardable() bool { return true }
 
 func (e *IgnoreErrorsExpr) Stage() (log.Stage, error) {
-	return log.NewIgnoreErrors(e.filter)
+	return log.NewIgnoreErrors(e.filter), nil
 }
 func (e *IgnoreErrorsExpr) String() string {
 	return fmt.Sprintf("%s %s %s", OpPipe, OpIgnoreErrors, e.filter.String())
@@ -478,14 +478,15 @@ func (e *LineFmtExpr) String() string {
 }
 
 type LabelFmtExpr struct {
-	Formats []log.LabelFmt
-
+	Formats            []log.LabelFmt
+	FormatRenameErrors bool
 	implicit
 }
 
-func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
+func newLabelFmtExpr(fmts []log.LabelFmt, formatRenameErrors bool) *LabelFmtExpr {
 	return &LabelFmtExpr{
-		Formats: fmts,
+		Formats:            fmts,
+		FormatRenameErrors: formatRenameErrors,
 	}
 }
 
@@ -494,12 +495,19 @@ func (e *LabelFmtExpr) Shardable() bool { return false }
 func (e *LabelFmtExpr) Walk(f WalkFn) { f(e) }
 
 func (e *LabelFmtExpr) Stage() (log.Stage, error) {
-	return log.NewLabelsFormatter(e.Formats)
+	return log.NewLabelsFormatter(e.Formats, e.FormatRenameErrors)
 }
 
 func (e *LabelFmtExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
+
+	opFmtString := OpFmtLabel
+	if e.FormatRenameErrors {
+		opFmtString = OpFmtLabelRenameErrors
+	}
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, opFmtString))
+
 	for i, f := range e.Formats {
 		sb.WriteString(f.Name)
 		sb.WriteString("=")
@@ -719,9 +727,10 @@ const (
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"
 
-	OpFmtLine    = "line_format"
-	OpFmtLabel   = "label_format"
-	OpDecolorize = "decolorize"
+	OpFmtLine              = "line_format"
+	OpFmtLabel             = "label_format"
+	OpFmtLabelRenameErrors = "label_format_rename_errors"
+	OpDecolorize           = "decolorize"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"

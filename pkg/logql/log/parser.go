@@ -494,8 +494,8 @@ type IgnoreErrors struct {
 	filter *StringLabelFilter
 }
 
-func NewIgnoreErrors(filter *StringLabelFilter) (*IgnoreErrors, error) {
-	return &IgnoreErrors{filter: filter}, nil
+func NewIgnoreErrors(filter *StringLabelFilter) *IgnoreErrors {
+	return &IgnoreErrors{filter: filter}
 }
 
 func (ie *IgnoreErrors) Process(ts int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
