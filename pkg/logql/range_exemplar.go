@@ -11,17 +11,13 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
-// RangeStreamingAgg streaming aggregates sample for each sample
+// RangeStreamingExemplarAgg streaming aggregates exemplar for each sample
 type RangeStreamingExemplarAgg interface {
-	// agg func works inside the Next func of RangeVectorIterator, agg used to agg each sample.
-	// agg will calculate the intermediate result after streaming agg each sample and try to save an aggregate value instead of keeping all samples.
 	agg(sample exemplar.Exemplar)
-	// at func works inside the At func of RangeVectorIterator, get the intermediate result of agg func to provide the final value for At func of RangeVectorIterator
 	at() exemplar.Exemplar
 }
 
-// RangeVectorIterator iterates through a range of samples.
-// To fetch the current vector use `At` with a `BatchRangeVectorAggregator` or `RangeStreamingAgg`.
+// RangeExemplarsIterator iterates through a range of samples.
 type RangeExemplarsIterator interface {
 	Next() bool
 	At() (int64, []exemplar.QueryResult)

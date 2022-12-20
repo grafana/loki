@@ -111,9 +111,7 @@ func (c *DefaultClient) QueryRange(queryStr string, limit int, start, end time.T
 	return c.doQuery(queryRangePath, params.Encode(), quiet)
 }
 
-// QueryExemplar uses the /api/v1/query_exemplars endpoint to execute a range query
-// excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
-// nolint:interfacer
+// QueryExemplar uses the /api/v1/query_exemplars endpoint to execute a exemplar query
 func (c *DefaultClient) QueryExemplar(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)

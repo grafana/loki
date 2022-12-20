@@ -266,7 +266,7 @@ func (ev DownstreamEvaluator) StepExemplarEvaluator(ctx context.Context,
 	}
 }
 
-// ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
+// ResultStepExemplarEvaluator coerces a downstream exemplars into a StepExemplarEvaluator
 func ResultStepExemplarEvaluator(res logqlmodel.Result, params Params) (StepExemplarEvaluator, error) {
 	var (
 		start = params.Start()
@@ -276,21 +276,21 @@ func ResultStepExemplarEvaluator(res logqlmodel.Result, params Params) (StepExem
 
 	switch data := res.Data.(type) {
 	case logqlmodel.Exemplars:
-		return NewMatrixExemplarStepper(start, end, step, data), nil
+		return NewExemplarStepper(start, end, step, data), nil
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}
 }
 
-// MatrixExemplarStepper
-type MatrixExemplarStepper struct {
+// ExemplarStepper
+type ExemplarStepper struct {
 	start, end, ts time.Time
 	step           time.Duration
 	m              logqlmodel.Exemplars
 }
 
-func NewMatrixExemplarStepper(start, end time.Time, step time.Duration, m logqlmodel.Exemplars) StepExemplarEvaluator {
-	return &MatrixExemplarStepper{
+func NewExemplarStepper(start, end time.Time, step time.Duration, m logqlmodel.Exemplars) StepExemplarEvaluator {
+	return &ExemplarStepper{
 		start: start,
 		end:   end,
 		ts:    start.Add(-step), // will be corrected on first Next() call
@@ -299,7 +299,7 @@ func NewMatrixExemplarStepper(start, end time.Time, step time.Duration, m logqlm
 	}
 }
 
-func (m *MatrixExemplarStepper) Next() (bool, int64, []exemplar.QueryResult) {
+func (m *ExemplarStepper) Next() (bool, int64, []exemplar.QueryResult) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
 		return false, 0, nil
@@ -325,13 +325,13 @@ func (m *MatrixExemplarStepper) Next() (bool, int64, []exemplar.QueryResult) {
 	return true, ts, vec
 }
 
-func (m *MatrixExemplarStepper) Close() error { return nil }
+func (m *ExemplarStepper) Close() error { return nil }
 
-func (m *MatrixExemplarStepper) Error() error { return nil }
+func (m *ExemplarStepper) Error() error { return nil }
 
 //
 
-// ConcatEvaluator joins multiple StepEvaluators.
+// ConcatExemplarEvaluator joins multiple StepExemplarEvaluator.
 // Contract: They must be of identical start, end, and step values.
 func ConcatExemplarEvaluator(evaluators []StepExemplarEvaluator) (StepExemplarEvaluator, error) {
 	return newStepExemplarEvaluator(
