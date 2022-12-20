@@ -313,6 +313,11 @@ func TestNonMetricQuery(t *testing.T) {
 
 type FakeQuerier struct{}
 
+func (q *FakeQuerier) SelectExemplars(ctx context.Context, params logql.SelectSampleParams) (iter.ExemplarIterator, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (q *FakeQuerier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
 	return iter.NoopIterator, nil
 }
