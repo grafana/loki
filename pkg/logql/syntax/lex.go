@@ -104,6 +104,8 @@ var functionTokens = map[string]int{
 	OpTypeStdvar:   STDVAR,
 	OpTypeBottomK:  BOTTOMK,
 	OpTypeTopK:     TOPK,
+	OpTypeSort:     SORT,
+	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
 
 	// conversion Op

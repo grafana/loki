@@ -73,6 +73,8 @@ func Test_SampleExpr_String(t *testing.T) {
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
 		`vector(123)`,
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,

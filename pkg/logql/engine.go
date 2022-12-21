@@ -334,7 +334,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 
 	if GetRangeType(q.params) == InstantType {
-		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
+		sortByValue, err := Sortable(q.params)
+		if err != nil {
+			return nil, err
+		}
+		if !sortByValue {
+			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
+		}
 		return vec, nil
 	}
 
