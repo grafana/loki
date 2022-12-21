@@ -199,6 +199,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.
 [common: <common>]
+
+[remote_read: <list of ReadConfigs>]
 ```
 
 ### server
