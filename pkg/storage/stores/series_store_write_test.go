@@ -20,7 +20,7 @@ type mockCache struct {
 }
 
 func (m *mockCache) Store(_ context.Context, _ []string, _ [][]byte) error {
-	m.called += 1
+	m.called++
 	return nil
 }
 
@@ -46,7 +46,7 @@ type mockIndexWriter struct {
 }
 
 func (m *mockIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
-	m.called += 1
+	m.called++
 	return nil
 }
 
@@ -55,7 +55,7 @@ type mockChunksClient struct {
 }
 
 func (m *mockChunksClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	m.called += 1
+	m.called++
 	return nil
 }
 
