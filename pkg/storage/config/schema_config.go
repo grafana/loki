@@ -377,9 +377,9 @@ type PeriodicTableConfig struct {
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	g := struct {
-		Prefix string
-		Period model.Duration
-		Tags   Tags
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
 	}{}
 	if err := unmarshal(&g); err != nil {
 		return err
@@ -395,9 +395,9 @@ func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error)
 // MarshalYAML implements the yaml.Marshaler interface.
 func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	g := &struct {
-		Prefix string
-		Period model.Duration
-		Tags   Tags
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
 	}{
 		Prefix: cfg.Prefix,
 		Period: model.Duration(cfg.Period),
