@@ -33,14 +33,14 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 	).Point.V))
 }
 func TestDefaultEvaluator_Sortable(t *testing.T) {
-	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`
+	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`
 	sortable, err := Sortable(LiteralParams{qs: logqlSort})
 	if err != nil {
 		t.Fatal(err)
 	}
 	require.Equal(t, true, sortable)
 
-	logqlSum := `sum(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`
+	logqlSum := `sum(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`
 	sortableSum, err := Sortable(LiteralParams{qs: logqlSum})
 	if err != nil {
 		t.Fatal(err)
