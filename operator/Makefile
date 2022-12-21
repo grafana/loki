@@ -154,8 +154,9 @@ test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
 	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/testdata/test.yaml
 
 .PHONY: scorecard
-scorecard: generate go-generate bundle ## Run scorecard test
-	$(OPERATOR_SDK) scorecard bundle
+scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundles (community, openshift)
+	$(OPERATOR_SDK) scorecard -c ./bundle/community/tests/scorecard/config.yaml bundle/community
+	$(OPERATOR_SDK) scorecard -c ./bundle/openshift/tests/scorecard/config.yaml bundle/openshift
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
