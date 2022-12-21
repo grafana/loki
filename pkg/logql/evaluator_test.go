@@ -36,14 +36,14 @@ func TestDefaultEvaluator_Sortable(t *testing.T) {
 	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`
 	sortable, err := Sortable(LiteralParams{qs: logqlSort})
 	if err != nil {
-		return
+		t.Fatal(err)
 	}
 	require.Equal(t, true, sortable)
 
 	logqlSum := `sum(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`
 	sortableSum, err := Sortable(LiteralParams{qs: logqlSum})
 	if err != nil {
-		return
+		t.Fatal(err)
 	}
 	require.Equal(t, false, sortableSum)
 
