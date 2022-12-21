@@ -80,6 +80,20 @@ If you are not using Query Scheduler, then to avoid any issues on the Read path 
 * Rollout changes to `queriers`.
 * Roll out the rest of the changes.
 
+### General
+
+#### Store & Cache Statistics
+
+Statistics are now logged in `metrics.go` lines about how long it takes to download chunks from the store, as well as how long it takes to download chunks, index query, and result cache responses from cache.
+
+Example (note the `*_download_time` fields):
+
+```
+level=info ts=2022-12-20T15:27:54.858554127Z caller=metrics.go:147 component=frontend org_id=docker latency=fast query="sum(count_over_time({job=\"generated-logs\"}[1h]))" query_type=metric range_type=range length=6h17m48.865587821s start_delta=6h17m54.858533178s end_delta=5.99294552s step=1m30s duration=5.990829396s status=200 limit=30 returned_lines=0 throughput=123MB total_bytes=738MB total_entries=1 store_chunks_download_time=2.319297059s queue_time=2m21.476090991s subqueries=8 cache_chunk_req=81143 cache_chunk_hit=32390 cache_chunk_bytes_stored=1874098 cache_chunk_bytes_fetched=94289610 cache_chunk_download_time=56.96914ms cache_index_req=994 cache_index_hit=710 cache_index_download_time=1.587842ms cache_result_req=7 cache_result_hit=0 cache_result_download_time=380.555µs
+```
+
+These statistics are also displayed when using `--stats` with LogCLI.
+
 ## 2.7.0
 
 ### Loki
