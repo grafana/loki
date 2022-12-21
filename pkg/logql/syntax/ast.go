@@ -23,6 +23,9 @@ type Expr interface {
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
 	Walkable
 	fmt.Stringer
+
+	// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
+	Pretty(level int) string
 }
 
 func Clone(e Expr) (Expr, error) {
@@ -332,6 +335,19 @@ type LabelParserExpr struct {
 }
 
 func newLabelParserExpr(op, param string) *LabelParserExpr {
+	if op == OpParserTypeRegexp {
+		_, err := log.NewRegexpParser(param)
+		if err != nil {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regexp parser: %s", err.Error()), 0, 0))
+		}
+	}
+	if op == OpParserTypePattern {
+		_, err := log.NewPatternParser(param)
+		if err != nil {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
+		}
+	}
+
 	return &LabelParserExpr{
 		Op:    op,
 		Param: param,
@@ -367,6 +383,9 @@ func (e *LabelParserExpr) String() string {
 	if e.Param != "" {
 		sb.WriteString(" ")
 		sb.WriteString(strconv.Quote(e.Param))
+	}
+	if (e.Op == OpParserTypeRegexp || e.Op == OpParserTypePattern) && e.Param == "" {
+		sb.WriteString(" \"\"")
 	}
 	return sb.String()
 }
@@ -658,7 +677,7 @@ const (
 	OpTypeAnd    = "and"
 	OpTypeUnless = "unless"
 
-	// binops - operations
+	// binops - arithmetic
 	OpTypeAdd = "+"
 	OpTypeSub = "-"
 	OpTypeMul = "*"

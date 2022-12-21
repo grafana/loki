@@ -1,0 +1,98 @@
+---
+description: Describes parameters used to configure Grafana Loki.
+menuTitle: Configuration parameters
+title: Grafana Loki configuration parameters
+weight: 500
+---
+
+# Grafana Loki configuration parameters
+
+{{ .GeneratedFileWarning }}
+
+Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
+which contains information on the Loki server and its individual components,
+depending on which mode Loki is launched in.
+
+Configuration examples can be found in the [Configuration Examples](examples/) document.
+
+## Printing Loki config at runtime
+
+If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
+Loki will dump the entire config object it has created from the built-in defaults combined first with
+overrides from config file, and second by overrides from flags.
+
+The result is the value for every config object in the Loki config struct, which is very large...
+
+Many values will not be relevant to your install such as storage configs which you are not using and which you did not define,
+this is expected as every option has a default value if it is being used or not.
+
+This config is what Loki will use to run, it can be invaluable for debugging issues related to configuration and
+is especially useful in making sure your config files and flags are being read and loaded properly.
+
+`-print-config-stderr` is nice when running Loki directly e.g. `./loki ` as you can get a quick output of the entire Loki config.
+
+`-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so
+that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
+
+## Reload at runtime
+
+Promtail can reload its configuration at runtime. If the new configuration
+is not well-formed, the changes will not be applied.
+A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
+
+## Configuration file reference
+
+To specify which configuration file to load, pass the `-config.file` flag at the
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` subdirectory and try to use that.
+
+The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
+
+### Use environment variables in the configuration
+
+> **Note:** This feature is only available in Loki 2.1+.
+
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
+To do this, pass `-config.expand-env=true` and use:
+
+```
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```
+${VAR:-default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
+
+### Generic placeholders
+
+- `<boolean>` : a boolean that can take the values `true` or `false`
+- `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
+- `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+- `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
+- `<labelvalue>` : a string of unicode characters
+- `<filename>` : a valid path relative to current working directory or an absolute path.
+- `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
+- `<string>` : a string
+- `<secret>` : a string that represents a secret, such as a password
+
+### Supported contents and default values of `loki.yaml`
+
+{{ .ConfigFile }}

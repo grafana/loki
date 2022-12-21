@@ -1310,8 +1310,8 @@ spec:
             description: LokiStackSpec defines the desired state of LokiStack
             properties:
               limits:
-                description: Limits defines the limits to be applied to log stream
-                  processing.
+                description: Limits defines the per-tenant limits to be applied to
+                  log stream processing and the per-tenant the config overrides.
                 properties:
                   global:
                     description: Global defines the limits applied globally across
@@ -1382,8 +1382,8 @@ spec:
                     type: object
                   tenants:
                     additionalProperties:
-                      description: LimitsTemplateSpec defines the limits  applied
-                        at ingestion or query path.
+                      description: LimitsTemplateSpec defines the limits and overrides
+                        applied per-tenant.
                       properties:
                         ingestion:
                           description: IngestionLimits defines the limits applied
@@ -1451,7 +1451,8 @@ spec:
                               type: integer
                           type: object
                       type: object
-                    description: Tenants defines the limits applied per tenant.
+                    description: Tenants defines the limits and overrides applied
+                      per tenant.
                     type: object
                 type: object
               managementState:

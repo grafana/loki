@@ -18,7 +18,6 @@ require (
 	github.com/aws/aws-sdk-go v1.44.128
 	github.com/baidubce/bce-sdk-go v0.9.111
 	github.com/bmatcuk/doublestar v1.2.2
-	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/buger/jsonparser v1.1.1
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cespare/xxhash v1.1.0
@@ -51,12 +50,13 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/dskit v0.0.0-20221212120341-3e308a49441b
 	github.com/grafana/go-gelf/v2 v2.0.1
+	github.com/grafana/gomemcache v0.0.0-20221213170046-b5da8a745d41
 	github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+	github.com/grafana/tail v0.0.0-20221214082743-3a1c242a4d7b
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.15.3
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/hpcloud/tail v1.0.0
 	github.com/imdario/mergo v0.3.12
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 	github.com/influxdata/telegraf v1.16.3
@@ -67,6 +67,7 @@ require (
 	github.com/klauspost/pgzip v1.2.5
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/minio/minio-go/v7 v7.0.32-0.20220706200439-ef3e45ed9cdb
+	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/modern-go/reflect2 v1.0.2
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
@@ -308,8 +309,6 @@ require (
 // Upgrade to run with gRPC 1.3.0 and above.
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
 
-replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20221013162612-e88cf3c7a8f6
-
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
@@ -318,10 +317,6 @@ replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-
-// Same as Cortex
-// Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
-replace github.com/bradfitz/gomemcache => github.com/owen-d/gomemcache v0.0.0-20220719101501-ce4268ea75ae
 
 replace github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
 
