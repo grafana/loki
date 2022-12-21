@@ -33,8 +33,8 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 	).Point.V))
 }
 func TestDefaultEvaluator_Sortable(t *testing.T) {
-	logql := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`
-	sortable, err := Sortable(LiteralParams{qs: logql})
+	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`
+	sortable, err := Sortable(LiteralParams{qs: logqlSort})
 	if err != nil {
 		return
 	}
