@@ -12,3 +12,9 @@ leaderElection:
 featureGates:
   lokiStackGateway: true
   runtimeSeccompProfile: false
+  #
+  # Webhook feature gates
+  #
+  lokiStackWebhook: true
+  alertingRuleWebhook: true
+  recordingRuleWebhook: true
