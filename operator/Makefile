@@ -27,7 +27,7 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.0.1
-COMMUNITY_VERSION ?= main-dcd2d06
+COMMUNITY_VERSION ?= main-a4f3063
 CHANNELS ?= "stable"
 DEFAULT_CHANNEL ?= "stable"
 
