@@ -4,7 +4,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -44,23 +43,19 @@ func newRangeExemplarIterator(
 		end:      end,
 		selRange: selRange,
 		metrics:  map[string]labels.Labels{},
-		r:        expr,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
 	}, nil
 
 }
 
-// streaming range agg
+// streaming range agg exemplar
 type streamRangeExemplarIterator struct {
 	iter                                 iter.PeekingExemplarIterator
 	selRange, step, end, current, offset int64
 	windowRangeAgg                       map[string]RangeStreamingExemplarAgg
-	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
-	at                                   []promql.Sample
 	exemplars                            []exemplar.QueryResult
-	agg                                  BatchRangeVectorAggregator
 }
 
 func (r *streamRangeExemplarIterator) Next() bool {
@@ -87,19 +82,18 @@ func (r *streamRangeExemplarIterator) Error() error {
 	return r.iter.Error()
 }
 
-// load the next sample range window.
+// load the next exemplar range window.
 func (r *streamRangeExemplarIterator) load(start, end int64) {
-	for lbs, sample, hasNext := r.iter.Peek(); hasNext; lbs, sample, hasNext = r.iter.Peek() {
-		if sample.TimestampMs > end {
+	for lbs, curntExemplar, hasNext := r.iter.Peek(); hasNext; lbs, curntExemplar, hasNext = r.iter.Peek() {
+		if curntExemplar.TimestampMs > end {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
 		// the lower bound of the range is not inclusive
-		if sample.TimestampMs <= start {
+		if curntExemplar.TimestampMs <= start {
 			_ = r.iter.Next()
 			continue
 		}
-		// adds the sample.
 		var rangeAgg RangeStreamingExemplarAgg
 		var ok bool
 		rangeAgg, ok = r.windowRangeAgg[lbs]
@@ -115,14 +109,13 @@ func (r *streamRangeExemplarIterator) load(start, end int64) {
 				r.metrics[lbs] = metric
 			}
 
-			// never err here ,we have check error at evaluator.go rangeAggEvaluator() func
-			rangeAgg = streamingExemplarregator()
+			rangeAgg = streamingExemplarAggregator()
 			r.windowRangeAgg[lbs] = rangeAgg
 		}
 		p := exemplar.Exemplar{
-			Ts:     sample.TimestampMs,
-			Value:  sample.Value,
-			Labels: logproto.FromLabelAdaptersToLabels(sample.Labels),
+			Ts:     curntExemplar.TimestampMs,
+			Value:  curntExemplar.Value,
+			Labels: logproto.FromLabelAdaptersToLabels(curntExemplar.Labels),
 		}
 		rangeAgg.agg(p)
 		_ = r.iter.Next()
@@ -152,10 +145,11 @@ func (r *streamRangeExemplarIterator) At() (int64, []exemplar.QueryResult) {
 	return ts, r.exemplars
 }
 
-func streamingExemplarregator() RangeStreamingExemplarAgg {
+func streamingExemplarAggregator() RangeStreamingExemplarAgg {
 	return &ExemplarAgg{}
 }
 
+// ExemplarAgg choose last one log as exemplar
 type ExemplarAgg struct {
 	exemplar exemplar.Exemplar
 }
