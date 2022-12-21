@@ -75,7 +75,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
 	found, _, _, _ := c.fetcher.Cache().Fetch(ctx, []string{c.schemaCfg.ExternalKey(chk.ChunkRef)})
 
-	if !overlap && len(found) > 0 {
+	if len(found) > 0 && !overlap {
 		writeChunk = false
 		DedupedChunksTotal.Inc()
 	}
@@ -101,7 +101,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 		return err
 	}
 
-	// write it back to the cache if it's not found.
+	// write chunk to the cache if it's not found.
 	if len(found) == 0 {
 		if cacheErr := c.fetcher.WriteBackCache(ctx, chunks); cacheErr != nil {
 			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
