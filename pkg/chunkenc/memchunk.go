@@ -1196,7 +1196,7 @@ func (hb *headBlock) ExemplarIterator(ctx context.Context, mint, maxt int64, ext
 	}
 	return iter.ExemplarIteratorWithClose(iter.NewMultiExemplarSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
-			SamplesPool.Put(s.Samples)
+			ExemplarsPool.Put(s.Exemplars)
 		}
 		return nil
 	})
