@@ -29,6 +29,7 @@ These endpoints are exposed by the querier and the query frontend:
 
 - [`GET /loki/api/v1/query`](#query-loki)
 - [`GET /loki/api/v1/query_range`](#query-loki-over-a-range-of-time)
+- [`GET /loki/api/v1/query_query_exemplars`](#query-exemplars-over-a-range-of-time)
 - [`GET /loki/api/v1/labels`](#list-labels-within-a-range-of-time)
 - [`GET /loki/api/v1/label/<name>/values`](#list-label-values-within-a-range-of-time)
 - [`GET /loki/api/v1/series`](#list-series)
@@ -418,6 +419,146 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
             "bar"
           ]
         ]
+      }
+    ],
+    "stats": {
+      ...
+    }
+  }
+}
+```
+
+## Query Exemplars over a range of time
+
+```
+GET /loki/api/v1/query_exemplars
+```
+
+`/loki/api/v1/query_exemplars` is used to do a query exemplars over a range of time and
+accepts the following query parameters in the URL:
+
+- `query`: The [LogQL](../logql/) query to perform
+- `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a
+  stream(log lines) response.
+- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats).
+  Defaults to one hour ago.
+- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats).
+  Defaults to now.
+- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus
+  duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a
+  dynamic value based on `start` and `end`. Only applies to query types which produce a matrix response.
+- `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step
+  versus interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or
+  float number of seconds. Only applies to queries which produce a stream response.
+- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+
+In microservices mode, `/loki/api/v1/query_exemplars` is exposed by the querier and the frontend.
+
+### Step versus interval
+
+Use the `step` parameter when making metric queries to Loki, or queries which return a matrix response. It is evaluated
+in exactly the same way Prometheus evaluates `step`. First the query will be evaluated at `start` and then evaluated
+again at `start + step` and again at `start + step + step` until `end` is reached. The result will be a matrix of the
+query result evaluated at each step.
+
+Use the `interval` parameter when making log queries to Loki, or queries which return a stream response. It is evaluated
+by returning a log entry at `start`, then the next entry will be returned an entry with timestampe >= `start + interval`
+, and again at `start + interval + interval` and so on until `end` is reached. It does not fill missing entries.
+
+<span style="background-color:#f3f973;">Note about the experimental nature of the interval parameter:</span> This flag
+may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior,
+however that is uncertain at this time.  [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track
+the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
+
+Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "resultType": "exemplars",
+    "result": [<exemplar value>]
+    "stats" : [<statistics>]
+  }
+}
+```
+
+Where `<exemplar value>` is:
+
+```
+{
+  "metric": {
+    <label key-value pairs>
+  },
+  "values": [
+    [
+      labels: {
+        <label key-value pairs>
+      },
+      timestamp: <number: second unix epoch>,
+      value: <string: value>
+    ],
+    ...
+  ]
+}
+```
+
+The items in the `values` array are sorted by timestamp, and the oldest item is first.
+
+See [statistics](#statistics) for information about the statistics returned by Loki.
+
+### Examples
+
+```bash
+$ curl -G -s  "http://localhost:3100/loki/api/v1/query_exemplars" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
+{
+  "status": "success",
+  "data": {
+    "resultType": "exemplars",
+    "result": [
+      {
+       "metric": {
+          "level": "info"
+        },
+        values: [{
+					labels: {
+							_line: "[Info]2022/12/19 20:36:07 main.go:43: Ali cloud print updater check again at 2022-12-19 20:36:07.363764 +0800 CST m=+295201.049795879",
+							"level": "info"
+						},
+						value: "0",
+						timestamp: 1671452983
+					},
+					{
+						labels: {
+							_line: "[Info]2022/12/19 20:36:07 main.go:43: at 2022-12-19 20:36:07.363764 +0800 CST m=+295201.049795879",
+						   "level": "info"
+						},
+						value: "0",
+						timestamp: 1671452985
+					}
+				]
+      },
+      {
+       "metric": {
+          "level": "warn"
+        },
+        values: [{
+					labels: {
+							_line: "[Warn]2022/12/19 20:36:07 main.go:43:  check again at 2022-12-19 20:36:07.363764 +0800 CST m=+295201.049795879",
+							"level": "warn"
+						},
+						value: "0",
+						timestamp: 1671452983
+					},
+					{
+						labels: {
+							_line: "[Warn]2022/12/19 20:36:07 main.go:43: Ali cloud print updater check again at 2022-12-19 20:36:07.363764 +0800 CST m=+295201.049795879",
+						   "level": "warn"
+						},
+						value: "0",
+						timestamp: 1671452985
+					}
+				]
       }
     ],
     "stats": {
