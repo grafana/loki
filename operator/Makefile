@@ -84,6 +84,9 @@ endif
 
 USE_COMMUNITY_BUILD ?= false
 ifeq ($(USE_COMMUNITY_BUILD), true)
+	BUNDLE_CHANNELS = --channels=alpha
+	BUNDLE_DEFAULT_CHANNEL = --default-channel=alpha
+    BUNDLE_METADATA_OPTS = $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
     LOKI_OPERATOR_NS = kubernetes-operators
 	IMG = docker.io/$(COMMUNITY_ORG)/loki-operator:$(COMMUNITY_VERSION)
     BUNDLE_IMG = docker.io/$(COMMUNITY_ORG)/loki-operator-bundle:$(COMMUNITY_VERSION)
