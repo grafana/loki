@@ -92,7 +92,7 @@ func Test_queryExemplar(t *testing.T) {
 	logCLIClient := &DefaultClient{
 		Address: URL.String(),
 	}
-	logql := `sum by(job,instance,userid,job_id)(sum_over_time({metrics="flink_taskmanager_job_task_numBytesInRemotePerSecond", job="downsampling"} | json | job_id=~"123" | sessionClusterId="456" | unwrap value[30s]))`
+	logql := `sum by(job,instance,userid,job_id)(sum_over_time({metrics="abc", job="test"} | json | job_id=~"123" | sessionClusterId="456" | unwrap value[30s]))`
 	start := time.Now().Add(-5 * time.Minute)
 	end := time.Now()
 	exemplar, err := logCLIClient.QueryExemplar(logql, 1, start, end, logproto.FORWARD, end.Sub(start), end.Sub(start), false)
