@@ -5,22 +5,44 @@
 #### Loki
 
 ##### Enhancements
-
+* [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap
 * [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
 * [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
 * [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
+* [7731](https://github.com/grafana/loki/pull/7731) **bitkill**: Add healthchecks to the docker-compose example.
+* [7759](https://github.com/grafana/loki/pull/7759) **kavirajk**: Improve error message for loading config with ENV variables.
+* [7785](https://github.com/grafana/loki/pull/7785) **dannykopping**: Add query blocker for queries and rules.
+* [7804](https://github.com/grafana/loki/pull/7804) **sandeepsukhani**: Use grpc for communicating with compactor for query time filtering of data requested for deletion.
+* [7817](https://github.com/grafana/loki/pull/7817) **kavirajk**: fix(memcached): panic on send on closed channel.
+* [7916](https://github.com/grafana/loki/pull/7916) **ssncferreira**: Add `doc-generator` tool to generate configuration flags documentation.
 
 ##### Fixes
+
+* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
+* [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
+* [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix multitenant querying.
+* [7784](https://github.com/grafana/loki/pull/7784) **isodude**: Fix default values of connect addresses for compactor and querier workers to work with IPv6.
+* [7880](https://github.com/grafana/loki/pull/7880) **sandeepsukhani**: consider range and offset in queries while looking for schema config for query sharding.
+* [7937](https://github.com/grafana/loki/pull/7937) **ssncferreira**: Deprecate CLI flag `-ruler.wal-cleaer.period` and replace it with `-ruler.wal-cleaner.period`.
+* [7906](https://github.com/grafana/loki/pull/7906) **kavirajk**: Add API endpoint that formats LogQL expressions and support new `fmt` subcommand in `logcli` to format LogQL query.
+* [7966](https://github.com/grafana/loki/pull/7966) **sandeepsukhani**: Fix query-frontend request load balancing when using k8s service.
 
 ##### Changes
 
 #### Promtail
 
-* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+* [7619](https://github.com/grafana/loki/pull/7619) **cadrake**: Add ability to pass query params to heroku drain targets for relabelling.
 
 ##### Enhancements
 
+* [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+* [7597](https://github.com/grafana/loki/pull/7597) **redbaron**: allow ratelimiting by label
+
 ##### Fixes
+* [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
+
+* [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
 ##### Changes
 * [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
@@ -31,6 +53,10 @@
 
 #### Jsonnet
 
+#### Build 
+
+* [7938](https://github.com/grafana/loki/pull/7938) **ssncferreira**: Add DroneCI pipeline step to validate configuration flags documentation generation.
+
 ### Notes
 
 This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
@@ -40,6 +66,16 @@ Check the history of the branch FIXME.
 ### Dependencies
 
 * Go Version: 1.19
+
+## 2.7.1
+
+#### Loki
+
+##### Fixes
+* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
+
+##### Changes
+* [7877](https://github.com/grafana/loki/pull/7877)A **trevorwhitney**: Due to a known bug with experimental new delete mode feature, the default delete mode has been changed to `filter-only`.
 
 ## 2.7.0
 
@@ -66,7 +102,6 @@ Check the history of the branch FIXME.
 * [6952](https://github.com/grafana/loki/pull/6952) **DylanGuedes**: Experimental: Introduce a new feature named stream sharding.
 
 ##### Fixes
-* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
 * [7426](https://github.com/grafana/loki/pull/7426) **periklis**: Add missing compactor delete client tls client config
 * [7238](https://github.com/grafana/loki/pull/7328) **periklis**: Fix internal server bootstrap for query frontend
 * [7288](https://github.com/grafana/loki/pull/7288) **ssncferreira**: Fix query mapping in AST mapper `rangemapper` to support the new `VectorExpr` expression.
@@ -92,7 +127,7 @@ Check the history of the branch FIXME.
 #### Promtail
 
 ##### Enhancements
-
+* [7593](https://github.com/grafana/loki/pull/7593) **chodges15**: Promtail: Add tenant label to client drop metrics and logs
 * [7101](https://github.com/grafana/loki/pull/7101) **liguozhong**: Promtail: Add support for max stream limit.
 * [7247](https://github.com/grafana/loki/pull/7247) **liguozhong**: Add config reload endpoint / signal to promtail.
 * [6708](https://github.com/grafana/loki/pull/6708) **DylanGuedes**: Add compressed files support to Promtail.
@@ -101,13 +136,11 @@ Check the history of the branch FIXME.
 * [6656](https://github.com/grafana/loki/pull/6656) **carlospeon**: Allow promtail to add matches to the journal reader
 * [7401](https://github.com/grafana/loki/pull/7401) **thepalbi**: Add timeout to GCP Logs push target
 * [7414](https://github.com/grafana/loki/pull/7414) **thepalbi**: Add basic tracing support
-* [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
 
 ##### Fixes
 * [7394](https://github.com/grafana/loki/pull/7394) **liguozhong**: Fix issue with the Cloudflare target that caused it to stop working after it received an error in the logpull request as explained in issue https://github.com/grafana/loki/issues/6150
 * [6766](https://github.com/grafana/loki/pull/6766) **kavirajk**: fix(logql): Make `LabelSampleExtractor` ignore processing the line if it doesn't contain that specific label. Fixes unwrap behavior explained in the issue https://github.com/grafana/loki/issues/6713
 * [7016](https://github.com/grafana/loki/pull/7016) **chodges15**: Fix issue with dropping logs when a file based SD target's labels are updated
-* [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
 ##### Changes
 * **quodlibetor**: Change Docker target discovery log level from `Error` to `Info`
@@ -123,6 +156,7 @@ Check the history of the branch FIXME.
 
 #### Jsonnet
 * [6189](https://github.com/grafana/loki/pull/6189) **irizzant**: Add creation of a `ServiceMonitor` object for Prometheus scraping through configuration parameter `create_service_monitor`. Simplify mixin usage by adding (https://github.com/prometheus-operator/kube-prometheus) library.
+* [6662](https://github.com/grafana/loki/pull/6662) **Whyeasy**: Fixes memberlist error when using a stateful ruler.
 
 
 ### Notes

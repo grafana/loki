@@ -35,7 +35,8 @@ import (
 )
 
 const (
-	DefaultEngineTimeout = 5 * time.Minute
+	DefaultEngineTimeout       = 5 * time.Minute
+	DefaultBlockedQueryMessage = "blocked by policy"
 )
 
 var (
@@ -45,6 +46,13 @@ var (
 		Help:      "LogQL query timings",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"query_type"})
+
+	QueriesBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "blocked_queries",
+		Help:      "Count of queries blocked by per-tenant policy",
+	}, []string{"user"})
+
 	lastEntryMinTime = time.Unix(-100, 0)
 )
 
@@ -105,7 +113,7 @@ type Querier interface {
 type EngineOpts struct {
 	// TODO: remove this after next release.
 	// Timeout for queries execution
-	Timeout time.Duration `yaml:"timeout"`
+	Timeout time.Duration `yaml:"timeout" doc:"deprecated"`
 
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
@@ -114,7 +122,7 @@ type EngineOpts struct {
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// TODO: remove this configuration after next release.
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", DefaultEngineTimeout, "Timeout for query execution. Instead, rely only on querier.query-timeout. (deprecated)")
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", DefaultEngineTimeout, "Use querier.query-timeout instead. Timeout for query execution.")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 }
 
@@ -223,6 +231,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		if errors.Is(err, logqlmodel.ErrParse) ||
 			errors.Is(err, logqlmodel.ErrPipeline) ||
 			errors.Is(err, logqlmodel.ErrLimit) ||
+			errors.Is(err, logqlmodel.ErrBlocked) ||
 			errors.Is(err, context.Canceled) {
 			status = "400"
 		}
@@ -240,8 +249,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
-	userID, _ := tenant.TenantID(ctx)
-	queryTimeout := q.limits.QueryTimeout(userID)
+	tenants, _ := tenant.TenantIDs(ctx)
+	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -249,6 +258,10 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
 		return nil, err
+	}
+
+	if q.checkBlocked(ctx, tenants) {
+		return nil, logqlmodel.ErrBlocked
 	}
 
 	switch e := expr.(type) {
@@ -268,6 +281,19 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
 	}
+}
+
+func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
+	blocker := newQueryBlocker(ctx, q)
+
+	for _, tenant := range tenants {
+		if blocker.isBlocked(tenant) {
+			QueriesBlocked.WithLabelValues(tenant).Inc()
+			return true
+		}
+	}
+
+	return false
 }
 
 // evalSample evaluate a sampleExpr

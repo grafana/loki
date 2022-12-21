@@ -18,7 +18,7 @@ type module struct {
 	// initFn for this module (can return nil)
 	initFn func() (services.Service, error)
 
-	// is this module user visible (i.e intended to be passed to `InitModuleServices`)
+	// is this module user visible (i.e. intended to be passed to `InitModuleServices`)
 	userVisible bool
 }
 

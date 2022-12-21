@@ -3,12 +3,9 @@ title: Install the Helm Chart
 menuTitle: Install Loki
 description: Install Loki in scalable mode.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/scalable
 weight: 100
-keywords:
-  - keyword
-  - key
-  - word
+keywords: []
 ---
 
 # Install the Helm Chart

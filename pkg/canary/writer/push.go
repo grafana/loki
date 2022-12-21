@@ -63,6 +63,7 @@ func NewPush(
 	cfg config.HTTPClientConfig,
 	labelName, labelValue string,
 	streamName, streamValue string,
+	useTLS bool,
 	tlsCfg *tls.Config,
 	caFile string,
 	username, password string,
@@ -87,6 +88,10 @@ func NewPush(
 			return nil, fmt.Errorf("failed to create TLS config for transport: %w", err)
 		}
 		client.Transport = rt
+		scheme = "https"
+	}
+
+	if useTLS {
 		scheme = "https"
 	}
 

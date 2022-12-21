@@ -75,7 +75,7 @@ func TestClient_Handle(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 3.0
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 0
 			`,
 		},
 		"batch log entries together until the batch wait time is reached": {
@@ -101,7 +101,7 @@ func TestClient_Handle(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 2.0
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 0
 			`,
 		},
 		"retry send a batch up to backoff's max retries in case the server responds with a 5xx": {
@@ -127,7 +127,7 @@ func TestClient_Handle(t *testing.T) {
 			expectedMetrics: `
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 1.0
 				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
 				# TYPE promtail_sent_entries_total counter
 				promtail_sent_entries_total{host="__HOST__"} 0
@@ -148,7 +148,7 @@ func TestClient_Handle(t *testing.T) {
 			expectedMetrics: `
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 1.0
 				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
 				# TYPE promtail_sent_entries_total counter
 				promtail_sent_entries_total{host="__HOST__"} 0
@@ -177,7 +177,7 @@ func TestClient_Handle(t *testing.T) {
 			expectedMetrics: `
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 1.0
 				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
 				# TYPE promtail_sent_entries_total counter
 				promtail_sent_entries_total{host="__HOST__"} 0
@@ -202,7 +202,7 @@ func TestClient_Handle(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 2.0
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant="tenant-default"} 0
 			`,
 		},
 		"batch log entries together honoring the tenant ID overridden while processing the pipeline stages": {
@@ -232,7 +232,9 @@ func TestClient_Handle(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 4.0
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant="tenant-1"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant="tenant-2"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant="tenant-default"} 0
 			`,
 		},
 	}
@@ -343,7 +345,7 @@ func TestClient_StopNow(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 3.0
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 0
 			`,
 		},
 		{
@@ -362,7 +364,7 @@ func TestClient_StopNow(t *testing.T) {
 			expectedMetrics: `
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
-				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				promtail_dropped_entries_total{host="__HOST__", tenant=""} 1.0
 				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
 				# TYPE promtail_sent_entries_total counter
 				promtail_sent_entries_total{host="__HOST__"} 0

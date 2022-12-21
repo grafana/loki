@@ -54,19 +54,19 @@ type Config struct {
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
-	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
+	QueryTimeout                  time.Duration    `yaml:"query_timeout" doc:"hidden"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
-	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
+	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
-	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
-	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "Queriers should only query the ingesters and not try to query any store")
-	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "Enable queries across multiple tenants. (Experimental)")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries allowed.")
+	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
+	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
+	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 }
 
 // Validate validates the config.

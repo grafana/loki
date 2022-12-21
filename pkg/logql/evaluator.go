@@ -420,16 +420,15 @@ func rangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
-	agg, err := aggregator(expr)
-	if err != nil {
-		return nil, err
-	}
-	iter := newRangeVectorIterator(
-		it,
+	iter, err := newRangeVectorIterator(
+		it, expr,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 	)
+	if err != nil {
+		return nil, err
+	}
 	if expr.Operation == syntax.OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
 			iter: iter,
@@ -438,12 +437,10 @@ func rangeAggEvaluator(
 	}
 	return &rangeVectorEvaluator{
 		iter: iter,
-		agg:  agg,
 	}, nil
 }
 
 type rangeVectorEvaluator struct {
-	agg  RangeVectorAggregator
 	iter RangeVectorIterator
 
 	err error
@@ -454,7 +451,7 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	if !next {
 		return false, 0, promql.Vector{}
 	}
-	ts, vec := r.iter.At(r.agg)
+	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
 		if s.Metric.Has(logqlmodel.ErrorLabel) {
@@ -486,7 +483,7 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	if !next {
 		return false, 0, promql.Vector{}
 	}
-	ts, vec := r.iter.At(one)
+	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
 		if s.Metric.Has(logqlmodel.ErrorLabel) {

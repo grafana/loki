@@ -44,6 +44,56 @@ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
+### Ruler
+
+#### CLI flag `ruler.wal-cleaer.period` deprecated
+
+CLI flag `ruler.wal-cleaer.period` is now deprecated and replaced with a typo fix `ruler.wal-cleaner.period`.
+The yaml configuration remains unchanged:
+
+```yaml
+ruler:
+  wal_cleaner:
+    period: 5s
+```
+
+### Querier
+
+#### query-frontend k8s headless service changed to load balanced service
+
+*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](https://grafana.com/docs/loki/latest/installation/tanka/)
+
+The `query-frontend` k8s service was previously headless and was used for two purposes:
+* Distributing the Loki query requests amongst all the available Query Frontend pods.
+* Discover IPs of Query Frontend pods from Queriers to connect as workers.
+
+The problem here is that a headless service does not support load balancing and leaves it up to the client to balance the load.
+Additionally, a load-balanced service does not let us discover the IPs of the underlying pods.
+
+To meet both these requirements, we have made the following changes:
+* Changed the existing `query-frontend` k8s service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
+* Added `query-frontend-headless` to discover QF pod IPs from queriers to connect as workers.
+
+If you are deploying Loki with Query Scheduler by setting [query_scheduler_enabled](https://github.com/grafana/loki/blob/cc4ab7487ab3cd3b07c63601b074101b0324083b/production/ksonnet/loki/config.libsonnet#L18) config to `true`, then there is nothing to do here for this change.
+If you are not using Query Scheduler, then to avoid any issues on the Read path until the rollout finishes, it would be good to follow below steps:
+* Create just the `query-frontend-headless` service without applying any changes to the `query-frontend` service.
+* Rollout changes to `queriers`.
+* Roll out the rest of the changes.
+
+### General
+
+#### Store & Cache Statistics
+
+Statistics are now logged in `metrics.go` lines about how long it takes to download chunks from the store, as well as how long it takes to download chunks, index query, and result cache responses from cache.
+
+Example (note the `*_download_time` fields):
+
+```
+level=info ts=2022-12-20T15:27:54.858554127Z caller=metrics.go:147 component=frontend org_id=docker latency=fast query="sum(count_over_time({job=\"generated-logs\"}[1h]))" query_type=metric range_type=range length=6h17m48.865587821s start_delta=6h17m54.858533178s end_delta=5.99294552s step=1m30s duration=5.990829396s status=200 limit=30 returned_lines=0 throughput=123MB total_bytes=738MB total_entries=1 store_chunks_download_time=2.319297059s queue_time=2m21.476090991s subqueries=8 cache_chunk_req=81143 cache_chunk_hit=32390 cache_chunk_bytes_stored=1874098 cache_chunk_bytes_fetched=94289610 cache_chunk_download_time=56.96914ms cache_index_req=994 cache_index_hit=710 cache_index_download_time=1.587842ms cache_result_req=7 cache_result_hit=0 cache_result_download_time=380.555µs
+```
+
+These statistics are also displayed when using `--stats` with LogCLI.
+
 ## 2.7.0
 
 ### Loki

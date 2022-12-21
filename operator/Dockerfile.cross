@@ -1,4 +1,4 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.24.1
+ARG BUILD_IMAGE=grafana/loki-build-image:0.25.0
 
 FROM golang:1.19.1-alpine as goenv
 RUN go env GOARCH > /goarch && \

@@ -16,6 +16,11 @@ services:
       - ./loki-config.yaml:/etc/loki/config.yaml
     depends_on:
       - minio
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks: &loki-dns
       loki:
         aliases:
@@ -30,6 +35,11 @@ services:
       - 9095
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       - minio
     networks:
@@ -64,6 +74,11 @@ services:
       - 9000
     volumes:
       - ./.data/minio:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 15s
+      timeout: 20s
+      retries: 5
     networks:
       - loki
 
@@ -95,6 +110,11 @@ services:
         /run.sh
     ports:
       - "3000:3000"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - loki
 
@@ -159,6 +179,11 @@ services:
         /docker-entrypoint.sh nginx -g "daemon off;"
     ports:
       - "3100:3100"
+    healthcheck:
+      test: ["CMD", "service", "nginx", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - loki
 

@@ -448,6 +448,8 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	logger = log.With(logger, "namespace", namespace, "userID", userID)
+
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
 		level.Error(logger).Log("msg", "unable to read rule group payload", "err", err.Error())
@@ -455,7 +457,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	level.Debug(logger).Log("msg", "attempting to unmarshal rulegroup", "userID", userID, "group", string(payload))
+	level.Debug(logger).Log("msg", "attempting to unmarshal rulegroup", "group", string(payload))
 
 	rg := rulefmt.RuleGroup{}
 	err = yaml.Unmarshal(payload, &rg)
@@ -478,7 +480,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := a.ruler.AssertMaxRulesPerRuleGroup(userID, len(rg.Rules)); err != nil {
-		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
+		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -491,20 +493,22 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := a.ruler.AssertMaxRuleGroups(userID, len(rgs)+1); err != nil {
-		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
+		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	rgProto := rulespb.ToProto(userID, namespace, rg)
 
-	level.Debug(logger).Log("msg", "attempting to store rulegroup", "userID", userID, "group", rgProto.String())
+	level.Debug(logger).Log("msg", "attempting to store rulegroup", "group", rgProto.String())
 	err = a.store.SetRuleGroup(req.Context(), userID, namespace, rgProto)
 	if err != nil {
 		level.Error(logger).Log("msg", "unable to store rule group", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	level.Info(logger).Log("msg", "stored rulegroup", "group", rgProto.String())
 
 	respondAccepted(w, logger)
 }

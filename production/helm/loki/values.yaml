@@ -123,13 +123,7 @@ loki:
       configs:
         - from: 2022-01-11
           store: boltdb-shipper
-          {{- if eq .Values.loki.storage.type "s3" }}
-          object_store: s3
-          {{- else if eq .Values.loki.storage.type "gcs" }}
-          object_store: gcs
-          {{- else }}
-          object_store: filesystem
-          {{- end }}
+          object_store: {{ .Values.loki.storage.type }}
           schema: v12
           index:
             prefix: loki_index_
@@ -219,6 +213,12 @@ loki:
       chunkBufferSize: 0
       requestTimeout: "0s"
       enableHttp2: true
+    azure:
+      accountName: null
+      accountKey: null
+      useManagedIdentity: false
+      userAssignedId: null
+      requestTimeout: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
@@ -272,7 +272,7 @@ enterprise:
   enabled: false
 
   # Default verion of GEL to deploy
-  version: v1.5.2
+  version: v1.6.0
 
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
@@ -290,8 +290,11 @@ enterprise:
   # -- Set to true when providing an external license
   useExternalLicense: false
 
-  # -- Name of external licesne secret to use
+  # -- Name of external license secret to use
   externalLicenseName: null
+
+  # -- Name of the external config secret to use
+  externalConfigName: ""
 
   # -- If enabled, the correct admin_client storage will be configured. If disabled while running enterprise,
   # make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.
@@ -301,7 +304,7 @@ enterprise:
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
+    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
     admin_client:
       storage:
         s3:
@@ -320,8 +323,6 @@ enterprise:
     registry: docker.io
     # -- Docker image repository
     repository: grafana/enterprise-logs
-    # -- Overrides the image tag whose default is the chart's appVersion
-    tag: v1.4.0
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
 
@@ -335,6 +336,8 @@ enterprise:
   tokengen:
     # -- Whether the job should be part of the deployment
     enabled: true
+    # -- Comma-separated list of Loki modules to load for tokengen
+    targetModule: "tokengen"
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -357,6 +360,8 @@ enterprise:
       fsGroup: 10001
     # -- Environment variables from secrets or configmaps to add to the tokengen pods
     extraEnvFrom: []
+    # -- The name of the PriorityClass for tokengen Pods
+    priorityClassName: ""
 
   # -- Configuration for `provisioner` target
   provisioner:
@@ -391,6 +396,8 @@ enterprise:
       tag: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
+    # -- Volume mounts to add to the provisioner pods
+    extraVolumeMounts: []
 
   nginxConfig:
     file: |
@@ -537,6 +544,8 @@ serviceAccount:
   imagePullSecrets: []
   # -- Annotations for the service account
   annotations: {}
+  # -- Labels for the service account
+  labels: {}
   # -- Set this toggle to false to opt out of automounting API credentials for the service account
   automountServiceAccountToken: true
 
@@ -604,17 +613,6 @@ monitoring:
     #       expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
     #     - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
     #       expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-
-  # Alerting rules for monitoring Loki
-  alerts:
-    # -- If enabled, create PrometheusRule resource with Loki alerting rules
-    enabled: true
-    # -- Alternative namespace to create alerting rules PrometheusRule resource in
-    namespace: null
-    # -- Additional annotations for the alerts PrometheusRule resource
-    annotations: {}
-    # -- Additional labels for the alerts PrometheusRule resource
-    labels: {}
 
   # ServiceMonitor configuration
   serviceMonitor:
@@ -699,34 +697,34 @@ monitoring:
       # -- Additional clients for remote write
       clients: null
 
-    # The Loki canary pushes logs to and queries from this loki installation to test
-    # that it's working correctly
-    lokiCanary:
-      enabled: true
-      # -- Additional annotations for the `loki-canary` Daemonset
-      annotations: {}
-      # -- Additional CLI arguments for the `loki-canary' command
-      extraArgs: []
-      # -- Environment variables to add to the canary pods
-      extraEnv: []
-      # -- Environment variables from secrets or configmaps to add to the canary pods
-      extraEnvFrom: []
-      # -- Resource requests and limits for the canary
-      resources: {}
-      # -- Node selector for canary pods
-      nodeSelector: {}
-      # -- Tolerations for canary pods
-      tolerations: []
-      # -- Image to use for loki canary
-      image:
-        # -- The Docker registry
-        registry: docker.io
-        # -- Docker image repository
-        repository: grafana/loki-canary
-        # -- Overrides the image tag whose default is the chart's appVersion
-        tag: null
-        # -- Docker image pull policy
-        pullPolicy: IfNotPresent
+  # The Loki canary pushes logs to and queries from this loki installation to test
+  # that it's working correctly
+  lokiCanary:
+    enabled: true
+    # -- Additional annotations for the `loki-canary` Daemonset
+    annotations: {}
+    # -- Additional CLI arguments for the `loki-canary' command
+    extraArgs: []
+    # -- Environment variables to add to the canary pods
+    extraEnv: []
+    # -- Environment variables from secrets or configmaps to add to the canary pods
+    extraEnvFrom: []
+    # -- Resource requests and limits for the canary
+    resources: {}
+    # -- Node selector for canary pods
+    nodeSelector: {}
+    # -- Tolerations for canary pods
+    tolerations: []
+    # -- Image to use for loki canary
+    image:
+      # -- The Docker registry
+      registry: docker.io
+      # -- Docker image repository
+      repository: grafana/loki-canary
+      # -- Overrides the image tag whose default is the chart's appVersion
+      tag: null
+      # -- Docker image pull policy
+      pullPolicy: IfNotPresent
 
 # Configuration for the write
 write:
@@ -747,6 +745,8 @@ write:
   selectorLabels: {}
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the write
+  targetModule: "write"
   # -- Additional CLI args for the write
   extraArgs: []
   # -- Environment variables to add to the write pods
@@ -785,6 +785,8 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the read node(s)
 read:
@@ -816,6 +818,8 @@ read:
   selectorLabels: {}
   # -- Labels for read service
   serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the read
+  targetModule: "read"
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -852,6 +856,8 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Configuration for the single binary node(s)
 singleBinary:
@@ -881,6 +887,8 @@ singleBinary:
   podAnnotations: {}
   # -- Additional selecto labels for each `single binary` pod
   selectorLabels: {}
+  # -- Comma-separated list of Loki modules to load for the single binary
+  targetModule: "all"
   # -- Labels for single binary service
   extraArgs: []
   # -- Environment variables to add to the single binary pods
@@ -917,13 +925,15 @@ singleBinary:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Selector for persistent disk
+    selector: null
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.
 ingress:
   enabled: false
-  #  ingressClassName: nginx
+  ingressClassName: ""
   annotations: {}
   #    nginx.ingress.kubernetes.io/auth-type: basic
   #    nginx.ingress.kubernetes.io/auth-secret: loki-distributed-basic-auth
@@ -942,9 +952,20 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+    singleBinary:
+      - /api/prom/push
+      - /loki/api/v1/push
+      - /api/prom/tail
+      - /loki/api/v1/tail
+      - /loki/api
+      - /api/prom/rules
+      - /loki/api/v1/rules
+      - /prometheus/api/v1/rules
+      - /prometheus/api/v1/alerts
+
   hosts:
     - loki.example.com
-#  tls:
+  tls: []
 #    - hosts:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
@@ -1046,7 +1067,7 @@ gateway:
     # -- Specifies whether an ingress for the gateway should be created
     enabled: false
     # -- Ingress Class Name. MAY be required for Kubernetes versions >= 1.18
-    # ingressClassName: nginx
+    ingressClassName: ""
     # -- Annotations for the gateway ingress
     annotations: {}
     # -- Hosts configuration for the gateway ingress

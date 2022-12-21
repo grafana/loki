@@ -29,7 +29,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
     ```console
     kubectl create secret generic lokistack-dev-s3 \
-      --from-literal=bucketname="<BUCKET_NAME>" \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
       --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
       --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
       --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \

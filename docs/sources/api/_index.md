@@ -23,6 +23,7 @@ These endpoints are exposed by all components:
 - [`GET /config`](#list-current-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
+- [`GET /loki/api/v1/format_query`](#format-query)
 
 These endpoints are exposed by the querier and the query frontend:
 
@@ -220,7 +221,7 @@ gave this response:
 }
 ```
 
-If your cluster has 
+If your cluster has
 [Grafana Loki Multi-Tenancy](../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
@@ -637,7 +638,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 * `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 * `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false.
 * `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 
@@ -702,6 +703,18 @@ GET /loki/api/v1/status/buildinfo
 ```
 
 `/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
+
+## Format query
+
+```
+GET /loki/api/v1/format_query
+POST /loki/api/v1/format_query
+```
+
+Params:
+- `query`: A LogQL query string. Can be passed as URL param (`?query=<query>`) in case of both `GET` and `POST`. Or as form value in case of `POST`.
+
+The `/loki/api/v1/format_query` endpoint allows to format LogQL queries. It returns an error if the passed LogQL is invalid. It is exposed by all Loki components and helps to improve readability and the debugging experience of LogQL queries.
 
 ## List series
 
@@ -1385,4 +1398,3 @@ This is helpful for scaling down WAL-enabled ingesters where we want to ensure o
 but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
-

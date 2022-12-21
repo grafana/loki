@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'production/helm/**'
+      - 'production/helm/loki/Chart.yaml'
 
 jobs:
   call-update-helm-repo:
