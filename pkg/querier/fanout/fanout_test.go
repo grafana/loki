@@ -21,7 +21,7 @@ import (
 
 const (
 	// Custom query timeout used in tests
-	queryTimeout = 12 * time.Second
+	queryTimeout = 13 * time.Second
 )
 
 func TestQuerier_Read(t *testing.T) {
