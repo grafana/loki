@@ -19,7 +19,6 @@ import (
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -40,7 +39,7 @@ var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
 // Config for query_range middleware chain.
 type Config struct {
 	// Deprecated: SplitQueriesByInterval will be removed in the next major release
-	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
+	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval" doc:"deprecated|description=Use -querier.split-queries-by-interval instead. CLI flag: -querier.split-queries-by-day. Split queries by day and execute in parallel."`
 
 	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
 	ResultsCacheConfig   `yaml:"results_cache"`
@@ -176,7 +175,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 	defer func() {
-		_, _ = io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
 		response.Body.Close()
 	}()
 

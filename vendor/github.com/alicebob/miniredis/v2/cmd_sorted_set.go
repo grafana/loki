@@ -4,15 +4,12 @@ package miniredis
 
 import (
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/alicebob/miniredis/v2/server"
-)
-
-var (
-	errInvalidRangeItem = errors.New(msgInvalidRangeItem)
 )
 
 // commandsSortedSet handles all sorted set operations.
@@ -23,7 +20,7 @@ func commandsSortedSet(m *Miniredis) {
 	m.srv.Register("ZINCRBY", m.cmdZincrby)
 	m.srv.Register("ZINTERSTORE", m.cmdZinterstore)
 	m.srv.Register("ZLEXCOUNT", m.cmdZlexcount)
-	m.srv.Register("ZRANGE", m.makeCmdZrange(false))
+	m.srv.Register("ZRANGE", m.cmdZrange)
 	m.srv.Register("ZRANGEBYLEX", m.makeCmdZrangebylex(false))
 	m.srv.Register("ZRANGEBYSCORE", m.makeCmdZrangebyscore(false))
 	m.srv.Register("ZRANK", m.makeCmdZrank(false))
@@ -31,15 +28,17 @@ func commandsSortedSet(m *Miniredis) {
 	m.srv.Register("ZREMRANGEBYLEX", m.cmdZremrangebylex)
 	m.srv.Register("ZREMRANGEBYRANK", m.cmdZremrangebyrank)
 	m.srv.Register("ZREMRANGEBYSCORE", m.cmdZremrangebyscore)
-	m.srv.Register("ZREVRANGE", m.makeCmdZrange(true))
+	m.srv.Register("ZREVRANGE", m.cmdZrevrange)
 	m.srv.Register("ZREVRANGEBYLEX", m.makeCmdZrangebylex(true))
 	m.srv.Register("ZREVRANGEBYSCORE", m.makeCmdZrangebyscore(true))
 	m.srv.Register("ZREVRANK", m.makeCmdZrank(true))
 	m.srv.Register("ZSCORE", m.cmdZscore)
+	m.srv.Register("ZUNION", m.cmdZunion)
 	m.srv.Register("ZUNIONSTORE", m.cmdZunionstore)
 	m.srv.Register("ZSCAN", m.cmdZscan)
 	m.srv.Register("ZPOPMAX", m.cmdZpopmax(true))
 	m.srv.Register("ZPOPMIN", m.cmdZpopmax(false))
+	m.srv.Register("ZRANDMEMBER", m.cmdZrandmember)
 }
 
 // ZADD
@@ -60,6 +59,8 @@ func (m *Miniredis) cmdZadd(c *server.Peer, cmd string, args []string) {
 	var (
 		nx    = false
 		xx    = false
+		gt    = false
+		lt    = false
 		ch    = false
 		incr  = false
 		elems = map[string]float64{}
@@ -74,6 +75,14 @@ outer:
 			continue
 		case "XX":
 			xx = true
+			args = args[1:]
+			continue
+		case "GT":
+			gt = true
+			args = args[1:]
+			continue
+		case "LT":
+			lt = true
 			args = args[1:]
 			continue
 		case "CH":
@@ -108,6 +117,14 @@ outer:
 	if xx && nx {
 		setDirty(c)
 		c.WriteError(msgXXandNX)
+		return
+	}
+
+	if gt && lt ||
+		gt && nx ||
+		lt && nx {
+		setDirty(c)
+		c.WriteError(msgGTLTandNX)
 		return
 	}
 
@@ -150,6 +167,12 @@ outer:
 				continue
 			}
 			old := db.ssetScore(key, member)
+			if gt && score <= old {
+				continue
+			}
+			if lt && score >= old {
+				continue
+			}
 			if db.ssetAdd(key, score, member) {
 				res++
 			} else {
@@ -369,33 +392,42 @@ func (m *Miniredis) cmdZinterstore(c *server.Peer, cmd string, args []string) {
 			if !db.exists(key) {
 				continue
 			}
-			if db.t(key) != "zset" {
+
+			var set map[string]float64
+			switch db.t(key) {
+			case "set":
+				set = map[string]float64{}
+				for elem := range db.setKeys[key] {
+					set[elem] = 1.0
+				}
+			case "zset":
+				set = db.sortedSet(key)
+			default:
 				c.WriteError(msgWrongType)
 				return
 			}
-			for _, el := range db.ssetElements(key) {
-				score := el.score
+			for member, score := range set {
 				if withWeights {
 					score *= weights[i]
 				}
-				counts[el.member]++
-				old, ok := sset[el.member]
+				counts[member]++
+				old, ok := sset[member]
 				if !ok {
-					sset[el.member] = score
+					sset[member] = score
 					continue
 				}
 				switch aggregate {
 				default:
 					panic("Invalid aggregate")
 				case "sum":
-					sset[el.member] += score
+					sset[member] += score
 				case "min":
 					if score < old {
-						sset[el.member] = score
+						sset[member] = score
 					}
 				case "max":
 					if score > old {
-						sset[el.member] = score
+						sset[member] = score
 					}
 				}
 			}
@@ -424,34 +456,37 @@ func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	min, minIncl, err := parseLexrange(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(err.Error())
-		return
-	}
-	max, maxIncl, err := parseLexrange(args[2])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(err.Error())
-		return
+	var opts = struct {
+		Key string
+		Min string
+		Max string
+	}{
+		Key: args[0],
+		Min: args[1],
+		Max: args[2],
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		min, minIncl, minErr := parseLexrange(opts.Min)
+		max, maxIncl, maxErr := parseLexrange(opts.Max)
+		if minErr != nil || maxErr != nil {
+			c.WriteError(msgInvalidRangeItem)
+			return
+		}
+
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(key) {
+		if !db.exists(opts.Key) {
 			c.WriteInt(0)
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(opts.Key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.ssetMembers(key)
+		members := db.ssetMembers(opts.Key)
 		// Just key sort. If scores are not the same we don't care.
 		sort.Strings(members)
 		members = withLexRange(members, min, minIncl, max, maxIncl)
@@ -460,80 +495,144 @@ func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
 	})
 }
 
-// ZRANGE and ZREVRANGE
-func (m *Miniredis) makeCmdZrange(reverse bool) server.Cmd {
-	return func(c *server.Peer, cmd string, args []string) {
-		if len(args) < 3 {
-			setDirty(c)
-			c.WriteError(errWrongNumber(cmd))
-			return
-		}
-		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c, cmd) {
-			return
-		}
+// ZRANGE
+func (m *Miniredis) cmdZrange(c *server.Peer, cmd string, args []string) {
+	if len(args) < 3 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
 
-		key := args[0]
-		start, err := strconv.Atoi(args[1])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
-			return
-		}
-		end, err := strconv.Atoi(args[2])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
-			return
-		}
+	var opts struct {
+		Key        string
+		Min        string
+		Max        string
+		WithScores bool
+		ByScore    bool
+		ByLex      bool
+		Reverse    bool
+		WithLimit  bool
+		Offset     string
+		Count      string
+	}
 
-		withScores := false
-		if len(args) > 4 {
-			c.WriteError(msgSyntaxError)
-			return
-		}
-		if len(args) == 4 {
-			if strings.ToLower(args[3]) != "withscores" {
-				setDirty(c)
+	opts.Key, opts.Min, opts.Max = args[0], args[1], args[2]
+	args = args[3:]
+
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "byscore":
+			opts.ByScore = true
+			args = args[1:]
+		case "bylex":
+			opts.ByLex = true
+			args = args[1:]
+		case "rev":
+			opts.Reverse = true
+			args = args[1:]
+		case "limit":
+			opts.WithLimit = true
+			args = args[1:]
+			if len(args) < 2 {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			withScores = true
+			opts.Offset = args[0]
+			opts.Count = args[1]
+			args = args[2:]
+		case "withscores":
+			opts.WithScores = true
+			args = args[1:]
+		default:
+			c.WriteError(msgSyntaxError)
+			return
 		}
-
-		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-			db := m.db(ctx.selectedDB)
-
-			if !db.exists(key) {
-				c.WriteLen(0)
-				return
-			}
-
-			if db.t(key) != "zset" {
-				c.WriteError(ErrWrongType.Error())
-				return
-			}
-
-			members := db.ssetMembers(key)
-			if reverse {
-				reverseSlice(members)
-			}
-			rs, re := redisRange(len(members), start, end, false)
-			if withScores {
-				c.WriteLen((re - rs) * 2)
-			} else {
-				c.WriteLen(re - rs)
-			}
-			for _, el := range members[rs:re] {
-				c.WriteBulk(el)
-				if withScores {
-					c.WriteFloat(db.ssetScore(key, el))
-				}
-			}
-		})
 	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		switch {
+		case opts.ByScore && opts.ByLex:
+			c.WriteError(msgSyntaxError)
+		case opts.ByScore:
+			runRangeByScore(m, c, ctx, optsRangeByScore{
+				Key:        opts.Key,
+				Min:        opts.Min,
+				Max:        opts.Max,
+				Reverse:    opts.Reverse,
+				WithLimit:  opts.WithLimit,
+				Offset:     opts.Offset,
+				Count:      opts.Count,
+				WithScores: opts.WithScores,
+			})
+		case opts.ByLex:
+			runRangeByLex(m, c, ctx, optsRangeByLex{
+				Key:        opts.Key,
+				Min:        opts.Min,
+				Max:        opts.Max,
+				Reverse:    opts.Reverse,
+				WithLimit:  opts.WithLimit,
+				Offset:     opts.Offset,
+				Count:      opts.Count,
+				WithScores: opts.WithScores,
+			})
+		default:
+			if opts.WithLimit {
+				c.WriteError(msgLimitCombination)
+				return
+			}
+			runRange(m, c, ctx, optsRange{
+				Key:        opts.Key,
+				Min:        opts.Min,
+				Max:        opts.Max,
+				Reverse:    opts.Reverse,
+				WithScores: opts.WithScores,
+			})
+		}
+	})
+}
+
+// ZREVRANGE
+func (m *Miniredis) cmdZrevrange(c *server.Peer, cmd string, args []string) {
+	if len(args) < 3 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	var opts = optsRange{
+		Reverse: true,
+		Key:     args[0],
+		Min:     args[1],
+		Max:     args[2],
+	}
+	args = args[3:]
+
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "withscores":
+			opts.WithScores = true
+			args = args[1:]
+		default:
+			c.WriteError(msgSyntaxError)
+			return
+		}
+	}
+
+	withTx(m, c, func(c *server.Peer, cctx *connCtx) {
+		runRange(m, c, cctx, opts)
+	})
 }
 
 // ZRANGEBYLEX and ZREVRANGEBYLEX
@@ -550,102 +649,37 @@ func (m *Miniredis) makeCmdZrangebylex(reverse bool) server.Cmd {
 		if m.checkPubsub(c, cmd) {
 			return
 		}
-
-		key := args[0]
-		min, minIncl, err := parseLexrange(args[1])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(err.Error())
-			return
-		}
-		max, maxIncl, err := parseLexrange(args[2])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(err.Error())
-			return
+		opts := optsRangeByLex{
+			Reverse: reverse,
+			Key:     args[0],
+			Min:     args[1],
+			Max:     args[2],
 		}
 		args = args[3:]
 
-		withLimit := false
-		limitStart := 0
-		limitEnd := 0
 		for len(args) > 0 {
-			if strings.ToLower(args[0]) == "limit" {
-				withLimit = true
+			switch strings.ToLower(args[0]) {
+			case "limit":
+				opts.WithLimit = true
 				args = args[1:]
 				if len(args) < 2 {
 					c.WriteError(msgSyntaxError)
 					return
 				}
-				limitStart, err = strconv.Atoi(args[0])
-				if err != nil {
-					setDirty(c)
-					c.WriteError(msgInvalidInt)
-					return
-				}
-				limitEnd, err = strconv.Atoi(args[1])
-				if err != nil {
-					setDirty(c)
-					c.WriteError(msgInvalidInt)
-					return
-				}
+				opts.Offset = args[0]
+				opts.Count = args[1]
 				args = args[2:]
 				continue
+			default:
+				// Syntax error
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
 			}
-			// Syntax error
-			setDirty(c)
-			c.WriteError(msgSyntaxError)
-			return
 		}
 
-		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-			db := m.db(ctx.selectedDB)
-
-			if !db.exists(key) {
-				c.WriteLen(0)
-				return
-			}
-
-			if db.t(key) != "zset" {
-				c.WriteError(ErrWrongType.Error())
-				return
-			}
-
-			members := db.ssetMembers(key)
-			// Just key sort. If scores are not the same we don't care.
-			sort.Strings(members)
-			if reverse {
-				min, max = max, min
-				minIncl, maxIncl = maxIncl, minIncl
-			}
-			members = withLexRange(members, min, minIncl, max, maxIncl)
-			if reverse {
-				reverseSlice(members)
-			}
-
-			// Apply LIMIT ranges. That's <start> <elements>. Unlike RANGE.
-			if withLimit {
-				if limitStart < 0 {
-					members = nil
-				} else {
-					if limitStart < len(members) {
-						members = members[limitStart:]
-					} else {
-						// out of range
-						members = nil
-					}
-					if limitEnd >= 0 {
-						if len(members) > limitEnd {
-							members = members[:limitEnd]
-						}
-					}
-				}
-			}
-
-			c.WriteLen(len(members))
-			for _, el := range members {
-				c.WriteBulk(el)
-			}
+		withTx(m, c, func(c *server.Peer, cctx *connCtx) {
+			runRangeByLex(m, c, cctx, opts)
 		})
 	}
 }
@@ -665,50 +699,29 @@ func (m *Miniredis) makeCmdZrangebyscore(reverse bool) server.Cmd {
 			return
 		}
 
-		key := args[0]
-		min, minIncl, err := parseFloatRange(args[1])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidMinMax)
-			return
-		}
-		max, maxIncl, err := parseFloatRange(args[2])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidMinMax)
-			return
+		var opts = optsRangeByScore{
+			Reverse: reverse,
+			Key:     args[0],
+			Min:     args[1],
+			Max:     args[2],
 		}
 		args = args[3:]
 
-		withScores := false
-		withLimit := false
-		limitStart := 0
-		limitEnd := 0
 		for len(args) > 0 {
 			if strings.ToLower(args[0]) == "limit" {
-				withLimit = true
+				opts.WithLimit = true
 				args = args[1:]
 				if len(args) < 2 {
 					c.WriteError(msgSyntaxError)
 					return
 				}
-				limitStart, err = strconv.Atoi(args[0])
-				if err != nil {
-					setDirty(c)
-					c.WriteError(msgInvalidInt)
-					return
-				}
-				limitEnd, err = strconv.Atoi(args[1])
-				if err != nil {
-					setDirty(c)
-					c.WriteError(msgInvalidInt)
-					return
-				}
+				opts.Offset = args[0]
+				opts.Count = args[1]
 				args = args[2:]
 				continue
 			}
 			if strings.ToLower(args[0]) == "withscores" {
-				withScores = true
+				opts.WithScores = true
 				args = args[1:]
 				continue
 			}
@@ -717,59 +730,8 @@ func (m *Miniredis) makeCmdZrangebyscore(reverse bool) server.Cmd {
 			return
 		}
 
-		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-			db := m.db(ctx.selectedDB)
-
-			if !db.exists(key) {
-				c.WriteLen(0)
-				return
-			}
-
-			if db.t(key) != "zset" {
-				c.WriteError(ErrWrongType.Error())
-				return
-			}
-
-			members := db.ssetElements(key)
-			if reverse {
-				min, max = max, min
-				minIncl, maxIncl = maxIncl, minIncl
-			}
-			members = withSSRange(members, min, minIncl, max, maxIncl)
-			if reverse {
-				reverseElems(members)
-			}
-
-			// Apply LIMIT ranges. That's <start> <elements>. Unlike RANGE.
-			if withLimit {
-				if limitStart < 0 {
-					members = ssElems{}
-				} else {
-					if limitStart < len(members) {
-						members = members[limitStart:]
-					} else {
-						// out of range
-						members = ssElems{}
-					}
-					if limitEnd >= 0 {
-						if len(members) > limitEnd {
-							members = members[:limitEnd]
-						}
-					}
-				}
-			}
-
-			if withScores {
-				c.WriteLen(len(members) * 2)
-			} else {
-				c.WriteLen(len(members))
-			}
-			for _, el := range members {
-				c.WriteBulk(el.member)
-				if withScores {
-					c.WriteFloat(el.score)
-				}
-			}
+		withTx(m, c, func(c *server.Peer, cctx *connCtx) {
+			runRangeByScore(m, c, cctx, opts)
 		})
 	}
 }
@@ -871,40 +833,43 @@ func (m *Miniredis) cmdZremrangebylex(c *server.Peer, cmd string, args []string)
 		return
 	}
 
-	key := args[0]
-	min, minIncl, err := parseLexrange(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(err.Error())
-		return
-	}
-	max, maxIncl, err := parseLexrange(args[2])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(err.Error())
-		return
+	var opts = struct {
+		Key string
+		Min string
+		Max string
+	}{
+		Key: args[0],
+		Min: args[1],
+		Max: args[2],
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		min, minIncl, minErr := parseLexrange(opts.Min)
+		max, maxIncl, maxErr := parseLexrange(opts.Max)
+		if minErr != nil || maxErr != nil {
+			c.WriteError(msgInvalidRangeItem)
+			return
+		}
+
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(key) {
+		if !db.exists(opts.Key) {
 			c.WriteInt(0)
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(opts.Key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.ssetMembers(key)
+		members := db.ssetMembers(opts.Key)
 		// Just key sort. If scores are not the same we don't care.
 		sort.Strings(members)
 		members = withLexRange(members, min, minIncl, max, maxIncl)
 
 		for _, el := range members {
-			db.ssetRem(key, el)
+			db.ssetRem(opts.Key, el)
 		}
 		c.WriteInt(len(members))
 	})
@@ -1060,28 +1025,14 @@ func parseFloatRange(s string) (float64, bool, error) {
 		s = s[1:]
 		inclusive = false
 	}
-	f, err := strconv.ParseFloat(s, 64)
-	return f, inclusive, err
-}
-
-// parseLexrange handles ZRANGEBYLEX ranges. They start with '[', '(', or are
-// '+' or '-'.
-// Returns range, inclusive, error.
-// On '+' or '-' that's just returned.
-func parseLexrange(s string) (string, bool, error) {
-	if len(s) == 0 {
-		return "", false, errInvalidRangeItem
-	}
-	if s == "+" || s == "-" {
-		return s, false, nil
-	}
-	switch s[0] {
-	case '(':
-		return s[1:], false, nil
-	case '[':
-		return s[1:], true, nil
+	switch strings.ToLower(s) {
+	case "+inf":
+		return math.Inf(+1), true, nil
+	case "-inf":
+		return math.Inf(-1), true, nil
 	default:
-		return "", false, errInvalidRangeItem
+		f, err := strconv.ParseFloat(s, 64)
+		return f, inclusive, err
 	}
 }
 
@@ -1169,6 +1120,83 @@ func withLexRange(members []string, min string, minIncl bool, max string, maxInc
 	return members
 }
 
+// ZUNION
+func (m *Miniredis) cmdZunion(c *server.Peer, cmd string, args []string) {
+	if len(args) < 2 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	numKeys, err := strconv.Atoi(args[0])
+	if err != nil {
+		setDirty(c)
+		c.WriteError(msgInvalidInt)
+		return
+	}
+	args = args[1:]
+	if len(args) < numKeys {
+		setDirty(c)
+		c.WriteError(msgSyntaxError)
+		return
+	}
+	if numKeys <= 0 {
+		setDirty(c)
+		c.WriteError("ERR at least 1 input key is needed for ZUNION")
+		return
+	}
+	keys := args[:numKeys]
+	args = args[numKeys:]
+
+	withScores := false
+	if len(args) > 0 && strings.ToUpper(args[len(args)-1]) == "WITHSCORES" {
+		withScores = true
+		args = args[:len(args)-1]
+	}
+
+	opts := zunionOptions{
+		Keys:        keys,
+		WithWeights: false,
+		Weights:     []float64{},
+		Aggregate:   "sum",
+	}
+
+	if err := opts.parseArgs(args, numKeys); err != nil {
+		setDirty(c)
+		c.WriteError(err.Error())
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		sset, err := executeZUnion(db, opts)
+		if err != nil {
+			c.WriteError(err.Error())
+			return
+		}
+
+		if withScores {
+			c.WriteLen(len(sset) * 2)
+		} else {
+			c.WriteLen(len(sset))
+		}
+		for _, el := range sset.byScore(asc) {
+			c.WriteBulk(el.member)
+			if withScores {
+				c.WriteFloat(el.score)
+			}
+		}
+	})
+}
+
 // ZUNIONSTORE
 func (m *Miniredis) cmdZunionstore(c *server.Peer, cmd string, args []string) {
 	if len(args) < 3 {
@@ -1204,48 +1232,17 @@ func (m *Miniredis) cmdZunionstore(c *server.Peer, cmd string, args []string) {
 	keys := args[:numKeys]
 	args = args[numKeys:]
 
-	withWeights := false
-	weights := []float64{}
-	aggregate := "sum"
-	for len(args) > 0 {
-		switch strings.ToLower(args[0]) {
-		case "weights":
-			if len(args) < numKeys+1 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			for i := 0; i < numKeys; i++ {
-				f, err := strconv.ParseFloat(args[i+1], 64)
-				if err != nil {
-					setDirty(c)
-					c.WriteError("ERR weight value is not a float")
-					return
-				}
-				weights = append(weights, f)
-			}
-			withWeights = true
-			args = args[numKeys+1:]
-		case "aggregate":
-			if len(args) < 2 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			aggregate = strings.ToLower(args[1])
-			switch aggregate {
-			default:
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			case "sum", "min", "max":
-			}
-			args = args[2:]
-		default:
-			setDirty(c)
-			c.WriteError(msgSyntaxError)
-			return
-		}
+	opts := zunionOptions{
+		Keys:        keys,
+		WithWeights: false,
+		Weights:     []float64{},
+		Aggregate:   "sum",
+	}
+
+	if err := opts.parseArgs(args, numKeys); err != nil {
+		setDirty(c)
+		c.WriteError(err.Error())
+		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
@@ -1260,54 +1257,104 @@ func (m *Miniredis) cmdZunionstore(c *server.Peer, cmd string, args []string) {
 			db.del(destination, true)
 		}
 
-		sset := sortedSet{}
-		for i, key := range keys {
-			if !db.exists(key) {
-				continue
-			}
-
-			var set map[string]float64
-			switch db.t(key) {
-			case "set":
-				set = map[string]float64{}
-				for elem := range db.setKeys[key] {
-					set[elem] = 1.0
-				}
-			case "zset":
-				set = db.sortedSet(key)
-			default:
-				c.WriteError(msgWrongType)
-				return
-			}
-
-			for member, score := range set {
-				if withWeights {
-					score *= weights[i]
-				}
-				old, ok := sset[member]
-				if !ok {
-					sset[member] = score
-					continue
-				}
-				switch aggregate {
-				default:
-					panic("Invalid aggregate")
-				case "sum":
-					sset[member] += score
-				case "min":
-					if score < old {
-						sset[member] = score
-					}
-				case "max":
-					if score > old {
-						sset[member] = score
-					}
-				}
-			}
+		sset, err := executeZUnion(db, opts)
+		if err != nil {
+			c.WriteError(err.Error())
+			return
 		}
 		db.ssetSet(destination, sset)
 		c.WriteInt(sset.card())
 	})
+}
+
+type zunionOptions struct {
+	Keys        []string
+	WithWeights bool
+	Weights     []float64
+	Aggregate   string
+}
+
+func (opts *zunionOptions) parseArgs(args []string, numKeys int) error {
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "weights":
+			if len(args) < numKeys+1 {
+				return errors.New(msgSyntaxError)
+			}
+			for i := 0; i < numKeys; i++ {
+				f, err := strconv.ParseFloat(args[i+1], 64)
+				if err != nil {
+					return errors.New("ERR weight value is not a float")
+				}
+				opts.Weights = append(opts.Weights, f)
+			}
+			opts.WithWeights = true
+			args = args[numKeys+1:]
+		case "aggregate":
+			if len(args) < 2 {
+				return errors.New(msgSyntaxError)
+			}
+			opts.Aggregate = strings.ToLower(args[1])
+			switch opts.Aggregate {
+			default:
+				return errors.New(msgSyntaxError)
+			case "sum", "min", "max":
+			}
+			args = args[2:]
+		default:
+			return errors.New(msgSyntaxError)
+		}
+	}
+	return nil
+}
+
+func executeZUnion(db *RedisDB, opts zunionOptions) (sortedSet, error) {
+	sset := sortedSet{}
+	for i, key := range opts.Keys {
+		if !db.exists(key) {
+			continue
+		}
+
+		var set map[string]float64
+		switch db.t(key) {
+		case "set":
+			set = map[string]float64{}
+			for elem := range db.setKeys[key] {
+				set[elem] = 1.0
+			}
+		case "zset":
+			set = db.sortedSet(key)
+		default:
+			return nil, errors.New(msgWrongType)
+		}
+
+		for member, score := range set {
+			if opts.WithWeights {
+				score *= opts.Weights[i]
+			}
+			old, ok := sset[member]
+			if !ok {
+				sset[member] = score
+				continue
+			}
+			switch opts.Aggregate {
+			default:
+				panic("Invalid aggregate")
+			case "sum":
+				sset[member] += score
+			case "min":
+				if score < old {
+					sset[member] = score
+				}
+			case "max":
+				if score > old {
+					sset[member] = score
+				}
+			}
+		}
+	}
+
+	return sset, nil
 }
 
 // ZSCAN
@@ -1461,5 +1508,347 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 				db.ssetRem(key, el)
 			}
 		})
+	}
+}
+
+// ZRANDMEMBER
+func (m *Miniredis) cmdZrandmember(c *server.Peer, cmd string, args []string) {
+	if len(args) < 1 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	var opts struct {
+		key        string
+		withCount  bool
+		count      int
+		withScores bool
+	}
+
+	opts.key = args[0]
+	args = args[1:]
+
+	if len(args) > 0 {
+		count := args[0]
+		args = args[1:]
+
+		n, err := strconv.Atoi(count)
+		if err != nil {
+			setDirty(c)
+			c.WriteError(msgInvalidInt)
+			return
+		}
+		opts.withCount = true
+		opts.count = n // can be negative
+	}
+
+	if len(args) > 0 && strings.ToUpper(args[0]) == "WITHSCORES" {
+		opts.withScores = true
+		args = args[1:]
+	}
+
+	if len(args) > 0 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if !db.exists(opts.key) {
+			if opts.withCount {
+				c.WriteLen(0)
+			} else {
+				c.WriteNull()
+			}
+			return
+		}
+
+		if db.t(opts.key) != "zset" {
+			c.WriteError(ErrWrongType.Error())
+			return
+		}
+
+		if !opts.withCount {
+			member := db.ssetRandomMember(opts.key)
+			if member == "" {
+				c.WriteNull()
+				return
+			}
+			c.WriteBulk(member)
+			return
+		}
+
+		var members []string
+		switch {
+		case opts.count == 0:
+			c.WriteStrings(nil)
+			return
+		case opts.count > 0:
+			allMembers := db.ssetMembers(opts.key)
+			db.master.shuffle(allMembers)
+			if len(allMembers) > opts.count {
+				allMembers = allMembers[:opts.count]
+			}
+			members = allMembers
+		case opts.count < 0:
+			for i := 0; i < -opts.count; i++ {
+				members = append(members, db.ssetRandomMember(opts.key))
+			}
+		}
+		if opts.withScores {
+			c.WriteLen(len(members) * 2)
+			for _, m := range members {
+				c.WriteBulk(m)
+				c.WriteFloat(db.ssetScore(opts.key, m))
+			}
+			return
+		}
+		c.WriteStrings(members)
+	})
+}
+
+type optsRange struct {
+	Key        string
+	Min        string
+	Max        string
+	Reverse    bool
+	WithScores bool
+}
+
+func runRange(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRange) {
+	min, minErr := strconv.Atoi(opts.Min)
+	max, maxErr := strconv.Atoi(opts.Max)
+	if minErr != nil || maxErr != nil {
+		c.WriteError(msgInvalidInt)
+		return
+	}
+
+	db := m.db(cctx.selectedDB)
+
+	if !db.exists(opts.Key) {
+		c.WriteLen(0)
+		return
+	}
+
+	if db.t(opts.Key) != "zset" {
+		c.WriteError(ErrWrongType.Error())
+		return
+	}
+
+	members := db.ssetMembers(opts.Key)
+	if opts.Reverse {
+		reverseSlice(members)
+	}
+	rs, re := redisRange(len(members), min, max, false)
+	if opts.WithScores {
+		c.WriteLen((re - rs) * 2)
+	} else {
+		c.WriteLen(re - rs)
+	}
+	for _, el := range members[rs:re] {
+		c.WriteBulk(el)
+		if opts.WithScores {
+			c.WriteFloat(db.ssetScore(opts.Key, el))
+		}
+	}
+}
+
+type optsRangeByScore struct {
+	Key        string
+	Min        string
+	Max        string
+	Reverse    bool
+	WithLimit  bool
+	Offset     string
+	Count      string
+	WithScores bool
+}
+
+func runRangeByScore(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRangeByScore) {
+	var limitOffset, limitCount int
+	var err error
+	if opts.WithLimit {
+		limitOffset, err = strconv.Atoi(opts.Offset)
+		if err != nil {
+			c.WriteError(msgInvalidInt)
+			return
+		}
+		limitCount, err = strconv.Atoi(opts.Count)
+		if err != nil {
+			c.WriteError(msgInvalidInt)
+			return
+		}
+	}
+	min, minIncl, minErr := parseFloatRange(opts.Min)
+	max, maxIncl, maxErr := parseFloatRange(opts.Max)
+	if minErr != nil || maxErr != nil {
+		c.WriteError(msgInvalidMinMax)
+		return
+	}
+
+	db := m.db(cctx.selectedDB)
+
+	if !db.exists(opts.Key) {
+		c.WriteLen(0)
+		return
+	}
+
+	if db.t(opts.Key) != "zset" {
+		c.WriteError(ErrWrongType.Error())
+		return
+	}
+
+	members := db.ssetElements(opts.Key)
+	if opts.Reverse {
+		min, max = max, min
+		minIncl, maxIncl = maxIncl, minIncl
+	}
+	members = withSSRange(members, min, minIncl, max, maxIncl)
+	if opts.Reverse {
+		reverseElems(members)
+	}
+
+	// Apply LIMIT ranges. That's <start> <elements>. Unlike RANGE.
+	if opts.WithLimit {
+		if limitOffset < 0 {
+			members = ssElems{}
+		} else {
+			if limitOffset < len(members) {
+				members = members[limitOffset:]
+			} else {
+				// out of range
+				members = ssElems{}
+			}
+			if limitCount >= 0 {
+				if len(members) > limitCount {
+					members = members[:limitCount]
+				}
+			}
+		}
+	}
+
+	if opts.WithScores {
+		c.WriteLen(len(members) * 2)
+	} else {
+		c.WriteLen(len(members))
+	}
+	for _, el := range members {
+		c.WriteBulk(el.member)
+		if opts.WithScores {
+			c.WriteFloat(el.score)
+		}
+	}
+}
+
+type optsRangeByLex struct {
+	Key        string
+	Min        string
+	Max        string
+	Reverse    bool
+	WithLimit  bool
+	Offset     string
+	Count      string
+	WithScores bool
+}
+
+func runRangeByLex(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRangeByLex) {
+	var limitOffset, limitCount int
+	var err error
+	if opts.WithLimit {
+		limitOffset, err = strconv.Atoi(opts.Offset)
+		if err != nil {
+			c.WriteError(msgInvalidInt)
+			return
+		}
+		limitCount, err = strconv.Atoi(opts.Count)
+		if err != nil {
+			c.WriteError(msgInvalidInt)
+			return
+		}
+	}
+	min, minIncl, minErr := parseLexrange(opts.Min)
+	max, maxIncl, maxErr := parseLexrange(opts.Max)
+	if minErr != nil || maxErr != nil {
+		c.WriteError(msgInvalidRangeItem)
+		return
+	}
+
+	db := m.db(cctx.selectedDB)
+
+	if !db.exists(opts.Key) {
+		c.WriteLen(0)
+		return
+	}
+
+	if db.t(opts.Key) != "zset" {
+		c.WriteError(ErrWrongType.Error())
+		return
+	}
+
+	members := db.ssetMembers(opts.Key)
+	// Just key sort. If scores are not the same we don't care.
+	sort.Strings(members)
+	if opts.Reverse {
+		min, max = max, min
+		minIncl, maxIncl = maxIncl, minIncl
+	}
+	members = withLexRange(members, min, minIncl, max, maxIncl)
+	if opts.Reverse {
+		reverseSlice(members)
+	}
+
+	// Apply LIMIT ranges. That's <start> <elements>. Unlike RANGE.
+	if opts.WithLimit {
+		if limitOffset < 0 {
+			members = nil
+		} else {
+			if limitOffset < len(members) {
+				members = members[limitOffset:]
+			} else {
+				// out of range
+				members = nil
+			}
+			if limitCount >= 0 {
+				if len(members) > limitCount {
+					members = members[:limitCount]
+				}
+			}
+		}
+	}
+
+	c.WriteLen(len(members))
+	for _, el := range members {
+		c.WriteBulk(el)
+	}
+}
+
+// optLexrange handles ZRANGE{,BYLEX} ranges. They start with '[', '(', or are
+// '+' or '-'.
+// Sets destValue and destInclusive. destValue can be '+' or '-'.
+func parseLexrange(s string) (string, bool, error) {
+	if len(s) == 0 {
+		return "", false, errors.New(msgInvalidRangeItem)
+	}
+
+	if s == "+" || s == "-" {
+		return s, false, nil
+	}
+
+	switch s[0] {
+	case '(':
+		return s[1:], false, nil
+	case '[':
+		return s[1:], true, nil
+	default:
+		return "", false, errors.New(msgInvalidRangeItem)
 	}
 }

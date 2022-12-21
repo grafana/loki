@@ -34,15 +34,14 @@
     target: 'index-gateway',
   } else {},
 
-  local index_gateway_ports =
-    [
-      containerPort.new(name='http-metrics', port=$._config.http_listen_port),
-      containerPort.new(name='grpc', port=9095),
-    ],
+  index_gateway_ports: [
+    containerPort.new(name='http-metrics', port=$._config.http_listen_port),
+    containerPort.new(name='grpc', port=9095),
+  ],
 
   index_gateway_container:: if $._config.use_index_gateway then
     container.new('index-gateway', $._images.index_gateway) +
-    container.withPorts(index_gateway_ports) +
+    container.withPorts($.index_gateway_ports) +
     container.withArgsMixin(k.util.mapToFlags($.index_gateway_args)) +
     container.withVolumeMountsMixin([volumeMount.new('index-gateway-data', '/data')]) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
@@ -63,6 +62,6 @@
   else {},
 
   index_gateway_service: if $._config.use_index_gateway then
-    k.util.serviceFor($.index_gateway_statefulset)
+    k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels)
   else {},
 }

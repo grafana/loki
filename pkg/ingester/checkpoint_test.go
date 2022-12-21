@@ -2,8 +2,8 @@ package ingester
 
 import (
 	"context"
-	fmt "fmt"
-	"io/ioutil"
+	"fmt"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -333,7 +333,7 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Du
 			<-time.After(max / 10) // check 10x over the duration
 		}
 
-		fs, err := ioutil.ReadDir(walDir)
+		fs, err := os.ReadDir(walDir)
 		require.Nil(t, err)
 		var found bool
 		for _, f := range fs {
@@ -449,7 +449,8 @@ func Test_SeriesIterator(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := 0; i < 3; i++ {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
+		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, NewStreamRateCalculator())
+		require.Nil(t, err)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
 		instances = append(instances, inst)
@@ -495,7 +496,7 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
+		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, NewStreamRateCalculator())
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{

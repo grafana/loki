@@ -113,21 +113,22 @@ To build Promtail on non-Linux platforms, use the following command:
 $ go build ./clients/cmd/promtail
 ```
 
-On Linux, Promtail requires the systemd headers to be installed for
-Journal support.
+On Linux, Promtail requires the systemd headers to be installed if
+Journal support is enabled.
+To enable Journal support the go build tag flag `promtail_journal_enabled` should be passed
 
 With Journal support on Ubuntu, run with the following commands:
 
 ```bash
 $ sudo apt install -y libsystemd-dev
-$ go build ./clients/cmd/promtail
+$ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
 ```
 
 With Journal support on CentOS, run with the following commands:
 
 ```bash
 $ sudo yum install -y systemd-devel
-$ go build ./clients/cmd/promtail
+$ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
 ```
 
 Otherwise, to build Promtail without Journal support, run `go build`

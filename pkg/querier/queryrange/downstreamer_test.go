@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -188,8 +189,8 @@ func TestResponseToResult(t *testing.T) {
 func TestDownstreamHandler(t *testing.T) {
 	// Pretty poor test, but this is just a passthrough struct, so ensure we create locks
 	// and can consume them
-	h := DownstreamHandler{nil}
-	in := h.Downstreamer().(*instance)
+	h := DownstreamHandler{limits: fakeLimits{}, next: nil}
+	in := h.Downstreamer(context.Background()).(*instance)
 	require.Equal(t, DefaultDownstreamConcurrency, in.parallelism)
 	require.NotNil(t, in.locks)
 	ensureParallelism(t, in, in.parallelism)
@@ -200,7 +201,7 @@ func ensureParallelism(t *testing.T, in *instance, n int) {
 	for i := 0; i < n; i++ {
 		select {
 		case <-in.locks:
-		case <-time.After(time.Millisecond):
+		case <-time.After(time.Second):
 			require.FailNow(t, "lock couldn't be acquired")
 		}
 	}
@@ -213,7 +214,12 @@ func ensureParallelism(t *testing.T, in *instance, n int) {
 }
 
 func TestInstanceFor(t *testing.T) {
-	mkIn := func() *instance { return DownstreamHandler{nil}.Downstreamer().(*instance) }
+	mkIn := func() *instance {
+		return DownstreamHandler{
+			limits: fakeLimits{},
+			next:   nil,
+		}.Downstreamer(context.Background()).(*instance)
+	}
 	in := mkIn()
 
 	queries := make([]logql.DownstreamQuery, in.parallelism+1)
@@ -339,7 +345,10 @@ func TestInstanceDownstream(t *testing.T) {
 	expected, err := ResponseToResult(expectedResp())
 	require.Nil(t, err)
 
-	results, err := DownstreamHandler{handler}.Downstreamer().Downstream(context.Background(), queries)
+	results, err := DownstreamHandler{
+		limits: fakeLimits{},
+		next:   handler,
+	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
 
 	require.Equal(t, want, got)
 
@@ -348,7 +357,12 @@ func TestInstanceDownstream(t *testing.T) {
 }
 
 func TestCancelWhileWaitingResponse(t *testing.T) {
-	mkIn := func() *instance { return DownstreamHandler{nil}.Downstreamer().(*instance) }
+	mkIn := func() *instance {
+		return DownstreamHandler{
+			limits: fakeLimits{},
+			next:   nil,
+		}.Downstreamer(context.Background()).(*instance)
+	}
 	in := mkIn()
 
 	queries := make([]logql.DownstreamQuery, in.parallelism+1)
@@ -375,4 +389,21 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond,
 		"The parent context calling the Downstreamer For method was canceled "+
 			"but the For method did not return as expected.")
+}
+
+func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	l := fakeLimits{maxQueryParallelism: 4}
+	d := DownstreamHandler{
+		limits: l,
+		next:   nil,
+	}.Downstreamer(ctx)
+
+	i := d.(*instance)
+	close(i.locks)
+	var ct int
+	for range i.locks {
+		ct++
+	}
+	require.Equal(t, l.maxQueryParallelism, ct)
 }

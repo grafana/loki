@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -87,6 +88,97 @@ var (
 	criTestTime2   = time.Now()
 )
 
+func TestCRI_tags(t *testing.T) {
+	cases := []struct {
+		name            string
+		lines           []string
+		expected        []string
+		maxPartialLines int
+		err             error
+	}{
+		{
+			name: "tag F",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout F some full line",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
+			},
+			expected: []string{"some full line", "log"},
+		},
+		{
+			name: "tag P",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log finished",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F another full log",
+			},
+			expected: []string{
+				"partial line 1\npartial line 2\nlog finished",
+				"another full log",
+			},
+		},
+		{
+			name: "tag P exceeding MaxPartialLinesSize lines",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 3",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 4", // this exceeds the `MaxPartialLinesSize` of 3
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log finished",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F another full log",
+			},
+			maxPartialLines: 3,
+			expected: []string{
+				"partial line 1\npartial line 2\npartial line 3",
+				"partial line 4\nlog finished",
+				"another full log",
+			},
+		},
+		{
+			name: "panic",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout P panic: I'm pannicing",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P ",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P goroutine 1 [running]:",
+				"2019-05-07T18:57:55.904275087+00:00 stdout P main.main()",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F 	/home/kavirajk/src/go-play/main.go:11 +0x27",
+			},
+			expected: []string{
+				`panic: I'm pannicing
+
+goroutine 1 [running]:
+main.main()
+	/home/kavirajk/src/go-play/main.go:11 +0x27`,
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewCRI(util_log.Logger, prometheus.DefaultRegisterer)
+			require.NoError(t, err)
+
+			got := make([]string, 0)
+
+			// tweak `maxPartialLines`
+			if tt.maxPartialLines != 0 {
+				p.(*cri).maxPartialLines = tt.maxPartialLines
+			}
+
+			for _, line := range tt.lines {
+				out := processEntries(p, newEntry(nil, nil, line, time.Now()))
+				if len(out) > 0 {
+					for _, en := range out {
+						got = append(got, en.Line)
+
+					}
+				}
+			}
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
 func TestNewCri(t *testing.T) {
 	tests := map[string]struct {
 		entry          string
@@ -97,7 +189,7 @@ func TestNewCri(t *testing.T) {
 		expectedLabels map[string]string
 	}{
 		"happy path": {
-			criTestTimeStr + " stderr P message",
+			criTestTimeStr + " stderr F message",
 			"message",
 			time.Now(),
 			criTestTime,
@@ -107,7 +199,7 @@ func TestNewCri(t *testing.T) {
 			},
 		},
 		"multi line pass": {
-			criTestTimeStr + " stderr P message\nmessage2",
+			criTestTimeStr + " stderr F message\nmessage2",
 			"message\nmessage2",
 			time.Now(),
 			criTestTime,
@@ -117,7 +209,7 @@ func TestNewCri(t *testing.T) {
 			},
 		},
 		"invalid timestamp": {
-			"3242 stderr P message",
+			"3242 stderr F message",
 			"message",
 			criTestTime2,
 			criTestTime2,

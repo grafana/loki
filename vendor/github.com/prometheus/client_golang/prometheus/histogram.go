@@ -581,11 +581,11 @@ func (h *constHistogram) Desc() *Desc {
 
 func (h *constHistogram) Write(out *dto.Metric) error {
 	his := &dto.Histogram{}
+
 	buckets := make([]*dto.Bucket, 0, len(h.buckets))
 
 	his.SampleCount = proto.Uint64(h.count)
 	his.SampleSum = proto.Float64(h.sum)
-
 	for upperBound, count := range h.buckets {
 		buckets = append(buckets, &dto.Bucket{
 			CumulativeCount: proto.Uint64(count),
@@ -613,7 +613,7 @@ func (h *constHistogram) Write(out *dto.Metric) error {
 // to send it to Prometheus in the Collect method.
 //
 // buckets is a map of upper bounds to cumulative counts, excluding the +Inf
-// bucket.
+// bucket. The +Inf bucket is implicit, and its value is equal to the provided count.
 //
 // NewConstHistogram returns an error if the length of labelValues is not
 // consistent with the variable labels in Desc or if Desc is invalid.

@@ -19,7 +19,9 @@ tenants:
     {{- end -}}
     {{- end }}
     issuerURL: {{ $spec.OIDC.IssuerURL }}
+    {{ if $spec.OIDC.RedirectURL }}
     redirectURL: {{ $spec.OIDC.RedirectURL }}
+    {{- end -}}
     {{ if $spec.OIDC.UsernameClaim }}
     usernameClaim: {{ $spec.OIDC.UsernameClaim }}
     {{- end -}}
@@ -63,7 +65,7 @@ tenants:
     url: {{ $tenant.Authorization.OPA.URL }}
 {{- end -}}
 {{- end -}}
-{{- else if eq $l.Stack.Tenants.Mode "openshift-logging" -}}
+{{- else if (or (eq $l.Stack.Tenants.Mode "openshift-logging") (eq $l.Stack.Tenants.Mode "openshift-network")) -}}
 {{- if $tenant := $l.OpenShiftOptions.Authentication -}}
 {{- range $spec := $l.OpenShiftOptions.Authentication }}
 - name: {{ $spec.TenantName }}

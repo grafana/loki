@@ -1,3 +1,4 @@
+local configfile = import 'config.libsonnet';
 local g = import 'grafana-builder/grafana.libsonnet';
 local loki_mixin_utils = import 'loki-mixin/dashboards/dashboard-utils.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
@@ -6,13 +7,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+: {
     local dashboard = (
       loki_mixin_utils {
-        _config+:: { tags: ['loki'] },
+        _config+:: configfile._config,
       }
     ),
     local dashboards = self,
 
-    local labelsSelector = 'cluster=~"$cluster", namespace=~"$namespace"',
-    local quantileLabelSelector = 'cluster=~"$cluster", job=~"$namespace/promtail"',
+    // local labelsSelector = 'cluster=~"$cluster", namespace=~"$namespace"',
+    local labelsSelector = dashboard._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
+    local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail"',
 
     'promtail.json': {
                        local cfg = self,
@@ -20,7 +22,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                      dashboard.dashboard('Loki / Promtail', uid='promtail')
                      .addCluster()
                      .addTag()
-                     .addTemplate('namespace', 'promtail_build_info{cluster=~"$cluster"}', 'namespace')
+                     .addTemplate('namespace', 'promtail_build_info{' + dashboard._config.per_cluster_label + '=~"$cluster"}', 'namespace')
                      .addRow(
                        g.row('Targets & Files')
                        .addPanel(

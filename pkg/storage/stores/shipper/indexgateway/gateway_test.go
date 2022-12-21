@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -57,10 +57,10 @@ func (b *mockBatchIter) Value() []byte {
 
 type mockQueryIndexServer struct {
 	grpc.ServerStream
-	callback func(resp *indexgatewaypb.QueryIndexResponse)
+	callback func(resp *logproto.QueryIndexResponse)
 }
 
-func (m *mockQueryIndexServer) Send(resp *indexgatewaypb.QueryIndexResponse) error {
+func (m *mockQueryIndexServer) Send(resp *logproto.QueryIndexResponse) error {
 	m.callback(resp)
 	return nil
 }
@@ -90,8 +90,8 @@ func TestGateway_QueryIndex(t *testing.T) {
 	var expectedRanges []batchRange
 
 	// the response should have index entries between start and end from batchRange at index 0 of expectedRanges
-	var server indexgatewaypb.IndexGateway_QueryIndexServer = &mockQueryIndexServer{
-		callback: func(resp *indexgatewaypb.QueryIndexResponse) {
+	var server logproto.IndexGateway_QueryIndexServer = &mockQueryIndexServer{
+		callback: func(resp *logproto.QueryIndexResponse) {
 			require.Equal(t, expectedQueryKey, resp.QueryKey)
 
 			require.True(t, len(expectedRanges) > 0)
@@ -129,7 +129,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		expectedQueryKey = util.QueryKey(query)
 		gateway.indexClient = mockIndexClient{response: &mockBatch{size: responseSize}}
 
-		err := gateway.QueryIndex(&indexgatewaypb.QueryIndexRequest{Queries: []*indexgatewaypb.IndexQuery{{
+		err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: []*logproto.IndexQuery{{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
 			RangeValuePrefix: query.RangeValuePrefix,

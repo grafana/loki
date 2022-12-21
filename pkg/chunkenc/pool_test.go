@@ -36,7 +36,8 @@ func TestPool(t *testing.T) {
 				require.NoError(t, w.Close())
 
 				require.True(t, buf.Len() != 0, enc)
-				r := rpool.GetReader(bytes.NewBuffer(buf.Bytes()))
+				r, err := rpool.GetReader(bytes.NewBuffer(buf.Bytes()))
+				require.NoError(t, err)
 				defer rpool.PutReader(r)
 				n, err := r.Read(res)
 				if err != nil {

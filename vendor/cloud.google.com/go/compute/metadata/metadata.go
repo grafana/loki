@@ -16,7 +16,7 @@
 // metadata and API service accounts.
 //
 // This package is a wrapper around the GCE metadata service,
-// as documented at https://developers.google.com/compute/docs/metadata.
+// as documented at https://cloud.google.com/compute/docs/metadata/overview.
 package metadata // import "cloud.google.com/go/compute/metadata"
 
 import (
@@ -71,6 +71,7 @@ func newDefaultHTTPClient() *http.Client {
 				KeepAlive: 30 * time.Second,
 			}).Dial,
 		},
+		Timeout: 5 * time.Second,
 	}
 }
 

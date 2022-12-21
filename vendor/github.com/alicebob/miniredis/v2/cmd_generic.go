@@ -3,6 +3,7 @@
 package miniredis
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ func commandsGeneric(m *Miniredis) {
 	m.srv.Register("TTL", m.cmdTTL)
 	m.srv.Register("TYPE", m.cmdType)
 	m.srv.Register("SCAN", m.cmdScan)
+	m.srv.Register("COPY", m.cmdCopy)
 }
 
 // generic expire command for EXPIRE, PEXPIRE, EXPIREAT, PEXPIREAT
@@ -72,17 +74,7 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 				return
 			}
 			if unix {
-				var ts time.Time
-				switch d {
-				case time.Millisecond:
-					ts = time.Unix(int64(i/1000), 1000000*int64(i%1000))
-				case time.Second:
-					ts = time.Unix(int64(i), 0)
-				default:
-					panic("invalid time unit (d). Fixme!")
-				}
-				now := m.effectiveNow()
-				db.ttl[key] = ts.Sub(now)
+				db.ttl[key] = m.at(i, d)
 			} else {
 				db.ttl[key] = time.Duration(i) * d
 			}
@@ -492,9 +484,14 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 	}
 	args = args[1:]
 
-	// MATCH and COUNT options
-	var withMatch bool
-	var match string
+	// MATCH, COUNT and TYPE options
+	var (
+		withMatch bool
+		match     string
+		withType  bool
+		_type     string
+	)
+
 	for len(args) > 0 {
 		if strings.ToLower(args[0]) == "count" {
 			// we do nothing with count
@@ -521,6 +518,16 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 			match, args = args[1], args[2:]
 			continue
 		}
+		if strings.ToLower(args[0]) == "type" {
+			if len(args) < 2 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			withType = true
+			_type, args = strings.ToLower(args[1]), args[2:]
+			continue
+		}
 		setDirty(c)
 		c.WriteError(msgSyntaxError)
 		return
@@ -538,7 +545,21 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		keys := db.allKeys()
+		var keys []string
+
+		if withType {
+			keys = make([]string, 0)
+			for k, t := range db.keys {
+				// type must be given exactly; no pattern matching is performed
+				if t == _type {
+					keys = append(keys, k)
+				}
+			}
+			sort.Strings(keys) // To make things deterministic.
+		} else {
+			keys = db.allKeys()
+		}
+
 		if withMatch {
 			keys, _ = matchKeys(keys, match)
 		}
@@ -549,5 +570,88 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 		for _, k := range keys {
 			c.WriteBulk(k)
 		}
+	})
+}
+
+// COPY
+func (m *Miniredis) cmdCopy(c *server.Peer, cmd string, args []string) {
+	if len(args) < 2 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	var opts = struct {
+		from          string
+		to            string
+		destinationDB int
+		replace       bool
+	}{
+		destinationDB: -1,
+	}
+
+	opts.from, opts.to, args = args[0], args[1], args[2:]
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "db":
+			if len(args) < 2 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			db, err := strconv.Atoi(args[1])
+			if err != nil {
+				setDirty(c)
+				c.WriteError(msgInvalidInt)
+				return
+			}
+			if db < 0 {
+				setDirty(c)
+				c.WriteError(msgDBIndexOutOfRange)
+				return
+			}
+			opts.destinationDB = db
+			args = args[2:]
+		case "replace":
+			opts.replace = true
+			args = args[1:]
+		default:
+			setDirty(c)
+			c.WriteError(msgSyntaxError)
+			return
+		}
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		fromDB, toDB := ctx.selectedDB, opts.destinationDB
+		if toDB == -1 {
+			toDB = fromDB
+		}
+
+		if fromDB == toDB && opts.from == opts.to {
+			c.WriteError("ERR source and destination objects are the same")
+			return
+		}
+
+		if !m.db(fromDB).exists(opts.from) {
+			c.WriteInt(0)
+			return
+		}
+
+		if !opts.replace {
+			if m.db(toDB).exists(opts.to) {
+				c.WriteInt(0)
+				return
+			}
+		}
+
+		m.copy(m.db(fromDB), opts.from, m.db(toDB), opts.to)
+		c.WriteInt(1)
 	})
 }

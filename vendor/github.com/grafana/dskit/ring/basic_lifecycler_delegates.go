@@ -150,3 +150,38 @@ func (d *AutoForgetDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler
 
 	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
 }
+
+// InstanceRegisterDelegate generates a new set of tokenCount tokens on instance register, and returns the registerState InstanceState.
+type InstanceRegisterDelegate struct {
+	registerState InstanceState
+	tokenCount    int
+}
+
+func NewInstanceRegisterDelegate(state InstanceState, tokenCount int) InstanceRegisterDelegate {
+	return InstanceRegisterDelegate{
+		registerState: state,
+		tokenCount:    tokenCount,
+	}
+}
+
+func (d InstanceRegisterDelegate) OnRingInstanceRegister(_ *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
+	// Keep the existing tokens if any, otherwise start with a clean situation.
+	var tokens []uint32
+	if instanceExists {
+		tokens = instanceDesc.GetTokens()
+	}
+
+	takenTokens := ringDesc.GetTokens()
+	newTokens := GenerateTokens(d.tokenCount-len(tokens), takenTokens)
+
+	// Tokens sorting will be enforced by the parent caller.
+	tokens = append(tokens, newTokens...)
+
+	return d.registerState, tokens
+}
+
+func (d InstanceRegisterDelegate) OnRingInstanceTokens(*BasicLifecycler, Tokens) {}
+
+func (d InstanceRegisterDelegate) OnRingInstanceStopping(*BasicLifecycler) {}
+
+func (d InstanceRegisterDelegate) OnRingInstanceHeartbeat(*BasicLifecycler, *Desc, *InstanceDesc) {}

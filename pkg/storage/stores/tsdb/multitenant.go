@@ -27,9 +27,9 @@ func NewMultiTenantIndex(idx Index) *MultiTenantIndex {
 }
 
 func withTenantLabelMatcher(userID string, matchers []*labels.Matcher) []*labels.Matcher {
-	cpy := make([]*labels.Matcher, len(matchers))
-	copy(cpy, matchers)
-	cpy = append(cpy, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID))
+	cpy := make([]*labels.Matcher, len(matchers)+1)
+	cpy[0] = labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID)
+	copy(cpy[1:], matchers)
 	return cpy
 }
 
@@ -87,4 +87,8 @@ func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from,
 		return nil, nil
 	}
 	return m.idx.LabelValues(ctx, userID, from, through, name, withTenantLabelMatcher(userID, matchers)...)
+}
+
+func (m *MultiTenantIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	return m.idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, withTenantLabelMatcher(userID, matchers)...)
 }

@@ -3,7 +3,7 @@ package queryrangebase
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"testing"
@@ -96,7 +96,7 @@ func TestResponse(t *testing.T) {
 			response := &http.Response{
 				StatusCode: 200,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
 			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestResponse(t *testing.T) {
 			response = &http.Response{
 				StatusCode:    200,
 				Header:        http.Header{"Content-Type": []string{"application/json"}},
-				Body:          ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)

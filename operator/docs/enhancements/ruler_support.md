@@ -1,20 +1,21 @@
 ---
-title: lokistack ruler support
+title: Ruler Support
+description: Support for Loki Ruler and alerting/recording rules
 authors:
-  - @periklis
+  - "@periklis"
 reviewers:
-  - @xperimental
-  - @cyriltovena
-creation-date: 2022-04-21
-last-updated: 2022-04-21
-tracking-link:
-  - [5211](https://github.com/grafana/loki/issues/5211)
-  - [5843](https://github.com/grafana/loki/issues/5843)
-see-also:
-  - [PR 5986](https://github.com/grafana/loki/pull/5986)
+  - "@xperimental"
+  - "@cyriltovena"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+menu:
+  docs:
+    parent: "enhancements"
+weight: 100
+toc: true
 ---
-
-# LokiStack Ruler Support
 
 ## Summary
 

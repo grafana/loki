@@ -6,7 +6,7 @@ import (
 
 func uniqueString(s []string) []string {
 	unique := make(map[string]bool, len(s))
-	us := make([]string, len(unique))
+	us := make([]string, 0, len(s))
 	for _, elem := range s {
 		if len(elem) != 0 {
 			if !unique[elem] {

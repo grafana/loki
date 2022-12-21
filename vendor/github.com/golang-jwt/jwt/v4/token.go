@@ -74,22 +74,19 @@ func (t *Token) SignedString(key interface{}) (string, error) {
 // the SignedString.
 func (t *Token) SigningString() (string, error) {
 	var err error
-	parts := make([]string, 2)
-	for i := range parts {
-		var jsonValue []byte
-		if i == 0 {
-			if jsonValue, err = json.Marshal(t.Header); err != nil {
-				return "", err
-			}
-		} else {
-			if jsonValue, err = json.Marshal(t.Claims); err != nil {
-				return "", err
-			}
-		}
+	var jsonValue []byte
 
-		parts[i] = EncodeSegment(jsonValue)
+	if jsonValue, err = json.Marshal(t.Header); err != nil {
+		return "", err
 	}
-	return strings.Join(parts, "."), nil
+	header := EncodeSegment(jsonValue)
+
+	if jsonValue, err = json.Marshal(t.Claims); err != nil {
+		return "", err
+	}
+	claim := EncodeSegment(jsonValue)
+
+	return strings.Join([]string{header, claim}, "."), nil
 }
 
 // Parse parses, validates, verifies the signature and returns the parsed token.

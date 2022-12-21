@@ -3,15 +3,15 @@ package loki
 import (
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 )
 
-func deleteRequestsStoreListener(d deletion.DeleteRequestsStore) *listener {
+func deleteRequestsStoreListener(d deletion.DeleteRequestsClient) *listener {
 	return &listener{d}
 }
 
 type listener struct {
-	deleteRequestsStore deletion.DeleteRequestsStore
+	deleteRequestsClient deletion.DeleteRequestsClient
 }
 
 // Starting is called when the service transitions from NEW to STARTING.
@@ -26,7 +26,7 @@ func (l *listener) Stopping(from services.State) {
 		// no need to do anything
 		return
 	}
-	l.deleteRequestsStore.Stop()
+	l.deleteRequestsClient.Stop()
 }
 
 // Terminated is called when the service transitions to the TERMINATED state.
@@ -35,7 +35,7 @@ func (l *listener) Terminated(from services.State) {
 		// no need to do anything
 		return
 	}
-	l.deleteRequestsStore.Stop()
+	l.deleteRequestsClient.Stop()
 }
 
 // Failed is called when the service transitions to the FAILED state.
@@ -44,5 +44,5 @@ func (l *listener) Failed(from services.State, failure error) {
 		// no need to do anything
 		return
 	}
-	l.deleteRequestsStore.Stop()
+	l.deleteRequestsClient.Stop()
 }

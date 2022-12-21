@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"log"
+	"math"
 	"net/http"
 	_ "net/http/pprof"
 	"path"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -1000,6 +1002,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = "filesystem"
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
 	// dates for activation of boltdb shippers
 	firstStoreDate := parseDate("2019-01-01")
@@ -1275,4 +1278,100 @@ func Test_GetSeries(t *testing.T) {
 			require.Equal(t, tt.expectedSeries, series)
 		})
 	}
+}
+
+func TestGetIndexStoreTableRanges(t *testing.T) {
+	now := model.Now()
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: now.Add(30 * 24 * time.Hour)},
+				IndexType:  config.BoltDBShipperType,
+				ObjectType: "filesystem",
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+			{
+				From:       config.DayTime{Time: now.Add(20 * 24 * time.Hour)},
+				IndexType:  config.BoltDBShipperType,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: now.Add(15 * 24 * time.Hour)},
+				IndexType:  config.TSDBType,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: now.Add(10 * 24 * time.Hour)},
+				IndexType:  config.StorageTypeBigTable,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: now.Add(5 * 24 * time.Hour)},
+				IndexType:  config.TSDBType,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+		},
+	}
+
+	require.Equal(t, config.TableRanges{
+		{
+			Start:        schemaConfig.Configs[0].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[1].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[0],
+		},
+		{
+			Start:        schemaConfig.Configs[1].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[1],
+		},
+	}, getIndexStoreTableRanges(config.BoltDBShipperType, schemaConfig.Configs))
+
+	require.Equal(t, config.TableRanges{
+		{
+			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[3],
+		},
+	}, getIndexStoreTableRanges(config.StorageTypeBigTable, schemaConfig.Configs))
+
+	require.Equal(t, config.TableRanges{
+		{
+			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[2],
+		},
+		{
+			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[4],
+		},
+	}, getIndexStoreTableRanges(config.TSDBType, schemaConfig.Configs))
 }

@@ -2,27 +2,31 @@ package cache
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // RedisCache type caches chunks in redis
 type RedisCache struct {
-	name   string
-	redis  *RedisClient
-	logger log.Logger
+	name      string
+	cacheType stats.CacheType
+	redis     *RedisClient
+	logger    log.Logger
 }
 
 // NewRedisCache creates a new RedisCache
-func NewRedisCache(name string, redisClient *RedisClient, logger log.Logger) *RedisCache {
-	util_log.WarnExperimentalUse("Redis cache", logger)
+func NewRedisCache(name string, redisClient *RedisClient, logger log.Logger, cacheType stats.CacheType) *RedisCache {
+	util_log.WarnExperimentalUse(fmt.Sprintf("Redis cache - %s", name), logger)
 	cache := &RedisCache{
-		name:   name,
-		redis:  redisClient,
-		logger: logger,
+		name:      name,
+		redis:     redisClient,
+		logger:    logger,
+		cacheType: cacheType,
 	}
 	if err := cache.redis.Ping(context.Background()); err != nil {
 		level.Error(logger).Log("msg", "error connecting to redis", "name", name, "err", err)
@@ -62,4 +66,8 @@ func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) er
 // Stop stops the redis client.
 func (c *RedisCache) Stop() {
 	_ = c.redis.Close()
+}
+
+func (c *RedisCache) GetCacheType() stats.CacheType {
+	return c.cacheType
 }

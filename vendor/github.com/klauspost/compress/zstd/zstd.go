@@ -39,6 +39,9 @@ const zstdMinMatch = 3
 // Reset the buffer offset when reaching this.
 const bufferReset = math.MaxInt32 - MaxWindowSize
 
+// fcsUnknown is used for unknown frame content size.
+const fcsUnknown = math.MaxUint64
+
 var (
 	// ErrReservedBlockType is returned when a reserved block type is found.
 	// Typically this indicates wrong or corrupted input.
@@ -51,6 +54,10 @@ var (
 	// ErrBlockTooSmall is returned when a block is too small to be decoded.
 	// Typically returned on invalid input.
 	ErrBlockTooSmall = errors.New("block too small")
+
+	// ErrUnexpectedBlockSize is returned when a block has unexpected size.
+	// Typically returned on invalid input.
+	ErrUnexpectedBlockSize = errors.New("unexpected block size")
 
 	// ErrMagicMismatch is returned when a "magic" number isn't what is expected.
 	// Typically this indicates wrong or corrupted input.
@@ -75,6 +82,10 @@ var (
 	// This is only returned if SingleSegment is specified on the frame.
 	ErrFrameSizeExceeded = errors.New("frame size exceeded")
 
+	// ErrFrameSizeMismatch is returned if the stated frame size does not match the expected size.
+	// This is only returned if SingleSegment is specified on the frame.
+	ErrFrameSizeMismatch = errors.New("frame size does not match size on stream")
+
 	// ErrCRCMismatch is returned if CRC mismatches.
 	ErrCRCMismatch = errors.New("CRC check failed")
 
@@ -97,17 +108,6 @@ func printf(format string, a ...interface{}) {
 	if debug || debugDecoder || debugEncoder {
 		log.Printf(format, a...)
 	}
-}
-
-// matchLenFast does matching, but will not match the last up to 7 bytes.
-func matchLenFast(a, b []byte) int {
-	endI := len(a) & (math.MaxInt32 - 7)
-	for i := 0; i < endI; i += 8 {
-		if diff := load64(a, i) ^ load64(b, i); diff != 0 {
-			return i + bits.TrailingZeros64(diff)>>3
-		}
-	}
-	return endI
 }
 
 // matchLen returns the maximum length.

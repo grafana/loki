@@ -29,14 +29,13 @@ const opAllocateStaticIp = "AllocateStaticIp"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the AllocateStaticIpRequest method.
+//	req, resp := client.AllocateStaticIpRequest(params)
 //
-//    // Example sending a request using the AllocateStaticIpRequest method.
-//    req, resp := client.AllocateStaticIpRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AllocateStaticIp
 func (c *Lightsail) AllocateStaticIpRequest(input *AllocateStaticIpInput) (req *request.Request, output *AllocateStaticIpOutput) {
@@ -67,33 +66,34 @@ func (c *Lightsail) AllocateStaticIpRequest(input *AllocateStaticIpInput) (req *
 // API operation AllocateStaticIp for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AllocateStaticIp
 func (c *Lightsail) AllocateStaticIp(input *AllocateStaticIpInput) (*AllocateStaticIpOutput, error) {
@@ -133,14 +133,13 @@ const opAttachCertificateToDistribution = "AttachCertificateToDistribution"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the AttachCertificateToDistributionRequest method.
+//	req, resp := client.AttachCertificateToDistributionRequest(params)
 //
-//    // Example sending a request using the AttachCertificateToDistributionRequest method.
-//    req, resp := client.AttachCertificateToDistributionRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachCertificateToDistribution
 func (c *Lightsail) AttachCertificateToDistributionRequest(input *AttachCertificateToDistributionInput) (req *request.Request, output *AttachCertificateToDistributionOutput) {
@@ -170,10 +169,11 @@ func (c *Lightsail) AttachCertificateToDistributionRequest(input *AttachCertific
 // Use the CreateCertificate action to create a certificate that you can attach
 // to your distribution.
 //
-// Only certificates created in the us-east-1 AWS Region can be attached to
-// Lightsail distributions. Lightsail distributions are global resources that
-// can reference an origin in any AWS Region, and distribute its content globally.
-// However, all distributions are located in the us-east-1 Region.
+// Only certificates created in the us-east-1 Amazon Web Services Region can
+// be attached to Lightsail distributions. Lightsail distributions are global
+// resources that can reference an origin in any Amazon Web Services Region,
+// and distribute its content globally. However, all distributions are located
+// in the us-east-1 Region.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -183,29 +183,30 @@ func (c *Lightsail) AttachCertificateToDistributionRequest(input *AttachCertific
 // API operation AttachCertificateToDistribution for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachCertificateToDistribution
 func (c *Lightsail) AttachCertificateToDistribution(input *AttachCertificateToDistributionInput) (*AttachCertificateToDistributionOutput, error) {
@@ -245,14 +246,13 @@ const opAttachDisk = "AttachDisk"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the AttachDiskRequest method.
+//	req, resp := client.AttachDiskRequest(params)
 //
-//    // Example sending a request using the AttachDiskRequest method.
-//    req, resp := client.AttachDiskRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachDisk
 func (c *Lightsail) AttachDiskRequest(input *AttachDiskInput) (req *request.Request, output *AttachDiskOutput) {
@@ -288,33 +288,34 @@ func (c *Lightsail) AttachDiskRequest(input *AttachDiskInput) (req *request.Requ
 // API operation AttachDisk for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachDisk
 func (c *Lightsail) AttachDisk(input *AttachDiskInput) (*AttachDiskOutput, error) {
@@ -354,14 +355,13 @@ const opAttachInstancesToLoadBalancer = "AttachInstancesToLoadBalancer"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the AttachInstancesToLoadBalancerRequest method.
+//	req, resp := client.AttachInstancesToLoadBalancerRequest(params)
 //
-//    // Example sending a request using the AttachInstancesToLoadBalancerRequest method.
-//    req, resp := client.AttachInstancesToLoadBalancerRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachInstancesToLoadBalancer
 func (c *Lightsail) AttachInstancesToLoadBalancerRequest(input *AttachInstancesToLoadBalancerInput) (req *request.Request, output *AttachInstancesToLoadBalancerOutput) {
@@ -399,33 +399,34 @@ func (c *Lightsail) AttachInstancesToLoadBalancerRequest(input *AttachInstancesT
 // API operation AttachInstancesToLoadBalancer for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachInstancesToLoadBalancer
 func (c *Lightsail) AttachInstancesToLoadBalancer(input *AttachInstancesToLoadBalancerInput) (*AttachInstancesToLoadBalancerOutput, error) {
@@ -465,14 +466,13 @@ const opAttachLoadBalancerTlsCertificate = "AttachLoadBalancerTlsCertificate"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the AttachLoadBalancerTlsCertificateRequest method.
+//	req, resp := client.AttachLoadBalancerTlsCertificateRequest(params)
 //
-//    // Example sending a request using the AttachLoadBalancerTlsCertificateRequest method.
-//    req, resp := client.AttachLoadBalancerTlsCertificateRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachLoadBalancerTlsCertificate
 func (c *Lightsail) AttachLoadBalancerTlsCertificateRequest(input *AttachLoadBalancerTlsCertificateInput) (req *request.Request, output *AttachLoadBalancerTlsCertificateOutput) {
@@ -514,33 +514,34 @@ func (c *Lightsail) AttachLoadBalancerTlsCertificateRequest(input *AttachLoadBal
 // API operation AttachLoadBalancerTlsCertificate for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachLoadBalancerTlsCertificate
 func (c *Lightsail) AttachLoadBalancerTlsCertificate(input *AttachLoadBalancerTlsCertificateInput) (*AttachLoadBalancerTlsCertificateOutput, error) {
@@ -580,14 +581,13 @@ const opAttachStaticIp = "AttachStaticIp"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the AttachStaticIpRequest method.
+//	req, resp := client.AttachStaticIpRequest(params)
 //
-//    // Example sending a request using the AttachStaticIpRequest method.
-//    req, resp := client.AttachStaticIpRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachStaticIp
 func (c *Lightsail) AttachStaticIpRequest(input *AttachStaticIpInput) (req *request.Request, output *AttachStaticIpOutput) {
@@ -618,33 +618,34 @@ func (c *Lightsail) AttachStaticIpRequest(input *AttachStaticIpInput) (req *requ
 // API operation AttachStaticIp for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/AttachStaticIp
 func (c *Lightsail) AttachStaticIp(input *AttachStaticIpInput) (*AttachStaticIpOutput, error) {
@@ -684,14 +685,13 @@ const opCloseInstancePublicPorts = "CloseInstancePublicPorts"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CloseInstancePublicPortsRequest method.
+//	req, resp := client.CloseInstancePublicPortsRequest(params)
 //
-//    // Example sending a request using the CloseInstancePublicPortsRequest method.
-//    req, resp := client.CloseInstancePublicPortsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CloseInstancePublicPorts
 func (c *Lightsail) CloseInstancePublicPortsRequest(input *CloseInstancePublicPortsInput) (req *request.Request, output *CloseInstancePublicPortsOutput) {
@@ -726,33 +726,34 @@ func (c *Lightsail) CloseInstancePublicPortsRequest(input *CloseInstancePublicPo
 // API operation CloseInstancePublicPorts for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CloseInstancePublicPorts
 func (c *Lightsail) CloseInstancePublicPorts(input *CloseInstancePublicPortsInput) (*CloseInstancePublicPortsOutput, error) {
@@ -792,14 +793,13 @@ const opCopySnapshot = "CopySnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CopySnapshotRequest method.
+//	req, resp := client.CopySnapshotRequest(params)
 //
-//    // Example sending a request using the CopySnapshotRequest method.
-//    req, resp := client.CopySnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CopySnapshot
 func (c *Lightsail) CopySnapshotRequest(input *CopySnapshotInput) (req *request.Request, output *CopySnapshotOutput) {
@@ -823,7 +823,8 @@ func (c *Lightsail) CopySnapshotRequest(input *CopySnapshotInput) (req *request.
 // Copies a manual snapshot of an instance or disk as another manual snapshot,
 // or copies an automatic snapshot of an instance or disk as a manual snapshot.
 // This operation can also be used to copy a manual or automatic snapshot of
-// an instance or a disk from one AWS Region to another in Amazon Lightsail.
+// an instance or a disk from one Amazon Web Services Region to another in Amazon
+// Lightsail.
 //
 // When copying a manual snapshot, be sure to define the source region, source
 // snapshot name, and target snapshot name parameters.
@@ -840,33 +841,34 @@ func (c *Lightsail) CopySnapshotRequest(input *CopySnapshotInput) (req *request.
 // API operation CopySnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CopySnapshot
 func (c *Lightsail) CopySnapshot(input *CopySnapshotInput) (*CopySnapshotOutput, error) {
@@ -906,14 +908,13 @@ const opCreateBucket = "CreateBucket"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateBucketRequest method.
+//	req, resp := client.CreateBucketRequest(params)
 //
-//    // Example sending a request using the CreateBucketRequest method.
-//    req, resp := client.CreateBucketRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateBucket
 func (c *Lightsail) CreateBucketRequest(input *CreateBucketInput) (req *request.Request, output *CreateBucketOutput) {
@@ -949,23 +950,24 @@ func (c *Lightsail) CreateBucketRequest(input *CreateBucketInput) (req *request.
 // API operation CreateBucket for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * ServiceException
-//   A general service exception.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateBucket
 func (c *Lightsail) CreateBucket(input *CreateBucketInput) (*CreateBucketOutput, error) {
@@ -1005,14 +1007,13 @@ const opCreateBucketAccessKey = "CreateBucketAccessKey"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateBucketAccessKeyRequest method.
+//	req, resp := client.CreateBucketAccessKeyRequest(params)
 //
-//    // Example sending a request using the CreateBucketAccessKeyRequest method.
-//    req, resp := client.CreateBucketAccessKeyRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateBucketAccessKey
 func (c *Lightsail) CreateBucketAccessKeyRequest(input *CreateBucketAccessKeyInput) (req *request.Request, output *CreateBucketAccessKeyOutput) {
@@ -1057,26 +1058,27 @@ func (c *Lightsail) CreateBucketAccessKeyRequest(input *CreateBucketAccessKeyInp
 // API operation CreateBucketAccessKey for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * ServiceException
-//   A general service exception.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateBucketAccessKey
 func (c *Lightsail) CreateBucketAccessKey(input *CreateBucketAccessKeyInput) (*CreateBucketAccessKeyOutput, error) {
@@ -1116,14 +1118,13 @@ const opCreateCertificate = "CreateCertificate"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateCertificateRequest method.
+//	req, resp := client.CreateCertificateRequest(params)
 //
-//    // Example sending a request using the CreateCertificateRequest method.
-//    req, resp := client.CreateCertificateRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateCertificate
 func (c *Lightsail) CreateCertificateRequest(input *CreateCertificateInput) (req *request.Request, output *CreateCertificateOutput) {
@@ -1152,10 +1153,11 @@ func (c *Lightsail) CreateCertificateRequest(input *CreateCertificateInput) (req
 // UpdateContainerService action to use the certificate and its domains with
 // your container service.
 //
-// Only certificates created in the us-east-1 AWS Region can be attached to
-// Lightsail distributions. Lightsail distributions are global resources that
-// can reference an origin in any AWS Region, and distribute its content globally.
-// However, all distributions are located in the us-east-1 Region.
+// Only certificates created in the us-east-1 Amazon Web Services Region can
+// be attached to Lightsail distributions. Lightsail distributions are global
+// resources that can reference an origin in any Amazon Web Services Region,
+// and distribute its content globally. However, all distributions are located
+// in the us-east-1 Region.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -1165,26 +1167,27 @@ func (c *Lightsail) CreateCertificateRequest(input *CreateCertificateInput) (req
 // API operation CreateCertificate for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateCertificate
 func (c *Lightsail) CreateCertificate(input *CreateCertificateInput) (*CreateCertificateOutput, error) {
@@ -1224,14 +1227,13 @@ const opCreateCloudFormationStack = "CreateCloudFormationStack"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateCloudFormationStackRequest method.
+//	req, resp := client.CreateCloudFormationStackRequest(params)
 //
-//    // Example sending a request using the CreateCloudFormationStackRequest method.
-//    req, resp := client.CreateCloudFormationStackRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateCloudFormationStack
 func (c *Lightsail) CreateCloudFormationStackRequest(input *CreateCloudFormationStackInput) (req *request.Request, output *CreateCloudFormationStackOutput) {
@@ -1270,33 +1272,34 @@ func (c *Lightsail) CreateCloudFormationStackRequest(input *CreateCloudFormation
 // API operation CreateCloudFormationStack for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateCloudFormationStack
 func (c *Lightsail) CreateCloudFormationStack(input *CreateCloudFormationStackInput) (*CreateCloudFormationStackOutput, error) {
@@ -1336,14 +1339,13 @@ const opCreateContactMethod = "CreateContactMethod"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateContactMethodRequest method.
+//	req, resp := client.CreateContactMethodRequest(params)
 //
-//    // Example sending a request using the CreateContactMethodRequest method.
-//    req, resp := client.CreateContactMethodRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContactMethod
 func (c *Lightsail) CreateContactMethodRequest(input *CreateContactMethodInput) (req *request.Request, output *CreateContactMethodOutput) {
@@ -1368,9 +1370,10 @@ func (c *Lightsail) CreateContactMethodRequest(input *CreateContactMethodInput) 
 //
 // A contact method is used to send you notifications about your Amazon Lightsail
 // resources. You can add one email address and one mobile phone number contact
-// method in each AWS Region. However, SMS text messaging is not supported in
-// some AWS Regions, and SMS text messages cannot be sent to some countries/regions.
-// For more information, see Notifications in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
+// method in each Amazon Web Services Region. However, SMS text messaging is
+// not supported in some Amazon Web Services Regions, and SMS text messages
+// cannot be sent to some countries/regions. For more information, see Notifications
+// in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -1380,29 +1383,30 @@ func (c *Lightsail) CreateContactMethodRequest(input *CreateContactMethodInput) 
 // API operation CreateContactMethod for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContactMethod
 func (c *Lightsail) CreateContactMethod(input *CreateContactMethodInput) (*CreateContactMethodOutput, error) {
@@ -1442,14 +1446,13 @@ const opCreateContainerService = "CreateContainerService"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateContainerServiceRequest method.
+//	req, resp := client.CreateContainerServiceRequest(params)
 //
-//    // Example sending a request using the CreateContainerServiceRequest method.
-//    req, resp := client.CreateContainerServiceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContainerService
 func (c *Lightsail) CreateContainerServiceRequest(input *CreateContainerServiceInput) (req *request.Request, output *CreateContainerServiceOutput) {
@@ -1485,26 +1488,27 @@ func (c *Lightsail) CreateContainerServiceRequest(input *CreateContainerServiceI
 // API operation CreateContainerService for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContainerService
 func (c *Lightsail) CreateContainerService(input *CreateContainerServiceInput) (*CreateContainerServiceOutput, error) {
@@ -1544,14 +1548,13 @@ const opCreateContainerServiceDeployment = "CreateContainerServiceDeployment"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateContainerServiceDeploymentRequest method.
+//	req, resp := client.CreateContainerServiceDeploymentRequest(params)
 //
-//    // Example sending a request using the CreateContainerServiceDeploymentRequest method.
-//    req, resp := client.CreateContainerServiceDeploymentRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContainerServiceDeployment
 func (c *Lightsail) CreateContainerServiceDeploymentRequest(input *CreateContainerServiceDeploymentInput) (req *request.Request, output *CreateContainerServiceDeploymentOutput) {
@@ -1581,9 +1584,9 @@ func (c *Lightsail) CreateContainerServiceDeploymentRequest(input *CreateContain
 // such as the HTTP or HTTPS port to use, and the health check configuration.
 //
 // You can deploy containers to your container service using container images
-// from a public registry like Docker Hub, or from your local machine. For more
-// information, see Creating container images for your Amazon Lightsail container
-// services (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-creating-container-images)
+// from a public registry such as Amazon ECR Public, or from your local machine.
+// For more information, see Creating container images for your Amazon Lightsail
+// container services (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-creating-container-images)
 // in the Amazon Lightsail Developer Guide.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
@@ -1594,26 +1597,27 @@ func (c *Lightsail) CreateContainerServiceDeploymentRequest(input *CreateContain
 // API operation CreateContainerServiceDeployment for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContainerServiceDeployment
 func (c *Lightsail) CreateContainerServiceDeployment(input *CreateContainerServiceDeploymentInput) (*CreateContainerServiceDeploymentOutput, error) {
@@ -1653,14 +1657,13 @@ const opCreateContainerServiceRegistryLogin = "CreateContainerServiceRegistryLog
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateContainerServiceRegistryLoginRequest method.
+//	req, resp := client.CreateContainerServiceRegistryLoginRequest(params)
 //
-//    // Example sending a request using the CreateContainerServiceRegistryLoginRequest method.
-//    req, resp := client.CreateContainerServiceRegistryLoginRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContainerServiceRegistryLogin
 func (c *Lightsail) CreateContainerServiceRegistryLoginRequest(input *CreateContainerServiceRegistryLoginInput) (req *request.Request, output *CreateContainerServiceRegistryLoginOutput) {
@@ -1711,26 +1714,27 @@ func (c *Lightsail) CreateContainerServiceRegistryLoginRequest(input *CreateCont
 // API operation CreateContainerServiceRegistryLogin for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateContainerServiceRegistryLogin
 func (c *Lightsail) CreateContainerServiceRegistryLogin(input *CreateContainerServiceRegistryLoginInput) (*CreateContainerServiceRegistryLoginOutput, error) {
@@ -1770,14 +1774,13 @@ const opCreateDisk = "CreateDisk"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateDiskRequest method.
+//	req, resp := client.CreateDiskRequest(params)
 //
-//    // Example sending a request using the CreateDiskRequest method.
-//    req, resp := client.CreateDiskRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDisk
 func (c *Lightsail) CreateDiskRequest(input *CreateDiskInput) (req *request.Request, output *CreateDiskOutput) {
@@ -1812,33 +1815,34 @@ func (c *Lightsail) CreateDiskRequest(input *CreateDiskInput) (req *request.Requ
 // API operation CreateDisk for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDisk
 func (c *Lightsail) CreateDisk(input *CreateDiskInput) (*CreateDiskOutput, error) {
@@ -1878,14 +1882,13 @@ const opCreateDiskFromSnapshot = "CreateDiskFromSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateDiskFromSnapshotRequest method.
+//	req, resp := client.CreateDiskFromSnapshotRequest(params)
 //
-//    // Example sending a request using the CreateDiskFromSnapshotRequest method.
-//    req, resp := client.CreateDiskFromSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDiskFromSnapshot
 func (c *Lightsail) CreateDiskFromSnapshotRequest(input *CreateDiskFromSnapshotInput) (req *request.Request, output *CreateDiskFromSnapshotOutput) {
@@ -1923,33 +1926,34 @@ func (c *Lightsail) CreateDiskFromSnapshotRequest(input *CreateDiskFromSnapshotI
 // API operation CreateDiskFromSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDiskFromSnapshot
 func (c *Lightsail) CreateDiskFromSnapshot(input *CreateDiskFromSnapshotInput) (*CreateDiskFromSnapshotOutput, error) {
@@ -1989,14 +1993,13 @@ const opCreateDiskSnapshot = "CreateDiskSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateDiskSnapshotRequest method.
+//	req, resp := client.CreateDiskSnapshotRequest(params)
 //
-//    // Example sending a request using the CreateDiskSnapshotRequest method.
-//    req, resp := client.CreateDiskSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDiskSnapshot
 func (c *Lightsail) CreateDiskSnapshotRequest(input *CreateDiskSnapshotInput) (req *request.Request, output *CreateDiskSnapshotOutput) {
@@ -2054,33 +2057,34 @@ func (c *Lightsail) CreateDiskSnapshotRequest(input *CreateDiskSnapshotInput) (r
 // API operation CreateDiskSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDiskSnapshot
 func (c *Lightsail) CreateDiskSnapshot(input *CreateDiskSnapshotInput) (*CreateDiskSnapshotOutput, error) {
@@ -2120,14 +2124,13 @@ const opCreateDistribution = "CreateDistribution"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateDistributionRequest method.
+//	req, resp := client.CreateDistributionRequest(params)
 //
-//    // Example sending a request using the CreateDistributionRequest method.
-//    req, resp := client.CreateDistributionRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDistribution
 func (c *Lightsail) CreateDistributionRequest(input *CreateDistributionInput) (req *request.Request, output *CreateDistributionOutput) {
@@ -2163,29 +2166,30 @@ func (c *Lightsail) CreateDistributionRequest(input *CreateDistributionInput) (r
 // API operation CreateDistribution for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDistribution
 func (c *Lightsail) CreateDistribution(input *CreateDistributionInput) (*CreateDistributionOutput, error) {
@@ -2225,14 +2229,13 @@ const opCreateDomain = "CreateDomain"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateDomainRequest method.
+//	req, resp := client.CreateDomainRequest(params)
 //
-//    // Example sending a request using the CreateDomainRequest method.
-//    req, resp := client.CreateDomainRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDomain
 func (c *Lightsail) CreateDomainRequest(input *CreateDomainInput) (req *request.Request, output *CreateDomainOutput) {
@@ -2266,33 +2269,34 @@ func (c *Lightsail) CreateDomainRequest(input *CreateDomainInput) (req *request.
 // API operation CreateDomain for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDomain
 func (c *Lightsail) CreateDomain(input *CreateDomainInput) (*CreateDomainOutput, error) {
@@ -2332,14 +2336,13 @@ const opCreateDomainEntry = "CreateDomainEntry"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateDomainEntryRequest method.
+//	req, resp := client.CreateDomainEntryRequest(params)
 //
-//    // Example sending a request using the CreateDomainEntryRequest method.
-//    req, resp := client.CreateDomainEntryRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDomainEntry
 func (c *Lightsail) CreateDomainEntryRequest(input *CreateDomainEntryInput) (req *request.Request, output *CreateDomainEntryOutput) {
@@ -2376,33 +2379,34 @@ func (c *Lightsail) CreateDomainEntryRequest(input *CreateDomainEntryInput) (req
 // API operation CreateDomainEntry for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateDomainEntry
 func (c *Lightsail) CreateDomainEntry(input *CreateDomainEntryInput) (*CreateDomainEntryOutput, error) {
@@ -2442,14 +2446,13 @@ const opCreateInstanceSnapshot = "CreateInstanceSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateInstanceSnapshotRequest method.
+//	req, resp := client.CreateInstanceSnapshotRequest(params)
 //
-//    // Example sending a request using the CreateInstanceSnapshotRequest method.
-//    req, resp := client.CreateInstanceSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateInstanceSnapshot
 func (c *Lightsail) CreateInstanceSnapshotRequest(input *CreateInstanceSnapshotInput) (req *request.Request, output *CreateInstanceSnapshotOutput) {
@@ -2485,33 +2488,34 @@ func (c *Lightsail) CreateInstanceSnapshotRequest(input *CreateInstanceSnapshotI
 // API operation CreateInstanceSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateInstanceSnapshot
 func (c *Lightsail) CreateInstanceSnapshot(input *CreateInstanceSnapshotInput) (*CreateInstanceSnapshotOutput, error) {
@@ -2551,14 +2555,13 @@ const opCreateInstances = "CreateInstances"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateInstancesRequest method.
+//	req, resp := client.CreateInstancesRequest(params)
 //
-//    // Example sending a request using the CreateInstancesRequest method.
-//    req, resp := client.CreateInstancesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateInstances
 func (c *Lightsail) CreateInstancesRequest(input *CreateInstancesInput) (req *request.Request, output *CreateInstancesOutput) {
@@ -2592,33 +2595,34 @@ func (c *Lightsail) CreateInstancesRequest(input *CreateInstancesInput) (req *re
 // API operation CreateInstances for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateInstances
 func (c *Lightsail) CreateInstances(input *CreateInstancesInput) (*CreateInstancesOutput, error) {
@@ -2658,14 +2662,13 @@ const opCreateInstancesFromSnapshot = "CreateInstancesFromSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateInstancesFromSnapshotRequest method.
+//	req, resp := client.CreateInstancesFromSnapshotRequest(params)
 //
-//    // Example sending a request using the CreateInstancesFromSnapshotRequest method.
-//    req, resp := client.CreateInstancesFromSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateInstancesFromSnapshot
 func (c *Lightsail) CreateInstancesFromSnapshotRequest(input *CreateInstancesFromSnapshotInput) (req *request.Request, output *CreateInstancesFromSnapshotOutput) {
@@ -2702,33 +2705,34 @@ func (c *Lightsail) CreateInstancesFromSnapshotRequest(input *CreateInstancesFro
 // API operation CreateInstancesFromSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateInstancesFromSnapshot
 func (c *Lightsail) CreateInstancesFromSnapshot(input *CreateInstancesFromSnapshotInput) (*CreateInstancesFromSnapshotOutput, error) {
@@ -2768,14 +2772,13 @@ const opCreateKeyPair = "CreateKeyPair"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateKeyPairRequest method.
+//	req, resp := client.CreateKeyPairRequest(params)
 //
-//    // Example sending a request using the CreateKeyPairRequest method.
-//    req, resp := client.CreateKeyPairRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateKeyPair
 func (c *Lightsail) CreateKeyPairRequest(input *CreateKeyPairInput) (req *request.Request, output *CreateKeyPairOutput) {
@@ -2813,33 +2816,34 @@ func (c *Lightsail) CreateKeyPairRequest(input *CreateKeyPairInput) (req *reques
 // API operation CreateKeyPair for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateKeyPair
 func (c *Lightsail) CreateKeyPair(input *CreateKeyPairInput) (*CreateKeyPairOutput, error) {
@@ -2879,14 +2883,13 @@ const opCreateLoadBalancer = "CreateLoadBalancer"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateLoadBalancerRequest method.
+//	req, resp := client.CreateLoadBalancerRequest(params)
 //
-//    // Example sending a request using the CreateLoadBalancerRequest method.
-//    req, resp := client.CreateLoadBalancerRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateLoadBalancer
 func (c *Lightsail) CreateLoadBalancerRequest(input *CreateLoadBalancerInput) (req *request.Request, output *CreateLoadBalancerOutput) {
@@ -2928,33 +2931,34 @@ func (c *Lightsail) CreateLoadBalancerRequest(input *CreateLoadBalancerInput) (r
 // API operation CreateLoadBalancer for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateLoadBalancer
 func (c *Lightsail) CreateLoadBalancer(input *CreateLoadBalancerInput) (*CreateLoadBalancerOutput, error) {
@@ -2994,14 +2998,13 @@ const opCreateLoadBalancerTlsCertificate = "CreateLoadBalancerTlsCertificate"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateLoadBalancerTlsCertificateRequest method.
+//	req, resp := client.CreateLoadBalancerTlsCertificateRequest(params)
 //
-//    // Example sending a request using the CreateLoadBalancerTlsCertificateRequest method.
-//    req, resp := client.CreateLoadBalancerTlsCertificateRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateLoadBalancerTlsCertificate
 func (c *Lightsail) CreateLoadBalancerTlsCertificateRequest(input *CreateLoadBalancerTlsCertificateInput) (req *request.Request, output *CreateLoadBalancerTlsCertificateOutput) {
@@ -3038,33 +3041,34 @@ func (c *Lightsail) CreateLoadBalancerTlsCertificateRequest(input *CreateLoadBal
 // API operation CreateLoadBalancerTlsCertificate for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateLoadBalancerTlsCertificate
 func (c *Lightsail) CreateLoadBalancerTlsCertificate(input *CreateLoadBalancerTlsCertificateInput) (*CreateLoadBalancerTlsCertificateOutput, error) {
@@ -3104,14 +3108,13 @@ const opCreateRelationalDatabase = "CreateRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateRelationalDatabaseRequest method.
+//	req, resp := client.CreateRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the CreateRelationalDatabaseRequest method.
-//    req, resp := client.CreateRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateRelationalDatabase
 func (c *Lightsail) CreateRelationalDatabaseRequest(input *CreateRelationalDatabaseInput) (req *request.Request, output *CreateRelationalDatabaseOutput) {
@@ -3146,33 +3149,34 @@ func (c *Lightsail) CreateRelationalDatabaseRequest(input *CreateRelationalDatab
 // API operation CreateRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateRelationalDatabase
 func (c *Lightsail) CreateRelationalDatabase(input *CreateRelationalDatabaseInput) (*CreateRelationalDatabaseOutput, error) {
@@ -3212,14 +3216,13 @@ const opCreateRelationalDatabaseFromSnapshot = "CreateRelationalDatabaseFromSnap
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateRelationalDatabaseFromSnapshotRequest method.
+//	req, resp := client.CreateRelationalDatabaseFromSnapshotRequest(params)
 //
-//    // Example sending a request using the CreateRelationalDatabaseFromSnapshotRequest method.
-//    req, resp := client.CreateRelationalDatabaseFromSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateRelationalDatabaseFromSnapshot
 func (c *Lightsail) CreateRelationalDatabaseFromSnapshotRequest(input *CreateRelationalDatabaseFromSnapshotInput) (req *request.Request, output *CreateRelationalDatabaseFromSnapshotOutput) {
@@ -3259,33 +3262,34 @@ func (c *Lightsail) CreateRelationalDatabaseFromSnapshotRequest(input *CreateRel
 // API operation CreateRelationalDatabaseFromSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateRelationalDatabaseFromSnapshot
 func (c *Lightsail) CreateRelationalDatabaseFromSnapshot(input *CreateRelationalDatabaseFromSnapshotInput) (*CreateRelationalDatabaseFromSnapshotOutput, error) {
@@ -3325,14 +3329,13 @@ const opCreateRelationalDatabaseSnapshot = "CreateRelationalDatabaseSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the CreateRelationalDatabaseSnapshotRequest method.
+//	req, resp := client.CreateRelationalDatabaseSnapshotRequest(params)
 //
-//    // Example sending a request using the CreateRelationalDatabaseSnapshotRequest method.
-//    req, resp := client.CreateRelationalDatabaseSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateRelationalDatabaseSnapshot
 func (c *Lightsail) CreateRelationalDatabaseSnapshotRequest(input *CreateRelationalDatabaseSnapshotInput) (req *request.Request, output *CreateRelationalDatabaseSnapshotOutput) {
@@ -3369,33 +3372,34 @@ func (c *Lightsail) CreateRelationalDatabaseSnapshotRequest(input *CreateRelatio
 // API operation CreateRelationalDatabaseSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateRelationalDatabaseSnapshot
 func (c *Lightsail) CreateRelationalDatabaseSnapshot(input *CreateRelationalDatabaseSnapshotInput) (*CreateRelationalDatabaseSnapshotOutput, error) {
@@ -3435,14 +3439,13 @@ const opDeleteAlarm = "DeleteAlarm"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteAlarmRequest method.
+//	req, resp := client.DeleteAlarmRequest(params)
 //
-//    // Example sending a request using the DeleteAlarmRequest method.
-//    req, resp := client.DeleteAlarmRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteAlarm
 func (c *Lightsail) DeleteAlarmRequest(input *DeleteAlarmInput) (req *request.Request, output *DeleteAlarmOutput) {
@@ -3478,29 +3481,30 @@ func (c *Lightsail) DeleteAlarmRequest(input *DeleteAlarmInput) (req *request.Re
 // API operation DeleteAlarm for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteAlarm
 func (c *Lightsail) DeleteAlarm(input *DeleteAlarmInput) (*DeleteAlarmOutput, error) {
@@ -3540,14 +3544,13 @@ const opDeleteAutoSnapshot = "DeleteAutoSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteAutoSnapshotRequest method.
+//	req, resp := client.DeleteAutoSnapshotRequest(params)
 //
-//    // Example sending a request using the DeleteAutoSnapshotRequest method.
-//    req, resp := client.DeleteAutoSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteAutoSnapshot
 func (c *Lightsail) DeleteAutoSnapshotRequest(input *DeleteAutoSnapshotInput) (req *request.Request, output *DeleteAutoSnapshotOutput) {
@@ -3579,29 +3582,30 @@ func (c *Lightsail) DeleteAutoSnapshotRequest(input *DeleteAutoSnapshotInput) (r
 // API operation DeleteAutoSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteAutoSnapshot
 func (c *Lightsail) DeleteAutoSnapshot(input *DeleteAutoSnapshotInput) (*DeleteAutoSnapshotOutput, error) {
@@ -3641,14 +3645,13 @@ const opDeleteBucket = "DeleteBucket"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteBucketRequest method.
+//	req, resp := client.DeleteBucketRequest(params)
 //
-//    // Example sending a request using the DeleteBucketRequest method.
-//    req, resp := client.DeleteBucketRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteBucket
 func (c *Lightsail) DeleteBucketRequest(input *DeleteBucketInput) (req *request.Request, output *DeleteBucketOutput) {
@@ -3672,7 +3675,7 @@ func (c *Lightsail) DeleteBucketRequest(input *DeleteBucketInput) (req *request.
 // Deletes a Amazon Lightsail bucket.
 //
 // When you delete your bucket, the bucket name is released and can be reused
-// for a new bucket in your account or another AWS account.
+// for a new bucket in your account or another Amazon Web Services account.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -3682,26 +3685,27 @@ func (c *Lightsail) DeleteBucketRequest(input *DeleteBucketInput) (req *request.
 // API operation DeleteBucket for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteBucket
 func (c *Lightsail) DeleteBucket(input *DeleteBucketInput) (*DeleteBucketOutput, error) {
@@ -3741,14 +3745,13 @@ const opDeleteBucketAccessKey = "DeleteBucketAccessKey"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteBucketAccessKeyRequest method.
+//	req, resp := client.DeleteBucketAccessKeyRequest(params)
 //
-//    // Example sending a request using the DeleteBucketAccessKeyRequest method.
-//    req, resp := client.DeleteBucketAccessKeyRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteBucketAccessKey
 func (c *Lightsail) DeleteBucketAccessKeyRequest(input *DeleteBucketAccessKeyInput) (req *request.Request, output *DeleteBucketAccessKeyOutput) {
@@ -3785,26 +3788,27 @@ func (c *Lightsail) DeleteBucketAccessKeyRequest(input *DeleteBucketAccessKeyInp
 // API operation DeleteBucketAccessKey for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteBucketAccessKey
 func (c *Lightsail) DeleteBucketAccessKey(input *DeleteBucketAccessKeyInput) (*DeleteBucketAccessKeyOutput, error) {
@@ -3844,14 +3848,13 @@ const opDeleteCertificate = "DeleteCertificate"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteCertificateRequest method.
+//	req, resp := client.DeleteCertificateRequest(params)
 //
-//    // Example sending a request using the DeleteCertificateRequest method.
-//    req, resp := client.DeleteCertificateRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteCertificate
 func (c *Lightsail) DeleteCertificateRequest(input *DeleteCertificateInput) (req *request.Request, output *DeleteCertificateOutput) {
@@ -3887,26 +3890,27 @@ func (c *Lightsail) DeleteCertificateRequest(input *DeleteCertificateInput) (req
 // API operation DeleteCertificate for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteCertificate
 func (c *Lightsail) DeleteCertificate(input *DeleteCertificateInput) (*DeleteCertificateOutput, error) {
@@ -3946,14 +3950,13 @@ const opDeleteContactMethod = "DeleteContactMethod"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteContactMethodRequest method.
+//	req, resp := client.DeleteContactMethodRequest(params)
 //
-//    // Example sending a request using the DeleteContactMethodRequest method.
-//    req, resp := client.DeleteContactMethodRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteContactMethod
 func (c *Lightsail) DeleteContactMethodRequest(input *DeleteContactMethodInput) (req *request.Request, output *DeleteContactMethodOutput) {
@@ -3978,9 +3981,10 @@ func (c *Lightsail) DeleteContactMethodRequest(input *DeleteContactMethodInput) 
 //
 // A contact method is used to send you notifications about your Amazon Lightsail
 // resources. You can add one email address and one mobile phone number contact
-// method in each AWS Region. However, SMS text messaging is not supported in
-// some AWS Regions, and SMS text messages cannot be sent to some countries/regions.
-// For more information, see Notifications in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
+// method in each Amazon Web Services Region. However, SMS text messaging is
+// not supported in some Amazon Web Services Regions, and SMS text messages
+// cannot be sent to some countries/regions. For more information, see Notifications
+// in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -3990,29 +3994,30 @@ func (c *Lightsail) DeleteContactMethodRequest(input *DeleteContactMethodInput) 
 // API operation DeleteContactMethod for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteContactMethod
 func (c *Lightsail) DeleteContactMethod(input *DeleteContactMethodInput) (*DeleteContactMethodOutput, error) {
@@ -4052,14 +4057,13 @@ const opDeleteContainerImage = "DeleteContainerImage"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteContainerImageRequest method.
+//	req, resp := client.DeleteContainerImageRequest(params)
 //
-//    // Example sending a request using the DeleteContainerImageRequest method.
-//    req, resp := client.DeleteContainerImageRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteContainerImage
 func (c *Lightsail) DeleteContainerImageRequest(input *DeleteContainerImageInput) (req *request.Request, output *DeleteContainerImageOutput) {
@@ -4092,26 +4096,27 @@ func (c *Lightsail) DeleteContainerImageRequest(input *DeleteContainerImageInput
 // API operation DeleteContainerImage for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteContainerImage
 func (c *Lightsail) DeleteContainerImage(input *DeleteContainerImageInput) (*DeleteContainerImageOutput, error) {
@@ -4151,14 +4156,13 @@ const opDeleteContainerService = "DeleteContainerService"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteContainerServiceRequest method.
+//	req, resp := client.DeleteContainerServiceRequest(params)
 //
-//    // Example sending a request using the DeleteContainerServiceRequest method.
-//    req, resp := client.DeleteContainerServiceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteContainerService
 func (c *Lightsail) DeleteContainerServiceRequest(input *DeleteContainerServiceInput) (req *request.Request, output *DeleteContainerServiceOutput) {
@@ -4190,26 +4194,27 @@ func (c *Lightsail) DeleteContainerServiceRequest(input *DeleteContainerServiceI
 // API operation DeleteContainerService for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteContainerService
 func (c *Lightsail) DeleteContainerService(input *DeleteContainerServiceInput) (*DeleteContainerServiceOutput, error) {
@@ -4249,14 +4254,13 @@ const opDeleteDisk = "DeleteDisk"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteDiskRequest method.
+//	req, resp := client.DeleteDiskRequest(params)
 //
-//    // Example sending a request using the DeleteDiskRequest method.
-//    req, resp := client.DeleteDiskRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDisk
 func (c *Lightsail) DeleteDiskRequest(input *DeleteDiskInput) (req *request.Request, output *DeleteDiskOutput) {
@@ -4294,33 +4298,34 @@ func (c *Lightsail) DeleteDiskRequest(input *DeleteDiskInput) (req *request.Requ
 // API operation DeleteDisk for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDisk
 func (c *Lightsail) DeleteDisk(input *DeleteDiskInput) (*DeleteDiskOutput, error) {
@@ -4360,14 +4365,13 @@ const opDeleteDiskSnapshot = "DeleteDiskSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteDiskSnapshotRequest method.
+//	req, resp := client.DeleteDiskSnapshotRequest(params)
 //
-//    // Example sending a request using the DeleteDiskSnapshotRequest method.
-//    req, resp := client.DeleteDiskSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDiskSnapshot
 func (c *Lightsail) DeleteDiskSnapshotRequest(input *DeleteDiskSnapshotInput) (req *request.Request, output *DeleteDiskSnapshotOutput) {
@@ -4409,33 +4413,34 @@ func (c *Lightsail) DeleteDiskSnapshotRequest(input *DeleteDiskSnapshotInput) (r
 // API operation DeleteDiskSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDiskSnapshot
 func (c *Lightsail) DeleteDiskSnapshot(input *DeleteDiskSnapshotInput) (*DeleteDiskSnapshotOutput, error) {
@@ -4475,14 +4480,13 @@ const opDeleteDistribution = "DeleteDistribution"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteDistributionRequest method.
+//	req, resp := client.DeleteDistributionRequest(params)
 //
-//    // Example sending a request using the DeleteDistributionRequest method.
-//    req, resp := client.DeleteDistributionRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDistribution
 func (c *Lightsail) DeleteDistributionRequest(input *DeleteDistributionInput) (req *request.Request, output *DeleteDistributionOutput) {
@@ -4513,29 +4517,30 @@ func (c *Lightsail) DeleteDistributionRequest(input *DeleteDistributionInput) (r
 // API operation DeleteDistribution for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDistribution
 func (c *Lightsail) DeleteDistribution(input *DeleteDistributionInput) (*DeleteDistributionOutput, error) {
@@ -4575,14 +4580,13 @@ const opDeleteDomain = "DeleteDomain"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteDomainRequest method.
+//	req, resp := client.DeleteDomainRequest(params)
 //
-//    // Example sending a request using the DeleteDomainRequest method.
-//    req, resp := client.DeleteDomainRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDomain
 func (c *Lightsail) DeleteDomainRequest(input *DeleteDomainInput) (req *request.Request, output *DeleteDomainOutput) {
@@ -4617,33 +4621,34 @@ func (c *Lightsail) DeleteDomainRequest(input *DeleteDomainInput) (req *request.
 // API operation DeleteDomain for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDomain
 func (c *Lightsail) DeleteDomain(input *DeleteDomainInput) (*DeleteDomainOutput, error) {
@@ -4683,14 +4688,13 @@ const opDeleteDomainEntry = "DeleteDomainEntry"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteDomainEntryRequest method.
+//	req, resp := client.DeleteDomainEntryRequest(params)
 //
-//    // Example sending a request using the DeleteDomainEntryRequest method.
-//    req, resp := client.DeleteDomainEntryRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDomainEntry
 func (c *Lightsail) DeleteDomainEntryRequest(input *DeleteDomainEntryInput) (req *request.Request, output *DeleteDomainEntryOutput) {
@@ -4725,33 +4729,34 @@ func (c *Lightsail) DeleteDomainEntryRequest(input *DeleteDomainEntryInput) (req
 // API operation DeleteDomainEntry for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteDomainEntry
 func (c *Lightsail) DeleteDomainEntry(input *DeleteDomainEntryInput) (*DeleteDomainEntryOutput, error) {
@@ -4791,14 +4796,13 @@ const opDeleteInstance = "DeleteInstance"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteInstanceRequest method.
+//	req, resp := client.DeleteInstanceRequest(params)
 //
-//    // Example sending a request using the DeleteInstanceRequest method.
-//    req, resp := client.DeleteInstanceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteInstance
 func (c *Lightsail) DeleteInstanceRequest(input *DeleteInstanceInput) (req *request.Request, output *DeleteInstanceOutput) {
@@ -4833,33 +4837,34 @@ func (c *Lightsail) DeleteInstanceRequest(input *DeleteInstanceInput) (req *requ
 // API operation DeleteInstance for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteInstance
 func (c *Lightsail) DeleteInstance(input *DeleteInstanceInput) (*DeleteInstanceOutput, error) {
@@ -4899,14 +4904,13 @@ const opDeleteInstanceSnapshot = "DeleteInstanceSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteInstanceSnapshotRequest method.
+//	req, resp := client.DeleteInstanceSnapshotRequest(params)
 //
-//    // Example sending a request using the DeleteInstanceSnapshotRequest method.
-//    req, resp := client.DeleteInstanceSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteInstanceSnapshot
 func (c *Lightsail) DeleteInstanceSnapshotRequest(input *DeleteInstanceSnapshotInput) (req *request.Request, output *DeleteInstanceSnapshotOutput) {
@@ -4941,33 +4945,34 @@ func (c *Lightsail) DeleteInstanceSnapshotRequest(input *DeleteInstanceSnapshotI
 // API operation DeleteInstanceSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteInstanceSnapshot
 func (c *Lightsail) DeleteInstanceSnapshot(input *DeleteInstanceSnapshotInput) (*DeleteInstanceSnapshotOutput, error) {
@@ -5007,14 +5012,13 @@ const opDeleteKeyPair = "DeleteKeyPair"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteKeyPairRequest method.
+//	req, resp := client.DeleteKeyPairRequest(params)
 //
-//    // Example sending a request using the DeleteKeyPairRequest method.
-//    req, resp := client.DeleteKeyPairRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteKeyPair
 func (c *Lightsail) DeleteKeyPairRequest(input *DeleteKeyPairInput) (req *request.Request, output *DeleteKeyPairOutput) {
@@ -5056,33 +5060,34 @@ func (c *Lightsail) DeleteKeyPairRequest(input *DeleteKeyPairInput) (req *reques
 // API operation DeleteKeyPair for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteKeyPair
 func (c *Lightsail) DeleteKeyPair(input *DeleteKeyPairInput) (*DeleteKeyPairOutput, error) {
@@ -5122,14 +5127,13 @@ const opDeleteKnownHostKeys = "DeleteKnownHostKeys"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteKnownHostKeysRequest method.
+//	req, resp := client.DeleteKnownHostKeysRequest(params)
 //
-//    // Example sending a request using the DeleteKnownHostKeysRequest method.
-//    req, resp := client.DeleteKnownHostKeysRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteKnownHostKeys
 func (c *Lightsail) DeleteKnownHostKeysRequest(input *DeleteKnownHostKeysInput) (req *request.Request, output *DeleteKnownHostKeysOutput) {
@@ -5168,33 +5172,34 @@ func (c *Lightsail) DeleteKnownHostKeysRequest(input *DeleteKnownHostKeysInput) 
 // API operation DeleteKnownHostKeys for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteKnownHostKeys
 func (c *Lightsail) DeleteKnownHostKeys(input *DeleteKnownHostKeysInput) (*DeleteKnownHostKeysOutput, error) {
@@ -5234,14 +5239,13 @@ const opDeleteLoadBalancer = "DeleteLoadBalancer"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteLoadBalancerRequest method.
+//	req, resp := client.DeleteLoadBalancerRequest(params)
 //
-//    // Example sending a request using the DeleteLoadBalancerRequest method.
-//    req, resp := client.DeleteLoadBalancerRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteLoadBalancer
 func (c *Lightsail) DeleteLoadBalancerRequest(input *DeleteLoadBalancerInput) (req *request.Request, output *DeleteLoadBalancerOutput) {
@@ -5278,33 +5282,34 @@ func (c *Lightsail) DeleteLoadBalancerRequest(input *DeleteLoadBalancerInput) (r
 // API operation DeleteLoadBalancer for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteLoadBalancer
 func (c *Lightsail) DeleteLoadBalancer(input *DeleteLoadBalancerInput) (*DeleteLoadBalancerOutput, error) {
@@ -5344,14 +5349,13 @@ const opDeleteLoadBalancerTlsCertificate = "DeleteLoadBalancerTlsCertificate"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteLoadBalancerTlsCertificateRequest method.
+//	req, resp := client.DeleteLoadBalancerTlsCertificateRequest(params)
 //
-//    // Example sending a request using the DeleteLoadBalancerTlsCertificateRequest method.
-//    req, resp := client.DeleteLoadBalancerTlsCertificateRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteLoadBalancerTlsCertificate
 func (c *Lightsail) DeleteLoadBalancerTlsCertificateRequest(input *DeleteLoadBalancerTlsCertificateInput) (req *request.Request, output *DeleteLoadBalancerTlsCertificateOutput) {
@@ -5386,33 +5390,34 @@ func (c *Lightsail) DeleteLoadBalancerTlsCertificateRequest(input *DeleteLoadBal
 // API operation DeleteLoadBalancerTlsCertificate for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteLoadBalancerTlsCertificate
 func (c *Lightsail) DeleteLoadBalancerTlsCertificate(input *DeleteLoadBalancerTlsCertificateInput) (*DeleteLoadBalancerTlsCertificateOutput, error) {
@@ -5452,14 +5457,13 @@ const opDeleteRelationalDatabase = "DeleteRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteRelationalDatabaseRequest method.
+//	req, resp := client.DeleteRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the DeleteRelationalDatabaseRequest method.
-//    req, resp := client.DeleteRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteRelationalDatabase
 func (c *Lightsail) DeleteRelationalDatabaseRequest(input *DeleteRelationalDatabaseInput) (req *request.Request, output *DeleteRelationalDatabaseOutput) {
@@ -5494,33 +5498,34 @@ func (c *Lightsail) DeleteRelationalDatabaseRequest(input *DeleteRelationalDatab
 // API operation DeleteRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteRelationalDatabase
 func (c *Lightsail) DeleteRelationalDatabase(input *DeleteRelationalDatabaseInput) (*DeleteRelationalDatabaseOutput, error) {
@@ -5560,14 +5565,13 @@ const opDeleteRelationalDatabaseSnapshot = "DeleteRelationalDatabaseSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DeleteRelationalDatabaseSnapshotRequest method.
+//	req, resp := client.DeleteRelationalDatabaseSnapshotRequest(params)
 //
-//    // Example sending a request using the DeleteRelationalDatabaseSnapshotRequest method.
-//    req, resp := client.DeleteRelationalDatabaseSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteRelationalDatabaseSnapshot
 func (c *Lightsail) DeleteRelationalDatabaseSnapshotRequest(input *DeleteRelationalDatabaseSnapshotInput) (req *request.Request, output *DeleteRelationalDatabaseSnapshotOutput) {
@@ -5602,33 +5606,34 @@ func (c *Lightsail) DeleteRelationalDatabaseSnapshotRequest(input *DeleteRelatio
 // API operation DeleteRelationalDatabaseSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DeleteRelationalDatabaseSnapshot
 func (c *Lightsail) DeleteRelationalDatabaseSnapshot(input *DeleteRelationalDatabaseSnapshotInput) (*DeleteRelationalDatabaseSnapshotOutput, error) {
@@ -5668,14 +5673,13 @@ const opDetachCertificateFromDistribution = "DetachCertificateFromDistribution"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DetachCertificateFromDistributionRequest method.
+//	req, resp := client.DetachCertificateFromDistributionRequest(params)
 //
-//    // Example sending a request using the DetachCertificateFromDistributionRequest method.
-//    req, resp := client.DetachCertificateFromDistributionRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachCertificateFromDistribution
 func (c *Lightsail) DetachCertificateFromDistributionRequest(input *DetachCertificateFromDistributionInput) (req *request.Request, output *DetachCertificateFromDistributionOutput) {
@@ -5710,29 +5714,30 @@ func (c *Lightsail) DetachCertificateFromDistributionRequest(input *DetachCertif
 // API operation DetachCertificateFromDistribution for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachCertificateFromDistribution
 func (c *Lightsail) DetachCertificateFromDistribution(input *DetachCertificateFromDistributionInput) (*DetachCertificateFromDistributionOutput, error) {
@@ -5772,14 +5777,13 @@ const opDetachDisk = "DetachDisk"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DetachDiskRequest method.
+//	req, resp := client.DetachDiskRequest(params)
 //
-//    // Example sending a request using the DetachDiskRequest method.
-//    req, resp := client.DetachDiskRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachDisk
 func (c *Lightsail) DetachDiskRequest(input *DetachDiskInput) (req *request.Request, output *DetachDiskOutput) {
@@ -5816,33 +5820,34 @@ func (c *Lightsail) DetachDiskRequest(input *DetachDiskInput) (req *request.Requ
 // API operation DetachDisk for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachDisk
 func (c *Lightsail) DetachDisk(input *DetachDiskInput) (*DetachDiskOutput, error) {
@@ -5882,14 +5887,13 @@ const opDetachInstancesFromLoadBalancer = "DetachInstancesFromLoadBalancer"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DetachInstancesFromLoadBalancerRequest method.
+//	req, resp := client.DetachInstancesFromLoadBalancerRequest(params)
 //
-//    // Example sending a request using the DetachInstancesFromLoadBalancerRequest method.
-//    req, resp := client.DetachInstancesFromLoadBalancerRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachInstancesFromLoadBalancer
 func (c *Lightsail) DetachInstancesFromLoadBalancerRequest(input *DetachInstancesFromLoadBalancerInput) (req *request.Request, output *DetachInstancesFromLoadBalancerOutput) {
@@ -5927,33 +5931,34 @@ func (c *Lightsail) DetachInstancesFromLoadBalancerRequest(input *DetachInstance
 // API operation DetachInstancesFromLoadBalancer for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachInstancesFromLoadBalancer
 func (c *Lightsail) DetachInstancesFromLoadBalancer(input *DetachInstancesFromLoadBalancerInput) (*DetachInstancesFromLoadBalancerOutput, error) {
@@ -5993,14 +5998,13 @@ const opDetachStaticIp = "DetachStaticIp"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DetachStaticIpRequest method.
+//	req, resp := client.DetachStaticIpRequest(params)
 //
-//    // Example sending a request using the DetachStaticIpRequest method.
-//    req, resp := client.DetachStaticIpRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachStaticIp
 func (c *Lightsail) DetachStaticIpRequest(input *DetachStaticIpInput) (req *request.Request, output *DetachStaticIpOutput) {
@@ -6031,33 +6035,34 @@ func (c *Lightsail) DetachStaticIpRequest(input *DetachStaticIpInput) (req *requ
 // API operation DetachStaticIp for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DetachStaticIp
 func (c *Lightsail) DetachStaticIp(input *DetachStaticIpInput) (*DetachStaticIpOutput, error) {
@@ -6097,14 +6102,13 @@ const opDisableAddOn = "DisableAddOn"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DisableAddOnRequest method.
+//	req, resp := client.DisableAddOnRequest(params)
 //
-//    // Example sending a request using the DisableAddOnRequest method.
-//    req, resp := client.DisableAddOnRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DisableAddOn
 func (c *Lightsail) DisableAddOnRequest(input *DisableAddOnInput) (req *request.Request, output *DisableAddOnOutput) {
@@ -6136,29 +6140,30 @@ func (c *Lightsail) DisableAddOnRequest(input *DisableAddOnInput) (req *request.
 // API operation DisableAddOn for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DisableAddOn
 func (c *Lightsail) DisableAddOn(input *DisableAddOnInput) (*DisableAddOnOutput, error) {
@@ -6198,14 +6203,13 @@ const opDownloadDefaultKeyPair = "DownloadDefaultKeyPair"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the DownloadDefaultKeyPairRequest method.
+//	req, resp := client.DownloadDefaultKeyPairRequest(params)
 //
-//    // Example sending a request using the DownloadDefaultKeyPairRequest method.
-//    req, resp := client.DownloadDefaultKeyPairRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DownloadDefaultKeyPair
 func (c *Lightsail) DownloadDefaultKeyPairRequest(input *DownloadDefaultKeyPairInput) (req *request.Request, output *DownloadDefaultKeyPairOutput) {
@@ -6239,33 +6243,34 @@ func (c *Lightsail) DownloadDefaultKeyPairRequest(input *DownloadDefaultKeyPairI
 // API operation DownloadDefaultKeyPair for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/DownloadDefaultKeyPair
 func (c *Lightsail) DownloadDefaultKeyPair(input *DownloadDefaultKeyPairInput) (*DownloadDefaultKeyPairOutput, error) {
@@ -6305,14 +6310,13 @@ const opEnableAddOn = "EnableAddOn"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the EnableAddOnRequest method.
+//	req, resp := client.EnableAddOnRequest(params)
 //
-//    // Example sending a request using the EnableAddOnRequest method.
-//    req, resp := client.EnableAddOnRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/EnableAddOn
 func (c *Lightsail) EnableAddOnRequest(input *EnableAddOnInput) (req *request.Request, output *EnableAddOnOutput) {
@@ -6344,29 +6348,30 @@ func (c *Lightsail) EnableAddOnRequest(input *EnableAddOnInput) (req *request.Re
 // API operation EnableAddOn for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/EnableAddOn
 func (c *Lightsail) EnableAddOn(input *EnableAddOnInput) (*EnableAddOnOutput, error) {
@@ -6406,14 +6411,13 @@ const opExportSnapshot = "ExportSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the ExportSnapshotRequest method.
+//	req, resp := client.ExportSnapshotRequest(params)
 //
-//    // Example sending a request using the ExportSnapshotRequest method.
-//    req, resp := client.ExportSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ExportSnapshot
 func (c *Lightsail) ExportSnapshotRequest(input *ExportSnapshotInput) (req *request.Request, output *ExportSnapshotOutput) {
@@ -6460,33 +6464,34 @@ func (c *Lightsail) ExportSnapshotRequest(input *ExportSnapshotInput) (req *requ
 // API operation ExportSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ExportSnapshot
 func (c *Lightsail) ExportSnapshot(input *ExportSnapshotInput) (*ExportSnapshotOutput, error) {
@@ -6526,14 +6531,13 @@ const opGetActiveNames = "GetActiveNames"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetActiveNamesRequest method.
+//	req, resp := client.GetActiveNamesRequest(params)
 //
-//    // Example sending a request using the GetActiveNamesRequest method.
-//    req, resp := client.GetActiveNamesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetActiveNames
 func (c *Lightsail) GetActiveNamesRequest(input *GetActiveNamesInput) (req *request.Request, output *GetActiveNamesOutput) {
@@ -6564,33 +6568,34 @@ func (c *Lightsail) GetActiveNamesRequest(input *GetActiveNamesInput) (req *requ
 // API operation GetActiveNames for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetActiveNames
 func (c *Lightsail) GetActiveNames(input *GetActiveNamesInput) (*GetActiveNamesOutput, error) {
@@ -6630,14 +6635,13 @@ const opGetAlarms = "GetAlarms"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetAlarmsRequest method.
+//	req, resp := client.GetAlarmsRequest(params)
 //
-//    // Example sending a request using the GetAlarmsRequest method.
-//    req, resp := client.GetAlarmsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetAlarms
 func (c *Lightsail) GetAlarmsRequest(input *GetAlarmsInput) (req *request.Request, output *GetAlarmsOutput) {
@@ -6675,29 +6679,30 @@ func (c *Lightsail) GetAlarmsRequest(input *GetAlarmsInput) (req *request.Reques
 // API operation GetAlarms for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetAlarms
 func (c *Lightsail) GetAlarms(input *GetAlarmsInput) (*GetAlarmsOutput, error) {
@@ -6737,14 +6742,13 @@ const opGetAutoSnapshots = "GetAutoSnapshots"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetAutoSnapshotsRequest method.
+//	req, resp := client.GetAutoSnapshotsRequest(params)
 //
-//    // Example sending a request using the GetAutoSnapshotsRequest method.
-//    req, resp := client.GetAutoSnapshotsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetAutoSnapshots
 func (c *Lightsail) GetAutoSnapshotsRequest(input *GetAutoSnapshotsInput) (req *request.Request, output *GetAutoSnapshotsOutput) {
@@ -6776,29 +6780,30 @@ func (c *Lightsail) GetAutoSnapshotsRequest(input *GetAutoSnapshotsInput) (req *
 // API operation GetAutoSnapshots for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetAutoSnapshots
 func (c *Lightsail) GetAutoSnapshots(input *GetAutoSnapshotsInput) (*GetAutoSnapshotsOutput, error) {
@@ -6838,14 +6843,13 @@ const opGetBlueprints = "GetBlueprints"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetBlueprintsRequest method.
+//	req, resp := client.GetBlueprintsRequest(params)
 //
-//    // Example sending a request using the GetBlueprintsRequest method.
-//    req, resp := client.GetBlueprintsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBlueprints
 func (c *Lightsail) GetBlueprintsRequest(input *GetBlueprintsInput) (req *request.Request, output *GetBlueprintsOutput) {
@@ -6884,33 +6888,34 @@ func (c *Lightsail) GetBlueprintsRequest(input *GetBlueprintsInput) (req *reques
 // API operation GetBlueprints for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBlueprints
 func (c *Lightsail) GetBlueprints(input *GetBlueprintsInput) (*GetBlueprintsOutput, error) {
@@ -6950,14 +6955,13 @@ const opGetBucketAccessKeys = "GetBucketAccessKeys"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetBucketAccessKeysRequest method.
+//	req, resp := client.GetBucketAccessKeysRequest(params)
 //
-//    // Example sending a request using the GetBucketAccessKeysRequest method.
-//    req, resp := client.GetBucketAccessKeysRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBucketAccessKeys
 func (c *Lightsail) GetBucketAccessKeysRequest(input *GetBucketAccessKeysInput) (req *request.Request, output *GetBucketAccessKeysOutput) {
@@ -6993,26 +6997,27 @@ func (c *Lightsail) GetBucketAccessKeysRequest(input *GetBucketAccessKeysInput) 
 // API operation GetBucketAccessKeys for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBucketAccessKeys
 func (c *Lightsail) GetBucketAccessKeys(input *GetBucketAccessKeysInput) (*GetBucketAccessKeysOutput, error) {
@@ -7052,14 +7057,13 @@ const opGetBucketBundles = "GetBucketBundles"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetBucketBundlesRequest method.
+//	req, resp := client.GetBucketBundlesRequest(params)
 //
-//    // Example sending a request using the GetBucketBundlesRequest method.
-//    req, resp := client.GetBucketBundlesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBucketBundles
 func (c *Lightsail) GetBucketBundlesRequest(input *GetBucketBundlesInput) (req *request.Request, output *GetBucketBundlesOutput) {
@@ -7096,23 +7100,24 @@ func (c *Lightsail) GetBucketBundlesRequest(input *GetBucketBundlesInput) (req *
 // API operation GetBucketBundles for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * ServiceException
-//   A general service exception.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBucketBundles
 func (c *Lightsail) GetBucketBundles(input *GetBucketBundlesInput) (*GetBucketBundlesOutput, error) {
@@ -7152,14 +7157,13 @@ const opGetBucketMetricData = "GetBucketMetricData"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetBucketMetricDataRequest method.
+//	req, resp := client.GetBucketMetricDataRequest(params)
 //
-//    // Example sending a request using the GetBucketMetricDataRequest method.
-//    req, resp := client.GetBucketMetricDataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBucketMetricData
 func (c *Lightsail) GetBucketMetricDataRequest(input *GetBucketMetricDataInput) (req *request.Request, output *GetBucketMetricDataOutput) {
@@ -7194,26 +7198,27 @@ func (c *Lightsail) GetBucketMetricDataRequest(input *GetBucketMetricDataInput) 
 // API operation GetBucketMetricData for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBucketMetricData
 func (c *Lightsail) GetBucketMetricData(input *GetBucketMetricDataInput) (*GetBucketMetricDataOutput, error) {
@@ -7253,14 +7258,13 @@ const opGetBuckets = "GetBuckets"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetBucketsRequest method.
+//	req, resp := client.GetBucketsRequest(params)
 //
-//    // Example sending a request using the GetBucketsRequest method.
-//    req, resp := client.GetBucketsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBuckets
 func (c *Lightsail) GetBucketsRequest(input *GetBucketsInput) (req *request.Request, output *GetBucketsOutput) {
@@ -7281,10 +7285,13 @@ func (c *Lightsail) GetBucketsRequest(input *GetBucketsInput) (req *request.Requ
 
 // GetBuckets API operation for Amazon Lightsail.
 //
-// Returns information about one or more Amazon Lightsail buckets.
+// Returns information about one or more Amazon Lightsail buckets. The information
+// returned includes the synchronization status of the Amazon Simple Storage
+// Service (Amazon S3) account-level block public access feature for your Lightsail
+// buckets.
 //
 // For more information about buckets, see Buckets in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/buckets-in-amazon-lightsail)
-// in the Amazon Lightsail Developer Guide..
+// in the Amazon Lightsail Developer Guide.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7294,26 +7301,27 @@ func (c *Lightsail) GetBucketsRequest(input *GetBucketsInput) (req *request.Requ
 // API operation GetBuckets for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBuckets
 func (c *Lightsail) GetBuckets(input *GetBucketsInput) (*GetBucketsOutput, error) {
@@ -7353,14 +7361,13 @@ const opGetBundles = "GetBundles"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetBundlesRequest method.
+//	req, resp := client.GetBundlesRequest(params)
 //
-//    // Example sending a request using the GetBundlesRequest method.
-//    req, resp := client.GetBundlesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBundles
 func (c *Lightsail) GetBundlesRequest(input *GetBundlesInput) (req *request.Request, output *GetBundlesOutput) {
@@ -7381,8 +7388,14 @@ func (c *Lightsail) GetBundlesRequest(input *GetBundlesInput) (req *request.Requ
 
 // GetBundles API operation for Amazon Lightsail.
 //
-// Returns the list of bundles that are available for purchase. A bundle describes
-// the specs for your virtual private server (or instance).
+// Returns the bundles that you can apply to an Amazon Lightsail instance when
+// you create it.
+//
+// A bundle describes the specifications of an instance, such as the monthly
+// cost, amount of memory, the number of vCPUs, amount of storage space, and
+// monthly network data transfer quota.
+//
+// Bundles are referred to as instance plans in the Lightsail console.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7392,33 +7405,34 @@ func (c *Lightsail) GetBundlesRequest(input *GetBundlesInput) (req *request.Requ
 // API operation GetBundles for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetBundles
 func (c *Lightsail) GetBundles(input *GetBundlesInput) (*GetBundlesOutput, error) {
@@ -7458,14 +7472,13 @@ const opGetCertificates = "GetCertificates"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetCertificatesRequest method.
+//	req, resp := client.GetCertificatesRequest(params)
 //
-//    // Example sending a request using the GetCertificatesRequest method.
-//    req, resp := client.GetCertificatesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetCertificates
 func (c *Lightsail) GetCertificatesRequest(input *GetCertificatesInput) (req *request.Request, output *GetCertificatesOutput) {
@@ -7500,26 +7513,27 @@ func (c *Lightsail) GetCertificatesRequest(input *GetCertificatesInput) (req *re
 // API operation GetCertificates for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetCertificates
 func (c *Lightsail) GetCertificates(input *GetCertificatesInput) (*GetCertificatesOutput, error) {
@@ -7559,14 +7573,13 @@ const opGetCloudFormationStackRecords = "GetCloudFormationStackRecords"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetCloudFormationStackRecordsRequest method.
+//	req, resp := client.GetCloudFormationStackRecordsRequest(params)
 //
-//    // Example sending a request using the GetCloudFormationStackRecordsRequest method.
-//    req, resp := client.GetCloudFormationStackRecordsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetCloudFormationStackRecords
 func (c *Lightsail) GetCloudFormationStackRecordsRequest(input *GetCloudFormationStackRecordsInput) (req *request.Request, output *GetCloudFormationStackRecordsOutput) {
@@ -7601,33 +7614,34 @@ func (c *Lightsail) GetCloudFormationStackRecordsRequest(input *GetCloudFormatio
 // API operation GetCloudFormationStackRecords for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetCloudFormationStackRecords
 func (c *Lightsail) GetCloudFormationStackRecords(input *GetCloudFormationStackRecordsInput) (*GetCloudFormationStackRecordsOutput, error) {
@@ -7667,14 +7681,13 @@ const opGetContactMethods = "GetContactMethods"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContactMethodsRequest method.
+//	req, resp := client.GetContactMethodsRequest(params)
 //
-//    // Example sending a request using the GetContactMethodsRequest method.
-//    req, resp := client.GetContactMethodsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContactMethods
 func (c *Lightsail) GetContactMethodsRequest(input *GetContactMethodsInput) (req *request.Request, output *GetContactMethodsOutput) {
@@ -7700,9 +7713,10 @@ func (c *Lightsail) GetContactMethodsRequest(input *GetContactMethodsInput) (req
 //
 // A contact method is used to send you notifications about your Amazon Lightsail
 // resources. You can add one email address and one mobile phone number contact
-// method in each AWS Region. However, SMS text messaging is not supported in
-// some AWS Regions, and SMS text messages cannot be sent to some countries/regions.
-// For more information, see Notifications in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
+// method in each Amazon Web Services Region. However, SMS text messaging is
+// not supported in some Amazon Web Services Regions, and SMS text messages
+// cannot be sent to some countries/regions. For more information, see Notifications
+// in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7712,29 +7726,30 @@ func (c *Lightsail) GetContactMethodsRequest(input *GetContactMethodsInput) (req
 // API operation GetContactMethods for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContactMethods
 func (c *Lightsail) GetContactMethods(input *GetContactMethodsInput) (*GetContactMethodsOutput, error) {
@@ -7774,14 +7789,13 @@ const opGetContainerAPIMetadata = "GetContainerAPIMetadata"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerAPIMetadataRequest method.
+//	req, resp := client.GetContainerAPIMetadataRequest(params)
 //
-//    // Example sending a request using the GetContainerAPIMetadataRequest method.
-//    req, resp := client.GetContainerAPIMetadataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerAPIMetadata
 func (c *Lightsail) GetContainerAPIMetadataRequest(input *GetContainerAPIMetadataInput) (req *request.Request, output *GetContainerAPIMetadataOutput) {
@@ -7813,15 +7827,16 @@ func (c *Lightsail) GetContainerAPIMetadataRequest(input *GetContainerAPIMetadat
 // API operation GetContainerAPIMetadata for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - ServiceException
+//     A general service exception.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerAPIMetadata
 func (c *Lightsail) GetContainerAPIMetadata(input *GetContainerAPIMetadataInput) (*GetContainerAPIMetadataOutput, error) {
@@ -7861,14 +7876,13 @@ const opGetContainerImages = "GetContainerImages"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerImagesRequest method.
+//	req, resp := client.GetContainerImagesRequest(params)
 //
-//    // Example sending a request using the GetContainerImagesRequest method.
-//    req, resp := client.GetContainerImagesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerImages
 func (c *Lightsail) GetContainerImagesRequest(input *GetContainerImagesInput) (req *request.Request, output *GetContainerImagesOutput) {
@@ -7905,26 +7919,27 @@ func (c *Lightsail) GetContainerImagesRequest(input *GetContainerImagesInput) (r
 // API operation GetContainerImages for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerImages
 func (c *Lightsail) GetContainerImages(input *GetContainerImagesInput) (*GetContainerImagesOutput, error) {
@@ -7964,14 +7979,13 @@ const opGetContainerLog = "GetContainerLog"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerLogRequest method.
+//	req, resp := client.GetContainerLogRequest(params)
 //
-//    // Example sending a request using the GetContainerLogRequest method.
-//    req, resp := client.GetContainerLogRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerLog
 func (c *Lightsail) GetContainerLogRequest(input *GetContainerLogInput) (req *request.Request, output *GetContainerLogOutput) {
@@ -8011,26 +8025,27 @@ func (c *Lightsail) GetContainerLogRequest(input *GetContainerLogInput) (req *re
 // API operation GetContainerLog for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerLog
 func (c *Lightsail) GetContainerLog(input *GetContainerLogInput) (*GetContainerLogOutput, error) {
@@ -8070,14 +8085,13 @@ const opGetContainerServiceDeployments = "GetContainerServiceDeployments"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerServiceDeploymentsRequest method.
+//	req, resp := client.GetContainerServiceDeploymentsRequest(params)
 //
-//    // Example sending a request using the GetContainerServiceDeploymentsRequest method.
-//    req, resp := client.GetContainerServiceDeploymentsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServiceDeployments
 func (c *Lightsail) GetContainerServiceDeploymentsRequest(input *GetContainerServiceDeploymentsInput) (req *request.Request, output *GetContainerServiceDeploymentsOutput) {
@@ -8098,7 +8112,7 @@ func (c *Lightsail) GetContainerServiceDeploymentsRequest(input *GetContainerSer
 
 // GetContainerServiceDeployments API operation for Amazon Lightsail.
 //
-// Returns the deployments for your Amazon Lightsail container service
+// # Returns the deployments for your Amazon Lightsail container service
 //
 // A deployment specifies the settings, such as the ports and launch command,
 // of containers that are deployed to your container service.
@@ -8119,26 +8133,27 @@ func (c *Lightsail) GetContainerServiceDeploymentsRequest(input *GetContainerSer
 // API operation GetContainerServiceDeployments for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServiceDeployments
 func (c *Lightsail) GetContainerServiceDeployments(input *GetContainerServiceDeploymentsInput) (*GetContainerServiceDeploymentsOutput, error) {
@@ -8178,14 +8193,13 @@ const opGetContainerServiceMetricData = "GetContainerServiceMetricData"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerServiceMetricDataRequest method.
+//	req, resp := client.GetContainerServiceMetricDataRequest(params)
 //
-//    // Example sending a request using the GetContainerServiceMetricDataRequest method.
-//    req, resp := client.GetContainerServiceMetricDataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServiceMetricData
 func (c *Lightsail) GetContainerServiceMetricDataRequest(input *GetContainerServiceMetricDataInput) (req *request.Request, output *GetContainerServiceMetricDataOutput) {
@@ -8221,26 +8235,27 @@ func (c *Lightsail) GetContainerServiceMetricDataRequest(input *GetContainerServ
 // API operation GetContainerServiceMetricData for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServiceMetricData
 func (c *Lightsail) GetContainerServiceMetricData(input *GetContainerServiceMetricDataInput) (*GetContainerServiceMetricDataOutput, error) {
@@ -8280,14 +8295,13 @@ const opGetContainerServicePowers = "GetContainerServicePowers"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerServicePowersRequest method.
+//	req, resp := client.GetContainerServicePowersRequest(params)
 //
-//    // Example sending a request using the GetContainerServicePowersRequest method.
-//    req, resp := client.GetContainerServicePowersRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServicePowers
 func (c *Lightsail) GetContainerServicePowersRequest(input *GetContainerServicePowersInput) (req *request.Request, output *GetContainerServicePowersOutput) {
@@ -8322,26 +8336,27 @@ func (c *Lightsail) GetContainerServicePowersRequest(input *GetContainerServiceP
 // API operation GetContainerServicePowers for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServicePowers
 func (c *Lightsail) GetContainerServicePowers(input *GetContainerServicePowersInput) (*GetContainerServicePowersOutput, error) {
@@ -8381,14 +8396,13 @@ const opGetContainerServices = "GetContainerServices"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetContainerServicesRequest method.
+//	req, resp := client.GetContainerServicesRequest(params)
 //
-//    // Example sending a request using the GetContainerServicesRequest method.
-//    req, resp := client.GetContainerServicesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServices
 func (c *Lightsail) GetContainerServicesRequest(input *GetContainerServicesInput) (req *request.Request, output *GetContainerServicesOutput) {
@@ -8420,26 +8434,27 @@ func (c *Lightsail) GetContainerServicesRequest(input *GetContainerServicesInput
 // API operation GetContainerServices for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetContainerServices
 func (c *Lightsail) GetContainerServices(input *GetContainerServicesInput) (*GetContainerServicesOutput, error) {
@@ -8479,14 +8494,13 @@ const opGetDisk = "GetDisk"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDiskRequest method.
+//	req, resp := client.GetDiskRequest(params)
 //
-//    // Example sending a request using the GetDiskRequest method.
-//    req, resp := client.GetDiskRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDisk
 func (c *Lightsail) GetDiskRequest(input *GetDiskInput) (req *request.Request, output *GetDiskOutput) {
@@ -8517,33 +8531,34 @@ func (c *Lightsail) GetDiskRequest(input *GetDiskInput) (req *request.Request, o
 // API operation GetDisk for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDisk
 func (c *Lightsail) GetDisk(input *GetDiskInput) (*GetDiskOutput, error) {
@@ -8583,14 +8598,13 @@ const opGetDiskSnapshot = "GetDiskSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDiskSnapshotRequest method.
+//	req, resp := client.GetDiskSnapshotRequest(params)
 //
-//    // Example sending a request using the GetDiskSnapshotRequest method.
-//    req, resp := client.GetDiskSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDiskSnapshot
 func (c *Lightsail) GetDiskSnapshotRequest(input *GetDiskSnapshotInput) (req *request.Request, output *GetDiskSnapshotOutput) {
@@ -8621,33 +8635,34 @@ func (c *Lightsail) GetDiskSnapshotRequest(input *GetDiskSnapshotInput) (req *re
 // API operation GetDiskSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDiskSnapshot
 func (c *Lightsail) GetDiskSnapshot(input *GetDiskSnapshotInput) (*GetDiskSnapshotOutput, error) {
@@ -8687,14 +8702,13 @@ const opGetDiskSnapshots = "GetDiskSnapshots"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDiskSnapshotsRequest method.
+//	req, resp := client.GetDiskSnapshotsRequest(params)
 //
-//    // Example sending a request using the GetDiskSnapshotsRequest method.
-//    req, resp := client.GetDiskSnapshotsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDiskSnapshots
 func (c *Lightsail) GetDiskSnapshotsRequest(input *GetDiskSnapshotsInput) (req *request.Request, output *GetDiskSnapshotsOutput) {
@@ -8726,33 +8740,34 @@ func (c *Lightsail) GetDiskSnapshotsRequest(input *GetDiskSnapshotsInput) (req *
 // API operation GetDiskSnapshots for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDiskSnapshots
 func (c *Lightsail) GetDiskSnapshots(input *GetDiskSnapshotsInput) (*GetDiskSnapshotsOutput, error) {
@@ -8792,14 +8807,13 @@ const opGetDisks = "GetDisks"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDisksRequest method.
+//	req, resp := client.GetDisksRequest(params)
 //
-//    // Example sending a request using the GetDisksRequest method.
-//    req, resp := client.GetDisksRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDisks
 func (c *Lightsail) GetDisksRequest(input *GetDisksInput) (req *request.Request, output *GetDisksOutput) {
@@ -8831,33 +8845,34 @@ func (c *Lightsail) GetDisksRequest(input *GetDisksInput) (req *request.Request,
 // API operation GetDisks for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDisks
 func (c *Lightsail) GetDisks(input *GetDisksInput) (*GetDisksOutput, error) {
@@ -8897,14 +8912,13 @@ const opGetDistributionBundles = "GetDistributionBundles"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDistributionBundlesRequest method.
+//	req, resp := client.GetDistributionBundlesRequest(params)
 //
-//    // Example sending a request using the GetDistributionBundlesRequest method.
-//    req, resp := client.GetDistributionBundlesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributionBundles
 func (c *Lightsail) GetDistributionBundlesRequest(input *GetDistributionBundlesInput) (req *request.Request, output *GetDistributionBundlesOutput) {
@@ -8929,7 +8943,7 @@ func (c *Lightsail) GetDistributionBundlesRequest(input *GetDistributionBundlesI
 // delivery network (CDN) distributions.
 //
 // A distribution bundle specifies the monthly network transfer quota and monthly
-// cost of your dsitribution.
+// cost of your distribution.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -8939,29 +8953,30 @@ func (c *Lightsail) GetDistributionBundlesRequest(input *GetDistributionBundlesI
 // API operation GetDistributionBundles for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributionBundles
 func (c *Lightsail) GetDistributionBundles(input *GetDistributionBundlesInput) (*GetDistributionBundlesOutput, error) {
@@ -9001,14 +9016,13 @@ const opGetDistributionLatestCacheReset = "GetDistributionLatestCacheReset"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDistributionLatestCacheResetRequest method.
+//	req, resp := client.GetDistributionLatestCacheResetRequest(params)
 //
-//    // Example sending a request using the GetDistributionLatestCacheResetRequest method.
-//    req, resp := client.GetDistributionLatestCacheResetRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributionLatestCacheReset
 func (c *Lightsail) GetDistributionLatestCacheResetRequest(input *GetDistributionLatestCacheResetInput) (req *request.Request, output *GetDistributionLatestCacheResetOutput) {
@@ -9040,29 +9054,30 @@ func (c *Lightsail) GetDistributionLatestCacheResetRequest(input *GetDistributio
 // API operation GetDistributionLatestCacheReset for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributionLatestCacheReset
 func (c *Lightsail) GetDistributionLatestCacheReset(input *GetDistributionLatestCacheResetInput) (*GetDistributionLatestCacheResetOutput, error) {
@@ -9102,14 +9117,13 @@ const opGetDistributionMetricData = "GetDistributionMetricData"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDistributionMetricDataRequest method.
+//	req, resp := client.GetDistributionMetricDataRequest(params)
 //
-//    // Example sending a request using the GetDistributionMetricDataRequest method.
-//    req, resp := client.GetDistributionMetricDataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributionMetricData
 func (c *Lightsail) GetDistributionMetricDataRequest(input *GetDistributionMetricDataInput) (req *request.Request, output *GetDistributionMetricDataOutput) {
@@ -9145,29 +9159,30 @@ func (c *Lightsail) GetDistributionMetricDataRequest(input *GetDistributionMetri
 // API operation GetDistributionMetricData for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributionMetricData
 func (c *Lightsail) GetDistributionMetricData(input *GetDistributionMetricDataInput) (*GetDistributionMetricDataOutput, error) {
@@ -9207,14 +9222,13 @@ const opGetDistributions = "GetDistributions"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDistributionsRequest method.
+//	req, resp := client.GetDistributionsRequest(params)
 //
-//    // Example sending a request using the GetDistributionsRequest method.
-//    req, resp := client.GetDistributionsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributions
 func (c *Lightsail) GetDistributionsRequest(input *GetDistributionsInput) (req *request.Request, output *GetDistributionsOutput) {
@@ -9246,29 +9260,30 @@ func (c *Lightsail) GetDistributionsRequest(input *GetDistributionsInput) (req *
 // API operation GetDistributions for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDistributions
 func (c *Lightsail) GetDistributions(input *GetDistributionsInput) (*GetDistributionsOutput, error) {
@@ -9308,14 +9323,13 @@ const opGetDomain = "GetDomain"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDomainRequest method.
+//	req, resp := client.GetDomainRequest(params)
 //
-//    // Example sending a request using the GetDomainRequest method.
-//    req, resp := client.GetDomainRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDomain
 func (c *Lightsail) GetDomainRequest(input *GetDomainInput) (req *request.Request, output *GetDomainOutput) {
@@ -9346,33 +9360,34 @@ func (c *Lightsail) GetDomainRequest(input *GetDomainInput) (req *request.Reques
 // API operation GetDomain for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDomain
 func (c *Lightsail) GetDomain(input *GetDomainInput) (*GetDomainOutput, error) {
@@ -9412,14 +9427,13 @@ const opGetDomains = "GetDomains"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetDomainsRequest method.
+//	req, resp := client.GetDomainsRequest(params)
 //
-//    // Example sending a request using the GetDomainsRequest method.
-//    req, resp := client.GetDomainsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDomains
 func (c *Lightsail) GetDomainsRequest(input *GetDomainsInput) (req *request.Request, output *GetDomainsOutput) {
@@ -9450,33 +9464,34 @@ func (c *Lightsail) GetDomainsRequest(input *GetDomainsInput) (req *request.Requ
 // API operation GetDomains for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetDomains
 func (c *Lightsail) GetDomains(input *GetDomainsInput) (*GetDomainsOutput, error) {
@@ -9516,14 +9531,13 @@ const opGetExportSnapshotRecords = "GetExportSnapshotRecords"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetExportSnapshotRecordsRequest method.
+//	req, resp := client.GetExportSnapshotRecordsRequest(params)
 //
-//    // Example sending a request using the GetExportSnapshotRecordsRequest method.
-//    req, resp := client.GetExportSnapshotRecordsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetExportSnapshotRecords
 func (c *Lightsail) GetExportSnapshotRecordsRequest(input *GetExportSnapshotRecordsInput) (req *request.Request, output *GetExportSnapshotRecordsOutput) {
@@ -9559,33 +9573,34 @@ func (c *Lightsail) GetExportSnapshotRecordsRequest(input *GetExportSnapshotReco
 // API operation GetExportSnapshotRecords for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetExportSnapshotRecords
 func (c *Lightsail) GetExportSnapshotRecords(input *GetExportSnapshotRecordsInput) (*GetExportSnapshotRecordsOutput, error) {
@@ -9625,14 +9640,13 @@ const opGetInstance = "GetInstance"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstanceRequest method.
+//	req, resp := client.GetInstanceRequest(params)
 //
-//    // Example sending a request using the GetInstanceRequest method.
-//    req, resp := client.GetInstanceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstance
 func (c *Lightsail) GetInstanceRequest(input *GetInstanceInput) (req *request.Request, output *GetInstanceOutput) {
@@ -9664,33 +9678,34 @@ func (c *Lightsail) GetInstanceRequest(input *GetInstanceInput) (req *request.Re
 // API operation GetInstance for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstance
 func (c *Lightsail) GetInstance(input *GetInstanceInput) (*GetInstanceOutput, error) {
@@ -9730,14 +9745,13 @@ const opGetInstanceAccessDetails = "GetInstanceAccessDetails"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstanceAccessDetailsRequest method.
+//	req, resp := client.GetInstanceAccessDetailsRequest(params)
 //
-//    // Example sending a request using the GetInstanceAccessDetailsRequest method.
-//    req, resp := client.GetInstanceAccessDetailsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceAccessDetails
 func (c *Lightsail) GetInstanceAccessDetailsRequest(input *GetInstanceAccessDetailsInput) (req *request.Request, output *GetInstanceAccessDetailsOutput) {
@@ -9773,33 +9787,34 @@ func (c *Lightsail) GetInstanceAccessDetailsRequest(input *GetInstanceAccessDeta
 // API operation GetInstanceAccessDetails for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceAccessDetails
 func (c *Lightsail) GetInstanceAccessDetails(input *GetInstanceAccessDetailsInput) (*GetInstanceAccessDetailsOutput, error) {
@@ -9839,14 +9854,13 @@ const opGetInstanceMetricData = "GetInstanceMetricData"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstanceMetricDataRequest method.
+//	req, resp := client.GetInstanceMetricDataRequest(params)
 //
-//    // Example sending a request using the GetInstanceMetricDataRequest method.
-//    req, resp := client.GetInstanceMetricDataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceMetricData
 func (c *Lightsail) GetInstanceMetricDataRequest(input *GetInstanceMetricDataInput) (req *request.Request, output *GetInstanceMetricDataOutput) {
@@ -9882,33 +9896,34 @@ func (c *Lightsail) GetInstanceMetricDataRequest(input *GetInstanceMetricDataInp
 // API operation GetInstanceMetricData for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceMetricData
 func (c *Lightsail) GetInstanceMetricData(input *GetInstanceMetricDataInput) (*GetInstanceMetricDataOutput, error) {
@@ -9948,14 +9963,13 @@ const opGetInstancePortStates = "GetInstancePortStates"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstancePortStatesRequest method.
+//	req, resp := client.GetInstancePortStatesRequest(params)
 //
-//    // Example sending a request using the GetInstancePortStatesRequest method.
-//    req, resp := client.GetInstancePortStatesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstancePortStates
 func (c *Lightsail) GetInstancePortStatesRequest(input *GetInstancePortStatesInput) (req *request.Request, output *GetInstancePortStatesOutput) {
@@ -9988,33 +10002,34 @@ func (c *Lightsail) GetInstancePortStatesRequest(input *GetInstancePortStatesInp
 // API operation GetInstancePortStates for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstancePortStates
 func (c *Lightsail) GetInstancePortStates(input *GetInstancePortStatesInput) (*GetInstancePortStatesOutput, error) {
@@ -10054,14 +10069,13 @@ const opGetInstanceSnapshot = "GetInstanceSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstanceSnapshotRequest method.
+//	req, resp := client.GetInstanceSnapshotRequest(params)
 //
-//    // Example sending a request using the GetInstanceSnapshotRequest method.
-//    req, resp := client.GetInstanceSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceSnapshot
 func (c *Lightsail) GetInstanceSnapshotRequest(input *GetInstanceSnapshotInput) (req *request.Request, output *GetInstanceSnapshotOutput) {
@@ -10092,33 +10106,34 @@ func (c *Lightsail) GetInstanceSnapshotRequest(input *GetInstanceSnapshotInput) 
 // API operation GetInstanceSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceSnapshot
 func (c *Lightsail) GetInstanceSnapshot(input *GetInstanceSnapshotInput) (*GetInstanceSnapshotOutput, error) {
@@ -10158,14 +10173,13 @@ const opGetInstanceSnapshots = "GetInstanceSnapshots"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstanceSnapshotsRequest method.
+//	req, resp := client.GetInstanceSnapshotsRequest(params)
 //
-//    // Example sending a request using the GetInstanceSnapshotsRequest method.
-//    req, resp := client.GetInstanceSnapshotsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceSnapshots
 func (c *Lightsail) GetInstanceSnapshotsRequest(input *GetInstanceSnapshotsInput) (req *request.Request, output *GetInstanceSnapshotsOutput) {
@@ -10196,33 +10210,34 @@ func (c *Lightsail) GetInstanceSnapshotsRequest(input *GetInstanceSnapshotsInput
 // API operation GetInstanceSnapshots for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceSnapshots
 func (c *Lightsail) GetInstanceSnapshots(input *GetInstanceSnapshotsInput) (*GetInstanceSnapshotsOutput, error) {
@@ -10262,14 +10277,13 @@ const opGetInstanceState = "GetInstanceState"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstanceStateRequest method.
+//	req, resp := client.GetInstanceStateRequest(params)
 //
-//    // Example sending a request using the GetInstanceStateRequest method.
-//    req, resp := client.GetInstanceStateRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceState
 func (c *Lightsail) GetInstanceStateRequest(input *GetInstanceStateInput) (req *request.Request, output *GetInstanceStateOutput) {
@@ -10300,33 +10314,34 @@ func (c *Lightsail) GetInstanceStateRequest(input *GetInstanceStateInput) (req *
 // API operation GetInstanceState for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstanceState
 func (c *Lightsail) GetInstanceState(input *GetInstanceStateInput) (*GetInstanceStateOutput, error) {
@@ -10366,14 +10381,13 @@ const opGetInstances = "GetInstances"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetInstancesRequest method.
+//	req, resp := client.GetInstancesRequest(params)
 //
-//    // Example sending a request using the GetInstancesRequest method.
-//    req, resp := client.GetInstancesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstances
 func (c *Lightsail) GetInstancesRequest(input *GetInstancesInput) (req *request.Request, output *GetInstancesOutput) {
@@ -10405,33 +10419,34 @@ func (c *Lightsail) GetInstancesRequest(input *GetInstancesInput) (req *request.
 // API operation GetInstances for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetInstances
 func (c *Lightsail) GetInstances(input *GetInstancesInput) (*GetInstancesOutput, error) {
@@ -10471,14 +10486,13 @@ const opGetKeyPair = "GetKeyPair"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetKeyPairRequest method.
+//	req, resp := client.GetKeyPairRequest(params)
 //
-//    // Example sending a request using the GetKeyPairRequest method.
-//    req, resp := client.GetKeyPairRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetKeyPair
 func (c *Lightsail) GetKeyPairRequest(input *GetKeyPairInput) (req *request.Request, output *GetKeyPairOutput) {
@@ -10509,33 +10523,34 @@ func (c *Lightsail) GetKeyPairRequest(input *GetKeyPairInput) (req *request.Requ
 // API operation GetKeyPair for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetKeyPair
 func (c *Lightsail) GetKeyPair(input *GetKeyPairInput) (*GetKeyPairOutput, error) {
@@ -10575,14 +10590,13 @@ const opGetKeyPairs = "GetKeyPairs"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetKeyPairsRequest method.
+//	req, resp := client.GetKeyPairsRequest(params)
 //
-//    // Example sending a request using the GetKeyPairsRequest method.
-//    req, resp := client.GetKeyPairsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetKeyPairs
 func (c *Lightsail) GetKeyPairsRequest(input *GetKeyPairsInput) (req *request.Request, output *GetKeyPairsOutput) {
@@ -10613,33 +10627,34 @@ func (c *Lightsail) GetKeyPairsRequest(input *GetKeyPairsInput) (req *request.Re
 // API operation GetKeyPairs for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetKeyPairs
 func (c *Lightsail) GetKeyPairs(input *GetKeyPairsInput) (*GetKeyPairsOutput, error) {
@@ -10679,14 +10694,13 @@ const opGetLoadBalancer = "GetLoadBalancer"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetLoadBalancerRequest method.
+//	req, resp := client.GetLoadBalancerRequest(params)
 //
-//    // Example sending a request using the GetLoadBalancerRequest method.
-//    req, resp := client.GetLoadBalancerRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancer
 func (c *Lightsail) GetLoadBalancerRequest(input *GetLoadBalancerInput) (req *request.Request, output *GetLoadBalancerOutput) {
@@ -10717,33 +10731,34 @@ func (c *Lightsail) GetLoadBalancerRequest(input *GetLoadBalancerInput) (req *re
 // API operation GetLoadBalancer for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancer
 func (c *Lightsail) GetLoadBalancer(input *GetLoadBalancerInput) (*GetLoadBalancerOutput, error) {
@@ -10783,14 +10798,13 @@ const opGetLoadBalancerMetricData = "GetLoadBalancerMetricData"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetLoadBalancerMetricDataRequest method.
+//	req, resp := client.GetLoadBalancerMetricDataRequest(params)
 //
-//    // Example sending a request using the GetLoadBalancerMetricDataRequest method.
-//    req, resp := client.GetLoadBalancerMetricDataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancerMetricData
 func (c *Lightsail) GetLoadBalancerMetricDataRequest(input *GetLoadBalancerMetricDataInput) (req *request.Request, output *GetLoadBalancerMetricDataOutput) {
@@ -10825,33 +10839,34 @@ func (c *Lightsail) GetLoadBalancerMetricDataRequest(input *GetLoadBalancerMetri
 // API operation GetLoadBalancerMetricData for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancerMetricData
 func (c *Lightsail) GetLoadBalancerMetricData(input *GetLoadBalancerMetricDataInput) (*GetLoadBalancerMetricDataOutput, error) {
@@ -10891,14 +10906,13 @@ const opGetLoadBalancerTlsCertificates = "GetLoadBalancerTlsCertificates"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetLoadBalancerTlsCertificatesRequest method.
+//	req, resp := client.GetLoadBalancerTlsCertificatesRequest(params)
 //
-//    // Example sending a request using the GetLoadBalancerTlsCertificatesRequest method.
-//    req, resp := client.GetLoadBalancerTlsCertificatesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancerTlsCertificates
 func (c *Lightsail) GetLoadBalancerTlsCertificatesRequest(input *GetLoadBalancerTlsCertificatesInput) (req *request.Request, output *GetLoadBalancerTlsCertificatesOutput) {
@@ -10935,33 +10949,34 @@ func (c *Lightsail) GetLoadBalancerTlsCertificatesRequest(input *GetLoadBalancer
 // API operation GetLoadBalancerTlsCertificates for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancerTlsCertificates
 func (c *Lightsail) GetLoadBalancerTlsCertificates(input *GetLoadBalancerTlsCertificatesInput) (*GetLoadBalancerTlsCertificatesOutput, error) {
@@ -10985,6 +11000,109 @@ func (c *Lightsail) GetLoadBalancerTlsCertificatesWithContext(ctx aws.Context, i
 	return out, req.Send()
 }
 
+const opGetLoadBalancerTlsPolicies = "GetLoadBalancerTlsPolicies"
+
+// GetLoadBalancerTlsPoliciesRequest generates a "aws/request.Request" representing the
+// client's request for the GetLoadBalancerTlsPolicies operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetLoadBalancerTlsPolicies for more information on using the GetLoadBalancerTlsPolicies
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the GetLoadBalancerTlsPoliciesRequest method.
+//	req, resp := client.GetLoadBalancerTlsPoliciesRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancerTlsPolicies
+func (c *Lightsail) GetLoadBalancerTlsPoliciesRequest(input *GetLoadBalancerTlsPoliciesInput) (req *request.Request, output *GetLoadBalancerTlsPoliciesOutput) {
+	op := &request.Operation{
+		Name:       opGetLoadBalancerTlsPolicies,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &GetLoadBalancerTlsPoliciesInput{}
+	}
+
+	output = &GetLoadBalancerTlsPoliciesOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetLoadBalancerTlsPolicies API operation for Amazon Lightsail.
+//
+// Returns a list of TLS security policies that you can apply to Lightsail load
+// balancers.
+//
+// For more information about load balancer TLS security policies, see Configuring
+// TLS security policies on your Amazon Lightsail load balancers (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configure-load-balancer-tls-security-policy)
+// in the Amazon Lightsail Developer Guide.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation GetLoadBalancerTlsPolicies for usage and error information.
+//
+// Returned Error Types:
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancerTlsPolicies
+func (c *Lightsail) GetLoadBalancerTlsPolicies(input *GetLoadBalancerTlsPoliciesInput) (*GetLoadBalancerTlsPoliciesOutput, error) {
+	req, out := c.GetLoadBalancerTlsPoliciesRequest(input)
+	return out, req.Send()
+}
+
+// GetLoadBalancerTlsPoliciesWithContext is the same as GetLoadBalancerTlsPolicies with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetLoadBalancerTlsPolicies for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) GetLoadBalancerTlsPoliciesWithContext(ctx aws.Context, input *GetLoadBalancerTlsPoliciesInput, opts ...request.Option) (*GetLoadBalancerTlsPoliciesOutput, error) {
+	req, out := c.GetLoadBalancerTlsPoliciesRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opGetLoadBalancers = "GetLoadBalancers"
 
 // GetLoadBalancersRequest generates a "aws/request.Request" representing the
@@ -11001,14 +11119,13 @@ const opGetLoadBalancers = "GetLoadBalancers"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetLoadBalancersRequest method.
+//	req, resp := client.GetLoadBalancersRequest(params)
 //
-//    // Example sending a request using the GetLoadBalancersRequest method.
-//    req, resp := client.GetLoadBalancersRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancers
 func (c *Lightsail) GetLoadBalancersRequest(input *GetLoadBalancersInput) (req *request.Request, output *GetLoadBalancersOutput) {
@@ -11039,33 +11156,34 @@ func (c *Lightsail) GetLoadBalancersRequest(input *GetLoadBalancersInput) (req *
 // API operation GetLoadBalancers for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetLoadBalancers
 func (c *Lightsail) GetLoadBalancers(input *GetLoadBalancersInput) (*GetLoadBalancersOutput, error) {
@@ -11105,14 +11223,13 @@ const opGetOperation = "GetOperation"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetOperationRequest method.
+//	req, resp := client.GetOperationRequest(params)
 //
-//    // Example sending a request using the GetOperationRequest method.
-//    req, resp := client.GetOperationRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetOperation
 func (c *Lightsail) GetOperationRequest(input *GetOperationInput) (req *request.Request, output *GetOperationOutput) {
@@ -11145,33 +11262,34 @@ func (c *Lightsail) GetOperationRequest(input *GetOperationInput) (req *request.
 // API operation GetOperation for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetOperation
 func (c *Lightsail) GetOperation(input *GetOperationInput) (*GetOperationOutput, error) {
@@ -11211,14 +11329,13 @@ const opGetOperations = "GetOperations"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetOperationsRequest method.
+//	req, resp := client.GetOperationsRequest(params)
 //
-//    // Example sending a request using the GetOperationsRequest method.
-//    req, resp := client.GetOperationsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetOperations
 func (c *Lightsail) GetOperationsRequest(input *GetOperationsInput) (req *request.Request, output *GetOperationsOutput) {
@@ -11253,33 +11370,34 @@ func (c *Lightsail) GetOperationsRequest(input *GetOperationsInput) (req *reques
 // API operation GetOperations for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetOperations
 func (c *Lightsail) GetOperations(input *GetOperationsInput) (*GetOperationsOutput, error) {
@@ -11319,14 +11437,13 @@ const opGetOperationsForResource = "GetOperationsForResource"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetOperationsForResourceRequest method.
+//	req, resp := client.GetOperationsForResourceRequest(params)
 //
-//    // Example sending a request using the GetOperationsForResourceRequest method.
-//    req, resp := client.GetOperationsForResourceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetOperationsForResource
 func (c *Lightsail) GetOperationsForResourceRequest(input *GetOperationsForResourceInput) (req *request.Request, output *GetOperationsForResourceOutput) {
@@ -11357,33 +11474,34 @@ func (c *Lightsail) GetOperationsForResourceRequest(input *GetOperationsForResou
 // API operation GetOperationsForResource for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetOperationsForResource
 func (c *Lightsail) GetOperationsForResource(input *GetOperationsForResourceInput) (*GetOperationsForResourceOutput, error) {
@@ -11423,14 +11541,13 @@ const opGetRegions = "GetRegions"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRegionsRequest method.
+//	req, resp := client.GetRegionsRequest(params)
 //
-//    // Example sending a request using the GetRegionsRequest method.
-//    req, resp := client.GetRegionsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRegions
 func (c *Lightsail) GetRegionsRequest(input *GetRegionsInput) (req *request.Request, output *GetRegionsOutput) {
@@ -11462,33 +11579,34 @@ func (c *Lightsail) GetRegionsRequest(input *GetRegionsInput) (req *request.Requ
 // API operation GetRegions for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRegions
 func (c *Lightsail) GetRegions(input *GetRegionsInput) (*GetRegionsOutput, error) {
@@ -11528,14 +11646,13 @@ const opGetRelationalDatabase = "GetRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseRequest method.
+//	req, resp := client.GetRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseRequest method.
-//    req, resp := client.GetRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabase
 func (c *Lightsail) GetRelationalDatabaseRequest(input *GetRelationalDatabaseInput) (req *request.Request, output *GetRelationalDatabaseOutput) {
@@ -11566,33 +11683,34 @@ func (c *Lightsail) GetRelationalDatabaseRequest(input *GetRelationalDatabaseInp
 // API operation GetRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabase
 func (c *Lightsail) GetRelationalDatabase(input *GetRelationalDatabaseInput) (*GetRelationalDatabaseOutput, error) {
@@ -11632,14 +11750,13 @@ const opGetRelationalDatabaseBlueprints = "GetRelationalDatabaseBlueprints"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseBlueprintsRequest method.
+//	req, resp := client.GetRelationalDatabaseBlueprintsRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseBlueprintsRequest method.
-//    req, resp := client.GetRelationalDatabaseBlueprintsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseBlueprints
 func (c *Lightsail) GetRelationalDatabaseBlueprintsRequest(input *GetRelationalDatabaseBlueprintsInput) (req *request.Request, output *GetRelationalDatabaseBlueprintsOutput) {
@@ -11674,33 +11791,34 @@ func (c *Lightsail) GetRelationalDatabaseBlueprintsRequest(input *GetRelationalD
 // API operation GetRelationalDatabaseBlueprints for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseBlueprints
 func (c *Lightsail) GetRelationalDatabaseBlueprints(input *GetRelationalDatabaseBlueprintsInput) (*GetRelationalDatabaseBlueprintsOutput, error) {
@@ -11740,14 +11858,13 @@ const opGetRelationalDatabaseBundles = "GetRelationalDatabaseBundles"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseBundlesRequest method.
+//	req, resp := client.GetRelationalDatabaseBundlesRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseBundlesRequest method.
-//    req, resp := client.GetRelationalDatabaseBundlesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseBundles
 func (c *Lightsail) GetRelationalDatabaseBundlesRequest(input *GetRelationalDatabaseBundlesInput) (req *request.Request, output *GetRelationalDatabaseBundlesOutput) {
@@ -11782,33 +11899,34 @@ func (c *Lightsail) GetRelationalDatabaseBundlesRequest(input *GetRelationalData
 // API operation GetRelationalDatabaseBundles for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseBundles
 func (c *Lightsail) GetRelationalDatabaseBundles(input *GetRelationalDatabaseBundlesInput) (*GetRelationalDatabaseBundlesOutput, error) {
@@ -11848,14 +11966,13 @@ const opGetRelationalDatabaseEvents = "GetRelationalDatabaseEvents"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseEventsRequest method.
+//	req, resp := client.GetRelationalDatabaseEventsRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseEventsRequest method.
-//    req, resp := client.GetRelationalDatabaseEventsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseEvents
 func (c *Lightsail) GetRelationalDatabaseEventsRequest(input *GetRelationalDatabaseEventsInput) (req *request.Request, output *GetRelationalDatabaseEventsOutput) {
@@ -11886,33 +12003,34 @@ func (c *Lightsail) GetRelationalDatabaseEventsRequest(input *GetRelationalDatab
 // API operation GetRelationalDatabaseEvents for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseEvents
 func (c *Lightsail) GetRelationalDatabaseEvents(input *GetRelationalDatabaseEventsInput) (*GetRelationalDatabaseEventsOutput, error) {
@@ -11952,14 +12070,13 @@ const opGetRelationalDatabaseLogEvents = "GetRelationalDatabaseLogEvents"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseLogEventsRequest method.
+//	req, resp := client.GetRelationalDatabaseLogEventsRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseLogEventsRequest method.
-//    req, resp := client.GetRelationalDatabaseLogEventsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseLogEvents
 func (c *Lightsail) GetRelationalDatabaseLogEventsRequest(input *GetRelationalDatabaseLogEventsInput) (req *request.Request, output *GetRelationalDatabaseLogEventsOutput) {
@@ -11990,33 +12107,34 @@ func (c *Lightsail) GetRelationalDatabaseLogEventsRequest(input *GetRelationalDa
 // API operation GetRelationalDatabaseLogEvents for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseLogEvents
 func (c *Lightsail) GetRelationalDatabaseLogEvents(input *GetRelationalDatabaseLogEventsInput) (*GetRelationalDatabaseLogEventsOutput, error) {
@@ -12056,14 +12174,13 @@ const opGetRelationalDatabaseLogStreams = "GetRelationalDatabaseLogStreams"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseLogStreamsRequest method.
+//	req, resp := client.GetRelationalDatabaseLogStreamsRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseLogStreamsRequest method.
-//    req, resp := client.GetRelationalDatabaseLogStreamsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseLogStreams
 func (c *Lightsail) GetRelationalDatabaseLogStreamsRequest(input *GetRelationalDatabaseLogStreamsInput) (req *request.Request, output *GetRelationalDatabaseLogStreamsOutput) {
@@ -12095,33 +12212,34 @@ func (c *Lightsail) GetRelationalDatabaseLogStreamsRequest(input *GetRelationalD
 // API operation GetRelationalDatabaseLogStreams for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseLogStreams
 func (c *Lightsail) GetRelationalDatabaseLogStreams(input *GetRelationalDatabaseLogStreamsInput) (*GetRelationalDatabaseLogStreamsOutput, error) {
@@ -12161,14 +12279,13 @@ const opGetRelationalDatabaseMasterUserPassword = "GetRelationalDatabaseMasterUs
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseMasterUserPasswordRequest method.
+//	req, resp := client.GetRelationalDatabaseMasterUserPasswordRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseMasterUserPasswordRequest method.
-//    req, resp := client.GetRelationalDatabaseMasterUserPasswordRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseMasterUserPassword
 func (c *Lightsail) GetRelationalDatabaseMasterUserPasswordRequest(input *GetRelationalDatabaseMasterUserPasswordInput) (req *request.Request, output *GetRelationalDatabaseMasterUserPasswordOutput) {
@@ -12203,33 +12320,34 @@ func (c *Lightsail) GetRelationalDatabaseMasterUserPasswordRequest(input *GetRel
 // API operation GetRelationalDatabaseMasterUserPassword for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseMasterUserPassword
 func (c *Lightsail) GetRelationalDatabaseMasterUserPassword(input *GetRelationalDatabaseMasterUserPasswordInput) (*GetRelationalDatabaseMasterUserPasswordOutput, error) {
@@ -12269,14 +12387,13 @@ const opGetRelationalDatabaseMetricData = "GetRelationalDatabaseMetricData"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseMetricDataRequest method.
+//	req, resp := client.GetRelationalDatabaseMetricDataRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseMetricDataRequest method.
-//    req, resp := client.GetRelationalDatabaseMetricDataRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseMetricData
 func (c *Lightsail) GetRelationalDatabaseMetricDataRequest(input *GetRelationalDatabaseMetricDataInput) (req *request.Request, output *GetRelationalDatabaseMetricDataOutput) {
@@ -12312,33 +12429,34 @@ func (c *Lightsail) GetRelationalDatabaseMetricDataRequest(input *GetRelationalD
 // API operation GetRelationalDatabaseMetricData for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseMetricData
 func (c *Lightsail) GetRelationalDatabaseMetricData(input *GetRelationalDatabaseMetricDataInput) (*GetRelationalDatabaseMetricDataOutput, error) {
@@ -12378,14 +12496,13 @@ const opGetRelationalDatabaseParameters = "GetRelationalDatabaseParameters"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseParametersRequest method.
+//	req, resp := client.GetRelationalDatabaseParametersRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseParametersRequest method.
-//    req, resp := client.GetRelationalDatabaseParametersRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseParameters
 func (c *Lightsail) GetRelationalDatabaseParametersRequest(input *GetRelationalDatabaseParametersInput) (req *request.Request, output *GetRelationalDatabaseParametersOutput) {
@@ -12422,33 +12539,34 @@ func (c *Lightsail) GetRelationalDatabaseParametersRequest(input *GetRelationalD
 // API operation GetRelationalDatabaseParameters for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseParameters
 func (c *Lightsail) GetRelationalDatabaseParameters(input *GetRelationalDatabaseParametersInput) (*GetRelationalDatabaseParametersOutput, error) {
@@ -12488,14 +12606,13 @@ const opGetRelationalDatabaseSnapshot = "GetRelationalDatabaseSnapshot"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseSnapshotRequest method.
+//	req, resp := client.GetRelationalDatabaseSnapshotRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseSnapshotRequest method.
-//    req, resp := client.GetRelationalDatabaseSnapshotRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseSnapshot
 func (c *Lightsail) GetRelationalDatabaseSnapshotRequest(input *GetRelationalDatabaseSnapshotInput) (req *request.Request, output *GetRelationalDatabaseSnapshotOutput) {
@@ -12526,33 +12643,34 @@ func (c *Lightsail) GetRelationalDatabaseSnapshotRequest(input *GetRelationalDat
 // API operation GetRelationalDatabaseSnapshot for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseSnapshot
 func (c *Lightsail) GetRelationalDatabaseSnapshot(input *GetRelationalDatabaseSnapshotInput) (*GetRelationalDatabaseSnapshotOutput, error) {
@@ -12592,14 +12710,13 @@ const opGetRelationalDatabaseSnapshots = "GetRelationalDatabaseSnapshots"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabaseSnapshotsRequest method.
+//	req, resp := client.GetRelationalDatabaseSnapshotsRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabaseSnapshotsRequest method.
-//    req, resp := client.GetRelationalDatabaseSnapshotsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseSnapshots
 func (c *Lightsail) GetRelationalDatabaseSnapshotsRequest(input *GetRelationalDatabaseSnapshotsInput) (req *request.Request, output *GetRelationalDatabaseSnapshotsOutput) {
@@ -12630,33 +12747,34 @@ func (c *Lightsail) GetRelationalDatabaseSnapshotsRequest(input *GetRelationalDa
 // API operation GetRelationalDatabaseSnapshots for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabaseSnapshots
 func (c *Lightsail) GetRelationalDatabaseSnapshots(input *GetRelationalDatabaseSnapshotsInput) (*GetRelationalDatabaseSnapshotsOutput, error) {
@@ -12696,14 +12814,13 @@ const opGetRelationalDatabases = "GetRelationalDatabases"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetRelationalDatabasesRequest method.
+//	req, resp := client.GetRelationalDatabasesRequest(params)
 //
-//    // Example sending a request using the GetRelationalDatabasesRequest method.
-//    req, resp := client.GetRelationalDatabasesRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabases
 func (c *Lightsail) GetRelationalDatabasesRequest(input *GetRelationalDatabasesInput) (req *request.Request, output *GetRelationalDatabasesOutput) {
@@ -12734,33 +12851,34 @@ func (c *Lightsail) GetRelationalDatabasesRequest(input *GetRelationalDatabasesI
 // API operation GetRelationalDatabases for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetRelationalDatabases
 func (c *Lightsail) GetRelationalDatabases(input *GetRelationalDatabasesInput) (*GetRelationalDatabasesOutput, error) {
@@ -12800,14 +12918,13 @@ const opGetStaticIp = "GetStaticIp"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetStaticIpRequest method.
+//	req, resp := client.GetStaticIpRequest(params)
 //
-//    // Example sending a request using the GetStaticIpRequest method.
-//    req, resp := client.GetStaticIpRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetStaticIp
 func (c *Lightsail) GetStaticIpRequest(input *GetStaticIpInput) (req *request.Request, output *GetStaticIpOutput) {
@@ -12838,33 +12955,34 @@ func (c *Lightsail) GetStaticIpRequest(input *GetStaticIpInput) (req *request.Re
 // API operation GetStaticIp for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetStaticIp
 func (c *Lightsail) GetStaticIp(input *GetStaticIpInput) (*GetStaticIpOutput, error) {
@@ -12904,14 +13022,13 @@ const opGetStaticIps = "GetStaticIps"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the GetStaticIpsRequest method.
+//	req, resp := client.GetStaticIpsRequest(params)
 //
-//    // Example sending a request using the GetStaticIpsRequest method.
-//    req, resp := client.GetStaticIpsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetStaticIps
 func (c *Lightsail) GetStaticIpsRequest(input *GetStaticIpsInput) (req *request.Request, output *GetStaticIpsOutput) {
@@ -12942,33 +13059,34 @@ func (c *Lightsail) GetStaticIpsRequest(input *GetStaticIpsInput) (req *request.
 // API operation GetStaticIps for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetStaticIps
 func (c *Lightsail) GetStaticIps(input *GetStaticIpsInput) (*GetStaticIpsOutput, error) {
@@ -13008,14 +13126,13 @@ const opImportKeyPair = "ImportKeyPair"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the ImportKeyPairRequest method.
+//	req, resp := client.ImportKeyPairRequest(params)
 //
-//    // Example sending a request using the ImportKeyPairRequest method.
-//    req, resp := client.ImportKeyPairRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ImportKeyPair
 func (c *Lightsail) ImportKeyPairRequest(input *ImportKeyPairInput) (req *request.Request, output *ImportKeyPairOutput) {
@@ -13046,33 +13163,34 @@ func (c *Lightsail) ImportKeyPairRequest(input *ImportKeyPairInput) (req *reques
 // API operation ImportKeyPair for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ImportKeyPair
 func (c *Lightsail) ImportKeyPair(input *ImportKeyPairInput) (*ImportKeyPairOutput, error) {
@@ -13112,14 +13230,13 @@ const opIsVpcPeered = "IsVpcPeered"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the IsVpcPeeredRequest method.
+//	req, resp := client.IsVpcPeeredRequest(params)
 //
-//    // Example sending a request using the IsVpcPeeredRequest method.
-//    req, resp := client.IsVpcPeeredRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/IsVpcPeered
 func (c *Lightsail) IsVpcPeeredRequest(input *IsVpcPeeredInput) (req *request.Request, output *IsVpcPeeredOutput) {
@@ -13150,33 +13267,34 @@ func (c *Lightsail) IsVpcPeeredRequest(input *IsVpcPeeredInput) (req *request.Re
 // API operation IsVpcPeered for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/IsVpcPeered
 func (c *Lightsail) IsVpcPeered(input *IsVpcPeeredInput) (*IsVpcPeeredOutput, error) {
@@ -13216,14 +13334,13 @@ const opOpenInstancePublicPorts = "OpenInstancePublicPorts"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the OpenInstancePublicPortsRequest method.
+//	req, resp := client.OpenInstancePublicPortsRequest(params)
 //
-//    // Example sending a request using the OpenInstancePublicPortsRequest method.
-//    req, resp := client.OpenInstancePublicPortsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/OpenInstancePublicPorts
 func (c *Lightsail) OpenInstancePublicPortsRequest(input *OpenInstancePublicPortsInput) (req *request.Request, output *OpenInstancePublicPortsOutput) {
@@ -13259,33 +13376,34 @@ func (c *Lightsail) OpenInstancePublicPortsRequest(input *OpenInstancePublicPort
 // API operation OpenInstancePublicPorts for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/OpenInstancePublicPorts
 func (c *Lightsail) OpenInstancePublicPorts(input *OpenInstancePublicPortsInput) (*OpenInstancePublicPortsOutput, error) {
@@ -13325,14 +13443,13 @@ const opPeerVpc = "PeerVpc"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the PeerVpcRequest method.
+//	req, resp := client.PeerVpcRequest(params)
 //
-//    // Example sending a request using the PeerVpcRequest method.
-//    req, resp := client.PeerVpcRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/PeerVpc
 func (c *Lightsail) PeerVpcRequest(input *PeerVpcInput) (req *request.Request, output *PeerVpcOutput) {
@@ -13363,33 +13480,34 @@ func (c *Lightsail) PeerVpcRequest(input *PeerVpcInput) (req *request.Request, o
 // API operation PeerVpc for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/PeerVpc
 func (c *Lightsail) PeerVpc(input *PeerVpcInput) (*PeerVpcOutput, error) {
@@ -13429,14 +13547,13 @@ const opPutAlarm = "PutAlarm"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the PutAlarmRequest method.
+//	req, resp := client.PutAlarmRequest(params)
 //
-//    // Example sending a request using the PutAlarmRequest method.
-//    req, resp := client.PutAlarmRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/PutAlarm
 func (c *Lightsail) PutAlarmRequest(input *PutAlarmInput) (req *request.Request, output *PutAlarmOutput) {
@@ -13480,29 +13597,30 @@ func (c *Lightsail) PutAlarmRequest(input *PutAlarmInput) (req *request.Request,
 // API operation PutAlarm for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/PutAlarm
 func (c *Lightsail) PutAlarm(input *PutAlarmInput) (*PutAlarmOutput, error) {
@@ -13542,14 +13660,13 @@ const opPutInstancePublicPorts = "PutInstancePublicPorts"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the PutInstancePublicPortsRequest method.
+//	req, resp := client.PutInstancePublicPortsRequest(params)
 //
-//    // Example sending a request using the PutInstancePublicPortsRequest method.
-//    req, resp := client.PutInstancePublicPortsRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/PutInstancePublicPorts
 func (c *Lightsail) PutInstancePublicPortsRequest(input *PutInstancePublicPortsInput) (req *request.Request, output *PutInstancePublicPortsOutput) {
@@ -13589,33 +13706,34 @@ func (c *Lightsail) PutInstancePublicPortsRequest(input *PutInstancePublicPortsI
 // API operation PutInstancePublicPorts for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/PutInstancePublicPorts
 func (c *Lightsail) PutInstancePublicPorts(input *PutInstancePublicPortsInput) (*PutInstancePublicPortsOutput, error) {
@@ -13655,14 +13773,13 @@ const opRebootInstance = "RebootInstance"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the RebootInstanceRequest method.
+//	req, resp := client.RebootInstanceRequest(params)
 //
-//    // Example sending a request using the RebootInstanceRequest method.
-//    req, resp := client.RebootInstanceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/RebootInstance
 func (c *Lightsail) RebootInstanceRequest(input *RebootInstanceInput) (req *request.Request, output *RebootInstanceOutput) {
@@ -13697,33 +13814,34 @@ func (c *Lightsail) RebootInstanceRequest(input *RebootInstanceInput) (req *requ
 // API operation RebootInstance for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/RebootInstance
 func (c *Lightsail) RebootInstance(input *RebootInstanceInput) (*RebootInstanceOutput, error) {
@@ -13763,14 +13881,13 @@ const opRebootRelationalDatabase = "RebootRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the RebootRelationalDatabaseRequest method.
+//	req, resp := client.RebootRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the RebootRelationalDatabaseRequest method.
-//    req, resp := client.RebootRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/RebootRelationalDatabase
 func (c *Lightsail) RebootRelationalDatabaseRequest(input *RebootRelationalDatabaseInput) (req *request.Request, output *RebootRelationalDatabaseOutput) {
@@ -13805,33 +13922,34 @@ func (c *Lightsail) RebootRelationalDatabaseRequest(input *RebootRelationalDatab
 // API operation RebootRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/RebootRelationalDatabase
 func (c *Lightsail) RebootRelationalDatabase(input *RebootRelationalDatabaseInput) (*RebootRelationalDatabaseOutput, error) {
@@ -13871,14 +13989,13 @@ const opRegisterContainerImage = "RegisterContainerImage"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the RegisterContainerImageRequest method.
+//	req, resp := client.RegisterContainerImageRequest(params)
 //
-//    // Example sending a request using the RegisterContainerImageRequest method.
-//    req, resp := client.RegisterContainerImageRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/RegisterContainerImage
 func (c *Lightsail) RegisterContainerImageRequest(input *RegisterContainerImageInput) (req *request.Request, output *RegisterContainerImageOutput) {
@@ -13915,26 +14032,27 @@ func (c *Lightsail) RegisterContainerImageRequest(input *RegisterContainerImageI
 // API operation RegisterContainerImage for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/RegisterContainerImage
 func (c *Lightsail) RegisterContainerImage(input *RegisterContainerImageInput) (*RegisterContainerImageOutput, error) {
@@ -13974,14 +14092,13 @@ const opReleaseStaticIp = "ReleaseStaticIp"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the ReleaseStaticIpRequest method.
+//	req, resp := client.ReleaseStaticIpRequest(params)
 //
-//    // Example sending a request using the ReleaseStaticIpRequest method.
-//    req, resp := client.ReleaseStaticIpRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ReleaseStaticIp
 func (c *Lightsail) ReleaseStaticIpRequest(input *ReleaseStaticIpInput) (req *request.Request, output *ReleaseStaticIpOutput) {
@@ -14012,33 +14129,34 @@ func (c *Lightsail) ReleaseStaticIpRequest(input *ReleaseStaticIpInput) (req *re
 // API operation ReleaseStaticIp for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ReleaseStaticIp
 func (c *Lightsail) ReleaseStaticIp(input *ReleaseStaticIpInput) (*ReleaseStaticIpOutput, error) {
@@ -14078,14 +14196,13 @@ const opResetDistributionCache = "ResetDistributionCache"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the ResetDistributionCacheRequest method.
+//	req, resp := client.ResetDistributionCacheRequest(params)
 //
-//    // Example sending a request using the ResetDistributionCacheRequest method.
-//    req, resp := client.ResetDistributionCacheRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ResetDistributionCache
 func (c *Lightsail) ResetDistributionCacheRequest(input *ResetDistributionCacheInput) (req *request.Request, output *ResetDistributionCacheOutput) {
@@ -14120,29 +14237,30 @@ func (c *Lightsail) ResetDistributionCacheRequest(input *ResetDistributionCacheI
 // API operation ResetDistributionCache for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/ResetDistributionCache
 func (c *Lightsail) ResetDistributionCache(input *ResetDistributionCacheInput) (*ResetDistributionCacheOutput, error) {
@@ -14182,14 +14300,13 @@ const opSendContactMethodVerification = "SendContactMethodVerification"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the SendContactMethodVerificationRequest method.
+//	req, resp := client.SendContactMethodVerificationRequest(params)
 //
-//    // Example sending a request using the SendContactMethodVerificationRequest method.
-//    req, resp := client.SendContactMethodVerificationRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SendContactMethodVerification
 func (c *Lightsail) SendContactMethodVerificationRequest(input *SendContactMethodVerificationInput) (req *request.Request, output *SendContactMethodVerificationOutput) {
@@ -14215,9 +14332,10 @@ func (c *Lightsail) SendContactMethodVerificationRequest(input *SendContactMetho
 //
 // A contact method is used to send you notifications about your Amazon Lightsail
 // resources. You can add one email address and one mobile phone number contact
-// method in each AWS Region. However, SMS text messaging is not supported in
-// some AWS Regions, and SMS text messages cannot be sent to some countries/regions.
-// For more information, see Notifications in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
+// method in each Amazon Web Services Region. However, SMS text messaging is
+// not supported in some Amazon Web Services Regions, and SMS text messages
+// cannot be sent to some countries/regions. For more information, see Notifications
+// in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-notifications).
 //
 // A verification request is sent to the contact method when you initially create
 // it. Use this action to send another verification request if a previous verification
@@ -14234,29 +14352,30 @@ func (c *Lightsail) SendContactMethodVerificationRequest(input *SendContactMetho
 // API operation SendContactMethodVerification for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SendContactMethodVerification
 func (c *Lightsail) SendContactMethodVerification(input *SendContactMethodVerificationInput) (*SendContactMethodVerificationOutput, error) {
@@ -14296,14 +14415,13 @@ const opSetIpAddressType = "SetIpAddressType"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the SetIpAddressTypeRequest method.
+//	req, resp := client.SetIpAddressTypeRequest(params)
 //
-//    // Example sending a request using the SetIpAddressTypeRequest method.
-//    req, resp := client.SetIpAddressTypeRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SetIpAddressType
 func (c *Lightsail) SetIpAddressTypeRequest(input *SetIpAddressTypeInput) (req *request.Request, output *SetIpAddressTypeOutput) {
@@ -14338,33 +14456,34 @@ func (c *Lightsail) SetIpAddressTypeRequest(input *SetIpAddressTypeInput) (req *
 // API operation SetIpAddressType for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SetIpAddressType
 func (c *Lightsail) SetIpAddressType(input *SetIpAddressTypeInput) (*SetIpAddressTypeOutput, error) {
@@ -14404,14 +14523,13 @@ const opSetResourceAccessForBucket = "SetResourceAccessForBucket"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the SetResourceAccessForBucketRequest method.
+//	req, resp := client.SetResourceAccessForBucketRequest(params)
 //
-//    // Example sending a request using the SetResourceAccessForBucketRequest method.
-//    req, resp := client.SetResourceAccessForBucketRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SetResourceAccessForBucket
 func (c *Lightsail) SetResourceAccessForBucketRequest(input *SetResourceAccessForBucketInput) (req *request.Request, output *SetResourceAccessForBucketOutput) {
@@ -14436,7 +14554,7 @@ func (c *Lightsail) SetResourceAccessForBucketRequest(input *SetResourceAccessFo
 // bucket.
 //
 // Lightsail buckets currently support setting access for Lightsail instances
-// in the same AWS Region.
+// in the same Amazon Web Services Region.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -14446,26 +14564,27 @@ func (c *Lightsail) SetResourceAccessForBucketRequest(input *SetResourceAccessFo
 // API operation SetResourceAccessForBucket for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SetResourceAccessForBucket
 func (c *Lightsail) SetResourceAccessForBucket(input *SetResourceAccessForBucketInput) (*SetResourceAccessForBucketOutput, error) {
@@ -14505,14 +14624,13 @@ const opStartInstance = "StartInstance"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the StartInstanceRequest method.
+//	req, resp := client.StartInstanceRequest(params)
 //
-//    // Example sending a request using the StartInstanceRequest method.
-//    req, resp := client.StartInstanceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StartInstance
 func (c *Lightsail) StartInstanceRequest(input *StartInstanceInput) (req *request.Request, output *StartInstanceOutput) {
@@ -14553,33 +14671,34 @@ func (c *Lightsail) StartInstanceRequest(input *StartInstanceInput) (req *reques
 // API operation StartInstance for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StartInstance
 func (c *Lightsail) StartInstance(input *StartInstanceInput) (*StartInstanceOutput, error) {
@@ -14619,14 +14738,13 @@ const opStartRelationalDatabase = "StartRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the StartRelationalDatabaseRequest method.
+//	req, resp := client.StartRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the StartRelationalDatabaseRequest method.
-//    req, resp := client.StartRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StartRelationalDatabase
 func (c *Lightsail) StartRelationalDatabaseRequest(input *StartRelationalDatabaseInput) (req *request.Request, output *StartRelationalDatabaseOutput) {
@@ -14662,33 +14780,34 @@ func (c *Lightsail) StartRelationalDatabaseRequest(input *StartRelationalDatabas
 // API operation StartRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StartRelationalDatabase
 func (c *Lightsail) StartRelationalDatabase(input *StartRelationalDatabaseInput) (*StartRelationalDatabaseOutput, error) {
@@ -14728,14 +14847,13 @@ const opStopInstance = "StopInstance"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the StopInstanceRequest method.
+//	req, resp := client.StopInstanceRequest(params)
 //
-//    // Example sending a request using the StopInstanceRequest method.
-//    req, resp := client.StopInstanceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StopInstance
 func (c *Lightsail) StopInstanceRequest(input *StopInstanceInput) (req *request.Request, output *StopInstanceOutput) {
@@ -14775,33 +14893,34 @@ func (c *Lightsail) StopInstanceRequest(input *StopInstanceInput) (req *request.
 // API operation StopInstance for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StopInstance
 func (c *Lightsail) StopInstance(input *StopInstanceInput) (*StopInstanceOutput, error) {
@@ -14841,14 +14960,13 @@ const opStopRelationalDatabase = "StopRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the StopRelationalDatabaseRequest method.
+//	req, resp := client.StopRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the StopRelationalDatabaseRequest method.
-//    req, resp := client.StopRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StopRelationalDatabase
 func (c *Lightsail) StopRelationalDatabaseRequest(input *StopRelationalDatabaseInput) (req *request.Request, output *StopRelationalDatabaseOutput) {
@@ -14883,33 +15001,34 @@ func (c *Lightsail) StopRelationalDatabaseRequest(input *StopRelationalDatabaseI
 // API operation StopRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StopRelationalDatabase
 func (c *Lightsail) StopRelationalDatabase(input *StopRelationalDatabaseInput) (*StopRelationalDatabaseOutput, error) {
@@ -14949,14 +15068,13 @@ const opTagResource = "TagResource"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the TagResourceRequest method.
+//	req, resp := client.TagResourceRequest(params)
 //
-//    // Example sending a request using the TagResourceRequest method.
-//    req, resp := client.TagResourceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/TagResource
 func (c *Lightsail) TagResourceRequest(input *TagResourceInput) (req *request.Request, output *TagResourceOutput) {
@@ -14994,33 +15112,34 @@ func (c *Lightsail) TagResourceRequest(input *TagResourceInput) (req *request.Re
 // API operation TagResource for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/TagResource
 func (c *Lightsail) TagResource(input *TagResourceInput) (*TagResourceOutput, error) {
@@ -15060,14 +15179,13 @@ const opTestAlarm = "TestAlarm"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the TestAlarmRequest method.
+//	req, resp := client.TestAlarmRequest(params)
 //
-//    // Example sending a request using the TestAlarmRequest method.
-//    req, resp := client.TestAlarmRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/TestAlarm
 func (c *Lightsail) TestAlarmRequest(input *TestAlarmInput) (req *request.Request, output *TestAlarmOutput) {
@@ -15106,29 +15224,30 @@ func (c *Lightsail) TestAlarmRequest(input *TestAlarmInput) (req *request.Reques
 // API operation TestAlarm for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/TestAlarm
 func (c *Lightsail) TestAlarm(input *TestAlarmInput) (*TestAlarmOutput, error) {
@@ -15168,14 +15287,13 @@ const opUnpeerVpc = "UnpeerVpc"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UnpeerVpcRequest method.
+//	req, resp := client.UnpeerVpcRequest(params)
 //
-//    // Example sending a request using the UnpeerVpcRequest method.
-//    req, resp := client.UnpeerVpcRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UnpeerVpc
 func (c *Lightsail) UnpeerVpcRequest(input *UnpeerVpcInput) (req *request.Request, output *UnpeerVpcOutput) {
@@ -15206,33 +15324,34 @@ func (c *Lightsail) UnpeerVpcRequest(input *UnpeerVpcInput) (req *request.Reques
 // API operation UnpeerVpc for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UnpeerVpc
 func (c *Lightsail) UnpeerVpc(input *UnpeerVpcInput) (*UnpeerVpcOutput, error) {
@@ -15272,14 +15391,13 @@ const opUntagResource = "UntagResource"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UntagResourceRequest method.
+//	req, resp := client.UntagResourceRequest(params)
 //
-//    // Example sending a request using the UntagResourceRequest method.
-//    req, resp := client.UntagResourceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UntagResource
 func (c *Lightsail) UntagResourceRequest(input *UntagResourceInput) (req *request.Request, output *UntagResourceOutput) {
@@ -15315,33 +15433,34 @@ func (c *Lightsail) UntagResourceRequest(input *UntagResourceInput) (req *reques
 // API operation UntagResource for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UntagResource
 func (c *Lightsail) UntagResource(input *UntagResourceInput) (*UntagResourceOutput, error) {
@@ -15381,14 +15500,13 @@ const opUpdateBucket = "UpdateBucket"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateBucketRequest method.
+//	req, resp := client.UpdateBucketRequest(params)
 //
-//    // Example sending a request using the UpdateBucketRequest method.
-//    req, resp := client.UpdateBucketRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateBucket
 func (c *Lightsail) UpdateBucketRequest(input *UpdateBucketInput) (req *request.Request, output *UpdateBucketOutput) {
@@ -15412,8 +15530,8 @@ func (c *Lightsail) UpdateBucketRequest(input *UpdateBucketInput) (req *request.
 // Updates an existing Amazon Lightsail bucket.
 //
 // Use this action to update the configuration of an existing bucket, such as
-// versioning, public accessibility, and the AWS accounts that can access the
-// bucket.
+// versioning, public accessibility, and the Amazon Web Services accounts that
+// can access the bucket.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -15423,26 +15541,27 @@ func (c *Lightsail) UpdateBucketRequest(input *UpdateBucketInput) (req *request.
 // API operation UpdateBucket for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateBucket
 func (c *Lightsail) UpdateBucket(input *UpdateBucketInput) (*UpdateBucketOutput, error) {
@@ -15482,14 +15601,13 @@ const opUpdateBucketBundle = "UpdateBucketBundle"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateBucketBundleRequest method.
+//	req, resp := client.UpdateBucketBundleRequest(params)
 //
-//    // Example sending a request using the UpdateBucketBundleRequest method.
-//    req, resp := client.UpdateBucketBundleRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateBucketBundle
 func (c *Lightsail) UpdateBucketBundleRequest(input *UpdateBucketBundleInput) (req *request.Request, output *UpdateBucketBundleOutput) {
@@ -15536,26 +15654,27 @@ func (c *Lightsail) UpdateBucketBundleRequest(input *UpdateBucketBundleInput) (r
 // API operation UpdateBucketBundle for usage and error information.
 //
 // Returned Error Types:
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * ServiceException
-//   A general service exception.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateBucketBundle
 func (c *Lightsail) UpdateBucketBundle(input *UpdateBucketBundleInput) (*UpdateBucketBundleOutput, error) {
@@ -15595,14 +15714,13 @@ const opUpdateContainerService = "UpdateContainerService"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateContainerServiceRequest method.
+//	req, resp := client.UpdateContainerServiceRequest(params)
 //
-//    // Example sending a request using the UpdateContainerServiceRequest method.
-//    req, resp := client.UpdateContainerServiceRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateContainerService
 func (c *Lightsail) UpdateContainerServiceRequest(input *UpdateContainerServiceInput) (req *request.Request, output *UpdateContainerServiceOutput) {
@@ -15634,26 +15752,27 @@ func (c *Lightsail) UpdateContainerServiceRequest(input *UpdateContainerServiceI
 // API operation UpdateContainerService for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateContainerService
 func (c *Lightsail) UpdateContainerService(input *UpdateContainerServiceInput) (*UpdateContainerServiceOutput, error) {
@@ -15693,14 +15812,13 @@ const opUpdateDistribution = "UpdateDistribution"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateDistributionRequest method.
+//	req, resp := client.UpdateDistributionRequest(params)
 //
-//    // Example sending a request using the UpdateDistributionRequest method.
-//    req, resp := client.UpdateDistributionRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateDistribution
 func (c *Lightsail) UpdateDistributionRequest(input *UpdateDistributionInput) (req *request.Request, output *UpdateDistributionOutput) {
@@ -15733,29 +15851,30 @@ func (c *Lightsail) UpdateDistributionRequest(input *UpdateDistributionInput) (r
 // API operation UpdateDistribution for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateDistribution
 func (c *Lightsail) UpdateDistribution(input *UpdateDistributionInput) (*UpdateDistributionOutput, error) {
@@ -15795,14 +15914,13 @@ const opUpdateDistributionBundle = "UpdateDistributionBundle"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateDistributionBundleRequest method.
+//	req, resp := client.UpdateDistributionBundleRequest(params)
 //
-//    // Example sending a request using the UpdateDistributionBundleRequest method.
-//    req, resp := client.UpdateDistributionBundleRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateDistributionBundle
 func (c *Lightsail) UpdateDistributionBundleRequest(input *UpdateDistributionBundleInput) (req *request.Request, output *UpdateDistributionBundleOutput) {
@@ -15827,7 +15945,7 @@ func (c *Lightsail) UpdateDistributionBundleRequest(input *UpdateDistributionBun
 // distribution.
 //
 // A distribution bundle specifies the monthly network transfer quota and monthly
-// cost of your dsitribution.
+// cost of your distribution.
 //
 // Update your distribution's bundle if your distribution is going over its
 // monthly network transfer quota and is incurring an overage fee.
@@ -15846,29 +15964,30 @@ func (c *Lightsail) UpdateDistributionBundleRequest(input *UpdateDistributionBun
 // API operation UpdateDistributionBundle for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateDistributionBundle
 func (c *Lightsail) UpdateDistributionBundle(input *UpdateDistributionBundleInput) (*UpdateDistributionBundleOutput, error) {
@@ -15908,14 +16027,13 @@ const opUpdateDomainEntry = "UpdateDomainEntry"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateDomainEntryRequest method.
+//	req, resp := client.UpdateDomainEntryRequest(params)
 //
-//    // Example sending a request using the UpdateDomainEntryRequest method.
-//    req, resp := client.UpdateDomainEntryRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateDomainEntry
 func (c *Lightsail) UpdateDomainEntryRequest(input *UpdateDomainEntryInput) (req *request.Request, output *UpdateDomainEntryOutput) {
@@ -15950,33 +16068,34 @@ func (c *Lightsail) UpdateDomainEntryRequest(input *UpdateDomainEntryInput) (req
 // API operation UpdateDomainEntry for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateDomainEntry
 func (c *Lightsail) UpdateDomainEntry(input *UpdateDomainEntryInput) (*UpdateDomainEntryOutput, error) {
@@ -16000,6 +16119,116 @@ func (c *Lightsail) UpdateDomainEntryWithContext(ctx aws.Context, input *UpdateD
 	return out, req.Send()
 }
 
+const opUpdateInstanceMetadataOptions = "UpdateInstanceMetadataOptions"
+
+// UpdateInstanceMetadataOptionsRequest generates a "aws/request.Request" representing the
+// client's request for the UpdateInstanceMetadataOptions operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See UpdateInstanceMetadataOptions for more information on using the UpdateInstanceMetadataOptions
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the UpdateInstanceMetadataOptionsRequest method.
+//	req, resp := client.UpdateInstanceMetadataOptionsRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateInstanceMetadataOptions
+func (c *Lightsail) UpdateInstanceMetadataOptionsRequest(input *UpdateInstanceMetadataOptionsInput) (req *request.Request, output *UpdateInstanceMetadataOptionsOutput) {
+	op := &request.Operation{
+		Name:       opUpdateInstanceMetadataOptions,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &UpdateInstanceMetadataOptionsInput{}
+	}
+
+	output = &UpdateInstanceMetadataOptionsOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// UpdateInstanceMetadataOptions API operation for Amazon Lightsail.
+//
+// Modifies the Amazon Lightsail instance metadata parameters on a running or
+// stopped instance. When you modify the parameters on a running instance, the
+// GetInstance or GetInstances API operation initially responds with a state
+// of pending. After the parameter modifications are successfully applied, the
+// state changes to applied in subsequent GetInstance or GetInstances API calls.
+// For more information, see Use IMDSv2 with an Amazon Lightsail instance (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configuring-instance-metadata-service)
+// in the Amazon Lightsail Developer Guide.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation UpdateInstanceMetadataOptions for usage and error information.
+//
+// Returned Error Types:
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateInstanceMetadataOptions
+func (c *Lightsail) UpdateInstanceMetadataOptions(input *UpdateInstanceMetadataOptionsInput) (*UpdateInstanceMetadataOptionsOutput, error) {
+	req, out := c.UpdateInstanceMetadataOptionsRequest(input)
+	return out, req.Send()
+}
+
+// UpdateInstanceMetadataOptionsWithContext is the same as UpdateInstanceMetadataOptions with the addition of
+// the ability to pass a context and additional request options.
+//
+// See UpdateInstanceMetadataOptions for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) UpdateInstanceMetadataOptionsWithContext(ctx aws.Context, input *UpdateInstanceMetadataOptionsInput, opts ...request.Option) (*UpdateInstanceMetadataOptionsOutput, error) {
+	req, out := c.UpdateInstanceMetadataOptionsRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opUpdateLoadBalancerAttribute = "UpdateLoadBalancerAttribute"
 
 // UpdateLoadBalancerAttributeRequest generates a "aws/request.Request" representing the
@@ -16016,14 +16245,13 @@ const opUpdateLoadBalancerAttribute = "UpdateLoadBalancerAttribute"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateLoadBalancerAttributeRequest method.
+//	req, resp := client.UpdateLoadBalancerAttributeRequest(params)
 //
-//    // Example sending a request using the UpdateLoadBalancerAttributeRequest method.
-//    req, resp := client.UpdateLoadBalancerAttributeRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateLoadBalancerAttribute
 func (c *Lightsail) UpdateLoadBalancerAttributeRequest(input *UpdateLoadBalancerAttributeInput) (req *request.Request, output *UpdateLoadBalancerAttributeOutput) {
@@ -16059,33 +16287,34 @@ func (c *Lightsail) UpdateLoadBalancerAttributeRequest(input *UpdateLoadBalancer
 // API operation UpdateLoadBalancerAttribute for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateLoadBalancerAttribute
 func (c *Lightsail) UpdateLoadBalancerAttribute(input *UpdateLoadBalancerAttributeInput) (*UpdateLoadBalancerAttributeOutput, error) {
@@ -16125,14 +16354,13 @@ const opUpdateRelationalDatabase = "UpdateRelationalDatabase"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateRelationalDatabaseRequest method.
+//	req, resp := client.UpdateRelationalDatabaseRequest(params)
 //
-//    // Example sending a request using the UpdateRelationalDatabaseRequest method.
-//    req, resp := client.UpdateRelationalDatabaseRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateRelationalDatabase
 func (c *Lightsail) UpdateRelationalDatabaseRequest(input *UpdateRelationalDatabaseInput) (req *request.Request, output *UpdateRelationalDatabaseOutput) {
@@ -16170,33 +16398,34 @@ func (c *Lightsail) UpdateRelationalDatabaseRequest(input *UpdateRelationalDatab
 // API operation UpdateRelationalDatabase for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateRelationalDatabase
 func (c *Lightsail) UpdateRelationalDatabase(input *UpdateRelationalDatabaseInput) (*UpdateRelationalDatabaseOutput, error) {
@@ -16236,14 +16465,13 @@ const opUpdateRelationalDatabaseParameters = "UpdateRelationalDatabaseParameters
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
+//	// Example sending a request using the UpdateRelationalDatabaseParametersRequest method.
+//	req, resp := client.UpdateRelationalDatabaseParametersRequest(params)
 //
-//    // Example sending a request using the UpdateRelationalDatabaseParametersRequest method.
-//    req, resp := client.UpdateRelationalDatabaseParametersRequest(params)
-//
-//    err := req.Send()
-//    if err == nil { // resp is now filled
-//        fmt.Println(resp)
-//    }
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateRelationalDatabaseParameters
 func (c *Lightsail) UpdateRelationalDatabaseParametersRequest(input *UpdateRelationalDatabaseParametersInput) (req *request.Request, output *UpdateRelationalDatabaseParametersOutput) {
@@ -16285,33 +16513,34 @@ func (c *Lightsail) UpdateRelationalDatabaseParametersRequest(input *UpdateRelat
 // API operation UpdateRelationalDatabaseParameters for usage and error information.
 //
 // Returned Error Types:
-//   * ServiceException
-//   A general service exception.
 //
-//   * InvalidInputException
-//   Lightsail throws this exception when user input does not conform to the validation
-//   rules of an input field.
+//   - ServiceException
+//     A general service exception.
 //
-//   Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-//   AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-//   view, or edit these resources.
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
 //
-//   * NotFoundException
-//   Lightsail throws this exception when it cannot find a resource.
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
 //
-//   * OperationFailureException
-//   Lightsail throws this exception when an operation fails to execute.
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
 //
-//   * AccessDeniedException
-//   Lightsail throws this exception when the user cannot be authenticated or
-//   uses invalid credentials to access a resource.
+//   - OperationFailureException
+//     Lightsail throws this exception when an operation fails to execute.
 //
-//   * AccountSetupInProgressException
-//   Lightsail throws this exception when an account is still in the setup in
-//   progress state.
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
 //
-//   * UnauthenticatedException
-//   Lightsail throws this exception when the user has not been authenticated.
+//   - AccountSetupInProgressException
+//     Lightsail throws this exception when an account is still in the setup in
+//     progress state.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/UpdateRelationalDatabaseParameters
 func (c *Lightsail) UpdateRelationalDatabaseParameters(input *UpdateRelationalDatabaseParametersInput) (*UpdateRelationalDatabaseParametersOutput, error) {
@@ -16631,6 +16860,129 @@ func (s *AccessRules) SetGetObject(v string) *AccessRules {
 	return s
 }
 
+// Describes the synchronization status of the Amazon Simple Storage Service
+// (Amazon S3) account-level block public access (BPA) feature for your Lightsail
+// buckets.
+//
+// The account-level BPA feature of Amazon S3 provides centralized controls
+// to limit public access to all Amazon S3 buckets in an account. BPA can make
+// all Amazon S3 buckets in an Amazon Web Services account private regardless
+// of the individual bucket and object permissions that are configured. Lightsail
+// buckets take into account the Amazon S3 account-level BPA configuration when
+// allowing or denying public access. To do this, Lightsail periodically fetches
+// the account-level BPA configuration from Amazon S3. When the account-level
+// BPA status is InSync, the Amazon S3 account-level BPA configuration is synchronized
+// and it applies to your Lightsail buckets. For more information about Amazon
+// Simple Storage Service account-level BPA and how it affects Lightsail buckets,
+// see Block public access for buckets in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-block-public-access-for-buckets)
+// in the Amazon Lightsail Developer Guide.
+type AccountLevelBpaSync struct {
+	_ struct{} `type:"structure"`
+
+	// A Boolean value that indicates whether account-level block public access
+	// is affecting your Lightsail buckets.
+	BpaImpactsLightsail *bool `locationName:"bpaImpactsLightsail" type:"boolean"`
+
+	// The timestamp of when the account-level BPA configuration was last synchronized.
+	// This value is null when the account-level BPA configuration has not been
+	// synchronized.
+	LastSyncedAt *time.Time `locationName:"lastSyncedAt" type:"timestamp"`
+
+	// A message that provides a reason for a Failed or Defaulted synchronization
+	// status.
+	//
+	// The following messages are possible:
+	//
+	//    * SYNC_ON_HOLD - The synchronization has not yet happened. This status
+	//    message occurs immediately after you create your first Lightsail bucket.
+	//    This status message should change after the first synchronization happens,
+	//    approximately 1 hour after the first bucket is created.
+	//
+	//    * DEFAULTED_FOR_SLR_MISSING - The synchronization failed because the required
+	//    service-linked role is missing from your Amazon Web Services account.
+	//    The account-level BPA configuration for your Lightsail buckets is defaulted
+	//    to active until the synchronization can occur. This means that all your
+	//    buckets are private and not publicly accessible. For more information
+	//    about how to create the required service-linked role to allow synchronization,
+	//    see Using Service-Linked Roles for Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-using-service-linked-roles)
+	//    in the Amazon Lightsail Developer Guide.
+	//
+	//    * DEFAULTED_FOR_SLR_MISSING_ON_HOLD - The synchronization failed because
+	//    the required service-linked role is missing from your Amazon Web Services
+	//    account. Account-level BPA is not yet configured for your Lightsail buckets.
+	//    Therefore, only the bucket access permissions and individual object access
+	//    permissions apply to your Lightsail buckets. For more information about
+	//    how to create the required service-linked role to allow synchronization,
+	//    see Using Service-Linked Roles for Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-using-service-linked-roles)
+	//    in the Amazon Lightsail Developer Guide.
+	//
+	//    * Unknown - The reason that synchronization failed is unknown. Contact
+	//    Amazon Web Services Support for more information.
+	Message *string `locationName:"message" type:"string" enum:"BPAStatusMessage"`
+
+	// The status of the account-level BPA synchronization.
+	//
+	// The following statuses are possible:
+	//
+	//    * InSync - Account-level BPA is synchronized. The Amazon S3 account-level
+	//    BPA configuration applies to your Lightsail buckets.
+	//
+	//    * NeverSynced - Synchronization has not yet happened. The Amazon S3 account-level
+	//    BPA configuration does not apply to your Lightsail buckets.
+	//
+	//    * Failed - Synchronization failed. The Amazon S3 account-level BPA configuration
+	//    does not apply to your Lightsail buckets.
+	//
+	//    * Defaulted - Synchronization failed and account-level BPA for your Lightsail
+	//    buckets is defaulted to active.
+	//
+	// You might need to complete further actions if the status is Failed or Defaulted.
+	// The message parameter provides more information for those statuses.
+	Status *string `locationName:"status" type:"string" enum:"AccountLevelBpaSyncStatus"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s AccountLevelBpaSync) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s AccountLevelBpaSync) GoString() string {
+	return s.String()
+}
+
+// SetBpaImpactsLightsail sets the BpaImpactsLightsail field's value.
+func (s *AccountLevelBpaSync) SetBpaImpactsLightsail(v bool) *AccountLevelBpaSync {
+	s.BpaImpactsLightsail = &v
+	return s
+}
+
+// SetLastSyncedAt sets the LastSyncedAt field's value.
+func (s *AccountLevelBpaSync) SetLastSyncedAt(v time.Time) *AccountLevelBpaSync {
+	s.LastSyncedAt = &v
+	return s
+}
+
+// SetMessage sets the Message field's value.
+func (s *AccountLevelBpaSync) SetMessage(v string) *AccountLevelBpaSync {
+	s.Message = &v
+	return s
+}
+
+// SetStatus sets the Status field's value.
+func (s *AccountLevelBpaSync) SetStatus(v string) *AccountLevelBpaSync {
+	s.Status = &v
+	return s
+}
+
 // Lightsail throws this exception when an account is still in the setup in
 // progress state.
 type AccountSetupInProgressException struct {
@@ -16848,7 +17200,7 @@ type Alarm struct {
 
 	// The contact protocols for the alarm, such as Email, SMS (text messaging),
 	// or both.
-	ContactProtocols []*string `locationName:"contactProtocols" type:"list"`
+	ContactProtocols []*string `locationName:"contactProtocols" type:"list" enum:"ContactProtocol"`
 
 	// The timestamp when the alarm was created.
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
@@ -16876,7 +17228,7 @@ type Alarm struct {
 	NotificationEnabled *bool `locationName:"notificationEnabled" type:"boolean"`
 
 	// The alarm states that trigger a notification.
-	NotificationTriggers []*string `locationName:"notificationTriggers" type:"list"`
+	NotificationTriggers []*string `locationName:"notificationTriggers" type:"list" enum:"AlarmState"`
 
 	// The period, in seconds, over which the statistic is applied.
 	Period *int64 `locationName:"period" min:"60" type:"integer"`
@@ -17717,31 +18069,31 @@ func (s *AttachedDisk) SetSizeInGb(v int64) *AttachedDisk {
 // When you modify the automatic snapshot time for a resource, it is typically
 // effective immediately except under the following conditions:
 //
-//    * If an automatic snapshot has been created for the current day, and you
-//    change the snapshot time to a later time of day, then the new snapshot
-//    time will be effective the following day. This ensures that two snapshots
-//    are not created for the current day.
+//   - If an automatic snapshot has been created for the current day, and you
+//     change the snapshot time to a later time of day, then the new snapshot
+//     time will be effective the following day. This ensures that two snapshots
+//     are not created for the current day.
 //
-//    * If an automatic snapshot has not yet been created for the current day,
-//    and you change the snapshot time to an earlier time of day, then the new
-//    snapshot time will be effective the following day and a snapshot is automatically
-//    created at the previously set time for the current day. This ensures that
-//    a snapshot is created for the current day.
+//   - If an automatic snapshot has not yet been created for the current day,
+//     and you change the snapshot time to an earlier time of day, then the new
+//     snapshot time will be effective the following day and a snapshot is automatically
+//     created at the previously set time for the current day. This ensures that
+//     a snapshot is created for the current day.
 //
-//    * If an automatic snapshot has not yet been created for the current day,
-//    and you change the snapshot time to a time that is within 30 minutes from
-//    your current time, then the new snapshot time will be effective the following
-//    day and a snapshot is automatically created at the previously set time
-//    for the current day. This ensures that a snapshot is created for the current
-//    day, because 30 minutes is required between your current time and the
-//    new snapshot time that you specify.
+//   - If an automatic snapshot has not yet been created for the current day,
+//     and you change the snapshot time to a time that is within 30 minutes from
+//     your current time, then the new snapshot time will be effective the following
+//     day and a snapshot is automatically created at the previously set time
+//     for the current day. This ensures that a snapshot is created for the current
+//     day, because 30 minutes is required between your current time and the
+//     new snapshot time that you specify.
 //
-//    * If an automatic snapshot is scheduled to be created within 30 minutes
-//    from your current time and you change the snapshot time, then the new
-//    snapshot time will be effective the following day and a snapshot is automatically
-//    created at the previously set time for the current day. This ensures that
-//    a snapshot is created for the current day, because 30 minutes is required
-//    between your current time and the new snapshot time that you specify.
+//   - If an automatic snapshot is scheduled to be created within 30 minutes
+//     from your current time and you change the snapshot time, then the new
+//     snapshot time will be effective the following day and a snapshot is automatically
+//     created at the previously set time for the current day. This ensures that
+//     a snapshot is created for the current day, because 30 minutes is required
+//     between your current time and the new snapshot time that you specify.
 type AutoSnapshotAddOnRequest struct {
 	_ struct{} `type:"structure"`
 
@@ -18029,8 +18381,8 @@ type Bucket struct {
 	// Indicates whether the bundle that is currently applied to a bucket can be
 	// changed to another bundle.
 	//
-	// You can update a bucket's bundle only one time within a monthly AWS billing
-	// cycle.
+	// You can update a bucket's bundle only one time within a monthly Amazon Web
+	// Services billing cycle.
 	//
 	// Use the UpdateBucketBundle (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_UpdateBucketBundle.html)
 	// action to change a bucket's bundle.
@@ -18057,7 +18409,8 @@ type Bucket struct {
 	// The timestamp when the distribution was created.
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
-	// Describes the resource location.
+	// An object that describes the location of the bucket, such as the Amazon Web
+	// Services Region and Availability Zone.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// The name of the bucket.
@@ -18075,8 +18428,8 @@ type Bucket struct {
 	//    * NeverEnabled - Object versioning has never been enabled.
 	ObjectVersioning *string `locationName:"objectVersioning" type:"string"`
 
-	// An array of strings that specify the AWS account IDs that have read-only
-	// access to the bucket.
+	// An array of strings that specify the Amazon Web Services account IDs that
+	// have read-only access to the bucket.
 	ReadonlyAccessAccounts []*string `locationName:"readonlyAccessAccounts" type:"list"`
 
 	// The Lightsail resource type of the bucket (for example, Bucket).
@@ -18229,9 +18582,9 @@ func (s *Bucket) SetUrl(v string) *Bucket {
 type BucketAccessLogConfig struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the bucket where the access is saved. The destination can be
-	// a Lightsail bucket in the same account, and in the same AWS Region as the
-	// source bucket.
+	// The name of the bucket where the access logs are saved. The destination can
+	// be a Lightsail bucket in the same account, and in the same Amazon Web Services
+	// Region as the source bucket.
 	//
 	// This parameter is required when enabling the access log for a bucket, and
 	// should be omitted when disabling the access log.
@@ -18479,7 +18832,7 @@ type Bundle struct {
 	// that the bundle supports. You can only launch a WINDOWS bundle on a blueprint
 	// that supports the WINDOWS platform. LINUX_UNIX blueprints require a LINUX_UNIX
 	// bundle.
-	SupportedPlatforms []*string `locationName:"supportedPlatforms" type:"list"`
+	SupportedPlatforms []*string `locationName:"supportedPlatforms" type:"list" enum:"InstancePlatform"`
 
 	// The data transfer rate per month in GB (e.g., 2000).
 	TransferPerMonthInGb *int64 `locationName:"transferPerMonthInGb" type:"integer"`
@@ -19282,8 +19635,8 @@ type CloudFormationStackRecord struct {
 	// and the Amazon Resource Name (ARN) of the AWS CloudFormation stack.
 	DestinationInfo *DestinationInfo `locationName:"destinationInfo" type:"structure"`
 
-	// A list of objects describing the Availability Zone and AWS Region of the
-	// CloudFormation stack record.
+	// A list of objects describing the Availability Zone and Amazon Web Services
+	// Region of the CloudFormation stack record.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// The name of the CloudFormation stack record. It starts with CloudFormationStackRecord
@@ -19434,7 +19787,8 @@ type ContactMethod struct {
 	// The timestamp when the contact method was created.
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
-	// Describes the resource location.
+	// An object that describes the location of the contact method, such as the
+	// Amazon Web Services Region and Availability Zone.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// The name of the contact method.
@@ -19682,7 +20036,7 @@ type ContainerService struct {
 	IsDisabled *bool `locationName:"isDisabled" type:"boolean"`
 
 	// An object that describes the location of the container service, such as the
-	// AWS Region and Availability Zone.
+	// Amazon Web Services Region and Availability Zone.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// An object that describes the next deployment of the container service.
@@ -19702,9 +20056,9 @@ type ContainerService struct {
 	// The principal ARN of the container service.
 	//
 	// The principal ARN can be used to create a trust relationship between your
-	// standard AWS account and your Lightsail container service. This allows you
-	// to give your service permission to access resources in your standard AWS
-	// account.
+	// standard Amazon Web Services account and your Lightsail container service.
+	// This allows you to give your service permission to access resources in your
+	// standard Amazon Web Services account.
 	PrincipalArn *string `locationName:"principalArn" type:"string"`
 
 	// The private domain name of the container service.
@@ -19712,6 +20066,15 @@ type ContainerService struct {
 	// The private domain name is accessible only by other resources within the
 	// default virtual private cloud (VPC) of your Lightsail account.
 	PrivateDomainName *string `locationName:"privateDomainName" type:"string"`
+
+	// An object that describes the configuration for the container service to access
+	// private container image repositories, such as Amazon Elastic Container Registry
+	// (Amazon ECR) private repositories.
+	//
+	// For more information, see Configuring access to an Amazon ECR private repository
+	// for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+	// in the Amazon Lightsail Developer Guide.
+	PrivateRegistryAccess *PrivateRegistryAccess `locationName:"privateRegistryAccess" type:"structure"`
 
 	// The public domain name of the container service, such as example.com and
 	// www.example.com.
@@ -19861,6 +20224,12 @@ func (s *ContainerService) SetPrincipalArn(v string) *ContainerService {
 // SetPrivateDomainName sets the PrivateDomainName field's value.
 func (s *ContainerService) SetPrivateDomainName(v string) *ContainerService {
 	s.PrivateDomainName = &v
+	return s
+}
+
+// SetPrivateRegistryAccess sets the PrivateRegistryAccess field's value.
+func (s *ContainerService) SetPrivateRegistryAccess(v *PrivateRegistryAccess) *ContainerService {
+	s.PrivateRegistryAccess = v
 	return s
 }
 
@@ -20050,6 +20419,101 @@ func (s *ContainerServiceDeploymentRequest) SetContainers(v map[string]*Containe
 // SetPublicEndpoint sets the PublicEndpoint field's value.
 func (s *ContainerServiceDeploymentRequest) SetPublicEndpoint(v *EndpointRequest) *ContainerServiceDeploymentRequest {
 	s.PublicEndpoint = v
+	return s
+}
+
+// Describes the activation status of the role that you can use to grant an
+// Amazon Lightsail container service access to Amazon Elastic Container Registry
+// (Amazon ECR) private repositories.
+//
+// When activated, Lightsail creates an Identity and Access Management (IAM)
+// role for the specified Lightsail container service. You can use the ARN of
+// the role to create a trust relationship between your Lightsail container
+// service and an Amazon ECR private repository in your Amazon Web Services
+// account. This allows your container service to pull images from Amazon ECR
+// private repositories. For more information, see Configuring access to an
+// Amazon ECR private repository for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+// in the Amazon Lightsail Developer Guide.
+type ContainerServiceECRImagePullerRole struct {
+	_ struct{} `type:"structure"`
+
+	// A Boolean value that indicates whether the role is activated.
+	IsActive *bool `locationName:"isActive" type:"boolean"`
+
+	// The Amazon Resource Name (ARN) of the role, if it is activated.
+	PrincipalArn *string `locationName:"principalArn" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ContainerServiceECRImagePullerRole) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ContainerServiceECRImagePullerRole) GoString() string {
+	return s.String()
+}
+
+// SetIsActive sets the IsActive field's value.
+func (s *ContainerServiceECRImagePullerRole) SetIsActive(v bool) *ContainerServiceECRImagePullerRole {
+	s.IsActive = &v
+	return s
+}
+
+// SetPrincipalArn sets the PrincipalArn field's value.
+func (s *ContainerServiceECRImagePullerRole) SetPrincipalArn(v string) *ContainerServiceECRImagePullerRole {
+	s.PrincipalArn = &v
+	return s
+}
+
+// Describes a request to activate or deactivate the role that you can use to
+// grant an Amazon Lightsail container service access to Amazon Elastic Container
+// Registry (Amazon ECR) private repositories.
+//
+// When activated, Lightsail creates an Identity and Access Management (IAM)
+// role for the specified Lightsail container service. You can use the ARN of
+// the role to create a trust relationship between your Lightsail container
+// service and an Amazon ECR private repository in your Amazon Web Services
+// account. This allows your container service to pull images from Amazon ECR
+// private repositories. For more information, see Configuring access to an
+// Amazon ECR private repository for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+// in the Amazon Lightsail Developer Guide.
+type ContainerServiceECRImagePullerRoleRequest struct {
+	_ struct{} `type:"structure"`
+
+	// A Boolean value that indicates whether to activate the role.
+	IsActive *bool `locationName:"isActive" type:"boolean"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ContainerServiceECRImagePullerRoleRequest) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ContainerServiceECRImagePullerRoleRequest) GoString() string {
+	return s.String()
+}
+
+// SetIsActive sets the IsActive field's value.
+func (s *ContainerServiceECRImagePullerRoleRequest) SetIsActive(v bool) *ContainerServiceECRImagePullerRoleRequest {
+	s.IsActive = &v
 	return s
 }
 
@@ -20512,7 +20976,8 @@ type CopySnapshotInput struct {
 	//    (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-keeping-automatic-snapshots).
 	RestoreDate *string `locationName:"restoreDate" type:"string"`
 
-	// The AWS Region where the source manual or automatic snapshot is located.
+	// The Amazon Web Services Region where the source manual or automatic snapshot
+	// is located.
 	//
 	// SourceRegion is a required field
 	SourceRegion *string `locationName:"sourceRegion" type:"string" required:"true" enum:"RegionName"`
@@ -21132,7 +21597,7 @@ type CreateContactMethodInput struct {
 
 	// The protocol of the contact method, such as Email or SMS (text messaging).
 	//
-	// The SMS protocol is supported only in the following AWS Regions.
+	// The SMS protocol is supported only in the following Amazon Web Services Regions.
 	//
 	//    * US East (N. Virginia) (us-east-1)
 	//
@@ -21147,8 +21612,8 @@ type CreateContactMethodInput struct {
 	//    * Asia Pacific (Sydney) (ap-southeast-2)
 	//
 	// For a list of countries/regions where SMS text messages can be sent, and
-	// the latest AWS Regions where SMS text messaging is supported, see Supported
-	// Regions and Countries (https://docs.aws.amazon.com/sns/latest/dg/sns-supported-regions-countries.html)
+	// the latest Amazon Web Services Regions where SMS text messaging is supported,
+	// see Supported Regions and Countries (https://docs.aws.amazon.com/sns/latest/dg/sns-supported-regions-countries.html)
 	// in the Amazon SNS Developer Guide.
 	//
 	// For more information about notifications in Amazon Lightsail, see Notifications
@@ -21371,6 +21836,15 @@ type CreateContainerServiceInput struct {
 	// Power is a required field
 	Power *string `locationName:"power" type:"string" required:"true" enum:"ContainerServicePowerName"`
 
+	// An object to describe the configuration for the container service to access
+	// private container image repositories, such as Amazon Elastic Container Registry
+	// (Amazon ECR) private repositories.
+	//
+	// For more information, see Configuring access to an Amazon ECR private repository
+	// for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+	// in the Amazon Lightsail Developer Guide.
+	PrivateRegistryAccess *PrivateRegistryAccessRequest `locationName:"privateRegistryAccess" type:"structure"`
+
 	// The public domain names to use with the container service, such as example.com
 	// and www.example.com.
 	//
@@ -21411,7 +21885,8 @@ type CreateContainerServiceInput struct {
 	//
 	// The following are the requirements for container service names:
 	//
-	//    * Must be unique within each AWS Region in your Lightsail account.
+	//    * Must be unique within each Amazon Web Services Region in your Lightsail
+	//    account.
 	//
 	//    * Must contain 1 to 63 characters.
 	//
@@ -21489,6 +21964,12 @@ func (s *CreateContainerServiceInput) SetDeployment(v *ContainerServiceDeploymen
 // SetPower sets the Power field's value.
 func (s *CreateContainerServiceInput) SetPower(v string) *CreateContainerServiceInput {
 	s.Power = &v
+	return s
+}
+
+// SetPrivateRegistryAccess sets the PrivateRegistryAccess field's value.
+func (s *CreateContainerServiceInput) SetPrivateRegistryAccess(v *PrivateRegistryAccessRequest) *CreateContainerServiceInput {
+	s.PrivateRegistryAccess = v
 	return s
 }
 
@@ -23204,6 +23685,16 @@ type CreateLoadBalancerInput struct {
 	//
 	// Use the TagResource action to tag a resource after it's created.
 	Tags []*Tag `locationName:"tags" type:"list"`
+
+	// The name of the TLS policy to apply to the load balancer.
+	//
+	// Use the GetLoadBalancerTlsPolicies (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetLoadBalancerTlsPolicies.html)
+	// action to get a list of TLS policy names that you can specify.
+	//
+	// For more information about load balancer TLS policies, see Configuring TLS
+	// security policies on your Amazon Lightsail load balancers (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configure-load-balancer-tls-security-policy)
+	// in the Amazon Lightsail Developer Guide.
+	TlsPolicyName *string `locationName:"tlsPolicyName" type:"string"`
 }
 
 // String returns the string representation.
@@ -23288,6 +23779,12 @@ func (s *CreateLoadBalancerInput) SetLoadBalancerName(v string) *CreateLoadBalan
 // SetTags sets the Tags field's value.
 func (s *CreateLoadBalancerInput) SetTags(v []*Tag) *CreateLoadBalancerInput {
 	s.Tags = v
+	return s
+}
+
+// SetTlsPolicyName sets the TlsPolicyName field's value.
+func (s *CreateLoadBalancerInput) SetTlsPolicyName(v string) *CreateLoadBalancerInput {
+	s.TlsPolicyName = &v
 	return s
 }
 
@@ -28000,7 +28497,8 @@ func (s *GetAutoSnapshotsOutput) SetResourceType(v string) *GetAutoSnapshotsOutp
 type GetBlueprintsInput struct {
 	_ struct{} `type:"structure"`
 
-	// A Boolean value indicating whether to include inactive results in your request.
+	// A Boolean value that indicates whether to include inactive (unavailable)
+	// blueprints in the response of your request.
 	IncludeInactive *bool `locationName:"includeInactive" type:"boolean"`
 
 	// The token to advance to the next page of results from your request.
@@ -28171,7 +28669,7 @@ type GetBucketBundlesInput struct {
 	_ struct{} `type:"structure"`
 
 	// A Boolean value that indicates whether to include inactive (unavailable)
-	// bundles in the response.
+	// bundles in the response of your request.
 	IncludeInactive *bool `locationName:"includeInactive" type:"boolean"`
 }
 
@@ -28301,7 +28799,7 @@ type GetBucketMetricDataInput struct {
 	//    calculation.
 	//
 	// Statistics is a required field
-	Statistics []*string `locationName:"statistics" type:"list" required:"true"`
+	Statistics []*string `locationName:"statistics" type:"list" required:"true" enum:"MetricStatistic"`
 
 	// The unit for the metric data request.
 	//
@@ -28454,8 +28952,8 @@ type GetBucketsInput struct {
 
 	// The name of the bucket for which to return information.
 	//
-	// When omitted, the response includes all of your buckets in the AWS Region
-	// where the request is made.
+	// When omitted, the response includes all of your buckets in the Amazon Web
+	// Services Region where the request is made.
 	BucketName *string `locationName:"bucketName" min:"3" type:"string"`
 
 	// A Boolean value that indicates whether to include Lightsail instances that
@@ -28523,6 +29021,13 @@ func (s *GetBucketsInput) SetPageToken(v string) *GetBucketsInput {
 type GetBucketsOutput struct {
 	_ struct{} `type:"structure"`
 
+	// An object that describes the synchronization status of the Amazon S3 account-level
+	// block public access feature for your Lightsail buckets.
+	//
+	// For more information about this feature and how it affects Lightsail buckets,
+	// see Block public access for buckets in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-block-public-access-for-buckets).
+	AccountLevelBpaSync *AccountLevelBpaSync `locationName:"accountLevelBpaSync" type:"structure"`
+
 	// An array of objects that describe buckets.
 	Buckets []*Bucket `locationName:"buckets" type:"list"`
 
@@ -28553,6 +29058,12 @@ func (s GetBucketsOutput) GoString() string {
 	return s.String()
 }
 
+// SetAccountLevelBpaSync sets the AccountLevelBpaSync field's value.
+func (s *GetBucketsOutput) SetAccountLevelBpaSync(v *AccountLevelBpaSync) *GetBucketsOutput {
+	s.AccountLevelBpaSync = v
+	return s
+}
+
 // SetBuckets sets the Buckets field's value.
 func (s *GetBucketsOutput) SetBuckets(v []*Bucket) *GetBucketsOutput {
 	s.Buckets = v
@@ -28568,8 +29079,8 @@ func (s *GetBucketsOutput) SetNextPageToken(v string) *GetBucketsOutput {
 type GetBundlesInput struct {
 	_ struct{} `type:"structure"`
 
-	// A Boolean value that indicates whether to include inactive bundle results
-	// in your request.
+	// A Boolean value that indicates whether to include inactive (unavailable)
+	// bundles in the response of your request.
 	IncludeInactive *bool `locationName:"includeInactive" type:"boolean"`
 
 	// The token to advance to the next page of results from your request.
@@ -28661,17 +29172,18 @@ type GetCertificatesInput struct {
 
 	// The name for the certificate for which to return information.
 	//
-	// When omitted, the response includes all of your certificates in the AWS Region
-	// where the request is made.
+	// When omitted, the response includes all of your certificates in the Amazon
+	// Web Services Region where the request is made.
 	CertificateName *string `locationName:"certificateName" type:"string"`
 
 	// The status of the certificates for which to return information.
 	//
 	// For example, specify ISSUED to return only certificates with an ISSUED status.
 	//
-	// When omitted, the response includes all of your certificates in the AWS Region
-	// where the request is made, regardless of their current status.
-	CertificateStatuses []*string `locationName:"certificateStatuses" type:"list"`
+	// When omitted, the response includes all of your certificates in the Amazon
+	// Web Services Region where the request is made, regardless of their current
+	// status.
+	CertificateStatuses []*string `locationName:"certificateStatuses" type:"list" enum:"CertificateStatus"`
 
 	// Indicates whether to include detailed information about the certificates
 	// in the response.
@@ -28835,7 +29347,7 @@ type GetContactMethodsInput struct {
 	//
 	// Specify a protocol in your request to return information about a specific
 	// contact method protocol.
-	Protocols []*string `locationName:"protocols" type:"list"`
+	Protocols []*string `locationName:"protocols" type:"list" enum:"ContactProtocol"`
 }
 
 // String returns the string representation.
@@ -29365,7 +29877,7 @@ type GetContainerServiceMetricDataInput struct {
 	//    calculation.
 	//
 	// Statistics is a required field
-	Statistics []*string `locationName:"statistics" type:"list" required:"true"`
+	Statistics []*string `locationName:"statistics" type:"list" required:"true" enum:"MetricStatistic"`
 }
 
 // String returns the string representation.
@@ -29556,7 +30068,7 @@ type GetContainerServicesInput struct {
 	// The name of the container service for which to return information.
 	//
 	// When omitted, the response includes all of your container services in the
-	// AWS Region where the request is made.
+	// Amazon Web Services Region where the request is made.
 	ServiceName *string `locationName:"serviceName" min:"1" type:"string"`
 }
 
@@ -30182,7 +30694,7 @@ type GetDistributionMetricDataInput struct {
 	//    calculation.
 	//
 	// Statistics is a required field
-	Statistics []*string `locationName:"statistics" type:"list" required:"true"`
+	Statistics []*string `locationName:"statistics" type:"list" required:"true" enum:"MetricStatistic"`
 
 	// The unit for the metric data request.
 	//
@@ -30332,8 +30844,8 @@ type GetDistributionsInput struct {
 
 	// The name of the distribution for which to return information.
 	//
-	// When omitted, the response includes all of your distributions in the AWS
-	// Region where the request is made.
+	// When omitted, the response includes all of your distributions in the Amazon
+	// Web Services Region where the request is made.
 	DistributionName *string `locationName:"distributionName" type:"string"`
 
 	// The token to advance to the next page of results from your request.
@@ -30869,6 +31381,14 @@ type GetInstanceMetricDataInput struct {
 	//    This metric data is available in 1-minute (60 seconds) granularity. Statistics:
 	//    The most useful statistic is Sum. Unit: The published unit is Count.
 	//
+	//    * MetadataNoToken - Reports the number of times that the instance metadata
+	//    service was successfully accessed without a token. This metric determines
+	//    if there are any processes accessing instance metadata by using Instance
+	//    Metadata Service Version 1, which doesn't use a token. If all requests
+	//    use token-backed sessions, such as Instance Metadata Service Version 2,
+	//    then the value is 0. Statistics: The most useful statistic is Sum. Unit:
+	//    The published unit is Count.
+	//
 	// MetricName is a required field
 	MetricName *string `locationName:"metricName" type:"string" required:"true" enum:"InstanceMetricName"`
 
@@ -30909,7 +31429,7 @@ type GetInstanceMetricDataInput struct {
 	//    calculation.
 	//
 	// Statistics is a required field
-	Statistics []*string `locationName:"statistics" type:"list" required:"true"`
+	Statistics []*string `locationName:"statistics" type:"list" required:"true" enum:"MetricStatistic"`
 
 	// The unit for the metric data request. Valid units depend on the metric data
 	// being requested. For the valid units to specify with each available metric,
@@ -31815,7 +32335,7 @@ type GetLoadBalancerMetricDataInput struct {
 	//    calculation.
 	//
 	// Statistics is a required field
-	Statistics []*string `locationName:"statistics" type:"list" required:"true"`
+	Statistics []*string `locationName:"statistics" type:"list" required:"true" enum:"MetricStatistic"`
 
 	// The unit for the metric data request. Valid units depend on the metric data
 	// being requested. For the valid units with each available metric, see the
@@ -32064,6 +32584,86 @@ func (s GetLoadBalancerTlsCertificatesOutput) GoString() string {
 // SetTlsCertificates sets the TlsCertificates field's value.
 func (s *GetLoadBalancerTlsCertificatesOutput) SetTlsCertificates(v []*LoadBalancerTlsCertificate) *GetLoadBalancerTlsCertificatesOutput {
 	s.TlsCertificates = v
+	return s
+}
+
+type GetLoadBalancerTlsPoliciesInput struct {
+	_ struct{} `type:"structure"`
+
+	// The token to advance to the next page of results from your request.
+	//
+	// To get a page token, perform an initial GetLoadBalancerTlsPolicies request.
+	// If your results are paginated, the response will return a next page token
+	// that you can specify as the page token in a subsequent request.
+	PageToken *string `locationName:"pageToken" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetLoadBalancerTlsPoliciesInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetLoadBalancerTlsPoliciesInput) GoString() string {
+	return s.String()
+}
+
+// SetPageToken sets the PageToken field's value.
+func (s *GetLoadBalancerTlsPoliciesInput) SetPageToken(v string) *GetLoadBalancerTlsPoliciesInput {
+	s.PageToken = &v
+	return s
+}
+
+type GetLoadBalancerTlsPoliciesOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The token to advance to the next page of results from your request.
+	//
+	// A next page token is not returned if there are no more results to display.
+	//
+	// To get the next page of results, perform another GetLoadBalancerTlsPolicies
+	// request and specify the next page token using the pageToken parameter.
+	NextPageToken *string `locationName:"nextPageToken" type:"string"`
+
+	// An array of objects that describe the TLS security policies that are available.
+	TlsPolicies []*LoadBalancerTlsPolicy `locationName:"tlsPolicies" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetLoadBalancerTlsPoliciesOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetLoadBalancerTlsPoliciesOutput) GoString() string {
+	return s.String()
+}
+
+// SetNextPageToken sets the NextPageToken field's value.
+func (s *GetLoadBalancerTlsPoliciesOutput) SetNextPageToken(v string) *GetLoadBalancerTlsPoliciesOutput {
+	s.NextPageToken = &v
+	return s
+}
+
+// SetTlsPolicies sets the TlsPolicies field's value.
+func (s *GetLoadBalancerTlsPoliciesOutput) SetTlsPolicies(v []*LoadBalancerTlsPolicy) *GetLoadBalancerTlsPoliciesOutput {
+	s.TlsPolicies = v
 	return s
 }
 
@@ -32588,6 +33188,10 @@ func (s *GetRelationalDatabaseBlueprintsOutput) SetNextPageToken(v string) *GetR
 type GetRelationalDatabaseBundlesInput struct {
 	_ struct{} `type:"structure"`
 
+	// A Boolean value that indicates whether to include inactive (unavailable)
+	// bundles in the response of your request.
+	IncludeInactive *bool `locationName:"includeInactive" type:"boolean"`
+
 	// The token to advance to the next page of results from your request.
 	//
 	// To get a page token, perform an initial GetRelationalDatabaseBundles request.
@@ -32612,6 +33216,12 @@ func (s GetRelationalDatabaseBundlesInput) String() string {
 // value will be replaced with "sensitive".
 func (s GetRelationalDatabaseBundlesInput) GoString() string {
 	return s.String()
+}
+
+// SetIncludeInactive sets the IncludeInactive field's value.
+func (s *GetRelationalDatabaseBundlesInput) SetIncludeInactive(v bool) *GetRelationalDatabaseBundlesInput {
+	s.IncludeInactive = &v
+	return s
 }
 
 // SetPageToken sets the PageToken field's value.
@@ -33290,7 +33900,7 @@ type GetRelationalDatabaseMetricDataInput struct {
 	//    calculation.
 	//
 	// Statistics is a required field
-	Statistics []*string `locationName:"statistics" type:"list" required:"true"`
+	Statistics []*string `locationName:"statistics" type:"list" required:"true" enum:"MetricStatistic"`
 
 	// The unit for the metric data request. Valid units depend on the metric data
 	// being requested. For the valid units with each available metric, see the
@@ -33981,7 +34591,7 @@ type HeaderObject struct {
 	_ struct{} `type:"structure"`
 
 	// The specific headers to forward to your distribution's origin.
-	HeadersAllowList []*string `locationName:"headersAllowList" type:"list"`
+	HeadersAllowList []*string `locationName:"headersAllowList" type:"list" enum:"HeaderEnum"`
 
 	// The headers that you want your distribution to forward to your origin and
 	// base caching on.
@@ -34318,6 +34928,9 @@ type Instance struct {
 	// The region name and Availability Zone where the instance is located.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
+	// The metadata options for the Amazon Lightsail instance.
+	MetadataOptions *InstanceMetadataOptions `locationName:"metadataOptions" type:"structure"`
+
 	// The name the user gave the instance (e.g., Amazon_Linux-1GB-Ohio-1).
 	Name *string `locationName:"name" type:"string"`
 
@@ -34434,6 +35047,12 @@ func (s *Instance) SetIsStaticIp(v bool) *Instance {
 // SetLocation sets the Location field's value.
 func (s *Instance) SetLocation(v *ResourceLocation) *Instance {
 	s.Location = v
+	return s
+}
+
+// SetMetadataOptions sets the MetadataOptions field's value.
+func (s *Instance) SetMetadataOptions(v *InstanceMetadataOptions) *Instance {
+	s.MetadataOptions = v
 	return s
 }
 
@@ -34906,6 +35525,104 @@ func (s *InstanceHealthSummary) SetInstanceHealthReason(v string) *InstanceHealt
 // SetInstanceName sets the InstanceName field's value.
 func (s *InstanceHealthSummary) SetInstanceName(v string) *InstanceHealthSummary {
 	s.InstanceName = &v
+	return s
+}
+
+// The metadata options for the instance.
+type InstanceMetadataOptions struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether the HTTP metadata endpoint on your instances is enabled
+	// or disabled.
+	//
+	// If the value is disabled, you cannot access your instance metadata.
+	HttpEndpoint *string `locationName:"httpEndpoint" type:"string" enum:"HttpEndpoint"`
+
+	// Indicates whether the IPv6 endpoint for the instance metadata service is
+	// enabled or disabled.
+	HttpProtocolIpv6 *string `locationName:"httpProtocolIpv6" type:"string" enum:"HttpProtocolIpv6"`
+
+	// The desired HTTP PUT response hop limit for instance metadata requests. A
+	// larger number means that the instance metadata requests can travel farther.
+	HttpPutResponseHopLimit *int64 `locationName:"httpPutResponseHopLimit" type:"integer"`
+
+	// The state of token usage for your instance metadata requests.
+	//
+	// If the state is optional, you can choose whether to retrieve instance metadata
+	// with a signed token header on your request. If you retrieve the IAM role
+	// credentials without a token, the version 1.0 role credentials are returned.
+	// If you retrieve the IAM role credentials by using a valid signed token, the
+	// version 2.0 role credentials are returned.
+	//
+	// If the state is required, you must send a signed token header with all instance
+	// metadata retrieval requests. In this state, retrieving the IAM role credential
+	// always returns the version 2.0 credentials. The version 1.0 credentials are
+	// not available.
+	//
+	// Not all instance blueprints in Lightsail support version 2.0 credentials.
+	// Use the MetadataNoToken instance metric to track the number of calls to the
+	// instance metadata service that are using version 1.0 credentials. For more
+	// information, see Viewing instance metrics in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-viewing-instance-health-metrics)
+	// in the Amazon Lightsail Developer Guide.
+	HttpTokens *string `locationName:"httpTokens" type:"string" enum:"HttpTokens"`
+
+	// The state of the metadata option changes.
+	//
+	// The following states are possible:
+	//
+	//    * pending - The metadata options are being updated. The instance is not
+	//    yet ready to process metadata traffic with the new selection.
+	//
+	//    * applied - The metadata options have been successfully applied to the
+	//    instance.
+	State *string `locationName:"state" type:"string" enum:"InstanceMetadataState"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InstanceMetadataOptions) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InstanceMetadataOptions) GoString() string {
+	return s.String()
+}
+
+// SetHttpEndpoint sets the HttpEndpoint field's value.
+func (s *InstanceMetadataOptions) SetHttpEndpoint(v string) *InstanceMetadataOptions {
+	s.HttpEndpoint = &v
+	return s
+}
+
+// SetHttpProtocolIpv6 sets the HttpProtocolIpv6 field's value.
+func (s *InstanceMetadataOptions) SetHttpProtocolIpv6(v string) *InstanceMetadataOptions {
+	s.HttpProtocolIpv6 = &v
+	return s
+}
+
+// SetHttpPutResponseHopLimit sets the HttpPutResponseHopLimit field's value.
+func (s *InstanceMetadataOptions) SetHttpPutResponseHopLimit(v int64) *InstanceMetadataOptions {
+	s.HttpPutResponseHopLimit = &v
+	return s
+}
+
+// SetHttpTokens sets the HttpTokens field's value.
+func (s *InstanceMetadataOptions) SetHttpTokens(v string) *InstanceMetadataOptions {
+	s.HttpTokens = &v
+	return s
+}
+
+// SetState sets the State field's value.
+func (s *InstanceMetadataOptions) SetState(v string) *InstanceMetadataOptions {
+	s.State = &v
 	return s
 }
 
@@ -35575,8 +36292,8 @@ func (s *InstanceState) SetName(v string) *InstanceState {
 // rules of an input field.
 //
 // Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-// AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-// view, or edit these resources.
+// Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+// to us-east-1 to create, view, or edit these resources.
 type InvalidInputException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -35843,12 +36560,12 @@ type LightsailDistribution struct {
 	// Indicates whether the distribution is enabled.
 	IsEnabled *bool `locationName:"isEnabled" type:"boolean"`
 
-	// An object that describes the location of the distribution, such as the AWS
-	// Region and Availability Zone.
+	// An object that describes the location of the distribution, such as the Amazon
+	// Web Services Region and Availability Zone.
 	//
 	// Lightsail distributions are global resources that can reference an origin
-	// in any AWS Region, and distribute its content globally. However, all distributions
-	// are located in the us-east-1 Region.
+	// in any Amazon Web Services Region, and distribute its content globally. However,
+	// all distributions are located in the us-east-1 Region.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// The name of the distribution.
@@ -36038,6 +36755,10 @@ type LoadBalancer struct {
 	// the load balancer tries to make a request to the default (root) page.
 	HealthCheckPath *string `locationName:"healthCheckPath" type:"string"`
 
+	// A Boolean value that indicates whether HTTPS redirection is enabled for the
+	// load balancer.
+	HttpsRedirectionEnabled *bool `locationName:"httpsRedirectionEnabled" type:"boolean"`
+
 	// An array of InstanceHealthSummary objects describing the health of the load
 	// balancer.
 	InstanceHealthSummary []*InstanceHealthSummary `locationName:"instanceHealthSummary" type:"list"`
@@ -36086,6 +36807,9 @@ type LoadBalancer struct {
 	// information about the SSL/TLS certificates. For example, if true, the certificate
 	// is attached to the load balancer.
 	TlsCertificateSummaries []*LoadBalancerTlsCertificateSummary `locationName:"tlsCertificateSummaries" type:"list"`
+
+	// The name of the TLS security policy for the load balancer.
+	TlsPolicyName *string `locationName:"tlsPolicyName" type:"string"`
 }
 
 // String returns the string representation.
@@ -36133,6 +36857,12 @@ func (s *LoadBalancer) SetDnsName(v string) *LoadBalancer {
 // SetHealthCheckPath sets the HealthCheckPath field's value.
 func (s *LoadBalancer) SetHealthCheckPath(v string) *LoadBalancer {
 	s.HealthCheckPath = &v
+	return s
+}
+
+// SetHttpsRedirectionEnabled sets the HttpsRedirectionEnabled field's value.
+func (s *LoadBalancer) SetHttpsRedirectionEnabled(v bool) *LoadBalancer {
+	s.HttpsRedirectionEnabled = &v
 	return s
 }
 
@@ -36205,6 +36935,12 @@ func (s *LoadBalancer) SetTags(v []*Tag) *LoadBalancer {
 // SetTlsCertificateSummaries sets the TlsCertificateSummaries field's value.
 func (s *LoadBalancer) SetTlsCertificateSummaries(v []*LoadBalancerTlsCertificateSummary) *LoadBalancer {
 	s.TlsCertificateSummaries = v
+	return s
+}
+
+// SetTlsPolicyName sets the TlsPolicyName field's value.
+func (s *LoadBalancer) SetTlsPolicyName(v string) *LoadBalancer {
+	s.TlsPolicyName = &v
 	return s
 }
 
@@ -36646,21 +37382,21 @@ func (s *LoadBalancerTlsCertificateDomainValidationRecord) SetValue(v string) *L
 //
 // The following renewal status are possible:
 //
-//    * PendingAutoRenewal - Lightsail is attempting to automatically validate
-//    the domain names in the certificate. No further action is required.
+//   - PendingAutoRenewal - Lightsail is attempting to automatically validate
+//     the domain names in the certificate. No further action is required.
 //
-//    * PendingValidation - Lightsail couldn't automatically validate one or
-//    more domain names in the certificate. You must take action to validate
-//    these domain names or the certificate won't be renewed. If you used DNS
-//    validation, check to make sure your certificate's domain validation records
-//    exist in your domain's DNS, and that your certificate remains in use.
+//   - PendingValidation - Lightsail couldn't automatically validate one or
+//     more domain names in the certificate. You must take action to validate
+//     these domain names or the certificate won't be renewed. If you used DNS
+//     validation, check to make sure your certificate's domain validation records
+//     exist in your domain's DNS, and that your certificate remains in use.
 //
-//    * Success - All domain names in the certificate are validated, and Lightsail
-//    renewed the certificate. No further action is required.
+//   - Success - All domain names in the certificate are validated, and Lightsail
+//     renewed the certificate. No further action is required.
 //
-//    * Failed - One or more domain names were not validated before the certificate
-//    expired, and Lightsail did not renew the certificate. You can request
-//    a new certificate using the CreateCertificate action.
+//   - Failed - One or more domain names were not validated before the certificate
+//     expired, and Lightsail did not renew the certificate. You can request
+//     a new certificate using the CreateCertificate action.
 type LoadBalancerTlsCertificateRenewalSummary struct {
 	_ struct{} `type:"structure"`
 
@@ -36759,6 +37495,81 @@ func (s *LoadBalancerTlsCertificateSummary) SetIsAttached(v bool) *LoadBalancerT
 // SetName sets the Name field's value.
 func (s *LoadBalancerTlsCertificateSummary) SetName(v string) *LoadBalancerTlsCertificateSummary {
 	s.Name = &v
+	return s
+}
+
+// Describes the TLS security policies that are available for Lightsail load
+// balancers.
+//
+// For more information about load balancer TLS security policies, see Configuring
+// TLS security policies on your Amazon Lightsail load balancers (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configure-load-balancer-tls-security-policy)
+// in the Amazon Lightsail Developer Guide.
+type LoadBalancerTlsPolicy struct {
+	_ struct{} `type:"structure"`
+
+	// The ciphers used by the TLS security policy.
+	//
+	// The ciphers are listed in order of preference.
+	Ciphers []*string `locationName:"ciphers" type:"list"`
+
+	// The description of the TLS security policy.
+	Description *string `locationName:"description" type:"string"`
+
+	// A Boolean value that indicates whether the TLS security policy is the default.
+	IsDefault *bool `locationName:"isDefault" type:"boolean"`
+
+	// The name of the TLS security policy.
+	Name *string `locationName:"name" type:"string"`
+
+	// The protocols used in a given TLS security policy.
+	Protocols []*string `locationName:"protocols" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s LoadBalancerTlsPolicy) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s LoadBalancerTlsPolicy) GoString() string {
+	return s.String()
+}
+
+// SetCiphers sets the Ciphers field's value.
+func (s *LoadBalancerTlsPolicy) SetCiphers(v []*string) *LoadBalancerTlsPolicy {
+	s.Ciphers = v
+	return s
+}
+
+// SetDescription sets the Description field's value.
+func (s *LoadBalancerTlsPolicy) SetDescription(v string) *LoadBalancerTlsPolicy {
+	s.Description = &v
+	return s
+}
+
+// SetIsDefault sets the IsDefault field's value.
+func (s *LoadBalancerTlsPolicy) SetIsDefault(v bool) *LoadBalancerTlsPolicy {
+	s.IsDefault = &v
+	return s
+}
+
+// SetName sets the Name field's value.
+func (s *LoadBalancerTlsPolicy) SetName(v string) *LoadBalancerTlsPolicy {
+	s.Name = &v
+	return s
+}
+
+// SetProtocols sets the Protocols field's value.
+func (s *LoadBalancerTlsPolicy) SetProtocols(v []*string) *LoadBalancerTlsPolicy {
+	s.Protocols = v
 	return s
 }
 
@@ -37165,7 +37976,7 @@ type Operation struct {
 	// A Boolean value indicating whether the operation is terminal.
 	IsTerminal *bool `locationName:"isTerminal" type:"boolean"`
 
-	// The AWS Region and Availability Zone.
+	// The Amazon Web Services Region and Availability Zone.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// Details about the operation (e.g., Debian-1GB-Ohio-1).
@@ -37801,6 +38612,87 @@ func (s *PortInfo) SetToPort(v int64) *PortInfo {
 	return s
 }
 
+// Describes the configuration for an Amazon Lightsail container service to
+// access private container image repositories, such as Amazon Elastic Container
+// Registry (Amazon ECR) private repositories.
+//
+// For more information, see Configuring access to an Amazon ECR private repository
+// for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+// in the Amazon Lightsail Developer Guide.
+type PrivateRegistryAccess struct {
+	_ struct{} `type:"structure"`
+
+	// An object that describes the activation status of the role that you can use
+	// to grant a Lightsail container service access to Amazon ECR private repositories.
+	// If the role is activated, the Amazon Resource Name (ARN) of the role is also
+	// listed.
+	EcrImagePullerRole *ContainerServiceECRImagePullerRole `locationName:"ecrImagePullerRole" type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PrivateRegistryAccess) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PrivateRegistryAccess) GoString() string {
+	return s.String()
+}
+
+// SetEcrImagePullerRole sets the EcrImagePullerRole field's value.
+func (s *PrivateRegistryAccess) SetEcrImagePullerRole(v *ContainerServiceECRImagePullerRole) *PrivateRegistryAccess {
+	s.EcrImagePullerRole = v
+	return s
+}
+
+// Describes a request to configure an Amazon Lightsail container service to
+// access private container image repositories, such as Amazon Elastic Container
+// Registry (Amazon ECR) private repositories.
+//
+// For more information, see Configuring access to an Amazon ECR private repository
+// for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+// in the Amazon Lightsail Developer Guide.
+type PrivateRegistryAccessRequest struct {
+	_ struct{} `type:"structure"`
+
+	// An object to describe a request to activate or deactivate the role that you
+	// can use to grant an Amazon Lightsail container service access to Amazon Elastic
+	// Container Registry (Amazon ECR) private repositories.
+	EcrImagePullerRole *ContainerServiceECRImagePullerRoleRequest `locationName:"ecrImagePullerRole" type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PrivateRegistryAccessRequest) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PrivateRegistryAccessRequest) GoString() string {
+	return s.String()
+}
+
+// SetEcrImagePullerRole sets the EcrImagePullerRole field's value.
+func (s *PrivateRegistryAccessRequest) SetEcrImagePullerRole(v *ContainerServiceECRImagePullerRoleRequest) *PrivateRegistryAccessRequest {
+	s.EcrImagePullerRole = v
+	return s
+}
+
 type PutAlarmInput struct {
 	_ struct{} `type:"structure"`
 
@@ -37823,12 +38715,13 @@ type PutAlarmInput struct {
 	// are enabled for the alarm, and when the alarm is triggered.
 	//
 	// A notification is not sent if a contact protocol is not specified, if the
-	// specified contact protocol is not configured in the AWS Region, or if notifications
-	// are not enabled for the alarm using the notificationEnabled paramater.
+	// specified contact protocol is not configured in the Amazon Web Services Region,
+	// or if notifications are not enabled for the alarm using the notificationEnabled
+	// paramater.
 	//
 	// Use the CreateContactMethod action to configure a contact protocol in an
-	// AWS Region.
-	ContactProtocols []*string `locationName:"contactProtocols" type:"list"`
+	// Amazon Web Services Region.
+	ContactProtocols []*string `locationName:"contactProtocols" type:"list" enum:"ContactProtocol"`
 
 	// The number of data points that must be not within the specified threshold
 	// to trigger the alarm. If you are setting an "M out of N" alarm, this value
@@ -37914,7 +38807,7 @@ type PutAlarmInput struct {
 	//    INSUFFICIENT_DATA state.
 	//
 	// The notification trigger defaults to ALARM if you don't specify this parameter.
-	NotificationTriggers []*string `locationName:"notificationTriggers" type:"list"`
+	NotificationTriggers []*string `locationName:"notificationTriggers" type:"list" enum:"AlarmState"`
 
 	// The value against which the specified statistic is compared.
 	//
@@ -38579,8 +39472,8 @@ func (s *RegisterContainerImageInput) SetServiceName(v string) *RegisterContaine
 type RegisterContainerImageOutput struct {
 	_ struct{} `type:"structure"`
 
-	// Describes a container image that is registered to an Amazon Lightsail container
-	// service.
+	// An object that describes a container image that is registered to a Lightsail
+	// container service
 	ContainerImage *ContainerImage `locationName:"containerImage" type:"structure"`
 }
 
@@ -40018,8 +40911,8 @@ type SetIpAddressTypeInput struct {
 	// The possible values are Distribution, Instance, and LoadBalancer.
 	//
 	// Distribution-related APIs are available only in the N. Virginia (us-east-1)
-	// AWS Region. Set your AWS Region configuration to us-east-1 to create, view,
-	// or edit distributions.
+	// Amazon Web Services Region. Set your Amazon Web Services Region configuration
+	// to us-east-1 to create, view, or edit distributions.
 	//
 	// ResourceType is a required field
 	ResourceType *string `locationName:"resourceType" type:"string" required:"true" enum:"ResourceType"`
@@ -41275,9 +42168,10 @@ type UpdateBucketInput struct {
 	// BucketName is a required field
 	BucketName *string `locationName:"bucketName" min:"3" type:"string" required:"true"`
 
-	// An array of strings to specify the AWS account IDs that can access the bucket.
+	// An array of strings to specify the Amazon Web Services account IDs that can
+	// access the bucket.
 	//
-	// You can give a maximum of 10 AWS accounts access to a bucket.
+	// You can give a maximum of 10 Amazon Web Services accounts access to a bucket.
 	ReadonlyAccessAccounts []*string `locationName:"readonlyAccessAccounts" type:"list"`
 
 	// Specifies whether to enable or suspend versioning of objects in the bucket.
@@ -41420,6 +42314,15 @@ type UpdateContainerServiceInput struct {
 	// power option.
 	Power *string `locationName:"power" type:"string" enum:"ContainerServicePowerName"`
 
+	// An object to describe the configuration for the container service to access
+	// private container image repositories, such as Amazon Elastic Container Registry
+	// (Amazon ECR) private repositories.
+	//
+	// For more information, see Configuring access to an Amazon ECR private repository
+	// for an Amazon Lightsail container service (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access)
+	// in the Amazon Lightsail Developer Guide.
+	PrivateRegistryAccess *PrivateRegistryAccessRequest `locationName:"privateRegistryAccess" type:"structure"`
+
 	// The public domain names to use with the container service, such as example.com
 	// and www.example.com.
 	//
@@ -41499,6 +42402,12 @@ func (s *UpdateContainerServiceInput) SetIsDisabled(v bool) *UpdateContainerServ
 // SetPower sets the Power field's value.
 func (s *UpdateContainerServiceInput) SetPower(v string) *UpdateContainerServiceInput {
 	s.Power = &v
+	return s
+}
+
+// SetPrivateRegistryAccess sets the PrivateRegistryAccess field's value.
+func (s *UpdateContainerServiceInput) SetPrivateRegistryAccess(v *PrivateRegistryAccessRequest) *UpdateContainerServiceInput {
+	s.PrivateRegistryAccess = v
 	return s
 }
 
@@ -41600,7 +42509,9 @@ func (s *UpdateDistributionBundleInput) SetDistributionName(v string) *UpdateDis
 type UpdateDistributionBundleOutput struct {
 	_ struct{} `type:"structure"`
 
-	// Describes the API operation.
+	// An object that describes the result of the action, such as the status of
+	// the request, the timestamp of the request, and the resources affected by
+	// the request.
 	Operation *Operation `locationName:"operation" type:"structure"`
 }
 
@@ -41854,15 +42765,173 @@ func (s *UpdateDomainEntryOutput) SetOperations(v []*Operation) *UpdateDomainEnt
 	return s
 }
 
+type UpdateInstanceMetadataOptionsInput struct {
+	_ struct{} `type:"structure"`
+
+	// Enables or disables the HTTP metadata endpoint on your instances. If this
+	// parameter is not specified, the existing state is maintained.
+	//
+	// If you specify a value of disabled, you cannot access your instance metadata.
+	HttpEndpoint *string `locationName:"httpEndpoint" type:"string" enum:"HttpEndpoint"`
+
+	// Enables or disables the IPv6 endpoint for the instance metadata service.
+	// This setting applies only when the HTTP metadata endpoint is enabled.
+	//
+	// This parameter is available only for instances in the Europe (Stockholm)
+	// Amazon Web Services Region (eu-north-1).
+	HttpProtocolIpv6 *string `locationName:"httpProtocolIpv6" type:"string" enum:"HttpProtocolIpv6"`
+
+	// The desired HTTP PUT response hop limit for instance metadata requests. A
+	// larger number means that the instance metadata requests can travel farther.
+	// If no parameter is specified, the existing state is maintained.
+	HttpPutResponseHopLimit *int64 `locationName:"httpPutResponseHopLimit" type:"integer"`
+
+	// The state of token usage for your instance metadata requests. If the parameter
+	// is not specified in the request, the default state is optional.
+	//
+	// If the state is optional, you can choose whether to retrieve instance metadata
+	// with a signed token header on your request. If you retrieve the IAM role
+	// credentials without a token, the version 1.0 role credentials are returned.
+	// If you retrieve the IAM role credentials by using a valid signed token, the
+	// version 2.0 role credentials are returned.
+	//
+	// If the state is required, you must send a signed token header with all instance
+	// metadata retrieval requests. In this state, retrieving the IAM role credential
+	// always returns the version 2.0 credentials. The version 1.0 credentials are
+	// not available.
+	HttpTokens *string `locationName:"httpTokens" type:"string" enum:"HttpTokens"`
+
+	// The name of the instance for which to update metadata parameters.
+	//
+	// InstanceName is a required field
+	InstanceName *string `locationName:"instanceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *UpdateInstanceMetadataOptionsInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "UpdateInstanceMetadataOptionsInput"}
+	if s.InstanceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("InstanceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetHttpEndpoint sets the HttpEndpoint field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpEndpoint(v string) *UpdateInstanceMetadataOptionsInput {
+	s.HttpEndpoint = &v
+	return s
+}
+
+// SetHttpProtocolIpv6 sets the HttpProtocolIpv6 field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpProtocolIpv6(v string) *UpdateInstanceMetadataOptionsInput {
+	s.HttpProtocolIpv6 = &v
+	return s
+}
+
+// SetHttpPutResponseHopLimit sets the HttpPutResponseHopLimit field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpPutResponseHopLimit(v int64) *UpdateInstanceMetadataOptionsInput {
+	s.HttpPutResponseHopLimit = &v
+	return s
+}
+
+// SetHttpTokens sets the HttpTokens field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetHttpTokens(v string) *UpdateInstanceMetadataOptionsInput {
+	s.HttpTokens = &v
+	return s
+}
+
+// SetInstanceName sets the InstanceName field's value.
+func (s *UpdateInstanceMetadataOptionsInput) SetInstanceName(v string) *UpdateInstanceMetadataOptionsInput {
+	s.InstanceName = &v
+	return s
+}
+
+type UpdateInstanceMetadataOptionsOutput struct {
+	_ struct{} `type:"structure"`
+
+	// Describes the API operation.
+	Operation *Operation `locationName:"operation" type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s UpdateInstanceMetadataOptionsOutput) GoString() string {
+	return s.String()
+}
+
+// SetOperation sets the Operation field's value.
+func (s *UpdateInstanceMetadataOptionsOutput) SetOperation(v *Operation) *UpdateInstanceMetadataOptionsOutput {
+	s.Operation = v
+	return s
+}
+
 type UpdateLoadBalancerAttributeInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the attribute you want to update. Valid values are below.
+	// The name of the attribute you want to update.
 	//
 	// AttributeName is a required field
 	AttributeName *string `locationName:"attributeName" type:"string" required:"true" enum:"LoadBalancerAttributeName"`
 
 	// The value that you want to specify for the attribute name.
+	//
+	// The following values are supported depending on what you specify for the
+	// attributeName request parameter:
+	//
+	//    * If you specify HealthCheckPath for the attributeName request parameter,
+	//    then the attributeValue request parameter must be the path to ping on
+	//    the target (for example, /weather/us/wa/seattle).
+	//
+	//    * If you specify SessionStickinessEnabled for the attributeName request
+	//    parameter, then the attributeValue request parameter must be true to activate
+	//    session stickiness or false to deactivate session stickiness.
+	//
+	//    * If you specify SessionStickiness_LB_CookieDurationSeconds for the attributeName
+	//    request parameter, then the attributeValue request parameter must be an
+	//    interger that represents the cookie duration in seconds.
+	//
+	//    * If you specify HttpsRedirectionEnabled for the attributeName request
+	//    parameter, then the attributeValue request parameter must be true to activate
+	//    HTTP to HTTPS redirection or false to deactivate HTTP to HTTPS redirection.
+	//
+	//    * If you specify TlsPolicyName for the attributeName request parameter,
+	//    then the attributeValue request parameter must be the name of the TLS
+	//    policy. Use the GetLoadBalancerTlsPolicies (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetLoadBalancerTlsPolicies.html)
+	//    action to get a list of TLS policy names that you can specify.
 	//
 	// AttributeValue is a required field
 	AttributeValue *string `locationName:"attributeValue" min:"1" type:"string" required:"true"`
@@ -42309,6 +43378,30 @@ func AccessType_Values() []string {
 }
 
 const (
+	// AccountLevelBpaSyncStatusInSync is a AccountLevelBpaSyncStatus enum value
+	AccountLevelBpaSyncStatusInSync = "InSync"
+
+	// AccountLevelBpaSyncStatusFailed is a AccountLevelBpaSyncStatus enum value
+	AccountLevelBpaSyncStatusFailed = "Failed"
+
+	// AccountLevelBpaSyncStatusNeverSynced is a AccountLevelBpaSyncStatus enum value
+	AccountLevelBpaSyncStatusNeverSynced = "NeverSynced"
+
+	// AccountLevelBpaSyncStatusDefaulted is a AccountLevelBpaSyncStatus enum value
+	AccountLevelBpaSyncStatusDefaulted = "Defaulted"
+)
+
+// AccountLevelBpaSyncStatus_Values returns all elements of the AccountLevelBpaSyncStatus enum
+func AccountLevelBpaSyncStatus_Values() []string {
+	return []string{
+		AccountLevelBpaSyncStatusInSync,
+		AccountLevelBpaSyncStatusFailed,
+		AccountLevelBpaSyncStatusNeverSynced,
+		AccountLevelBpaSyncStatusDefaulted,
+	}
+}
+
+const (
 	// AddOnTypeAutoSnapshot is a AddOnType enum value
 	AddOnTypeAutoSnapshot = "AutoSnapshot"
 )
@@ -42361,6 +43454,30 @@ func AutoSnapshotStatus_Values() []string {
 		AutoSnapshotStatusFailed,
 		AutoSnapshotStatusInProgress,
 		AutoSnapshotStatusNotFound,
+	}
+}
+
+const (
+	// BPAStatusMessageDefaultedForSlrMissing is a BPAStatusMessage enum value
+	BPAStatusMessageDefaultedForSlrMissing = "DEFAULTED_FOR_SLR_MISSING"
+
+	// BPAStatusMessageSyncOnHold is a BPAStatusMessage enum value
+	BPAStatusMessageSyncOnHold = "SYNC_ON_HOLD"
+
+	// BPAStatusMessageDefaultedForSlrMissingOnHold is a BPAStatusMessage enum value
+	BPAStatusMessageDefaultedForSlrMissingOnHold = "DEFAULTED_FOR_SLR_MISSING_ON_HOLD"
+
+	// BPAStatusMessageUnknown is a BPAStatusMessage enum value
+	BPAStatusMessageUnknown = "Unknown"
+)
+
+// BPAStatusMessage_Values returns all elements of the BPAStatusMessage enum
+func BPAStatusMessage_Values() []string {
+	return []string{
+		BPAStatusMessageDefaultedForSlrMissing,
+		BPAStatusMessageSyncOnHold,
+		BPAStatusMessageDefaultedForSlrMissingOnHold,
+		BPAStatusMessageUnknown,
 	}
 }
 
@@ -42897,6 +44014,54 @@ func HeaderEnum_Values() []string {
 }
 
 const (
+	// HttpEndpointDisabled is a HttpEndpoint enum value
+	HttpEndpointDisabled = "disabled"
+
+	// HttpEndpointEnabled is a HttpEndpoint enum value
+	HttpEndpointEnabled = "enabled"
+)
+
+// HttpEndpoint_Values returns all elements of the HttpEndpoint enum
+func HttpEndpoint_Values() []string {
+	return []string{
+		HttpEndpointDisabled,
+		HttpEndpointEnabled,
+	}
+}
+
+const (
+	// HttpProtocolIpv6Disabled is a HttpProtocolIpv6 enum value
+	HttpProtocolIpv6Disabled = "disabled"
+
+	// HttpProtocolIpv6Enabled is a HttpProtocolIpv6 enum value
+	HttpProtocolIpv6Enabled = "enabled"
+)
+
+// HttpProtocolIpv6_Values returns all elements of the HttpProtocolIpv6 enum
+func HttpProtocolIpv6_Values() []string {
+	return []string{
+		HttpProtocolIpv6Disabled,
+		HttpProtocolIpv6Enabled,
+	}
+}
+
+const (
+	// HttpTokensOptional is a HttpTokens enum value
+	HttpTokensOptional = "optional"
+
+	// HttpTokensRequired is a HttpTokens enum value
+	HttpTokensRequired = "required"
+)
+
+// HttpTokens_Values returns all elements of the HttpTokens enum
+func HttpTokens_Values() []string {
+	return []string{
+		HttpTokensOptional,
+		HttpTokensRequired,
+	}
+}
+
+const (
 	// InstanceAccessProtocolSsh is a InstanceAccessProtocol enum value
 	InstanceAccessProtocolSsh = "ssh"
 
@@ -42997,6 +44162,22 @@ func InstanceHealthState_Values() []string {
 }
 
 const (
+	// InstanceMetadataStatePending is a InstanceMetadataState enum value
+	InstanceMetadataStatePending = "pending"
+
+	// InstanceMetadataStateApplied is a InstanceMetadataState enum value
+	InstanceMetadataStateApplied = "applied"
+)
+
+// InstanceMetadataState_Values returns all elements of the InstanceMetadataState enum
+func InstanceMetadataState_Values() []string {
+	return []string{
+		InstanceMetadataStatePending,
+		InstanceMetadataStateApplied,
+	}
+}
+
+const (
 	// InstanceMetricNameCpuutilization is a InstanceMetricName enum value
 	InstanceMetricNameCpuutilization = "CPUUtilization"
 
@@ -43020,6 +44201,9 @@ const (
 
 	// InstanceMetricNameBurstCapacityPercentage is a InstanceMetricName enum value
 	InstanceMetricNameBurstCapacityPercentage = "BurstCapacityPercentage"
+
+	// InstanceMetricNameMetadataNoToken is a InstanceMetricName enum value
+	InstanceMetricNameMetadataNoToken = "MetadataNoToken"
 )
 
 // InstanceMetricName_Values returns all elements of the InstanceMetricName enum
@@ -43033,6 +44217,7 @@ func InstanceMetricName_Values() []string {
 		InstanceMetricNameStatusCheckFailedSystem,
 		InstanceMetricNameBurstCapacityTime,
 		InstanceMetricNameBurstCapacityPercentage,
+		InstanceMetricNameMetadataNoToken,
 	}
 }
 
@@ -43097,6 +44282,12 @@ const (
 
 	// LoadBalancerAttributeNameSessionStickinessLbCookieDurationSeconds is a LoadBalancerAttributeName enum value
 	LoadBalancerAttributeNameSessionStickinessLbCookieDurationSeconds = "SessionStickiness_LB_CookieDurationSeconds"
+
+	// LoadBalancerAttributeNameHttpsRedirectionEnabled is a LoadBalancerAttributeName enum value
+	LoadBalancerAttributeNameHttpsRedirectionEnabled = "HttpsRedirectionEnabled"
+
+	// LoadBalancerAttributeNameTlsPolicyName is a LoadBalancerAttributeName enum value
+	LoadBalancerAttributeNameTlsPolicyName = "TlsPolicyName"
 )
 
 // LoadBalancerAttributeName_Values returns all elements of the LoadBalancerAttributeName enum
@@ -43105,6 +44296,8 @@ func LoadBalancerAttributeName_Values() []string {
 		LoadBalancerAttributeNameHealthCheckPath,
 		LoadBalancerAttributeNameSessionStickinessEnabled,
 		LoadBalancerAttributeNameSessionStickinessLbCookieDurationSeconds,
+		LoadBalancerAttributeNameHttpsRedirectionEnabled,
+		LoadBalancerAttributeNameTlsPolicyName,
 	}
 }
 
@@ -43909,6 +45102,9 @@ const (
 
 	// OperationTypeSetResourceAccessForBucket is a OperationType enum value
 	OperationTypeSetResourceAccessForBucket = "SetResourceAccessForBucket"
+
+	// OperationTypeUpdateInstanceMetadataOptions is a OperationType enum value
+	OperationTypeUpdateInstanceMetadataOptions = "UpdateInstanceMetadataOptions"
 )
 
 // OperationType_Values returns all elements of the OperationType enum
@@ -43993,6 +45189,7 @@ func OperationType_Values() []string {
 		OperationTypeUpdateBucketBundle,
 		OperationTypeUpdateBucket,
 		OperationTypeSetResourceAccessForBucket,
+		OperationTypeUpdateInstanceMetadataOptions,
 	}
 }
 

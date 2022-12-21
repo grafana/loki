@@ -1,0 +1,18 @@
+{{- if .Values.monitoring.lokiCanary.enabled -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki-canary.fullname" . }}
+  labels:
+    {{- include "loki-canary.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3500
+      targetPort: http-metrics
+      protocol: TCP
+  selector:
+    {{- include "loki-canary.selectorLabels" . | nindent 4 }}
+{{- end -}}

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/cespare/xxhash"
 	"github.com/facette/natsort"
+	"github.com/grafana/gomemcache/memcache"
 )
 
 // MemcachedJumpHashSelector implements the memcache.ServerSelector
@@ -20,14 +20,34 @@ import (
 // with consistent DNS names where the naturally sorted order
 // is predictable.
 type MemcachedJumpHashSelector struct {
-	mu    sync.RWMutex
-	addrs []net.Addr
+	mu              sync.RWMutex
+	addrs           []net.Addr
+	resolveUnixAddr UnixResolver
+	resolveTCPAddr  TCPResolver
+}
+
+type UnixResolver func(network, address string) (*net.UnixAddr, error)
+
+type TCPResolver func(network, address string) (*net.TCPAddr, error)
+
+func NewMemcachedJumpHashSelector(resolveUnixAddr UnixResolver, resolveTCPAddr TCPResolver) *MemcachedJumpHashSelector {
+	return &MemcachedJumpHashSelector{
+		resolveUnixAddr: resolveUnixAddr,
+		resolveTCPAddr:  resolveTCPAddr,
+	}
+}
+
+func DefaultMemcachedJumpHashSelector() *MemcachedJumpHashSelector {
+	return &MemcachedJumpHashSelector{
+		resolveUnixAddr: net.ResolveUnixAddr,
+		resolveTCPAddr:  net.ResolveTCPAddr,
+	}
 }
 
 // staticAddr caches the Network() and String() values from
 // any net.Addr.
 //
-// Copied from github.com/bradfitz/gomemcache/selector.go.
+// Copied from github.com/grafana/gomemcache/selector.go.
 type staticAddr struct {
 	network, str string
 }
@@ -63,13 +83,13 @@ func (s *MemcachedJumpHashSelector) SetServers(servers ...string) error {
 	naddrs := make([]net.Addr, len(sortedServers))
 	for i, server := range sortedServers {
 		if strings.Contains(server, "/") {
-			addr, err := net.ResolveUnixAddr("unix", server)
+			addr, err := s.resolveUnixAddr("unix", server)
 			if err != nil {
 				return err
 			}
 			naddrs[i] = newStaticAddr(addr)
 		} else {
-			tcpAddr, err := net.ResolveTCPAddr("tcp", server)
+			tcpAddr, err := s.resolveTCPAddr("tcp", server)
 			if err != nil {
 				return err
 			}

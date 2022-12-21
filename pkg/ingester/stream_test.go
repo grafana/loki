@@ -61,12 +61,13 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 					{Name: "foo", Value: "bar"},
 				},
 				true,
+				NewStreamRateCalculator(),
 				NilMetrics,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
-			}, recordPool.GetRecord(), 0, true)
+			}, recordPool.GetRecord(), 0, true, false)
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
@@ -77,15 +78,16 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
 					time.Unix(int64(i), 0).String(),
+					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
 			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
-			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true)
+			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false)
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -106,6 +108,7 @@ func TestPushDeduplication(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -113,7 +116,7 @@ func TestPushDeduplication(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord(), 0, true)
+	}, recordPool.GetRecord(), 0, true, false)
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
@@ -135,6 +138,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -143,7 +147,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord(), 0, true)
+	}, recordPool.GetRecord(), 0, true, false)
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
@@ -152,13 +156,13 @@ func TestPushRejectOldCounter(t *testing.T) {
 	// fail to push with a counter <= the streams internal counter
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 2, true)
+	}, recordPool.GetRecord(), 2, true, false)
 	require.Equal(t, ErrEntriesExist, err)
 
 	// succeed with a greater counter
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 3, true)
+	}, recordPool.GetRecord(), 3, true, false)
 	require.Nil(t, err)
 
 }
@@ -229,6 +233,7 @@ func TestUnorderedPush(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -242,7 +247,7 @@ func TestUnorderedPush(t *testing.T) {
 			entries: []logproto.Entry{
 				{Timestamp: time.Unix(2, 0), Line: "x"},
 				{Timestamp: time.Unix(1, 0), Line: "x"},
-				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
 				{Timestamp: time.Unix(10, 0), Line: "x"},
 			},
@@ -272,7 +277,7 @@ func TestUnorderedPush(t *testing.T) {
 		if x.cutBefore {
 			_ = s.cutChunk(context.Background())
 		}
-		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true)
+		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true, false)
 		if x.err {
 			require.NotNil(t, err)
 		} else {
@@ -285,8 +290,6 @@ func TestUnorderedPush(t *testing.T) {
 
 	exp := []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "x"},
-		{Timestamp: time.Unix(2, 0), Line: "x"},
-		// duplicate was allowed here b/c it wasnt written sequentially
 		{Timestamp: time.Unix(2, 0), Line: "x"},
 		{Timestamp: time.Unix(7, 0), Line: "x"},
 		{Timestamp: time.Unix(8, 0), Line: "x"},
@@ -327,6 +330,7 @@ func TestPushRateLimit(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -335,7 +339,44 @@ func TestPushRateLimit(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 	}
 	// Counter should be 2 now since the first line will be deduped.
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+}
+
+func TestPushRateLimitAllOrNothing(t *testing.T) {
+	l := validation.Limits{
+		PerStreamRateLimit:      10,
+		PerStreamRateLimitBurst: 10,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	cfg := defaultConfig()
+
+	s := newStream(
+		cfg,
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NewStreamRateCalculator(),
+		NilMetrics,
+	)
+
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+	}
+
+	// Both entries have errors because rate limiting is done all at once
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[0].Line))}).Error())
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
@@ -356,6 +397,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 			{Name: "foo", Value: "bar"},
 		},
 		true,
+		NewStreamRateCalculator(),
 		NilMetrics,
 	)
 
@@ -366,7 +408,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Push a first entry (it doesn't matter if we look like we're replaying or not)
-	_, err = s.Push(context.Background(), entries, nil, 1, true)
+	_, err = s.Push(context.Background(), entries, nil, 1, true, false)
 	require.Nil(t, err)
 
 	// Create a sample outside the validity window
@@ -375,11 +417,11 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Pretend it's not a replay, ensure we error
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true)
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false)
 	require.NotNil(t, err)
 
 	// Now pretend it's a replay. The same write should succeed.
-	_, err = s.Push(context.Background(), entries, nil, 2, true)
+	_, err = s.Push(context.Background(), entries, nil, 2, true, false)
 	require.Nil(t, err)
 
 }
@@ -406,7 +448,7 @@ func Benchmark_PushStream(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
@@ -421,7 +463,7 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, rec, 0, true)
+		_, err := s.Push(ctx, e, rec, 0, true, false)
 		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}

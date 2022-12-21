@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: loki-operator-metrics
+  labels:
+  name: controller-manager-metrics-service

@@ -220,6 +220,12 @@ func (ev *DefaultEvaluator) StepEvaluator(
 			return nil, err
 		}
 		return histogramAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+	case *syntax.VectorExpr:
+		val, err := e.Value()
+		if err != nil {
+			return nil, err
+		}
+		return newVectorIterator(val, q.Step().Nanoseconds(), q.Start().UnixNano(), q.End().UnixNano()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -271,7 +277,7 @@ func vectorAggEvaluator(
 					lb.Reset(metric)
 					lb.Del(expr.Grouping.Groups...)
 					lb.Del(labels.MetricName)
-					m = lb.Labels()
+					m = lb.Labels(nil)
 				} else {
 					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
 					for _, l := range metric {
@@ -431,12 +437,15 @@ func rangeAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	iter := newRangeVectorIterator(
-		it,
+	iter, err := newRangeVectorIterator(
+		it, expr,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 	)
+	if err != nil {
+		return nil, err
+	}
 	if expr.Operation == syntax.OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
 			iter: iter,
@@ -446,12 +455,11 @@ func rangeAggEvaluator(
 	}
 	return &rangeVectorEvaluator{
 		iter: iter,
-		agg:  agg,
 	}, nil
 }
 
 type rangeVectorEvaluator struct {
-	agg  RangeVectorAggregator
+	agg  BatchRangeVectorAggregator
 	iter RangeVectorIterator
 
 	err error
@@ -497,8 +505,8 @@ func histogramAggEvaluator(
 	o time.Duration,
 ) (StepEvaluator, error) {
 	agg := bucketsOverTime(expr.Buckets.Buckets)
-	iter := newRangeVectorIterator(
-		it,
+	iter, _ := newRangeVectorIterator(
+		it, nil,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
@@ -536,7 +544,7 @@ func (r histogramEvaluator) Error() error {
 }
 
 type absentRangeVectorEvaluator struct {
-	agg  RangeVectorAggregator
+	agg  BatchRangeVectorAggregator
 	iter RangeVectorIterator
 	lbs  labels.Labels
 
@@ -724,9 +732,9 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
-		return sample.Metric.WithLabels(opts.VectorMatching.MatchingLabels...).Hash()
+		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels(nil).Hash()
 	} else {
-		return sample.Metric.WithoutLabels(opts.VectorMatching.MatchingLabels...).Hash()
+		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels(nil).Hash()
 	}
 }
 
@@ -897,7 +905,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		}
 	}
 
-	return lb.Labels()
+	return lb.Labels(nil)
 }
 
 // literalStepEvaluator merges a literal with a StepEvaluator. Since order matters in
@@ -943,6 +951,47 @@ func literalStepEvaluator(
 	)
 }
 
+// vectorIterator return simple vector like (1).
+type vectorIterator struct {
+	step, end, current int64
+	val                float64
+}
+
+func newVectorIterator(val float64,
+	step, start, end int64) *vectorIterator {
+	if step == 0 {
+		step = 1
+	}
+	return &vectorIterator{
+		val:     val,
+		step:    step,
+		end:     end,
+		current: start - step,
+	}
+}
+
+func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
+	r.current = r.current + r.step
+	if r.current > r.end {
+		return false, 0, nil
+	}
+	results := make(promql.Vector, 0)
+	vectorPoint := promql.Sample{
+		Point: promql.Point{T: r.current, V: r.val},
+	}
+	results = append(results, vectorPoint)
+	return true, r.current, results
+}
+
+func (r *vectorIterator) Close() error {
+	return nil
+}
+
+func (r *vectorIterator) Error() error {
+	return nil
+}
+
+// labelReplaceEvaluator
 func labelReplaceEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,
@@ -983,7 +1032,7 @@ func labelReplaceEvaluator(
 			if len(res) > 0 {
 				lb.Set(expr.Dst, string(res))
 			}
-			outLbs := lb.Labels()
+			outLbs := lb.Labels(nil)
 			labelCache[hash] = outLbs
 			vec[i].Metric = outLbs
 		}
@@ -1006,14 +1055,14 @@ func absentLabels(expr syntax.SampleExpr) labels.Labels {
 			continue
 		}
 		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {
-			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels()
+			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels(nil)
 		} else {
 			empty = append(empty, ma.Name)
 		}
 	}
 
 	for _, v := range empty {
-		m = labels.NewBuilder(m).Del(v).Labels()
+		m = labels.NewBuilder(m).Del(v).Labels(nil)
 	}
 	return m
 }

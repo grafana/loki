@@ -89,7 +89,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 // the distributor and as such, no ring status is returned from this function.
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if d.rateLimitStrat == validation.GlobalIngestionRateStrategy {
-		d.distributorsRing.ServeHTTP(w, r)
+		d.distributorsLifecycler.ServeHTTP(w, r)
 		return
 	}
 

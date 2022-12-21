@@ -22,7 +22,8 @@ import (
 // It can even receive multiple writes for the same stream with the caveat
 // that chunks must be added in order and not duplicated
 type Builder struct {
-	streams map[string]*stream
+	streams         map[string]*stream
+	chunksFinalized bool
 }
 
 type stream struct {
@@ -47,6 +48,42 @@ func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index
 	}
 
 	s.chunks = append(s.chunks, chks...)
+}
+
+func (b *Builder) FinalizeChunks() {
+	for id := range b.streams {
+		b.streams[id].chunks = b.streams[id].chunks.Finalize()
+	}
+	b.chunksFinalized = true
+}
+
+func (b *Builder) InsertChunk(streamID string, chk index.ChunkMeta) error {
+	if !b.chunksFinalized {
+		return fmt.Errorf("chunk insertion is only allowed on finalized chunks")
+	}
+
+	s, ok := b.streams[streamID]
+	if !ok {
+		return fmt.Errorf("chunk insertion is only allowed on existing streams")
+	}
+
+	s.chunks = s.chunks.Add(chk)
+	return nil
+}
+
+func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) {
+	if !b.chunksFinalized {
+		return false, fmt.Errorf("dropping of chunk is only allowed on finalized chunks")
+	}
+
+	s, ok := b.streams[streamID]
+	if !ok {
+		return false, fmt.Errorf("dropping of chunk is only allowed on existing streams")
+	}
+
+	var chunkFound bool
+	s.chunks, chunkFound = s.chunks.Drop(chk)
+	return chunkFound, nil
 }
 
 func (b *Builder) Build(
@@ -118,7 +155,10 @@ func (b *Builder) Build(
 
 	// Add series
 	for i, s := range streams {
-		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.fp, s.chunks.Finalize()...); err != nil {
+		if !b.chunksFinalized {
+			s.chunks = s.chunks.Finalize()
+		}
+		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.fp, s.chunks...); err != nil {
 			return id, err
 		}
 	}

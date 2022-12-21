@@ -929,3 +929,25 @@ func TestMemPostings_Delete(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, len(expanded), "expected empty postings, got %v", expanded)
 }
+
+func TestShardedPostings(t *testing.T) {
+	offsets := FingerprintOffsets{
+		{0, 0},
+		{5, 0b1 << 62},
+		{10, 0b1 << 63},
+		{15, 0b11 << 62},
+	}
+	shard := NewShard(0, 2)
+	var refs []storage.SeriesRef
+	for i := 0; i < 20; i++ {
+		refs = append(refs, storage.SeriesRef(i))
+	}
+	ps := newListPostings(refs...)
+	shardedPostings := NewShardedPostings(ps, shard, offsets)
+
+	for i := 0; i < 10; i++ {
+		require.Equal(t, true, shardedPostings.Next())
+		require.Equal(t, storage.SeriesRef(i), shardedPostings.At())
+	}
+	require.Equal(t, false, shardedPostings.Next())
+}

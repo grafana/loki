@@ -1,7 +1,7 @@
 package loki
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,7 +35,7 @@ func TestVersionHandler(t *testing.T) {
 		"revision":"foobar",
 		"goVersion": "42"
 	}`
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.JSONEq(t, expected, string(body))
 }

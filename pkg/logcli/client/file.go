@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ import (
 	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
@@ -190,6 +190,14 @@ func (l *limiter) MaxQuerySeries(userID string) int {
 	return l.n
 }
 
+func (l *limiter) QueryTimeout(userID string) time.Duration {
+	return time.Minute * 5
+}
+
+func (l *limiter) BlockedQueries(userID string) []*validation.BlockedQuery {
+	return []*validation.BlockedQuery{}
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels
@@ -218,7 +226,7 @@ func newFileIterator(
 ) (iter.EntryIterator, error) {
 
 	lr := io.LimitReader(r, defaultMaxFileSize)
-	b, err := ioutil.ReadAll(lr)
+	b, err := io.ReadAll(lr)
 	if err != nil {
 		return nil, err
 	}

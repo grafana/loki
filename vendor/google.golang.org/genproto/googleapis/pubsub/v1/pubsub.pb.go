@@ -1,4 +1,4 @@
-// Copyright 2021 Google LLC
+// Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,6 +43,122 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// Possible states for a subscription.
+type Subscription_State int32
+
+const (
+	// Default value. This value is unused.
+	Subscription_STATE_UNSPECIFIED Subscription_State = 0
+	// The subscription can actively receive messages
+	Subscription_ACTIVE Subscription_State = 1
+	// The subscription cannot receive messages because of an error with the
+	// resource to which it pushes messages. See the more detailed error state
+	// in the corresponding configuration.
+	Subscription_RESOURCE_ERROR Subscription_State = 2
+)
+
+// Enum value maps for Subscription_State.
+var (
+	Subscription_State_name = map[int32]string{
+		0: "STATE_UNSPECIFIED",
+		1: "ACTIVE",
+		2: "RESOURCE_ERROR",
+	}
+	Subscription_State_value = map[string]int32{
+		"STATE_UNSPECIFIED": 0,
+		"ACTIVE":            1,
+		"RESOURCE_ERROR":    2,
+	}
+)
+
+func (x Subscription_State) Enum() *Subscription_State {
+	p := new(Subscription_State)
+	*p = x
+	return p
+}
+
+func (x Subscription_State) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Subscription_State) Descriptor() protoreflect.EnumDescriptor {
+	return file_google_pubsub_v1_pubsub_proto_enumTypes[0].Descriptor()
+}
+
+func (Subscription_State) Type() protoreflect.EnumType {
+	return &file_google_pubsub_v1_pubsub_proto_enumTypes[0]
+}
+
+func (x Subscription_State) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Subscription_State.Descriptor instead.
+func (Subscription_State) EnumDescriptor() ([]byte, []int) {
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{17, 0}
+}
+
+// Possible states for a BigQuery subscription.
+type BigQueryConfig_State int32
+
+const (
+	// Default value. This value is unused.
+	BigQueryConfig_STATE_UNSPECIFIED BigQueryConfig_State = 0
+	// The subscription can actively send messages to BigQuery
+	BigQueryConfig_ACTIVE BigQueryConfig_State = 1
+	// Cannot write to the BigQuery table because of permission denied errors.
+	BigQueryConfig_PERMISSION_DENIED BigQueryConfig_State = 2
+	// Cannot write to the BigQuery table because it does not exist.
+	BigQueryConfig_NOT_FOUND BigQueryConfig_State = 3
+	// Cannot write to the BigQuery table due to a schema mismatch.
+	BigQueryConfig_SCHEMA_MISMATCH BigQueryConfig_State = 4
+)
+
+// Enum value maps for BigQueryConfig_State.
+var (
+	BigQueryConfig_State_name = map[int32]string{
+		0: "STATE_UNSPECIFIED",
+		1: "ACTIVE",
+		2: "PERMISSION_DENIED",
+		3: "NOT_FOUND",
+		4: "SCHEMA_MISMATCH",
+	}
+	BigQueryConfig_State_value = map[string]int32{
+		"STATE_UNSPECIFIED": 0,
+		"ACTIVE":            1,
+		"PERMISSION_DENIED": 2,
+		"NOT_FOUND":         3,
+		"SCHEMA_MISMATCH":   4,
+	}
+)
+
+func (x BigQueryConfig_State) Enum() *BigQueryConfig_State {
+	p := new(BigQueryConfig_State)
+	*p = x
+	return p
+}
+
+func (x BigQueryConfig_State) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BigQueryConfig_State) Descriptor() protoreflect.EnumDescriptor {
+	return file_google_pubsub_v1_pubsub_proto_enumTypes[1].Descriptor()
+}
+
+func (BigQueryConfig_State) Type() protoreflect.EnumType {
+	return &file_google_pubsub_v1_pubsub_proto_enumTypes[1]
+}
+
+func (x BigQueryConfig_State) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BigQueryConfig_State.Descriptor instead.
+func (BigQueryConfig_State) EnumDescriptor() ([]byte, []int) {
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{22, 0}
+}
 
 // A policy constraining the storage of messages published to the topic.
 type MessageStoragePolicy struct {
@@ -1154,9 +1270,15 @@ type Subscription struct {
 	// field will be `_deleted-topic_` if the topic has been deleted.
 	Topic string `protobuf:"bytes,2,opt,name=topic,proto3" json:"topic,omitempty"`
 	// If push delivery is used with this subscription, this field is
-	// used to configure it. An empty `pushConfig` signifies that the subscriber
-	// will pull and ack messages using API methods.
+	// used to configure it. Either `pushConfig` or `bigQueryConfig` can be set,
+	// but not both. If both are empty, then the subscriber will pull and ack
+	// messages using API methods.
 	PushConfig *PushConfig `protobuf:"bytes,4,opt,name=push_config,json=pushConfig,proto3" json:"push_config,omitempty"`
+	// If delivery to BigQuery is used with this subscription, this field is
+	// used to configure it. Either `pushConfig` or `bigQueryConfig` can be set,
+	// but not both. If both are empty, then the subscriber will pull and ack
+	// messages using API methods.
+	BigqueryConfig *BigQueryConfig `protobuf:"bytes,18,opt,name=bigquery_config,json=bigqueryConfig,proto3" json:"bigquery_config,omitempty"`
 	// The approximate amount of time (on a best-effort basis) Pub/Sub waits for
 	// the subscriber to acknowledge receipt before resending the message. In the
 	// interval after the message is delivered and before it is acknowledged, it
@@ -1255,6 +1377,9 @@ type Subscription struct {
 	// the `message_retention_duration` field in `Topic`. This field is set only
 	// in responses from the server; it is ignored if it is set in any requests.
 	TopicMessageRetentionDuration *durationpb.Duration `protobuf:"bytes,17,opt,name=topic_message_retention_duration,json=topicMessageRetentionDuration,proto3" json:"topic_message_retention_duration,omitempty"`
+	// Output only. An output-only field indicating whether or not the subscription can receive
+	// messages.
+	State Subscription_State `protobuf:"varint,19,opt,name=state,proto3,enum=google.pubsub.v1.Subscription_State" json:"state,omitempty"`
 }
 
 func (x *Subscription) Reset() {
@@ -1306,6 +1431,13 @@ func (x *Subscription) GetTopic() string {
 func (x *Subscription) GetPushConfig() *PushConfig {
 	if x != nil {
 		return x.PushConfig
+	}
+	return nil
+}
+
+func (x *Subscription) GetBigqueryConfig() *BigQueryConfig {
+	if x != nil {
+		return x.BigqueryConfig
 	}
 	return nil
 }
@@ -1392,6 +1524,13 @@ func (x *Subscription) GetTopicMessageRetentionDuration() *durationpb.Duration {
 		return x.TopicMessageRetentionDuration
 	}
 	return nil
+}
+
+func (x *Subscription) GetState() Subscription_State {
+	if x != nil {
+		return x.State
+	}
+	return Subscription_STATE_UNSPECIFIED
 }
 
 // A policy that specifies how Cloud Pub/Sub retries message delivery.
@@ -1715,6 +1854,102 @@ type PushConfig_OidcToken_ struct {
 
 func (*PushConfig_OidcToken_) isPushConfig_AuthenticationMethod() {}
 
+// Configuration for a BigQuery subscription.
+type BigQueryConfig struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The name of the table to which to write data, of the form
+	// {projectId}:{datasetId}.{tableId}
+	Table string `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
+	// When true, use the topic's schema as the columns to write to in BigQuery,
+	// if it exists.
+	UseTopicSchema bool `protobuf:"varint,2,opt,name=use_topic_schema,json=useTopicSchema,proto3" json:"use_topic_schema,omitempty"`
+	// When true, write the subscription name, message_id, publish_time,
+	// attributes, and ordering_key to additional columns in the table. The
+	// subscription name, message_id, and publish_time fields are put in their own
+	// columns while all other message properties (other than data) are written to
+	// a JSON object in the attributes column.
+	WriteMetadata bool `protobuf:"varint,3,opt,name=write_metadata,json=writeMetadata,proto3" json:"write_metadata,omitempty"`
+	// When true and use_topic_schema is true, any fields that are a part of the
+	// topic schema that are not part of the BigQuery table schema are dropped
+	// when writing to BigQuery. Otherwise, the schemas must be kept in sync and
+	// any messages with extra fields are not written and remain in the
+	// subscription's backlog.
+	DropUnknownFields bool `protobuf:"varint,4,opt,name=drop_unknown_fields,json=dropUnknownFields,proto3" json:"drop_unknown_fields,omitempty"`
+	// Output only. An output-only field that indicates whether or not the subscription can
+	// receive messages.
+	State BigQueryConfig_State `protobuf:"varint,5,opt,name=state,proto3,enum=google.pubsub.v1.BigQueryConfig_State" json:"state,omitempty"`
+}
+
+func (x *BigQueryConfig) Reset() {
+	*x = BigQueryConfig{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[22]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BigQueryConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BigQueryConfig) ProtoMessage() {}
+
+func (x *BigQueryConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[22]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BigQueryConfig.ProtoReflect.Descriptor instead.
+func (*BigQueryConfig) Descriptor() ([]byte, []int) {
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *BigQueryConfig) GetTable() string {
+	if x != nil {
+		return x.Table
+	}
+	return ""
+}
+
+func (x *BigQueryConfig) GetUseTopicSchema() bool {
+	if x != nil {
+		return x.UseTopicSchema
+	}
+	return false
+}
+
+func (x *BigQueryConfig) GetWriteMetadata() bool {
+	if x != nil {
+		return x.WriteMetadata
+	}
+	return false
+}
+
+func (x *BigQueryConfig) GetDropUnknownFields() bool {
+	if x != nil {
+		return x.DropUnknownFields
+	}
+	return false
+}
+
+func (x *BigQueryConfig) GetState() BigQueryConfig_State {
+	if x != nil {
+		return x.State
+	}
+	return BigQueryConfig_STATE_UNSPECIFIED
+}
+
 // A message and its corresponding acknowledgment ID.
 type ReceivedMessage struct {
 	state         protoimpl.MessageState
@@ -1747,7 +1982,7 @@ type ReceivedMessage struct {
 func (x *ReceivedMessage) Reset() {
 	*x = ReceivedMessage{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[22]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[23]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1760,7 +1995,7 @@ func (x *ReceivedMessage) String() string {
 func (*ReceivedMessage) ProtoMessage() {}
 
 func (x *ReceivedMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[22]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[23]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1773,7 +2008,7 @@ func (x *ReceivedMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceivedMessage.ProtoReflect.Descriptor instead.
 func (*ReceivedMessage) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{22}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ReceivedMessage) GetAckId() string {
@@ -1811,7 +2046,7 @@ type GetSubscriptionRequest struct {
 func (x *GetSubscriptionRequest) Reset() {
 	*x = GetSubscriptionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[23]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[24]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1824,7 +2059,7 @@ func (x *GetSubscriptionRequest) String() string {
 func (*GetSubscriptionRequest) ProtoMessage() {}
 
 func (x *GetSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[23]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[24]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1837,7 +2072,7 @@ func (x *GetSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*GetSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{23}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetSubscriptionRequest) GetSubscription() string {
@@ -1863,7 +2098,7 @@ type UpdateSubscriptionRequest struct {
 func (x *UpdateSubscriptionRequest) Reset() {
 	*x = UpdateSubscriptionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[24]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[25]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1876,7 +2111,7 @@ func (x *UpdateSubscriptionRequest) String() string {
 func (*UpdateSubscriptionRequest) ProtoMessage() {}
 
 func (x *UpdateSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[24]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[25]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1889,7 +2124,7 @@ func (x *UpdateSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{24}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UpdateSubscriptionRequest) GetSubscription() *Subscription {
@@ -1926,7 +2161,7 @@ type ListSubscriptionsRequest struct {
 func (x *ListSubscriptionsRequest) Reset() {
 	*x = ListSubscriptionsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[25]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[26]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1939,7 +2174,7 @@ func (x *ListSubscriptionsRequest) String() string {
 func (*ListSubscriptionsRequest) ProtoMessage() {}
 
 func (x *ListSubscriptionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[25]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[26]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1952,7 +2187,7 @@ func (x *ListSubscriptionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubscriptionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSubscriptionsRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{25}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListSubscriptionsRequest) GetProject() string {
@@ -1993,7 +2228,7 @@ type ListSubscriptionsResponse struct {
 func (x *ListSubscriptionsResponse) Reset() {
 	*x = ListSubscriptionsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[26]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[27]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2006,7 +2241,7 @@ func (x *ListSubscriptionsResponse) String() string {
 func (*ListSubscriptionsResponse) ProtoMessage() {}
 
 func (x *ListSubscriptionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[26]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[27]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2019,7 +2254,7 @@ func (x *ListSubscriptionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubscriptionsResponse.ProtoReflect.Descriptor instead.
 func (*ListSubscriptionsResponse) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{26}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListSubscriptionsResponse) GetSubscriptions() []*Subscription {
@@ -2050,7 +2285,7 @@ type DeleteSubscriptionRequest struct {
 func (x *DeleteSubscriptionRequest) Reset() {
 	*x = DeleteSubscriptionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[27]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[28]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2063,7 +2298,7 @@ func (x *DeleteSubscriptionRequest) String() string {
 func (*DeleteSubscriptionRequest) ProtoMessage() {}
 
 func (x *DeleteSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[27]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[28]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2076,7 +2311,7 @@ func (x *DeleteSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{27}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DeleteSubscriptionRequest) GetSubscription() string {
@@ -2107,7 +2342,7 @@ type ModifyPushConfigRequest struct {
 func (x *ModifyPushConfigRequest) Reset() {
 	*x = ModifyPushConfigRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[28]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[29]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2120,7 +2355,7 @@ func (x *ModifyPushConfigRequest) String() string {
 func (*ModifyPushConfigRequest) ProtoMessage() {}
 
 func (x *ModifyPushConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[28]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[29]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2133,7 +2368,7 @@ func (x *ModifyPushConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModifyPushConfigRequest.ProtoReflect.Descriptor instead.
 func (*ModifyPushConfigRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{28}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ModifyPushConfigRequest) GetSubscription() string {
@@ -2178,7 +2413,7 @@ type PullRequest struct {
 func (x *PullRequest) Reset() {
 	*x = PullRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[29]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[30]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2191,7 +2426,7 @@ func (x *PullRequest) String() string {
 func (*PullRequest) ProtoMessage() {}
 
 func (x *PullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[29]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[30]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2204,7 +2439,7 @@ func (x *PullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullRequest.ProtoReflect.Descriptor instead.
 func (*PullRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{29}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *PullRequest) GetSubscription() string {
@@ -2245,7 +2480,7 @@ type PullResponse struct {
 func (x *PullResponse) Reset() {
 	*x = PullResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[30]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[31]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2258,7 +2493,7 @@ func (x *PullResponse) String() string {
 func (*PullResponse) ProtoMessage() {}
 
 func (x *PullResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[30]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[31]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2271,7 +2506,7 @@ func (x *PullResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullResponse.ProtoReflect.Descriptor instead.
 func (*PullResponse) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{30}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *PullResponse) GetReceivedMessages() []*ReceivedMessage {
@@ -2306,7 +2541,7 @@ type ModifyAckDeadlineRequest struct {
 func (x *ModifyAckDeadlineRequest) Reset() {
 	*x = ModifyAckDeadlineRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[31]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[32]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2319,7 +2554,7 @@ func (x *ModifyAckDeadlineRequest) String() string {
 func (*ModifyAckDeadlineRequest) ProtoMessage() {}
 
 func (x *ModifyAckDeadlineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[31]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[32]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2332,7 +2567,7 @@ func (x *ModifyAckDeadlineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModifyAckDeadlineRequest.ProtoReflect.Descriptor instead.
 func (*ModifyAckDeadlineRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{31}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ModifyAckDeadlineRequest) GetSubscription() string {
@@ -2374,7 +2609,7 @@ type AcknowledgeRequest struct {
 func (x *AcknowledgeRequest) Reset() {
 	*x = AcknowledgeRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[32]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[33]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2387,7 +2622,7 @@ func (x *AcknowledgeRequest) String() string {
 func (*AcknowledgeRequest) ProtoMessage() {}
 
 func (x *AcknowledgeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[32]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[33]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2400,7 +2635,7 @@ func (x *AcknowledgeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcknowledgeRequest.ProtoReflect.Descriptor instead.
 func (*AcknowledgeRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{32}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *AcknowledgeRequest) GetSubscription() string {
@@ -2491,7 +2726,7 @@ type StreamingPullRequest struct {
 func (x *StreamingPullRequest) Reset() {
 	*x = StreamingPullRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[33]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[34]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2504,7 +2739,7 @@ func (x *StreamingPullRequest) String() string {
 func (*StreamingPullRequest) ProtoMessage() {}
 
 func (x *StreamingPullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[33]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[34]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2517,7 +2752,7 @@ func (x *StreamingPullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamingPullRequest.ProtoReflect.Descriptor instead.
 func (*StreamingPullRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{33}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *StreamingPullRequest) GetSubscription() string {
@@ -2598,7 +2833,7 @@ type StreamingPullResponse struct {
 func (x *StreamingPullResponse) Reset() {
 	*x = StreamingPullResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[34]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[35]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2611,7 +2846,7 @@ func (x *StreamingPullResponse) String() string {
 func (*StreamingPullResponse) ProtoMessage() {}
 
 func (x *StreamingPullResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[34]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[35]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2624,7 +2859,7 @@ func (x *StreamingPullResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamingPullResponse.ProtoReflect.Descriptor instead.
 func (*StreamingPullResponse) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{34}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *StreamingPullResponse) GetReceivedMessages() []*ReceivedMessage {
@@ -2686,7 +2921,7 @@ type CreateSnapshotRequest struct {
 func (x *CreateSnapshotRequest) Reset() {
 	*x = CreateSnapshotRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[35]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[36]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2699,7 +2934,7 @@ func (x *CreateSnapshotRequest) String() string {
 func (*CreateSnapshotRequest) ProtoMessage() {}
 
 func (x *CreateSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[35]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[36]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2712,7 +2947,7 @@ func (x *CreateSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*CreateSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{35}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CreateSnapshotRequest) GetName() string {
@@ -2752,7 +2987,7 @@ type UpdateSnapshotRequest struct {
 func (x *UpdateSnapshotRequest) Reset() {
 	*x = UpdateSnapshotRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[36]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[37]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2765,7 +3000,7 @@ func (x *UpdateSnapshotRequest) String() string {
 func (*UpdateSnapshotRequest) ProtoMessage() {}
 
 func (x *UpdateSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[36]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[37]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2778,7 +3013,7 @@ func (x *UpdateSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{36}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *UpdateSnapshotRequest) GetSnapshot() *Snapshot {
@@ -2828,7 +3063,7 @@ type Snapshot struct {
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[37]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[38]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2841,7 +3076,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[37]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[38]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2854,7 +3089,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{37}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Snapshot) GetName() string {
@@ -2899,7 +3134,7 @@ type GetSnapshotRequest struct {
 func (x *GetSnapshotRequest) Reset() {
 	*x = GetSnapshotRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[38]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[39]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2912,7 +3147,7 @@ func (x *GetSnapshotRequest) String() string {
 func (*GetSnapshotRequest) ProtoMessage() {}
 
 func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[38]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[39]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2925,7 +3160,7 @@ func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{38}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetSnapshotRequest) GetSnapshot() string {
@@ -2955,7 +3190,7 @@ type ListSnapshotsRequest struct {
 func (x *ListSnapshotsRequest) Reset() {
 	*x = ListSnapshotsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[39]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[40]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2968,7 +3203,7 @@ func (x *ListSnapshotsRequest) String() string {
 func (*ListSnapshotsRequest) ProtoMessage() {}
 
 func (x *ListSnapshotsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[39]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[40]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2981,7 +3216,7 @@ func (x *ListSnapshotsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSnapshotsRequest.ProtoReflect.Descriptor instead.
 func (*ListSnapshotsRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{39}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListSnapshotsRequest) GetProject() string {
@@ -3021,7 +3256,7 @@ type ListSnapshotsResponse struct {
 func (x *ListSnapshotsResponse) Reset() {
 	*x = ListSnapshotsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[40]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[41]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3034,7 +3269,7 @@ func (x *ListSnapshotsResponse) String() string {
 func (*ListSnapshotsResponse) ProtoMessage() {}
 
 func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[40]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[41]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3047,7 +3282,7 @@ func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSnapshotsResponse.ProtoReflect.Descriptor instead.
 func (*ListSnapshotsResponse) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{40}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListSnapshotsResponse) GetSnapshots() []*Snapshot {
@@ -3078,7 +3313,7 @@ type DeleteSnapshotRequest struct {
 func (x *DeleteSnapshotRequest) Reset() {
 	*x = DeleteSnapshotRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[41]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[42]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3091,7 +3326,7 @@ func (x *DeleteSnapshotRequest) String() string {
 func (*DeleteSnapshotRequest) ProtoMessage() {}
 
 func (x *DeleteSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[41]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[42]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3104,7 +3339,7 @@ func (x *DeleteSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{41}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DeleteSnapshotRequest) GetSnapshot() string {
@@ -3131,7 +3366,7 @@ type SeekRequest struct {
 func (x *SeekRequest) Reset() {
 	*x = SeekRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[42]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[43]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3144,7 +3379,7 @@ func (x *SeekRequest) String() string {
 func (*SeekRequest) ProtoMessage() {}
 
 func (x *SeekRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[42]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[43]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3157,7 +3392,7 @@ func (x *SeekRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeekRequest.ProtoReflect.Descriptor instead.
 func (*SeekRequest) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{42}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SeekRequest) GetSubscription() string {
@@ -3228,7 +3463,7 @@ type SeekResponse struct {
 func (x *SeekResponse) Reset() {
 	*x = SeekResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[43]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[44]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3241,7 +3476,7 @@ func (x *SeekResponse) String() string {
 func (*SeekResponse) ProtoMessage() {}
 
 func (x *SeekResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[43]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[44]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3254,7 +3489,7 @@ func (x *SeekResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeekResponse.ProtoReflect.Descriptor instead.
 func (*SeekResponse) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{43}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{44}
 }
 
 // Contains information needed for generating an
@@ -3283,7 +3518,7 @@ type PushConfig_OidcToken struct {
 func (x *PushConfig_OidcToken) Reset() {
 	*x = PushConfig_OidcToken{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[47]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[48]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3296,7 +3531,7 @@ func (x *PushConfig_OidcToken) String() string {
 func (*PushConfig_OidcToken) ProtoMessage() {}
 
 func (x *PushConfig_OidcToken) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[47]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[48]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3345,7 +3580,7 @@ type StreamingPullResponse_AcknowledgeConfirmation struct {
 func (x *StreamingPullResponse_AcknowledgeConfirmation) Reset() {
 	*x = StreamingPullResponse_AcknowledgeConfirmation{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[49]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[50]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3358,7 +3593,7 @@ func (x *StreamingPullResponse_AcknowledgeConfirmation) String() string {
 func (*StreamingPullResponse_AcknowledgeConfirmation) ProtoMessage() {}
 
 func (x *StreamingPullResponse_AcknowledgeConfirmation) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[49]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[50]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3371,7 +3606,7 @@ func (x *StreamingPullResponse_AcknowledgeConfirmation) ProtoReflect() protorefl
 
 // Deprecated: Use StreamingPullResponse_AcknowledgeConfirmation.ProtoReflect.Descriptor instead.
 func (*StreamingPullResponse_AcknowledgeConfirmation) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{34, 0}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{35, 0}
 }
 
 func (x *StreamingPullResponse_AcknowledgeConfirmation) GetAckIds() []string {
@@ -3412,7 +3647,7 @@ type StreamingPullResponse_ModifyAckDeadlineConfirmation struct {
 func (x *StreamingPullResponse_ModifyAckDeadlineConfirmation) Reset() {
 	*x = StreamingPullResponse_ModifyAckDeadlineConfirmation{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[50]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[51]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3425,7 +3660,7 @@ func (x *StreamingPullResponse_ModifyAckDeadlineConfirmation) String() string {
 func (*StreamingPullResponse_ModifyAckDeadlineConfirmation) ProtoMessage() {}
 
 func (x *StreamingPullResponse_ModifyAckDeadlineConfirmation) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[50]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[51]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3438,7 +3673,7 @@ func (x *StreamingPullResponse_ModifyAckDeadlineConfirmation) ProtoReflect() pro
 
 // Deprecated: Use StreamingPullResponse_ModifyAckDeadlineConfirmation.ProtoReflect.Descriptor instead.
 func (*StreamingPullResponse_ModifyAckDeadlineConfirmation) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{34, 1}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{35, 1}
 }
 
 func (x *StreamingPullResponse_ModifyAckDeadlineConfirmation) GetAckIds() []string {
@@ -3470,7 +3705,7 @@ type StreamingPullResponse_SubscriptionProperties struct {
 func (x *StreamingPullResponse_SubscriptionProperties) Reset() {
 	*x = StreamingPullResponse_SubscriptionProperties{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[51]
+		mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[52]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3483,7 +3718,7 @@ func (x *StreamingPullResponse_SubscriptionProperties) String() string {
 func (*StreamingPullResponse_SubscriptionProperties) ProtoMessage() {}
 
 func (x *StreamingPullResponse_SubscriptionProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[51]
+	mi := &file_google_pubsub_v1_pubsub_proto_msgTypes[52]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3496,7 +3731,7 @@ func (x *StreamingPullResponse_SubscriptionProperties) ProtoReflect() protorefle
 
 // Deprecated: Use StreamingPullResponse_SubscriptionProperties.ProtoReflect.Descriptor instead.
 func (*StreamingPullResponse_SubscriptionProperties) Descriptor() ([]byte, []int) {
-	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{34, 2}
+	return file_google_pubsub_v1_pubsub_proto_rawDescGZIP(), []int{35, 2}
 }
 
 func (x *StreamingPullResponse_SubscriptionProperties) GetExactlyOnceDeliveryEnabled() bool {
@@ -3696,7 +3931,7 @@ var file_google_pubsub_v1_pubsub_proto_rawDesc = []byte{
 	0x63, 0x6f, 0x6d, 0x2f, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e,
 	0x52, 0x0c, 0x73, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x1c,
 	0x0a, 0x1a, 0x44, 0x65, 0x74, 0x61, 0x63, 0x68, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70,
-	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xb4, 0x08, 0x0a,
+	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x80, 0x0a, 0x0a,
 	0x0c, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x17, 0x0a,
 	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x03, 0xe0, 0x41, 0x02,
 	0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x39, 0x0a, 0x05, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x18,
@@ -3707,108 +3942,142 @@ var file_google_pubsub_v1_pubsub_proto_rawDesc = []byte{
 	0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
 	0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x75, 0x73, 0x68, 0x43, 0x6f,
 	0x6e, 0x66, 0x69, 0x67, 0x52, 0x0a, 0x70, 0x75, 0x73, 0x68, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
-	0x12, 0x30, 0x0a, 0x14, 0x61, 0x63, 0x6b, 0x5f, 0x64, 0x65, 0x61, 0x64, 0x6c, 0x69, 0x6e, 0x65,
-	0x5f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05, 0x52, 0x12,
-	0x61, 0x63, 0x6b, 0x44, 0x65, 0x61, 0x64, 0x6c, 0x69, 0x6e, 0x65, 0x53, 0x65, 0x63, 0x6f, 0x6e,
-	0x64, 0x73, 0x12, 0x32, 0x0a, 0x15, 0x72, 0x65, 0x74, 0x61, 0x69, 0x6e, 0x5f, 0x61, 0x63, 0x6b,
-	0x65, 0x64, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28,
-	0x08, 0x52, 0x13, 0x72, 0x65, 0x74, 0x61, 0x69, 0x6e, 0x41, 0x63, 0x6b, 0x65, 0x64, 0x4d, 0x65,
-	0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0x12, 0x57, 0x0a, 0x1a, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67,
+	0x12, 0x49, 0x0a, 0x0f, 0x62, 0x69, 0x67, 0x71, 0x75, 0x65, 0x72, 0x79, 0x5f, 0x63, 0x6f, 0x6e,
+	0x66, 0x69, 0x67, 0x18, 0x12, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
+	0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x42, 0x69, 0x67,
+	0x51, 0x75, 0x65, 0x72, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x0e, 0x62, 0x69, 0x67,
+	0x71, 0x75, 0x65, 0x72, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x30, 0x0a, 0x14, 0x61,
+	0x63, 0x6b, 0x5f, 0x64, 0x65, 0x61, 0x64, 0x6c, 0x69, 0x6e, 0x65, 0x5f, 0x73, 0x65, 0x63, 0x6f,
+	0x6e, 0x64, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05, 0x52, 0x12, 0x61, 0x63, 0x6b, 0x44, 0x65,
+	0x61, 0x64, 0x6c, 0x69, 0x6e, 0x65, 0x53, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x12, 0x32, 0x0a,
+	0x15, 0x72, 0x65, 0x74, 0x61, 0x69, 0x6e, 0x5f, 0x61, 0x63, 0x6b, 0x65, 0x64, 0x5f, 0x6d, 0x65,
+	0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28, 0x08, 0x52, 0x13, 0x72, 0x65,
+	0x74, 0x61, 0x69, 0x6e, 0x41, 0x63, 0x6b, 0x65, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65,
+	0x73, 0x12, 0x57, 0x0a, 0x1a, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x5f, 0x72, 0x65, 0x74,
+	0x65, 0x6e, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x64, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
+	0x08, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x52, 0x18, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52, 0x65, 0x74, 0x65, 0x6e, 0x74, 0x69,
+	0x6f, 0x6e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x42, 0x0a, 0x06, 0x6c, 0x61,
+	0x62, 0x65, 0x6c, 0x73, 0x18, 0x09, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2a, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x75,
+	0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x4c, 0x61, 0x62, 0x65, 0x6c,
+	0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x06, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x12, 0x36,
+	0x0a, 0x17, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65,
+	0x5f, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x69, 0x6e, 0x67, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x08, 0x52,
+	0x15, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x4f, 0x72,
+	0x64, 0x65, 0x72, 0x69, 0x6e, 0x67, 0x12, 0x4f, 0x0a, 0x11, 0x65, 0x78, 0x70, 0x69, 0x72, 0x61,
+	0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x70, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x18, 0x0b, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x22, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75,
+	0x62, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x50,
+	0x6f, 0x6c, 0x69, 0x63, 0x79, 0x52, 0x10, 0x65, 0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12, 0x16, 0x0a, 0x06, 0x66, 0x69, 0x6c, 0x74, 0x65,
+	0x72, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x12,
+	0x50, 0x0a, 0x12, 0x64, 0x65, 0x61, 0x64, 0x5f, 0x6c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x5f, 0x70,
+	0x6f, 0x6c, 0x69, 0x63, 0x79, 0x18, 0x0d, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x67, 0x6f,
+	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x44,
+	0x65, 0x61, 0x64, 0x4c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x52,
+	0x10, 0x64, 0x65, 0x61, 0x64, 0x4c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x50, 0x6f, 0x6c, 0x69, 0x63,
+	0x79, 0x12, 0x40, 0x0a, 0x0c, 0x72, 0x65, 0x74, 0x72, 0x79, 0x5f, 0x70, 0x6f, 0x6c, 0x69, 0x63,
+	0x79, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
+	0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x74, 0x72, 0x79,
+	0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x52, 0x0b, 0x72, 0x65, 0x74, 0x72, 0x79, 0x50, 0x6f, 0x6c,
+	0x69, 0x63, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x64, 0x65, 0x74, 0x61, 0x63, 0x68, 0x65, 0x64, 0x18,
+	0x0f, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x64, 0x65, 0x74, 0x61, 0x63, 0x68, 0x65, 0x64, 0x12,
+	0x3f, 0x0a, 0x1c, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x65, 0x78, 0x61, 0x63, 0x74, 0x6c,
+	0x79, 0x5f, 0x6f, 0x6e, 0x63, 0x65, 0x5f, 0x64, 0x65, 0x6c, 0x69, 0x76, 0x65, 0x72, 0x79, 0x18,
+	0x10, 0x20, 0x01, 0x28, 0x08, 0x52, 0x19, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x45, 0x78, 0x61,
+	0x63, 0x74, 0x6c, 0x79, 0x4f, 0x6e, 0x63, 0x65, 0x44, 0x65, 0x6c, 0x69, 0x76, 0x65, 0x72, 0x79,
+	0x12, 0x67, 0x0a, 0x20, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67,
 	0x65, 0x5f, 0x72, 0x65, 0x74, 0x65, 0x6e, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x64, 0x75, 0x72, 0x61,
-	0x74, 0x69, 0x6f, 0x6e, 0x18, 0x08, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67, 0x6f, 0x6f,
+	0x74, 0x69, 0x6f, 0x6e, 0x18, 0x11, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67, 0x6f, 0x6f,
 	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x44, 0x75, 0x72,
-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x18, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52, 0x65,
-	0x74, 0x65, 0x6e, 0x74, 0x69, 0x6f, 0x6e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12,
-	0x42, 0x0a, 0x06, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x18, 0x09, 0x20, 0x03, 0x28, 0x0b, 0x32,
-	0x2a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e,
-	0x76, 0x31, 0x2e, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x2e,
-	0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x06, 0x6c, 0x61, 0x62,
-	0x65, 0x6c, 0x73, 0x12, 0x36, 0x0a, 0x17, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x6d, 0x65,
-	0x73, 0x73, 0x61, 0x67, 0x65, 0x5f, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x69, 0x6e, 0x67, 0x18, 0x0a,
-	0x20, 0x01, 0x28, 0x08, 0x52, 0x15, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x4d, 0x65, 0x73, 0x73,
-	0x61, 0x67, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x69, 0x6e, 0x67, 0x12, 0x4f, 0x0a, 0x11, 0x65,
-	0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x70, 0x6f, 0x6c, 0x69, 0x63, 0x79,
-	0x18, 0x0b, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
-	0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x78, 0x70, 0x69, 0x72, 0x61,
-	0x74, 0x69, 0x6f, 0x6e, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x52, 0x10, 0x65, 0x78, 0x70, 0x69,
-	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12, 0x16, 0x0a, 0x06,
-	0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x66, 0x69,
-	0x6c, 0x74, 0x65, 0x72, 0x12, 0x50, 0x0a, 0x12, 0x64, 0x65, 0x61, 0x64, 0x5f, 0x6c, 0x65, 0x74,
-	0x74, 0x65, 0x72, 0x5f, 0x70, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x18, 0x0d, 0x20, 0x01, 0x28, 0x0b,
-	0x32, 0x22, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62,
-	0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x61, 0x64, 0x4c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x50, 0x6f,
-	0x6c, 0x69, 0x63, 0x79, 0x52, 0x10, 0x64, 0x65, 0x61, 0x64, 0x4c, 0x65, 0x74, 0x74, 0x65, 0x72,
-	0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12, 0x40, 0x0a, 0x0c, 0x72, 0x65, 0x74, 0x72, 0x79, 0x5f,
-	0x70, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x67,
-	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e,
-	0x52, 0x65, 0x74, 0x72, 0x79, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x52, 0x0b, 0x72, 0x65, 0x74,
-	0x72, 0x79, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x64, 0x65, 0x74, 0x61,
-	0x63, 0x68, 0x65, 0x64, 0x18, 0x0f, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x64, 0x65, 0x74, 0x61,
-	0x63, 0x68, 0x65, 0x64, 0x12, 0x3f, 0x0a, 0x1c, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x65,
-	0x78, 0x61, 0x63, 0x74, 0x6c, 0x79, 0x5f, 0x6f, 0x6e, 0x63, 0x65, 0x5f, 0x64, 0x65, 0x6c, 0x69,
-	0x76, 0x65, 0x72, 0x79, 0x18, 0x10, 0x20, 0x01, 0x28, 0x08, 0x52, 0x19, 0x65, 0x6e, 0x61, 0x62,
-	0x6c, 0x65, 0x45, 0x78, 0x61, 0x63, 0x74, 0x6c, 0x79, 0x4f, 0x6e, 0x63, 0x65, 0x44, 0x65, 0x6c,
-	0x69, 0x76, 0x65, 0x72, 0x79, 0x12, 0x67, 0x0a, 0x20, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x5f, 0x6d,
-	0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x5f, 0x72, 0x65, 0x74, 0x65, 0x6e, 0x74, 0x69, 0x6f, 0x6e,
-	0x5f, 0x64, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x11, 0x20, 0x01, 0x28, 0x0b, 0x32,
-	0x19, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
-	0x66, 0x2e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x03, 0xe0, 0x41, 0x03, 0x52,
-	0x1d, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52, 0x65, 0x74,
-	0x65, 0x6e, 0x74, 0x69, 0x6f, 0x6e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x1a, 0x39,
-	0x0a, 0x0b, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a,
-	0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12,
-	0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05,
-	0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x3a, 0x58, 0xea, 0x41, 0x55, 0x0a, 0x22,
-	0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x61, 0x70, 0x69,
-	0x73, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69,
-	0x6f, 0x6e, 0x12, 0x2f, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x2f, 0x7b, 0x70, 0x72,
-	0x6f, 0x6a, 0x65, 0x63, 0x74, 0x7d, 0x2f, 0x73, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74,
-	0x69, 0x6f, 0x6e, 0x73, 0x2f, 0x7b, 0x73, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69,
-	0x6f, 0x6e, 0x7d, 0x22, 0x95, 0x01, 0x0a, 0x0b, 0x52, 0x65, 0x74, 0x72, 0x79, 0x50, 0x6f, 0x6c,
-	0x69, 0x63, 0x79, 0x12, 0x42, 0x0a, 0x0f, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x75, 0x6d, 0x5f, 0x62,
-	0x61, 0x63, 0x6b, 0x6f, 0x66, 0x66, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67,
+	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x03, 0xe0, 0x41, 0x03, 0x52, 0x1d, 0x74, 0x6f, 0x70, 0x69,
+	0x63, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52, 0x65, 0x74, 0x65, 0x6e, 0x74, 0x69, 0x6f,
+	0x6e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x3f, 0x0a, 0x05, 0x73, 0x74, 0x61,
+	0x74, 0x65, 0x18, 0x13, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x24, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
+	0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x75, 0x62, 0x73,
+	0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x53, 0x74, 0x61, 0x74, 0x65, 0x42, 0x03,
+	0xe0, 0x41, 0x03, 0x52, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x1a, 0x39, 0x0a, 0x0b, 0x4c, 0x61,
+	0x62, 0x65, 0x6c, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76,
+	0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75,
+	0x65, 0x3a, 0x02, 0x38, 0x01, 0x22, 0x3e, 0x0a, 0x05, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x15,
+	0x0a, 0x11, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46,
+	0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x0a, 0x0a, 0x06, 0x41, 0x43, 0x54, 0x49, 0x56, 0x45, 0x10,
+	0x01, 0x12, 0x12, 0x0a, 0x0e, 0x52, 0x45, 0x53, 0x4f, 0x55, 0x52, 0x43, 0x45, 0x5f, 0x45, 0x52,
+	0x52, 0x4f, 0x52, 0x10, 0x02, 0x3a, 0x58, 0xea, 0x41, 0x55, 0x0a, 0x22, 0x70, 0x75, 0x62, 0x73,
+	0x75, 0x62, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x61, 0x70, 0x69, 0x73, 0x2e, 0x63, 0x6f,
+	0x6d, 0x2f, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2f,
+	0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x2f, 0x7b, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63,
+	0x74, 0x7d, 0x2f, 0x73, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x73,
+	0x2f, 0x7b, 0x73, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x7d, 0x22,
+	0x95, 0x01, 0x0a, 0x0b, 0x52, 0x65, 0x74, 0x72, 0x79, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12,
+	0x42, 0x0a, 0x0f, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x75, 0x6d, 0x5f, 0x62, 0x61, 0x63, 0x6b, 0x6f,
+	0x66, 0x66, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
+	0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x44, 0x75, 0x72, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x52, 0x0e, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x75, 0x6d, 0x42, 0x61, 0x63, 0x6b,
+	0x6f, 0x66, 0x66, 0x12, 0x42, 0x0a, 0x0f, 0x6d, 0x61, 0x78, 0x69, 0x6d, 0x75, 0x6d, 0x5f, 0x62,
+	0x61, 0x63, 0x6b, 0x6f, 0x66, 0x66, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67,
 	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x44,
-	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0e, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x75, 0x6d,
-	0x42, 0x61, 0x63, 0x6b, 0x6f, 0x66, 0x66, 0x12, 0x42, 0x0a, 0x0f, 0x6d, 0x61, 0x78, 0x69, 0x6d,
-	0x75, 0x6d, 0x5f, 0x62, 0x61, 0x63, 0x6b, 0x6f, 0x66, 0x66, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b,
-	0x32, 0x19, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
-	0x75, 0x66, 0x2e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0e, 0x6d, 0x61, 0x78,
-	0x69, 0x6d, 0x75, 0x6d, 0x42, 0x61, 0x63, 0x6b, 0x6f, 0x66, 0x66, 0x22, 0x72, 0x0a, 0x10, 0x44,
-	0x65, 0x61, 0x64, 0x4c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12,
-	0x2a, 0x0a, 0x11, 0x64, 0x65, 0x61, 0x64, 0x5f, 0x6c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x5f, 0x74,
-	0x6f, 0x70, 0x69, 0x63, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x64, 0x65, 0x61, 0x64,
-	0x4c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x54, 0x6f, 0x70, 0x69, 0x63, 0x12, 0x32, 0x0a, 0x15, 0x6d,
-	0x61, 0x78, 0x5f, 0x64, 0x65, 0x6c, 0x69, 0x76, 0x65, 0x72, 0x79, 0x5f, 0x61, 0x74, 0x74, 0x65,
-	0x6d, 0x70, 0x74, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x13, 0x6d, 0x61, 0x78, 0x44,
-	0x65, 0x6c, 0x69, 0x76, 0x65, 0x72, 0x79, 0x41, 0x74, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x73, 0x22,
-	0x3f, 0x0a, 0x10, 0x45, 0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x50, 0x6f, 0x6c,
-	0x69, 0x63, 0x79, 0x12, 0x2b, 0x0a, 0x03, 0x74, 0x74, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b,
-	0x32, 0x19, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
-	0x75, 0x66, 0x2e, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x03, 0x74, 0x74, 0x6c,
-	0x22, 0xfd, 0x02, 0x0a, 0x0a, 0x50, 0x75, 0x73, 0x68, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12,
-	0x23, 0x0a, 0x0d, 0x70, 0x75, 0x73, 0x68, 0x5f, 0x65, 0x6e, 0x64, 0x70, 0x6f, 0x69, 0x6e, 0x74,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x70, 0x75, 0x73, 0x68, 0x45, 0x6e, 0x64, 0x70,
-	0x6f, 0x69, 0x6e, 0x74, 0x12, 0x4c, 0x0a, 0x0a, 0x61, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74,
-	0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2c, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
-	0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x75, 0x73, 0x68,
-	0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x41, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65,
-	0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x0a, 0x61, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74,
-	0x65, 0x73, 0x12, 0x47, 0x0a, 0x0a, 0x6f, 0x69, 0x64, 0x63, 0x5f, 0x74, 0x6f, 0x6b, 0x65, 0x6e,
-	0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x26, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
-	0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x75, 0x73, 0x68, 0x43, 0x6f,
-	0x6e, 0x66, 0x69, 0x67, 0x2e, 0x4f, 0x69, 0x64, 0x63, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x48, 0x00,
-	0x52, 0x09, 0x6f, 0x69, 0x64, 0x63, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x1a, 0x5b, 0x0a, 0x09, 0x4f,
-	0x69, 0x64, 0x63, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x12, 0x32, 0x0a, 0x15, 0x73, 0x65, 0x72, 0x76,
-	0x69, 0x63, 0x65, 0x5f, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x5f, 0x65, 0x6d, 0x61, 0x69,
-	0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x13, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
-	0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x45, 0x6d, 0x61, 0x69, 0x6c, 0x12, 0x1a, 0x0a, 0x08,
-	0x61, 0x75, 0x64, 0x69, 0x65, 0x6e, 0x63, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08,
-	0x61, 0x75, 0x64, 0x69, 0x65, 0x6e, 0x63, 0x65, 0x1a, 0x3d, 0x0a, 0x0f, 0x41, 0x74, 0x74, 0x72,
-	0x69, 0x62, 0x75, 0x74, 0x65, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b,
-	0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a,
-	0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x76, 0x61,
-	0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x42, 0x17, 0x0a, 0x15, 0x61, 0x75, 0x74, 0x68, 0x65,
-	0x6e, 0x74, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x6d, 0x65, 0x74, 0x68, 0x6f, 0x64,
+	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0e, 0x6d, 0x61, 0x78, 0x69, 0x6d, 0x75, 0x6d,
+	0x42, 0x61, 0x63, 0x6b, 0x6f, 0x66, 0x66, 0x22, 0x72, 0x0a, 0x10, 0x44, 0x65, 0x61, 0x64, 0x4c,
+	0x65, 0x74, 0x74, 0x65, 0x72, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12, 0x2a, 0x0a, 0x11, 0x64,
+	0x65, 0x61, 0x64, 0x5f, 0x6c, 0x65, 0x74, 0x74, 0x65, 0x72, 0x5f, 0x74, 0x6f, 0x70, 0x69, 0x63,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x64, 0x65, 0x61, 0x64, 0x4c, 0x65, 0x74, 0x74,
+	0x65, 0x72, 0x54, 0x6f, 0x70, 0x69, 0x63, 0x12, 0x32, 0x0a, 0x15, 0x6d, 0x61, 0x78, 0x5f, 0x64,
+	0x65, 0x6c, 0x69, 0x76, 0x65, 0x72, 0x79, 0x5f, 0x61, 0x74, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x73,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x13, 0x6d, 0x61, 0x78, 0x44, 0x65, 0x6c, 0x69, 0x76,
+	0x65, 0x72, 0x79, 0x41, 0x74, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x73, 0x22, 0x3f, 0x0a, 0x10, 0x45,
+	0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x50, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x12,
+	0x2b, 0x0a, 0x03, 0x74, 0x74, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x67,
+	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x44,
+	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x03, 0x74, 0x74, 0x6c, 0x22, 0xfd, 0x02, 0x0a,
+	0x0a, 0x50, 0x75, 0x73, 0x68, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x23, 0x0a, 0x0d, 0x70,
+	0x75, 0x73, 0x68, 0x5f, 0x65, 0x6e, 0x64, 0x70, 0x6f, 0x69, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x0c, 0x70, 0x75, 0x73, 0x68, 0x45, 0x6e, 0x64, 0x70, 0x6f, 0x69, 0x6e, 0x74,
+	0x12, 0x4c, 0x0a, 0x0a, 0x61, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0x73, 0x18, 0x02,
+	0x20, 0x03, 0x28, 0x0b, 0x32, 0x2c, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75,
+	0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x75, 0x73, 0x68, 0x43, 0x6f, 0x6e, 0x66,
+	0x69, 0x67, 0x2e, 0x41, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0x73, 0x45, 0x6e, 0x74,
+	0x72, 0x79, 0x52, 0x0a, 0x61, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0x73, 0x12, 0x47,
+	0x0a, 0x0a, 0x6f, 0x69, 0x64, 0x63, 0x5f, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x26, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73,
+	0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x75, 0x73, 0x68, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
+	0x2e, 0x4f, 0x69, 0x64, 0x63, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x48, 0x00, 0x52, 0x09, 0x6f, 0x69,
+	0x64, 0x63, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x1a, 0x5b, 0x0a, 0x09, 0x4f, 0x69, 0x64, 0x63, 0x54,
+	0x6f, 0x6b, 0x65, 0x6e, 0x12, 0x32, 0x0a, 0x15, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x5f,
+	0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x5f, 0x65, 0x6d, 0x61, 0x69, 0x6c, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x13, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x41, 0x63, 0x63, 0x6f,
+	0x75, 0x6e, 0x74, 0x45, 0x6d, 0x61, 0x69, 0x6c, 0x12, 0x1a, 0x0a, 0x08, 0x61, 0x75, 0x64, 0x69,
+	0x65, 0x6e, 0x63, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x61, 0x75, 0x64, 0x69,
+	0x65, 0x6e, 0x63, 0x65, 0x1a, 0x3d, 0x0a, 0x0f, 0x41, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74,
+	0x65, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c,
+	0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a,
+	0x02, 0x38, 0x01, 0x42, 0x17, 0x0a, 0x15, 0x61, 0x75, 0x74, 0x68, 0x65, 0x6e, 0x74, 0x69, 0x63,
+	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x6d, 0x65, 0x74, 0x68, 0x6f, 0x64, 0x22, 0xd1, 0x02, 0x0a,
+	0x0e, 0x42, 0x69, 0x67, 0x51, 0x75, 0x65, 0x72, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12,
+	0x14, 0x0a, 0x05, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05,
+	0x74, 0x61, 0x62, 0x6c, 0x65, 0x12, 0x28, 0x0a, 0x10, 0x75, 0x73, 0x65, 0x5f, 0x74, 0x6f, 0x70,
+	0x69, 0x63, 0x5f, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52,
+	0x0e, 0x75, 0x73, 0x65, 0x54, 0x6f, 0x70, 0x69, 0x63, 0x53, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x12,
+	0x25, 0x0a, 0x0e, 0x77, 0x72, 0x69, 0x74, 0x65, 0x5f, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74,
+	0x61, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0d, 0x77, 0x72, 0x69, 0x74, 0x65, 0x4d, 0x65,
+	0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x12, 0x2e, 0x0a, 0x13, 0x64, 0x72, 0x6f, 0x70, 0x5f, 0x75,
+	0x6e, 0x6b, 0x6e, 0x6f, 0x77, 0x6e, 0x5f, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x73, 0x18, 0x04, 0x20,
+	0x01, 0x28, 0x08, 0x52, 0x11, 0x64, 0x72, 0x6f, 0x70, 0x55, 0x6e, 0x6b, 0x6e, 0x6f, 0x77, 0x6e,
+	0x46, 0x69, 0x65, 0x6c, 0x64, 0x73, 0x12, 0x41, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18,
+	0x05, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x26, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
+	0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x76, 0x31, 0x2e, 0x42, 0x69, 0x67, 0x51, 0x75, 0x65, 0x72,
+	0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x53, 0x74, 0x61, 0x74, 0x65, 0x42, 0x03, 0xe0,
+	0x41, 0x03, 0x52, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x22, 0x65, 0x0a, 0x05, 0x53, 0x74, 0x61,
+	0x74, 0x65, 0x12, 0x15, 0x0a, 0x11, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x55, 0x4e, 0x53, 0x50,
+	0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x0a, 0x0a, 0x06, 0x41, 0x43, 0x54,
+	0x49, 0x56, 0x45, 0x10, 0x01, 0x12, 0x15, 0x0a, 0x11, 0x50, 0x45, 0x52, 0x4d, 0x49, 0x53, 0x53,
+	0x49, 0x4f, 0x4e, 0x5f, 0x44, 0x45, 0x4e, 0x49, 0x45, 0x44, 0x10, 0x02, 0x12, 0x0d, 0x0a, 0x09,
+	0x4e, 0x4f, 0x54, 0x5f, 0x46, 0x4f, 0x55, 0x4e, 0x44, 0x10, 0x03, 0x12, 0x13, 0x0a, 0x0f, 0x53,
+	0x43, 0x48, 0x45, 0x4d, 0x41, 0x5f, 0x4d, 0x49, 0x53, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x10, 0x04,
 	0x22, 0x8e, 0x01, 0x0a, 0x0f, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x64, 0x4d, 0x65, 0x73,
 	0x73, 0x61, 0x67, 0x65, 0x12, 0x15, 0x0a, 0x06, 0x61, 0x63, 0x6b, 0x5f, 0x69, 0x64, 0x18, 0x01,
 	0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x61, 0x63, 0x6b, 0x49, 0x64, 0x12, 0x39, 0x0a, 0x07, 0x6d,
@@ -4377,164 +4646,171 @@ func file_google_pubsub_v1_pubsub_proto_rawDescGZIP() []byte {
 	return file_google_pubsub_v1_pubsub_proto_rawDescData
 }
 
-var file_google_pubsub_v1_pubsub_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_google_pubsub_v1_pubsub_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_google_pubsub_v1_pubsub_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_google_pubsub_v1_pubsub_proto_goTypes = []interface{}{
-	(*MessageStoragePolicy)(nil),                          // 0: google.pubsub.v1.MessageStoragePolicy
-	(*SchemaSettings)(nil),                                // 1: google.pubsub.v1.SchemaSettings
-	(*Topic)(nil),                                         // 2: google.pubsub.v1.Topic
-	(*PubsubMessage)(nil),                                 // 3: google.pubsub.v1.PubsubMessage
-	(*GetTopicRequest)(nil),                               // 4: google.pubsub.v1.GetTopicRequest
-	(*UpdateTopicRequest)(nil),                            // 5: google.pubsub.v1.UpdateTopicRequest
-	(*PublishRequest)(nil),                                // 6: google.pubsub.v1.PublishRequest
-	(*PublishResponse)(nil),                               // 7: google.pubsub.v1.PublishResponse
-	(*ListTopicsRequest)(nil),                             // 8: google.pubsub.v1.ListTopicsRequest
-	(*ListTopicsResponse)(nil),                            // 9: google.pubsub.v1.ListTopicsResponse
-	(*ListTopicSubscriptionsRequest)(nil),                 // 10: google.pubsub.v1.ListTopicSubscriptionsRequest
-	(*ListTopicSubscriptionsResponse)(nil),                // 11: google.pubsub.v1.ListTopicSubscriptionsResponse
-	(*ListTopicSnapshotsRequest)(nil),                     // 12: google.pubsub.v1.ListTopicSnapshotsRequest
-	(*ListTopicSnapshotsResponse)(nil),                    // 13: google.pubsub.v1.ListTopicSnapshotsResponse
-	(*DeleteTopicRequest)(nil),                            // 14: google.pubsub.v1.DeleteTopicRequest
-	(*DetachSubscriptionRequest)(nil),                     // 15: google.pubsub.v1.DetachSubscriptionRequest
-	(*DetachSubscriptionResponse)(nil),                    // 16: google.pubsub.v1.DetachSubscriptionResponse
-	(*Subscription)(nil),                                  // 17: google.pubsub.v1.Subscription
-	(*RetryPolicy)(nil),                                   // 18: google.pubsub.v1.RetryPolicy
-	(*DeadLetterPolicy)(nil),                              // 19: google.pubsub.v1.DeadLetterPolicy
-	(*ExpirationPolicy)(nil),                              // 20: google.pubsub.v1.ExpirationPolicy
-	(*PushConfig)(nil),                                    // 21: google.pubsub.v1.PushConfig
-	(*ReceivedMessage)(nil),                               // 22: google.pubsub.v1.ReceivedMessage
-	(*GetSubscriptionRequest)(nil),                        // 23: google.pubsub.v1.GetSubscriptionRequest
-	(*UpdateSubscriptionRequest)(nil),                     // 24: google.pubsub.v1.UpdateSubscriptionRequest
-	(*ListSubscriptionsRequest)(nil),                      // 25: google.pubsub.v1.ListSubscriptionsRequest
-	(*ListSubscriptionsResponse)(nil),                     // 26: google.pubsub.v1.ListSubscriptionsResponse
-	(*DeleteSubscriptionRequest)(nil),                     // 27: google.pubsub.v1.DeleteSubscriptionRequest
-	(*ModifyPushConfigRequest)(nil),                       // 28: google.pubsub.v1.ModifyPushConfigRequest
-	(*PullRequest)(nil),                                   // 29: google.pubsub.v1.PullRequest
-	(*PullResponse)(nil),                                  // 30: google.pubsub.v1.PullResponse
-	(*ModifyAckDeadlineRequest)(nil),                      // 31: google.pubsub.v1.ModifyAckDeadlineRequest
-	(*AcknowledgeRequest)(nil),                            // 32: google.pubsub.v1.AcknowledgeRequest
-	(*StreamingPullRequest)(nil),                          // 33: google.pubsub.v1.StreamingPullRequest
-	(*StreamingPullResponse)(nil),                         // 34: google.pubsub.v1.StreamingPullResponse
-	(*CreateSnapshotRequest)(nil),                         // 35: google.pubsub.v1.CreateSnapshotRequest
-	(*UpdateSnapshotRequest)(nil),                         // 36: google.pubsub.v1.UpdateSnapshotRequest
-	(*Snapshot)(nil),                                      // 37: google.pubsub.v1.Snapshot
-	(*GetSnapshotRequest)(nil),                            // 38: google.pubsub.v1.GetSnapshotRequest
-	(*ListSnapshotsRequest)(nil),                          // 39: google.pubsub.v1.ListSnapshotsRequest
-	(*ListSnapshotsResponse)(nil),                         // 40: google.pubsub.v1.ListSnapshotsResponse
-	(*DeleteSnapshotRequest)(nil),                         // 41: google.pubsub.v1.DeleteSnapshotRequest
-	(*SeekRequest)(nil),                                   // 42: google.pubsub.v1.SeekRequest
-	(*SeekResponse)(nil),                                  // 43: google.pubsub.v1.SeekResponse
-	nil,                                                   // 44: google.pubsub.v1.Topic.LabelsEntry
-	nil,                                                   // 45: google.pubsub.v1.PubsubMessage.AttributesEntry
-	nil,                                                   // 46: google.pubsub.v1.Subscription.LabelsEntry
-	(*PushConfig_OidcToken)(nil),                          // 47: google.pubsub.v1.PushConfig.OidcToken
-	nil,                                                   // 48: google.pubsub.v1.PushConfig.AttributesEntry
-	(*StreamingPullResponse_AcknowledgeConfirmation)(nil), // 49: google.pubsub.v1.StreamingPullResponse.AcknowledgeConfirmation
-	(*StreamingPullResponse_ModifyAckDeadlineConfirmation)(nil), // 50: google.pubsub.v1.StreamingPullResponse.ModifyAckDeadlineConfirmation
-	(*StreamingPullResponse_SubscriptionProperties)(nil),        // 51: google.pubsub.v1.StreamingPullResponse.SubscriptionProperties
-	nil,                           // 52: google.pubsub.v1.CreateSnapshotRequest.LabelsEntry
-	nil,                           // 53: google.pubsub.v1.Snapshot.LabelsEntry
-	(Encoding)(0),                 // 54: google.pubsub.v1.Encoding
-	(*durationpb.Duration)(nil),   // 55: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil), // 56: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil), // 57: google.protobuf.FieldMask
-	(*emptypb.Empty)(nil),         // 58: google.protobuf.Empty
+	(Subscription_State)(0),                               // 0: google.pubsub.v1.Subscription.State
+	(BigQueryConfig_State)(0),                             // 1: google.pubsub.v1.BigQueryConfig.State
+	(*MessageStoragePolicy)(nil),                          // 2: google.pubsub.v1.MessageStoragePolicy
+	(*SchemaSettings)(nil),                                // 3: google.pubsub.v1.SchemaSettings
+	(*Topic)(nil),                                         // 4: google.pubsub.v1.Topic
+	(*PubsubMessage)(nil),                                 // 5: google.pubsub.v1.PubsubMessage
+	(*GetTopicRequest)(nil),                               // 6: google.pubsub.v1.GetTopicRequest
+	(*UpdateTopicRequest)(nil),                            // 7: google.pubsub.v1.UpdateTopicRequest
+	(*PublishRequest)(nil),                                // 8: google.pubsub.v1.PublishRequest
+	(*PublishResponse)(nil),                               // 9: google.pubsub.v1.PublishResponse
+	(*ListTopicsRequest)(nil),                             // 10: google.pubsub.v1.ListTopicsRequest
+	(*ListTopicsResponse)(nil),                            // 11: google.pubsub.v1.ListTopicsResponse
+	(*ListTopicSubscriptionsRequest)(nil),                 // 12: google.pubsub.v1.ListTopicSubscriptionsRequest
+	(*ListTopicSubscriptionsResponse)(nil),                // 13: google.pubsub.v1.ListTopicSubscriptionsResponse
+	(*ListTopicSnapshotsRequest)(nil),                     // 14: google.pubsub.v1.ListTopicSnapshotsRequest
+	(*ListTopicSnapshotsResponse)(nil),                    // 15: google.pubsub.v1.ListTopicSnapshotsResponse
+	(*DeleteTopicRequest)(nil),                            // 16: google.pubsub.v1.DeleteTopicRequest
+	(*DetachSubscriptionRequest)(nil),                     // 17: google.pubsub.v1.DetachSubscriptionRequest
+	(*DetachSubscriptionResponse)(nil),                    // 18: google.pubsub.v1.DetachSubscriptionResponse
+	(*Subscription)(nil),                                  // 19: google.pubsub.v1.Subscription
+	(*RetryPolicy)(nil),                                   // 20: google.pubsub.v1.RetryPolicy
+	(*DeadLetterPolicy)(nil),                              // 21: google.pubsub.v1.DeadLetterPolicy
+	(*ExpirationPolicy)(nil),                              // 22: google.pubsub.v1.ExpirationPolicy
+	(*PushConfig)(nil),                                    // 23: google.pubsub.v1.PushConfig
+	(*BigQueryConfig)(nil),                                // 24: google.pubsub.v1.BigQueryConfig
+	(*ReceivedMessage)(nil),                               // 25: google.pubsub.v1.ReceivedMessage
+	(*GetSubscriptionRequest)(nil),                        // 26: google.pubsub.v1.GetSubscriptionRequest
+	(*UpdateSubscriptionRequest)(nil),                     // 27: google.pubsub.v1.UpdateSubscriptionRequest
+	(*ListSubscriptionsRequest)(nil),                      // 28: google.pubsub.v1.ListSubscriptionsRequest
+	(*ListSubscriptionsResponse)(nil),                     // 29: google.pubsub.v1.ListSubscriptionsResponse
+	(*DeleteSubscriptionRequest)(nil),                     // 30: google.pubsub.v1.DeleteSubscriptionRequest
+	(*ModifyPushConfigRequest)(nil),                       // 31: google.pubsub.v1.ModifyPushConfigRequest
+	(*PullRequest)(nil),                                   // 32: google.pubsub.v1.PullRequest
+	(*PullResponse)(nil),                                  // 33: google.pubsub.v1.PullResponse
+	(*ModifyAckDeadlineRequest)(nil),                      // 34: google.pubsub.v1.ModifyAckDeadlineRequest
+	(*AcknowledgeRequest)(nil),                            // 35: google.pubsub.v1.AcknowledgeRequest
+	(*StreamingPullRequest)(nil),                          // 36: google.pubsub.v1.StreamingPullRequest
+	(*StreamingPullResponse)(nil),                         // 37: google.pubsub.v1.StreamingPullResponse
+	(*CreateSnapshotRequest)(nil),                         // 38: google.pubsub.v1.CreateSnapshotRequest
+	(*UpdateSnapshotRequest)(nil),                         // 39: google.pubsub.v1.UpdateSnapshotRequest
+	(*Snapshot)(nil),                                      // 40: google.pubsub.v1.Snapshot
+	(*GetSnapshotRequest)(nil),                            // 41: google.pubsub.v1.GetSnapshotRequest
+	(*ListSnapshotsRequest)(nil),                          // 42: google.pubsub.v1.ListSnapshotsRequest
+	(*ListSnapshotsResponse)(nil),                         // 43: google.pubsub.v1.ListSnapshotsResponse
+	(*DeleteSnapshotRequest)(nil),                         // 44: google.pubsub.v1.DeleteSnapshotRequest
+	(*SeekRequest)(nil),                                   // 45: google.pubsub.v1.SeekRequest
+	(*SeekResponse)(nil),                                  // 46: google.pubsub.v1.SeekResponse
+	nil,                                                   // 47: google.pubsub.v1.Topic.LabelsEntry
+	nil,                                                   // 48: google.pubsub.v1.PubsubMessage.AttributesEntry
+	nil,                                                   // 49: google.pubsub.v1.Subscription.LabelsEntry
+	(*PushConfig_OidcToken)(nil),                          // 50: google.pubsub.v1.PushConfig.OidcToken
+	nil,                                                   // 51: google.pubsub.v1.PushConfig.AttributesEntry
+	(*StreamingPullResponse_AcknowledgeConfirmation)(nil), // 52: google.pubsub.v1.StreamingPullResponse.AcknowledgeConfirmation
+	(*StreamingPullResponse_ModifyAckDeadlineConfirmation)(nil), // 53: google.pubsub.v1.StreamingPullResponse.ModifyAckDeadlineConfirmation
+	(*StreamingPullResponse_SubscriptionProperties)(nil),        // 54: google.pubsub.v1.StreamingPullResponse.SubscriptionProperties
+	nil,                           // 55: google.pubsub.v1.CreateSnapshotRequest.LabelsEntry
+	nil,                           // 56: google.pubsub.v1.Snapshot.LabelsEntry
+	(Encoding)(0),                 // 57: google.pubsub.v1.Encoding
+	(*durationpb.Duration)(nil),   // 58: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil), // 59: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil), // 60: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),         // 61: google.protobuf.Empty
 }
 var file_google_pubsub_v1_pubsub_proto_depIdxs = []int32{
-	54, // 0: google.pubsub.v1.SchemaSettings.encoding:type_name -> google.pubsub.v1.Encoding
-	44, // 1: google.pubsub.v1.Topic.labels:type_name -> google.pubsub.v1.Topic.LabelsEntry
-	0,  // 2: google.pubsub.v1.Topic.message_storage_policy:type_name -> google.pubsub.v1.MessageStoragePolicy
-	1,  // 3: google.pubsub.v1.Topic.schema_settings:type_name -> google.pubsub.v1.SchemaSettings
-	55, // 4: google.pubsub.v1.Topic.message_retention_duration:type_name -> google.protobuf.Duration
-	45, // 5: google.pubsub.v1.PubsubMessage.attributes:type_name -> google.pubsub.v1.PubsubMessage.AttributesEntry
-	56, // 6: google.pubsub.v1.PubsubMessage.publish_time:type_name -> google.protobuf.Timestamp
-	2,  // 7: google.pubsub.v1.UpdateTopicRequest.topic:type_name -> google.pubsub.v1.Topic
-	57, // 8: google.pubsub.v1.UpdateTopicRequest.update_mask:type_name -> google.protobuf.FieldMask
-	3,  // 9: google.pubsub.v1.PublishRequest.messages:type_name -> google.pubsub.v1.PubsubMessage
-	2,  // 10: google.pubsub.v1.ListTopicsResponse.topics:type_name -> google.pubsub.v1.Topic
-	21, // 11: google.pubsub.v1.Subscription.push_config:type_name -> google.pubsub.v1.PushConfig
-	55, // 12: google.pubsub.v1.Subscription.message_retention_duration:type_name -> google.protobuf.Duration
-	46, // 13: google.pubsub.v1.Subscription.labels:type_name -> google.pubsub.v1.Subscription.LabelsEntry
-	20, // 14: google.pubsub.v1.Subscription.expiration_policy:type_name -> google.pubsub.v1.ExpirationPolicy
-	19, // 15: google.pubsub.v1.Subscription.dead_letter_policy:type_name -> google.pubsub.v1.DeadLetterPolicy
-	18, // 16: google.pubsub.v1.Subscription.retry_policy:type_name -> google.pubsub.v1.RetryPolicy
-	55, // 17: google.pubsub.v1.Subscription.topic_message_retention_duration:type_name -> google.protobuf.Duration
-	55, // 18: google.pubsub.v1.RetryPolicy.minimum_backoff:type_name -> google.protobuf.Duration
-	55, // 19: google.pubsub.v1.RetryPolicy.maximum_backoff:type_name -> google.protobuf.Duration
-	55, // 20: google.pubsub.v1.ExpirationPolicy.ttl:type_name -> google.protobuf.Duration
-	48, // 21: google.pubsub.v1.PushConfig.attributes:type_name -> google.pubsub.v1.PushConfig.AttributesEntry
-	47, // 22: google.pubsub.v1.PushConfig.oidc_token:type_name -> google.pubsub.v1.PushConfig.OidcToken
-	3,  // 23: google.pubsub.v1.ReceivedMessage.message:type_name -> google.pubsub.v1.PubsubMessage
-	17, // 24: google.pubsub.v1.UpdateSubscriptionRequest.subscription:type_name -> google.pubsub.v1.Subscription
-	57, // 25: google.pubsub.v1.UpdateSubscriptionRequest.update_mask:type_name -> google.protobuf.FieldMask
-	17, // 26: google.pubsub.v1.ListSubscriptionsResponse.subscriptions:type_name -> google.pubsub.v1.Subscription
-	21, // 27: google.pubsub.v1.ModifyPushConfigRequest.push_config:type_name -> google.pubsub.v1.PushConfig
-	22, // 28: google.pubsub.v1.PullResponse.received_messages:type_name -> google.pubsub.v1.ReceivedMessage
-	22, // 29: google.pubsub.v1.StreamingPullResponse.received_messages:type_name -> google.pubsub.v1.ReceivedMessage
-	49, // 30: google.pubsub.v1.StreamingPullResponse.acknowledge_confirmation:type_name -> google.pubsub.v1.StreamingPullResponse.AcknowledgeConfirmation
-	50, // 31: google.pubsub.v1.StreamingPullResponse.modify_ack_deadline_confirmation:type_name -> google.pubsub.v1.StreamingPullResponse.ModifyAckDeadlineConfirmation
-	51, // 32: google.pubsub.v1.StreamingPullResponse.subscription_properties:type_name -> google.pubsub.v1.StreamingPullResponse.SubscriptionProperties
-	52, // 33: google.pubsub.v1.CreateSnapshotRequest.labels:type_name -> google.pubsub.v1.CreateSnapshotRequest.LabelsEntry
-	37, // 34: google.pubsub.v1.UpdateSnapshotRequest.snapshot:type_name -> google.pubsub.v1.Snapshot
-	57, // 35: google.pubsub.v1.UpdateSnapshotRequest.update_mask:type_name -> google.protobuf.FieldMask
-	56, // 36: google.pubsub.v1.Snapshot.expire_time:type_name -> google.protobuf.Timestamp
-	53, // 37: google.pubsub.v1.Snapshot.labels:type_name -> google.pubsub.v1.Snapshot.LabelsEntry
-	37, // 38: google.pubsub.v1.ListSnapshotsResponse.snapshots:type_name -> google.pubsub.v1.Snapshot
-	56, // 39: google.pubsub.v1.SeekRequest.time:type_name -> google.protobuf.Timestamp
-	2,  // 40: google.pubsub.v1.Publisher.CreateTopic:input_type -> google.pubsub.v1.Topic
-	5,  // 41: google.pubsub.v1.Publisher.UpdateTopic:input_type -> google.pubsub.v1.UpdateTopicRequest
-	6,  // 42: google.pubsub.v1.Publisher.Publish:input_type -> google.pubsub.v1.PublishRequest
-	4,  // 43: google.pubsub.v1.Publisher.GetTopic:input_type -> google.pubsub.v1.GetTopicRequest
-	8,  // 44: google.pubsub.v1.Publisher.ListTopics:input_type -> google.pubsub.v1.ListTopicsRequest
-	10, // 45: google.pubsub.v1.Publisher.ListTopicSubscriptions:input_type -> google.pubsub.v1.ListTopicSubscriptionsRequest
-	12, // 46: google.pubsub.v1.Publisher.ListTopicSnapshots:input_type -> google.pubsub.v1.ListTopicSnapshotsRequest
-	14, // 47: google.pubsub.v1.Publisher.DeleteTopic:input_type -> google.pubsub.v1.DeleteTopicRequest
-	15, // 48: google.pubsub.v1.Publisher.DetachSubscription:input_type -> google.pubsub.v1.DetachSubscriptionRequest
-	17, // 49: google.pubsub.v1.Subscriber.CreateSubscription:input_type -> google.pubsub.v1.Subscription
-	23, // 50: google.pubsub.v1.Subscriber.GetSubscription:input_type -> google.pubsub.v1.GetSubscriptionRequest
-	24, // 51: google.pubsub.v1.Subscriber.UpdateSubscription:input_type -> google.pubsub.v1.UpdateSubscriptionRequest
-	25, // 52: google.pubsub.v1.Subscriber.ListSubscriptions:input_type -> google.pubsub.v1.ListSubscriptionsRequest
-	27, // 53: google.pubsub.v1.Subscriber.DeleteSubscription:input_type -> google.pubsub.v1.DeleteSubscriptionRequest
-	31, // 54: google.pubsub.v1.Subscriber.ModifyAckDeadline:input_type -> google.pubsub.v1.ModifyAckDeadlineRequest
-	32, // 55: google.pubsub.v1.Subscriber.Acknowledge:input_type -> google.pubsub.v1.AcknowledgeRequest
-	29, // 56: google.pubsub.v1.Subscriber.Pull:input_type -> google.pubsub.v1.PullRequest
-	33, // 57: google.pubsub.v1.Subscriber.StreamingPull:input_type -> google.pubsub.v1.StreamingPullRequest
-	28, // 58: google.pubsub.v1.Subscriber.ModifyPushConfig:input_type -> google.pubsub.v1.ModifyPushConfigRequest
-	38, // 59: google.pubsub.v1.Subscriber.GetSnapshot:input_type -> google.pubsub.v1.GetSnapshotRequest
-	39, // 60: google.pubsub.v1.Subscriber.ListSnapshots:input_type -> google.pubsub.v1.ListSnapshotsRequest
-	35, // 61: google.pubsub.v1.Subscriber.CreateSnapshot:input_type -> google.pubsub.v1.CreateSnapshotRequest
-	36, // 62: google.pubsub.v1.Subscriber.UpdateSnapshot:input_type -> google.pubsub.v1.UpdateSnapshotRequest
-	41, // 63: google.pubsub.v1.Subscriber.DeleteSnapshot:input_type -> google.pubsub.v1.DeleteSnapshotRequest
-	42, // 64: google.pubsub.v1.Subscriber.Seek:input_type -> google.pubsub.v1.SeekRequest
-	2,  // 65: google.pubsub.v1.Publisher.CreateTopic:output_type -> google.pubsub.v1.Topic
-	2,  // 66: google.pubsub.v1.Publisher.UpdateTopic:output_type -> google.pubsub.v1.Topic
-	7,  // 67: google.pubsub.v1.Publisher.Publish:output_type -> google.pubsub.v1.PublishResponse
-	2,  // 68: google.pubsub.v1.Publisher.GetTopic:output_type -> google.pubsub.v1.Topic
-	9,  // 69: google.pubsub.v1.Publisher.ListTopics:output_type -> google.pubsub.v1.ListTopicsResponse
-	11, // 70: google.pubsub.v1.Publisher.ListTopicSubscriptions:output_type -> google.pubsub.v1.ListTopicSubscriptionsResponse
-	13, // 71: google.pubsub.v1.Publisher.ListTopicSnapshots:output_type -> google.pubsub.v1.ListTopicSnapshotsResponse
-	58, // 72: google.pubsub.v1.Publisher.DeleteTopic:output_type -> google.protobuf.Empty
-	16, // 73: google.pubsub.v1.Publisher.DetachSubscription:output_type -> google.pubsub.v1.DetachSubscriptionResponse
-	17, // 74: google.pubsub.v1.Subscriber.CreateSubscription:output_type -> google.pubsub.v1.Subscription
-	17, // 75: google.pubsub.v1.Subscriber.GetSubscription:output_type -> google.pubsub.v1.Subscription
-	17, // 76: google.pubsub.v1.Subscriber.UpdateSubscription:output_type -> google.pubsub.v1.Subscription
-	26, // 77: google.pubsub.v1.Subscriber.ListSubscriptions:output_type -> google.pubsub.v1.ListSubscriptionsResponse
-	58, // 78: google.pubsub.v1.Subscriber.DeleteSubscription:output_type -> google.protobuf.Empty
-	58, // 79: google.pubsub.v1.Subscriber.ModifyAckDeadline:output_type -> google.protobuf.Empty
-	58, // 80: google.pubsub.v1.Subscriber.Acknowledge:output_type -> google.protobuf.Empty
-	30, // 81: google.pubsub.v1.Subscriber.Pull:output_type -> google.pubsub.v1.PullResponse
-	34, // 82: google.pubsub.v1.Subscriber.StreamingPull:output_type -> google.pubsub.v1.StreamingPullResponse
-	58, // 83: google.pubsub.v1.Subscriber.ModifyPushConfig:output_type -> google.protobuf.Empty
-	37, // 84: google.pubsub.v1.Subscriber.GetSnapshot:output_type -> google.pubsub.v1.Snapshot
-	40, // 85: google.pubsub.v1.Subscriber.ListSnapshots:output_type -> google.pubsub.v1.ListSnapshotsResponse
-	37, // 86: google.pubsub.v1.Subscriber.CreateSnapshot:output_type -> google.pubsub.v1.Snapshot
-	37, // 87: google.pubsub.v1.Subscriber.UpdateSnapshot:output_type -> google.pubsub.v1.Snapshot
-	58, // 88: google.pubsub.v1.Subscriber.DeleteSnapshot:output_type -> google.protobuf.Empty
-	43, // 89: google.pubsub.v1.Subscriber.Seek:output_type -> google.pubsub.v1.SeekResponse
-	65, // [65:90] is the sub-list for method output_type
-	40, // [40:65] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	57, // 0: google.pubsub.v1.SchemaSettings.encoding:type_name -> google.pubsub.v1.Encoding
+	47, // 1: google.pubsub.v1.Topic.labels:type_name -> google.pubsub.v1.Topic.LabelsEntry
+	2,  // 2: google.pubsub.v1.Topic.message_storage_policy:type_name -> google.pubsub.v1.MessageStoragePolicy
+	3,  // 3: google.pubsub.v1.Topic.schema_settings:type_name -> google.pubsub.v1.SchemaSettings
+	58, // 4: google.pubsub.v1.Topic.message_retention_duration:type_name -> google.protobuf.Duration
+	48, // 5: google.pubsub.v1.PubsubMessage.attributes:type_name -> google.pubsub.v1.PubsubMessage.AttributesEntry
+	59, // 6: google.pubsub.v1.PubsubMessage.publish_time:type_name -> google.protobuf.Timestamp
+	4,  // 7: google.pubsub.v1.UpdateTopicRequest.topic:type_name -> google.pubsub.v1.Topic
+	60, // 8: google.pubsub.v1.UpdateTopicRequest.update_mask:type_name -> google.protobuf.FieldMask
+	5,  // 9: google.pubsub.v1.PublishRequest.messages:type_name -> google.pubsub.v1.PubsubMessage
+	4,  // 10: google.pubsub.v1.ListTopicsResponse.topics:type_name -> google.pubsub.v1.Topic
+	23, // 11: google.pubsub.v1.Subscription.push_config:type_name -> google.pubsub.v1.PushConfig
+	24, // 12: google.pubsub.v1.Subscription.bigquery_config:type_name -> google.pubsub.v1.BigQueryConfig
+	58, // 13: google.pubsub.v1.Subscription.message_retention_duration:type_name -> google.protobuf.Duration
+	49, // 14: google.pubsub.v1.Subscription.labels:type_name -> google.pubsub.v1.Subscription.LabelsEntry
+	22, // 15: google.pubsub.v1.Subscription.expiration_policy:type_name -> google.pubsub.v1.ExpirationPolicy
+	21, // 16: google.pubsub.v1.Subscription.dead_letter_policy:type_name -> google.pubsub.v1.DeadLetterPolicy
+	20, // 17: google.pubsub.v1.Subscription.retry_policy:type_name -> google.pubsub.v1.RetryPolicy
+	58, // 18: google.pubsub.v1.Subscription.topic_message_retention_duration:type_name -> google.protobuf.Duration
+	0,  // 19: google.pubsub.v1.Subscription.state:type_name -> google.pubsub.v1.Subscription.State
+	58, // 20: google.pubsub.v1.RetryPolicy.minimum_backoff:type_name -> google.protobuf.Duration
+	58, // 21: google.pubsub.v1.RetryPolicy.maximum_backoff:type_name -> google.protobuf.Duration
+	58, // 22: google.pubsub.v1.ExpirationPolicy.ttl:type_name -> google.protobuf.Duration
+	51, // 23: google.pubsub.v1.PushConfig.attributes:type_name -> google.pubsub.v1.PushConfig.AttributesEntry
+	50, // 24: google.pubsub.v1.PushConfig.oidc_token:type_name -> google.pubsub.v1.PushConfig.OidcToken
+	1,  // 25: google.pubsub.v1.BigQueryConfig.state:type_name -> google.pubsub.v1.BigQueryConfig.State
+	5,  // 26: google.pubsub.v1.ReceivedMessage.message:type_name -> google.pubsub.v1.PubsubMessage
+	19, // 27: google.pubsub.v1.UpdateSubscriptionRequest.subscription:type_name -> google.pubsub.v1.Subscription
+	60, // 28: google.pubsub.v1.UpdateSubscriptionRequest.update_mask:type_name -> google.protobuf.FieldMask
+	19, // 29: google.pubsub.v1.ListSubscriptionsResponse.subscriptions:type_name -> google.pubsub.v1.Subscription
+	23, // 30: google.pubsub.v1.ModifyPushConfigRequest.push_config:type_name -> google.pubsub.v1.PushConfig
+	25, // 31: google.pubsub.v1.PullResponse.received_messages:type_name -> google.pubsub.v1.ReceivedMessage
+	25, // 32: google.pubsub.v1.StreamingPullResponse.received_messages:type_name -> google.pubsub.v1.ReceivedMessage
+	52, // 33: google.pubsub.v1.StreamingPullResponse.acknowledge_confirmation:type_name -> google.pubsub.v1.StreamingPullResponse.AcknowledgeConfirmation
+	53, // 34: google.pubsub.v1.StreamingPullResponse.modify_ack_deadline_confirmation:type_name -> google.pubsub.v1.StreamingPullResponse.ModifyAckDeadlineConfirmation
+	54, // 35: google.pubsub.v1.StreamingPullResponse.subscription_properties:type_name -> google.pubsub.v1.StreamingPullResponse.SubscriptionProperties
+	55, // 36: google.pubsub.v1.CreateSnapshotRequest.labels:type_name -> google.pubsub.v1.CreateSnapshotRequest.LabelsEntry
+	40, // 37: google.pubsub.v1.UpdateSnapshotRequest.snapshot:type_name -> google.pubsub.v1.Snapshot
+	60, // 38: google.pubsub.v1.UpdateSnapshotRequest.update_mask:type_name -> google.protobuf.FieldMask
+	59, // 39: google.pubsub.v1.Snapshot.expire_time:type_name -> google.protobuf.Timestamp
+	56, // 40: google.pubsub.v1.Snapshot.labels:type_name -> google.pubsub.v1.Snapshot.LabelsEntry
+	40, // 41: google.pubsub.v1.ListSnapshotsResponse.snapshots:type_name -> google.pubsub.v1.Snapshot
+	59, // 42: google.pubsub.v1.SeekRequest.time:type_name -> google.protobuf.Timestamp
+	4,  // 43: google.pubsub.v1.Publisher.CreateTopic:input_type -> google.pubsub.v1.Topic
+	7,  // 44: google.pubsub.v1.Publisher.UpdateTopic:input_type -> google.pubsub.v1.UpdateTopicRequest
+	8,  // 45: google.pubsub.v1.Publisher.Publish:input_type -> google.pubsub.v1.PublishRequest
+	6,  // 46: google.pubsub.v1.Publisher.GetTopic:input_type -> google.pubsub.v1.GetTopicRequest
+	10, // 47: google.pubsub.v1.Publisher.ListTopics:input_type -> google.pubsub.v1.ListTopicsRequest
+	12, // 48: google.pubsub.v1.Publisher.ListTopicSubscriptions:input_type -> google.pubsub.v1.ListTopicSubscriptionsRequest
+	14, // 49: google.pubsub.v1.Publisher.ListTopicSnapshots:input_type -> google.pubsub.v1.ListTopicSnapshotsRequest
+	16, // 50: google.pubsub.v1.Publisher.DeleteTopic:input_type -> google.pubsub.v1.DeleteTopicRequest
+	17, // 51: google.pubsub.v1.Publisher.DetachSubscription:input_type -> google.pubsub.v1.DetachSubscriptionRequest
+	19, // 52: google.pubsub.v1.Subscriber.CreateSubscription:input_type -> google.pubsub.v1.Subscription
+	26, // 53: google.pubsub.v1.Subscriber.GetSubscription:input_type -> google.pubsub.v1.GetSubscriptionRequest
+	27, // 54: google.pubsub.v1.Subscriber.UpdateSubscription:input_type -> google.pubsub.v1.UpdateSubscriptionRequest
+	28, // 55: google.pubsub.v1.Subscriber.ListSubscriptions:input_type -> google.pubsub.v1.ListSubscriptionsRequest
+	30, // 56: google.pubsub.v1.Subscriber.DeleteSubscription:input_type -> google.pubsub.v1.DeleteSubscriptionRequest
+	34, // 57: google.pubsub.v1.Subscriber.ModifyAckDeadline:input_type -> google.pubsub.v1.ModifyAckDeadlineRequest
+	35, // 58: google.pubsub.v1.Subscriber.Acknowledge:input_type -> google.pubsub.v1.AcknowledgeRequest
+	32, // 59: google.pubsub.v1.Subscriber.Pull:input_type -> google.pubsub.v1.PullRequest
+	36, // 60: google.pubsub.v1.Subscriber.StreamingPull:input_type -> google.pubsub.v1.StreamingPullRequest
+	31, // 61: google.pubsub.v1.Subscriber.ModifyPushConfig:input_type -> google.pubsub.v1.ModifyPushConfigRequest
+	41, // 62: google.pubsub.v1.Subscriber.GetSnapshot:input_type -> google.pubsub.v1.GetSnapshotRequest
+	42, // 63: google.pubsub.v1.Subscriber.ListSnapshots:input_type -> google.pubsub.v1.ListSnapshotsRequest
+	38, // 64: google.pubsub.v1.Subscriber.CreateSnapshot:input_type -> google.pubsub.v1.CreateSnapshotRequest
+	39, // 65: google.pubsub.v1.Subscriber.UpdateSnapshot:input_type -> google.pubsub.v1.UpdateSnapshotRequest
+	44, // 66: google.pubsub.v1.Subscriber.DeleteSnapshot:input_type -> google.pubsub.v1.DeleteSnapshotRequest
+	45, // 67: google.pubsub.v1.Subscriber.Seek:input_type -> google.pubsub.v1.SeekRequest
+	4,  // 68: google.pubsub.v1.Publisher.CreateTopic:output_type -> google.pubsub.v1.Topic
+	4,  // 69: google.pubsub.v1.Publisher.UpdateTopic:output_type -> google.pubsub.v1.Topic
+	9,  // 70: google.pubsub.v1.Publisher.Publish:output_type -> google.pubsub.v1.PublishResponse
+	4,  // 71: google.pubsub.v1.Publisher.GetTopic:output_type -> google.pubsub.v1.Topic
+	11, // 72: google.pubsub.v1.Publisher.ListTopics:output_type -> google.pubsub.v1.ListTopicsResponse
+	13, // 73: google.pubsub.v1.Publisher.ListTopicSubscriptions:output_type -> google.pubsub.v1.ListTopicSubscriptionsResponse
+	15, // 74: google.pubsub.v1.Publisher.ListTopicSnapshots:output_type -> google.pubsub.v1.ListTopicSnapshotsResponse
+	61, // 75: google.pubsub.v1.Publisher.DeleteTopic:output_type -> google.protobuf.Empty
+	18, // 76: google.pubsub.v1.Publisher.DetachSubscription:output_type -> google.pubsub.v1.DetachSubscriptionResponse
+	19, // 77: google.pubsub.v1.Subscriber.CreateSubscription:output_type -> google.pubsub.v1.Subscription
+	19, // 78: google.pubsub.v1.Subscriber.GetSubscription:output_type -> google.pubsub.v1.Subscription
+	19, // 79: google.pubsub.v1.Subscriber.UpdateSubscription:output_type -> google.pubsub.v1.Subscription
+	29, // 80: google.pubsub.v1.Subscriber.ListSubscriptions:output_type -> google.pubsub.v1.ListSubscriptionsResponse
+	61, // 81: google.pubsub.v1.Subscriber.DeleteSubscription:output_type -> google.protobuf.Empty
+	61, // 82: google.pubsub.v1.Subscriber.ModifyAckDeadline:output_type -> google.protobuf.Empty
+	61, // 83: google.pubsub.v1.Subscriber.Acknowledge:output_type -> google.protobuf.Empty
+	33, // 84: google.pubsub.v1.Subscriber.Pull:output_type -> google.pubsub.v1.PullResponse
+	37, // 85: google.pubsub.v1.Subscriber.StreamingPull:output_type -> google.pubsub.v1.StreamingPullResponse
+	61, // 86: google.pubsub.v1.Subscriber.ModifyPushConfig:output_type -> google.protobuf.Empty
+	40, // 87: google.pubsub.v1.Subscriber.GetSnapshot:output_type -> google.pubsub.v1.Snapshot
+	43, // 88: google.pubsub.v1.Subscriber.ListSnapshots:output_type -> google.pubsub.v1.ListSnapshotsResponse
+	40, // 89: google.pubsub.v1.Subscriber.CreateSnapshot:output_type -> google.pubsub.v1.Snapshot
+	40, // 90: google.pubsub.v1.Subscriber.UpdateSnapshot:output_type -> google.pubsub.v1.Snapshot
+	61, // 91: google.pubsub.v1.Subscriber.DeleteSnapshot:output_type -> google.protobuf.Empty
+	46, // 92: google.pubsub.v1.Subscriber.Seek:output_type -> google.pubsub.v1.SeekResponse
+	68, // [68:93] is the sub-list for method output_type
+	43, // [43:68] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_google_pubsub_v1_pubsub_proto_init() }
@@ -4809,7 +5085,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[22].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ReceivedMessage); i {
+			switch v := v.(*BigQueryConfig); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4821,7 +5097,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[23].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetSubscriptionRequest); i {
+			switch v := v.(*ReceivedMessage); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4833,7 +5109,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[24].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*UpdateSubscriptionRequest); i {
+			switch v := v.(*GetSubscriptionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4845,7 +5121,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[25].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ListSubscriptionsRequest); i {
+			switch v := v.(*UpdateSubscriptionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4857,7 +5133,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[26].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ListSubscriptionsResponse); i {
+			switch v := v.(*ListSubscriptionsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4869,7 +5145,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[27].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*DeleteSubscriptionRequest); i {
+			switch v := v.(*ListSubscriptionsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4881,7 +5157,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[28].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ModifyPushConfigRequest); i {
+			switch v := v.(*DeleteSubscriptionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4893,7 +5169,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[29].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*PullRequest); i {
+			switch v := v.(*ModifyPushConfigRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4905,7 +5181,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[30].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*PullResponse); i {
+			switch v := v.(*PullRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4917,7 +5193,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[31].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ModifyAckDeadlineRequest); i {
+			switch v := v.(*PullResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4929,7 +5205,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[32].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AcknowledgeRequest); i {
+			switch v := v.(*ModifyAckDeadlineRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4941,7 +5217,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[33].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*StreamingPullRequest); i {
+			switch v := v.(*AcknowledgeRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4953,7 +5229,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[34].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*StreamingPullResponse); i {
+			switch v := v.(*StreamingPullRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4965,7 +5241,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[35].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CreateSnapshotRequest); i {
+			switch v := v.(*StreamingPullResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4977,7 +5253,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[36].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*UpdateSnapshotRequest); i {
+			switch v := v.(*CreateSnapshotRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4989,7 +5265,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[37].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Snapshot); i {
+			switch v := v.(*UpdateSnapshotRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5001,7 +5277,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[38].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetSnapshotRequest); i {
+			switch v := v.(*Snapshot); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5013,7 +5289,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[39].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ListSnapshotsRequest); i {
+			switch v := v.(*GetSnapshotRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5025,7 +5301,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[40].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ListSnapshotsResponse); i {
+			switch v := v.(*ListSnapshotsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5037,7 +5313,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[41].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*DeleteSnapshotRequest); i {
+			switch v := v.(*ListSnapshotsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5049,7 +5325,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[42].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*SeekRequest); i {
+			switch v := v.(*DeleteSnapshotRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5061,6 +5337,18 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 			}
 		}
 		file_google_pubsub_v1_pubsub_proto_msgTypes[43].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*SeekRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_google_pubsub_v1_pubsub_proto_msgTypes[44].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SeekResponse); i {
 			case 0:
 				return &v.state
@@ -5072,7 +5360,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_google_pubsub_v1_pubsub_proto_msgTypes[47].Exporter = func(v interface{}, i int) interface{} {
+		file_google_pubsub_v1_pubsub_proto_msgTypes[48].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*PushConfig_OidcToken); i {
 			case 0:
 				return &v.state
@@ -5084,7 +5372,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_google_pubsub_v1_pubsub_proto_msgTypes[49].Exporter = func(v interface{}, i int) interface{} {
+		file_google_pubsub_v1_pubsub_proto_msgTypes[50].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*StreamingPullResponse_AcknowledgeConfirmation); i {
 			case 0:
 				return &v.state
@@ -5096,7 +5384,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_google_pubsub_v1_pubsub_proto_msgTypes[50].Exporter = func(v interface{}, i int) interface{} {
+		file_google_pubsub_v1_pubsub_proto_msgTypes[51].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*StreamingPullResponse_ModifyAckDeadlineConfirmation); i {
 			case 0:
 				return &v.state
@@ -5108,7 +5396,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_google_pubsub_v1_pubsub_proto_msgTypes[51].Exporter = func(v interface{}, i int) interface{} {
+		file_google_pubsub_v1_pubsub_proto_msgTypes[52].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*StreamingPullResponse_SubscriptionProperties); i {
 			case 0:
 				return &v.state
@@ -5124,7 +5412,7 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 	file_google_pubsub_v1_pubsub_proto_msgTypes[21].OneofWrappers = []interface{}{
 		(*PushConfig_OidcToken_)(nil),
 	}
-	file_google_pubsub_v1_pubsub_proto_msgTypes[42].OneofWrappers = []interface{}{
+	file_google_pubsub_v1_pubsub_proto_msgTypes[43].OneofWrappers = []interface{}{
 		(*SeekRequest_Time)(nil),
 		(*SeekRequest_Snapshot)(nil),
 	}
@@ -5133,13 +5421,14 @@ func file_google_pubsub_v1_pubsub_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_google_pubsub_v1_pubsub_proto_rawDesc,
-			NumEnums:      0,
-			NumMessages:   54,
+			NumEnums:      2,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
 		GoTypes:           file_google_pubsub_v1_pubsub_proto_goTypes,
 		DependencyIndexes: file_google_pubsub_v1_pubsub_proto_depIdxs,
+		EnumInfos:         file_google_pubsub_v1_pubsub_proto_enumTypes,
 		MessageInfos:      file_google_pubsub_v1_pubsub_proto_msgTypes,
 	}.Build()
 	File_google_pubsub_v1_pubsub_proto = out.File

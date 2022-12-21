@@ -89,7 +89,7 @@ func Test_TargetManager(t *testing.T) {
 	require.True(t, ta.Ready())
 
 	require.Eventually(t, func() bool {
-		return len(entryHandler.Received()) >= 5
+		return len(entryHandler.Received()) >= 6
 	}, 20*time.Second, 100*time.Millisecond)
 
 	received := entryHandler.Received()
@@ -109,4 +109,5 @@ func Test_TargetManager(t *testing.T) {
 		actualLines = append(actualLines, entry.Line)
 	}
 	require.ElementsMatch(t, actualLines, expectedLines)
+	require.Equal(t, 99969, len(received[5].Line))
 }

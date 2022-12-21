@@ -18,10 +18,10 @@ import (
 //
 // Specifically, it supports:
 //
-//   promql.ErrQueryCanceled, mapped to 503
-//   promql.ErrQueryTimeout, mapped to 503
-//   promql.ErrStorage mapped to 500
-//   anything else is mapped to 422
+//	promql.ErrQueryCanceled, mapped to 503
+//	promql.ErrQueryTimeout, mapped to 503
+//	promql.ErrStorage mapped to 500
+//	anything else is mapped to 422
 //
 // Querier code produces different kinds of errors, and we want to map them to above-mentioned HTTP status codes correctly.
 //

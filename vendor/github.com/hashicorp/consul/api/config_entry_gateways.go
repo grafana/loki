@@ -27,6 +27,9 @@ type IngressGatewayConfigEntry struct {
 
 	Meta map[string]string `json:",omitempty"`
 
+	// Defaults is default configuration for all upstream services
+	Defaults *IngressServiceConfig `json:",omitempty"`
+
 	// CreateIndex is the Raft index this entry was created at. This is a
 	// read-only field.
 	CreateIndex uint64
@@ -37,12 +40,25 @@ type IngressGatewayConfigEntry struct {
 	ModifyIndex uint64
 }
 
+type IngressServiceConfig struct {
+	MaxConnections        *uint32
+	MaxPendingRequests    *uint32
+	MaxConcurrentRequests *uint32
+}
+
 type GatewayTLSConfig struct {
 	// Indicates that TLS should be enabled for this gateway service.
 	Enabled bool
 
 	// SDS allows configuring TLS certificate from an SDS service.
 	SDS *GatewayTLSSDSConfig `json:",omitempty"`
+
+	TLSMinVersion string `json:",omitempty" alias:"tls_min_version"`
+	TLSMaxVersion string `json:",omitempty" alias:"tls_max_version"`
+
+	// Define a subset of cipher suites to restrict
+	// Only applicable to connections negotiated via TLS 1.2 or earlier
+	CipherSuites []string `json:",omitempty" alias:"cipher_suites"`
 }
 
 type GatewayServiceTLSConfig struct {
@@ -117,6 +133,10 @@ type IngressService struct {
 	// Allow HTTP header manipulation to be configured.
 	RequestHeaders  *HTTPHeaderModifiers `json:",omitempty" alias:"request_headers"`
 	ResponseHeaders *HTTPHeaderModifiers `json:",omitempty" alias:"response_headers"`
+
+	MaxConnections        *uint32 `json:",omitempty" alias:"max_connections"`
+	MaxPendingRequests    *uint32 `json:",omitempty" alias:"max_pending_requests"`
+	MaxConcurrentRequests *uint32 `json:",omitempty" alias:"max_concurrent_requests"`
 }
 
 func (i *IngressGatewayConfigEntry) GetKind() string            { return i.Kind }

@@ -5,6 +5,7 @@ title: Retention
 
 Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#compactor).
 
+By default, when `table_manager.retention_deletes_enabled` or `compactor.retention_enabled` flags are not set, then logs sent to Loki live forever.
 
 Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
 
@@ -165,7 +166,7 @@ section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
 provided retention period needs to be a duration represented as a string that
-can be parsed using prometheus common [model.Duration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration) e.g. `7d`, `1w`, `168h`.
+can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
 
 > **WARNING**: The retention period must be a multiple of the index and chunks table
 `period`, configured in the [`period_config`](../../../configuration#period_config)

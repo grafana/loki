@@ -8,7 +8,7 @@ import (
 
 // BalanceService is an interface for interfacing with the Balance
 // endpoints of the DigitalOcean API
-// See: https://docs.digitalocean.com/reference/api/api-reference/#operation/get_customer_balance
+// See: https://docs.digitalocean.com/reference/api/api-reference/#operation/balance_get
 type BalanceService interface {
 	Get(context.Context) (*Balance, *Response, error)
 }

@@ -1,6 +1,8 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
+  local compactor_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
+  local compactor_job_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
   grafanaDashboards+::
     {
       'loki-retention.json':
@@ -12,13 +14,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addRow(
           $.row('Resource Usage')
           .addPanel(
-            $.containerCPUUsagePanel('CPU', 'compactor'),
+            $.CPUUsagePanel('CPU', compactor_pod_matcher),
           )
           .addPanel(
-            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'compactor'),
+            $.memoryWorkingSetPanel('Memory (workingset)', compactor_pod_matcher),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'compactor'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', compactor_job_matcher),
           )
 
         )
@@ -94,7 +96,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addRow(
           $.row('Logs')
           .addPanel(
-            $.logPanel('Compactor Logs', '{container="compactor", %s}' % $.namespaceMatcher()),
+            $.logPanel('Compactor Logs', '{%s}' % $.jobMatcher(compactor_job_matcher)),
           )
         ),
     },

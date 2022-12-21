@@ -8,7 +8,6 @@ import (
 subtreeFolder is a NodeMapper which embeds an entire parser.Node in an embedded query
 if it does not contain any previously embedded queries. This allows the frontend to "zip up" entire
 subtrees of an AST that have not already been parallelized.
-
 */
 type subtreeFolder struct{}
 

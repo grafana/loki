@@ -47,7 +47,7 @@ func Unmarshal(dst Cloneable, sources ...Source) error {
 func DefaultUnmarshal(dst Cloneable, args []string, fs *flag.FlagSet) error {
 	return Unmarshal(dst,
 		Defaults(fs),
-		YAMLFlag(args, "config.file"),
+		ConfigFileLoader(args, "config.file", true),
 		Flags(args, fs),
 	)
 }

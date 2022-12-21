@@ -10,7 +10,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         if condition
         then self.addRow(row)
         else self,
-      addLog(name='logs'):: self {
+      addLog(name='loki_datasource'):: self {
         templating+: {
           list+: [
             {
@@ -29,15 +29,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       addCluster(multi=false)::
         if multi then
-          self.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
+          self.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
         else
-          self.addTemplate('cluster', 'loki_build_info', 'cluster'),
+          self.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label),
 
       addNamespace(multi=false)::
         if multi then
-          self.addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
+          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
         else
-          self.addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
+          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
 
       addTag()::
         self + {
@@ -74,23 +74,23 @@ local utils = import 'mixin-utils/utils.libsonnet';
         };
 
         if multi then
-          d.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
-          .addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
+          d.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
         else
-          d.addTemplate('cluster', 'loki_build_info', 'cluster')
-          .addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
+          d.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
     },
 
   jobMatcher(job)::
-    'cluster=~"$cluster", job=~"($namespace)/%s"' % job,
+    $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
 
   namespaceMatcher()::
-    'cluster=~"$cluster", namespace=~"$namespace"',
+    $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
 
   containerLabelMatcher(containerName)::
     'label_name=~"%s.*"' % containerName,
 
-  logPanel(title, selector, datasource='$logs'):: {
+  logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
     type: 'logs',
     datasource: datasource,
@@ -150,11 +150,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       datasource: '$datasource',
     },
-  containerCPUUsagePanel(title, containerName)::
+  CPUUsagePanel(title, matcher)::
     $.panel(title) +
     $.queryPanel([
-      'sum by(pod) (rate(container_cpu_usage_seconds_total{%s,container="%s"}[$__rate_interval]))' % [$.namespaceMatcher(), containerName],
-      'min(container_spec_cpu_quota{%s,container="%s"} / container_spec_cpu_period{%s,container="%s"})' % [$.namespaceMatcher(), containerName, $.namespaceMatcher(), containerName],
+      'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
+      'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s})' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
     ], ['{{pod}}', 'limit']) +
     {
       seriesOverrides: [
@@ -166,14 +166,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
       ],
       tooltip: { sort: 2 },  // Sort descending.
     },
+  containerCPUUsagePanel(title, containerName)::
+    self.CPUUsagePanel(title, 'container="%s"' % containerName),
 
-  containerMemoryWorkingSetPanel(title, containerName)::
+  memoryWorkingSetPanel(title, matcher)::
     $.panel(title) +
     $.queryPanel([
       // We use "max" instead of "sum" otherwise during a rolling update of a statefulset we will end up
       // summing the memory of the old pod (whose metric will be stale for 5m) to the new pod.
-      'max by(pod) (container_memory_working_set_bytes{%s,container="%s"})' % [$.namespaceMatcher(), containerName],
-      'min(container_spec_memory_limit_bytes{%s,container="%s"} > 0)' % [$.namespaceMatcher(), containerName],
+      'max by(pod) (container_memory_working_set_bytes{%s, %s})' % [$.namespaceMatcher(), matcher],
+      'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
     ], ['{{pod}}', 'limit']) +
     {
       seriesOverrides: [
@@ -186,6 +188,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
       yaxes: $.yaxes('bytes'),
       tooltip: { sort: 2 },  // Sort descending.
     },
+  containerMemoryWorkingSetPanel(title, containerName)::
+    self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
   goHeapInUsePanel(title, jobName)::
     $.panel(title) +
@@ -198,10 +202,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
 
-  filterNodeDiskContainer(containerName)::
+  filterNodeDisk(matcher)::
     |||
-      ignoring(%s) group_right() (label_replace(count by(%s, %s, device) (container_fs_writes_bytes_total{%s,container="%s",device!~".*sda.*"}), "device", "$1", "device", "/dev/(.*)") * 0)
-    ||| % [$._config.per_instance_label, $._config.per_node_label, $._config.per_instance_label, $.namespaceMatcher(), containerName],
+      ignoring(%s) group_right() (label_replace(count by(%s, %s, device) (container_fs_writes_bytes_total{%s, %s, device!~".*sda.*"}), "device", "$1", "device", "/dev/(.*)") * 0)
+    ||| % [$._config.per_instance_label, $._config.per_node_label, $._config.per_instance_label, $.namespaceMatcher(), matcher],
+  filterNodeDiskContainer(containerName)::
+    self.filterNodeDisk('container="%s"' % containerName),
 
   newStatPanel(queries, legends='', unit='percentunit', decimals=1, thresholds=[], instant=false, novalue='')::
     super.queryPanel(queries, legends) + {

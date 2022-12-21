@@ -120,14 +120,10 @@ func validateExpr(expr Expr) error {
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func validateMatchers(matchers []*labels.Matcher) error {
-	if len(matchers) == 0 {
-		return nil
-	}
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
 		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
-
 	return nil
 }
 
@@ -143,6 +139,10 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 		return nil, errors.New("only label matchers is supported")
 	}
 	return matcherExpr.Mts, nil
+}
+
+func MatchersString(xs []*labels.Matcher) string {
+	return newMatcherExpr(xs).String()
 }
 
 // ParseSampleExpr parses a string and returns the sampleExpr
@@ -167,7 +167,7 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 
 		return validateSampleExpr(e.RHS)
-	case *LiteralExpr:
+	case *LiteralExpr, *VectorExpr:
 		return nil
 	default:
 		return validateMatchers(expr.Selector().Matchers())
@@ -198,6 +198,18 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Sort labels to ensure functionally equivalent
+	// inputs map to the same output
 	sort.Sort(ls)
-	return ls, nil
+
+	// Use the label builder to trim empty label values.
+	// Empty label values are equivalent to absent labels
+	// in Prometheus, but they unfortunately alter the
+	// Hash values created. This can cause problems in Loki
+	// if we can't rely on a set of labels to have a deterministic
+	// hash value.
+	// Therefore we must normalize early in the write path.
+	// See https://github.com/grafana/loki/pull/7355
+	// for more information
+	return labels.NewBuilder(ls).Labels(nil), nil
 }

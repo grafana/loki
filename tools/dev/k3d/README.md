@@ -8,6 +8,7 @@ In order to use the make targets in this directory, make sure you have the follo
 * [tanka](https://github.com/grafana/tanka)
 * [jsonnet](https://jsonnet.org/)
 * [jq](https://stedolan.github.io/jq/)
+* [helm](https://helm.sh/docs/intro/install/) >= 3.9
 
 **Note**: in case docker is unable to resolve the local k3d registry hostname, add the following entry to the `/etc/hosts` file:
 ```

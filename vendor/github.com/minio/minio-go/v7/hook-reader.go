@@ -20,6 +20,7 @@ package minio
 import (
 	"fmt"
 	"io"
+	"sync"
 )
 
 // hookReader hooks additional reader in the source stream. It is
@@ -27,6 +28,7 @@ import (
 // notified about the exact number of bytes read from the primary
 // source on each Read operation.
 type hookReader struct {
+	mu     sync.RWMutex
 	source io.Reader
 	hook   io.Reader
 }
@@ -34,6 +36,9 @@ type hookReader struct {
 // Seek implements io.Seeker. Seeks source first, and if necessary
 // seeks hook if Seek method is appropriately found.
 func (hr *hookReader) Seek(offset int64, whence int) (n int64, err error) {
+	hr.mu.Lock()
+	defer hr.mu.Unlock()
+
 	// Verify for source has embedded Seeker, use it.
 	sourceSeeker, ok := hr.source.(io.Seeker)
 	if ok {
@@ -43,18 +48,21 @@ func (hr *hookReader) Seek(offset int64, whence int) (n int64, err error) {
 		}
 	}
 
-	// Verify if hook has embedded Seeker, use it.
-	hookSeeker, ok := hr.hook.(io.Seeker)
-	if ok {
-		var m int64
-		m, err = hookSeeker.Seek(offset, whence)
-		if err != nil {
-			return 0, err
-		}
-		if n != m {
-			return 0, fmt.Errorf("hook seeker seeked %d bytes, expected source %d bytes", m, n)
+	if hr.hook != nil {
+		// Verify if hook has embedded Seeker, use it.
+		hookSeeker, ok := hr.hook.(io.Seeker)
+		if ok {
+			var m int64
+			m, err = hookSeeker.Seek(offset, whence)
+			if err != nil {
+				return 0, err
+			}
+			if n != m {
+				return 0, fmt.Errorf("hook seeker seeked %d bytes, expected source %d bytes", m, n)
+			}
 		}
 	}
+
 	return n, nil
 }
 
@@ -62,14 +70,19 @@ func (hr *hookReader) Seek(offset int64, whence int) (n int64, err error) {
 // value 'n' number of bytes are reported through the hook. Returns
 // error for all non io.EOF conditions.
 func (hr *hookReader) Read(b []byte) (n int, err error) {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
 	n, err = hr.source.Read(b)
 	if err != nil && err != io.EOF {
 		return n, err
 	}
-	// Progress the hook with the total read bytes from the source.
-	if _, herr := hr.hook.Read(b[:n]); herr != nil {
-		if herr != io.EOF {
-			return n, herr
+	if hr.hook != nil {
+		// Progress the hook with the total read bytes from the source.
+		if _, herr := hr.hook.Read(b[:n]); herr != nil {
+			if herr != io.EOF {
+				return n, herr
+			}
 		}
 	}
 	return n, err
@@ -79,7 +92,10 @@ func (hr *hookReader) Read(b []byte) (n int, err error) {
 // reports the data read from the source to the hook.
 func newHook(source, hook io.Reader) io.Reader {
 	if hook == nil {
-		return source
+		return &hookReader{source: source}
 	}
-	return &hookReader{source, hook}
+	return &hookReader{
+		source: source,
+		hook:   hook,
+	}
 }

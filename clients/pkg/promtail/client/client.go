@@ -38,20 +38,22 @@ const (
 	LatencyLabel = "filename"
 	HostLabel    = "host"
 	ClientLabel  = "client"
+	TenantLabel  = "tenant"
 )
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
 type Metrics struct {
-	encodedBytes     *prometheus.CounterVec
-	sentBytes        *prometheus.CounterVec
-	droppedBytes     *prometheus.CounterVec
-	sentEntries      *prometheus.CounterVec
-	droppedEntries   *prometheus.CounterVec
-	requestDuration  *prometheus.HistogramVec
-	batchRetries     *prometheus.CounterVec
-	countersWithHost []*prometheus.CounterVec
-	streamLag        *prometheus.GaugeVec
+	encodedBytes       *prometheus.CounterVec
+	sentBytes          *prometheus.CounterVec
+	droppedBytes       *prometheus.CounterVec
+	sentEntries        *prometheus.CounterVec
+	droppedEntries     *prometheus.CounterVec
+	requestDuration    *prometheus.HistogramVec
+	batchRetries       *prometheus.CounterVec
+	countersWithHost   []*prometheus.CounterVec
+	countersWithTenant []*prometheus.CounterVec
+	streamLag          *prometheus.GaugeVec
 }
 
 func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
@@ -71,7 +73,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "dropped_bytes_total",
 		Help:      "Number of bytes dropped because failed to be sent to the ingester after all retries.",
-	}, []string{HostLabel})
+	}, []string{HostLabel, TenantLabel})
 	m.sentEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_entries_total",
@@ -81,7 +83,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
-	}, []string{HostLabel})
+	}, []string{HostLabel, TenantLabel})
 	m.requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
@@ -91,10 +93,14 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "batch_retries_total",
 		Help:      "Number of times batches has had to be retried.",
-	}, []string{HostLabel})
+	}, []string{HostLabel, TenantLabel})
 
 	m.countersWithHost = []*prometheus.CounterVec{
-		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries,
+		m.encodedBytes, m.sentBytes, m.sentEntries,
+	}
+
+	m.countersWithTenant = []*prometheus.CounterVec{
+		m.droppedBytes, m.droppedEntries, m.batchRetries,
 	}
 
 	streamLagLabelsMerged := []string{HostLabel, ClientLabel}
@@ -153,22 +159,23 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx        context.Context
+	cancel     context.CancelFunc
+	maxStreams int
 }
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
-func New(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (Client, error) {
+func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (Client, error) {
 	if cfg.StreamLagLabels.String() != "" {
 		return nil, fmt.Errorf("client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored: %+v", cfg.StreamLagLabels.String())
 	}
-	return newClient(metrics, cfg, streamLagLabels, logger)
+	return newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
 }
 
-func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (*client, error) {
+func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (*client, error) {
 
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
@@ -187,6 +194,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 		externalLabels: cfg.ExternalLabels.LabelSet,
 		ctx:            ctx,
 		cancel:         cancel,
+		maxStreams:     maxStreams,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -216,8 +224,8 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 }
 
 // NewWithTripperware creates a new Loki client with a custom tripperware.
-func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger, tp Tripperware) (Client, error) {
-	c, err := newClient(metrics, cfg, streamLagLabels, logger)
+func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +275,12 @@ func (c *client) run() {
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(c.maxStreams, e)
+				// Initialize counters to 0 so the metrics are exported before the first
+				// occurrence of incrementing to avoid missing metrics.
+				for _, counter := range c.metrics.countersWithTenant {
+					counter.WithLabelValues(c.cfg.URL.Host, tenantID).Add(0)
+				}
 				break
 			}
 
@@ -276,13 +289,18 @@ func (c *client) run() {
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
 
-				batches[tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(c.maxStreams, e)
 				break
 			}
 
 			// The max size of the batch isn't reached, so we can add the entry
-			batch.add(e)
-
+			err := batch.add(e)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
+				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(len(e.Line)))
+				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID).Inc()
+				return
+			}
 		case <-maxWaitCheck.C:
 			// Send all batches whose max wait time has been reached
 			for tenantID, batch := range batches {
@@ -337,6 +355,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
 					return
 				}
+
+				//nolint:staticcheck
 				lblSet := make(prometheus.Labels)
 				for _, lbl := range c.streamLagLabels {
 					// label from streamLagLabels may not be found but we still need an empty value
@@ -349,6 +369,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					}
 					lblSet[lbl] = value
 				}
+
+				//nolint:staticcheck
 				if lblSet != nil {
 					// always set host
 					lblSet[HostLabel] = c.cfg.URL.Host
@@ -366,8 +388,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 			break
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
-		c.metrics.batchRetries.WithLabelValues(c.cfg.URL.Host).Inc()
+		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "tenant", tenantID, "error", err)
+		c.metrics.batchRetries.WithLabelValues(c.cfg.URL.Host, tenantID).Inc()
 		backoff.Wait()
 
 		// Make sure it sends at least once before checking for retry.
@@ -377,9 +399,9 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	}
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
-		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "tenant", tenantID, "error", err)
+		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(bufBytes)
+		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(entriesCount))
 	}
 }
 

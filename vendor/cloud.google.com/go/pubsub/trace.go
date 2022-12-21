@@ -19,19 +19,10 @@ import (
 	"log"
 	"sync"
 
-	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 )
-
-func openCensusOptions() []option.ClientOption {
-	return []option.ClientOption{
-		option.WithGRPCDialOption(grpc.WithStatsHandler(&ocgrpc.ClientHandler{})),
-	}
-}
 
 // The following keys are used to tag requests with a specific topic/subscription ID.
 var (
@@ -93,6 +84,22 @@ var (
 	// StreamResponseCount is a measure of the number of responses received on a streaming-pull stream.
 	// It is EXPERIMENTAL and subject to change or removal without notice.
 	StreamResponseCount = stats.Int64(statsPrefix+"stream_response_count", "Number of gRPC StreamingPull response messages received", stats.UnitDimensionless)
+
+	// OutstandingMessages is a measure of the number of outstanding messages held by the client before they are processed.
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingMessages = stats.Int64(statsPrefix+"outstanding_messages", "Number of outstanding Pub/Sub messages", stats.UnitDimensionless)
+
+	// OutstandingBytes is a measure of the number of bytes all outstanding messages held by the client take up.
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingBytes = stats.Int64(statsPrefix+"outstanding_bytes", "Number of outstanding bytes", stats.UnitDimensionless)
+
+	// PublisherOutstandingMessages is a measure of the number of published outstanding messages held by the client before they are processed.
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	PublisherOutstandingMessages = stats.Int64(statsPrefix+"publisher_outstanding_messages", "Number of outstanding publish messages", stats.UnitDimensionless)
+
+	// PublisherOutstandingBytes is a measure of the number of bytes all outstanding publish messages held by the client take up.
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	PublisherOutstandingBytes = stats.Int64(statsPrefix+"publisher_outstanding_bytes", "Number of outstanding publish bytes", stats.UnitDimensionless)
 )
 
 var (
@@ -139,11 +146,29 @@ var (
 	// StreamResponseCountView is a cumulative sum of StreamResponseCount.
 	// It is EXPERIMENTAL and subject to change or removal without notice.
 	StreamResponseCountView *view.View
+
+	// OutstandingMessagesView is the last value of OutstandingMessages
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingMessagesView *view.View
+
+	// OutstandingBytesView is the last value of OutstandingBytes
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingBytesView *view.View
+
+	// PublisherOutstandingMessagesView is the last value of OutstandingMessages
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	PublisherOutstandingMessagesView *view.View
+
+	// PublisherOutstandingBytesView is the last value of OutstandingBytes
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	PublisherOutstandingBytesView *view.View
 )
 
 func init() {
 	PublishedMessagesView = createCountView(stats.Measure(PublishedMessages), keyTopic, keyStatus, keyError)
 	PublishLatencyView = createDistView(PublishLatency, keyTopic, keyStatus, keyError)
+	PublisherOutstandingMessagesView = createLastValueView(PublisherOutstandingMessages, keyTopic)
+	PublisherOutstandingBytesView = createLastValueView(PublisherOutstandingBytes, keyTopic)
 	PullCountView = createCountView(PullCount, keySubscription)
 	AckCountView = createCountView(AckCount, keySubscription)
 	NackCountView = createCountView(NackCount, keySubscription)
@@ -153,10 +178,14 @@ func init() {
 	StreamRetryCountView = createCountView(StreamRetryCount, keySubscription)
 	StreamRequestCountView = createCountView(StreamRequestCount, keySubscription)
 	StreamResponseCountView = createCountView(StreamResponseCount, keySubscription)
+	OutstandingMessagesView = createLastValueView(OutstandingMessages, keySubscription)
+	OutstandingBytesView = createLastValueView(OutstandingBytes, keySubscription)
 
 	DefaultPublishViews = []*view.View{
 		PublishedMessagesView,
 		PublishLatencyView,
+		PublisherOutstandingMessagesView,
+		PublisherOutstandingBytesView,
 	}
 
 	DefaultSubscribeViews = []*view.View{
@@ -169,6 +198,8 @@ func init() {
 		StreamRetryCountView,
 		StreamRequestCountView,
 		StreamResponseCountView,
+		OutstandingMessagesView,
+		OutstandingBytesView,
 	}
 }
 
@@ -196,6 +227,16 @@ func createDistView(m stats.Measure, keys ...tag.Key) *view.View {
 		TagKeys:     keys,
 		Measure:     m,
 		Aggregation: view.Distribution(0, 25, 50, 75, 100, 200, 400, 600, 800, 1000, 2000, 4000, 6000),
+	}
+}
+
+func createLastValueView(m stats.Measure, keys ...tag.Key) *view.View {
+	return &view.View{
+		Name:        m.Name(),
+		Description: m.Description(),
+		TagKeys:     keys,
+		Measure:     m,
+		Aggregation: view.LastValue(),
 	}
 }
 

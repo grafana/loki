@@ -6,14 +6,14 @@ package metadata
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"path"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/thanos-io/objstore"
 
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
@@ -100,7 +100,7 @@ func ReadMarker(ctx context.Context, logger log.Logger, bkt objstore.Instrumente
 	}
 	defer runutil.CloseWithLogOnErr(logger, r, "close bkt marker reader")
 
-	metaContent, err := ioutil.ReadAll(r)
+	metaContent, err := io.ReadAll(r)
 	if err != nil {
 		return errors.Wrapf(err, "read file: %s", markerFile)
 	}

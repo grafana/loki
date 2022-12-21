@@ -108,22 +108,26 @@ func (m *Miniredis) cmdHello(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
+	var opts struct {
+		version            int
+		username, password string
+	}
+
 	versionArg, args := args[0], args[1:]
-	var version int
-	switch versionArg {
-	case "2":
-		version = 2
-	case "3":
-		version = 3
+	var err error
+	opts.version, err = strconv.Atoi(versionArg)
+	if err != nil {
+		c.WriteError("ERR Protocol version is not an integer or out of range")
+		return
+	}
+	switch opts.version {
+	case 2, 3:
 	default:
 		c.WriteError("NOPROTO unsupported protocol version")
 		return
 	}
 
-	var (
-		checkAuth          bool
-		username, password string
-	)
+	var checkAuth bool
 	for len(args) > 0 {
 		switch strings.ToUpper(args[0]) {
 		case "AUTH":
@@ -131,7 +135,7 @@ func (m *Miniredis) cmdHello(c *server.Peer, cmd string, args []string) {
 				c.WriteError(fmt.Sprintf("ERR Syntax error in HELLO option '%s'", args[0]))
 				return
 			}
-			username, password, args = args[1], args[2], args[3:]
+			opts.username, opts.password, args = args[1], args[2], args[3:]
 			checkAuth = true
 		case "SETNAME":
 			if len(args) < 2 {
@@ -145,24 +149,24 @@ func (m *Miniredis) cmdHello(c *server.Peer, cmd string, args []string) {
 		}
 	}
 
-	if len(m.passwords) == 0 && username == "default" {
+	if len(m.passwords) == 0 && opts.username == "default" {
 		// redis ignores legacy "AUTH" if it's not enabled.
 		checkAuth = false
 	}
 	if checkAuth {
-		setPW, ok := m.passwords[username]
+		setPW, ok := m.passwords[opts.username]
 		if !ok {
 			c.WriteError("WRONGPASS invalid username-password pair")
 			return
 		}
-		if setPW != password {
+		if setPW != opts.password {
 			c.WriteError("WRONGPASS invalid username-password pair")
 			return
 		}
 		getCtx(c).authenticated = true
 	}
 
-	c.Resp3 = version == 3
+	c.Resp3 = opts.version == 3
 
 	c.WriteMapLen(7)
 	c.WriteBulk("server")
@@ -170,7 +174,7 @@ func (m *Miniredis) cmdHello(c *server.Peer, cmd string, args []string) {
 	c.WriteBulk("version")
 	c.WriteBulk("6.0.5")
 	c.WriteBulk("proto")
-	c.WriteInt(version)
+	c.WriteInt(opts.version)
 	c.WriteBulk("id")
 	c.WriteInt(42)
 	c.WriteBulk("mode")
@@ -218,12 +222,12 @@ func (m *Miniredis) cmdSelect(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
-			c.WriteError("ERR invalid DB index")
+			c.WriteError(msgInvalidInt)
 			setDirty(c)
 			return
 		}
 		if id < 0 {
-			c.WriteError("ERR DB index is out of range")
+			c.WriteError(msgDBIndexOutOfRange)
 			setDirty(c)
 			return
 		}
@@ -258,7 +262,7 @@ func (m *Miniredis) cmdSwapdb(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		if id1 < 0 || id2 < 0 {
-			c.WriteError("ERR DB index is out of range")
+			c.WriteError(msgDBIndexOutOfRange)
 			setDirty(c)
 			return
 		}

@@ -16,30 +16,32 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"gopkg.in/yaml.v3"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 )
 
-// Loader loads the configuration from file.
+// Loader loads the configuration from files.
 type Loader func(r io.Reader) (interface{}, error)
 
 // Config holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type Config struct {
 	ReloadPeriod time.Duration `yaml:"period" category:"advanced"`
-	// LoadPath contains the path to the runtime config file, requires an
-	// non-empty value
-	LoadPath string `yaml:"file"`
-	Loader   Loader `yaml:"-"`
+	// LoadPath contains the path to the runtime config files.
+	// Requires a non-empty value
+	LoadPath flagext.StringSliceCSV `yaml:"file"`
+	Loader   Loader                 `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
 func (mc *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
-	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
+	f.Var(&mc.LoadPath, "runtime-config.file", "Comma separated list of yaml files with the configuration that can be updated at runtime. Runtime config files will be merged from left to right.")
+	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config files.")
 }
 
-// Manager periodically reloads the configuration from a file, and keeps this
+// Manager periodically reloads the configuration from specified files, and keeps this
 // configuration available for clients.
 type Manager struct {
 	services.Service
@@ -55,11 +57,14 @@ type Manager struct {
 
 	configLoadSuccess prometheus.Gauge
 	configHash        *prometheus.GaugeVec
+
+	// Maps path to hash. Only used by loadConfig in Starting and Running states, so it doesn't need synchronization.
+	fileHashes map[string]string
 }
 
-// New creates an instance of Manager and starts reload config loop based on config
+// New creates an instance of Manager. Manager is a services.Service, and must be explicitly started to perform any work.
 func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
-	if cfg.LoadPath == "" {
+	if len(cfg.LoadPath) == 0 {
 		return nil, errors.New("LoadPath is empty")
 	}
 
@@ -71,7 +76,7 @@ func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Mana
 		}),
 		configHash: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "runtime_config_hash",
-			Help: "Hash of the currently active runtime config file.",
+			Help: "Hash of the currently active runtime configuration, merged from all configured files.",
 		}, []string{"sha256"}),
 		logger: logger,
 	}
@@ -81,7 +86,7 @@ func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Mana
 }
 
 func (om *Manager) starting(_ context.Context) error {
-	if om.cfg.LoadPath == "" {
+	if len(om.cfg.LoadPath) == 0 {
 		return nil
 	}
 
@@ -119,7 +124,7 @@ func (om *Manager) CloseListenerChannel(listener <-chan interface{}) {
 }
 
 func (om *Manager) loop(ctx context.Context) error {
-	if om.cfg.LoadPath == "" {
+	if len(om.cfg.LoadPath) == 0 {
 		level.Info(om.logger).Log("msg", "runtime config disabled: file not specified")
 		<-ctx.Done()
 		return nil
@@ -142,16 +147,55 @@ func (om *Manager) loop(ctx context.Context) error {
 	}
 }
 
-// loadConfig loads configuration using the loader function, and if successful,
-// stores it as current configuration and notifies listeners.
+// loadConfig loads all configuration files using the loader function then merges the yaml configuration files into one yaml document.
+// and notifies listeners if successful.
 func (om *Manager) loadConfig() error {
-	buf, err := os.ReadFile(om.cfg.LoadPath)
+	rawData := map[string][]byte{}
+	hashes := map[string]string{}
+
+	for _, f := range om.cfg.LoadPath {
+		buf, err := os.ReadFile(f)
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrapf(err, "read file %q", f)
+		}
+
+		rawData[f] = buf
+		hashes[f] = fmt.Sprintf("%x", sha256.Sum256(buf))
+	}
+
+	// check if new hashes are the same as before
+	sameHashes := true
+	for f, h := range hashes {
+		if om.fileHashes[f] != h {
+			sameHashes = false
+			break
+		}
+	}
+
+	if sameHashes {
+		// No need to rebuild runtime config.
+		return nil
+	}
+
+	mergedConfig := map[string]interface{}{}
+	for _, f := range om.cfg.LoadPath {
+		yamlFile := map[string]interface{}{}
+		err := yaml.Unmarshal(rawData[f], &yamlFile)
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrapf(err, "unmarshal file %q", f)
+		}
+		mergedConfig = mergeConfigMaps(mergedConfig, yamlFile)
+	}
+
+	buf, err := yaml.Marshal(mergedConfig)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
-		return errors.Wrap(err, "read file")
+		return errors.Wrap(err, "marshal file")
 	}
-	hash := sha256.Sum256(buf)
 
+	hash := sha256.Sum256(buf)
 	cfg, err := om.cfg.Loader(bytes.NewReader(buf))
 	if err != nil {
 		om.configLoadSuccess.Set(0)
@@ -164,9 +208,30 @@ func (om *Manager) loadConfig() error {
 
 	// expose hash of runtime config
 	om.configHash.Reset()
-	om.configHash.WithLabelValues(fmt.Sprintf("%x", hash[:])).Set(1)
+	om.configHash.WithLabelValues(fmt.Sprintf("%x", hash)).Set(1)
 
+	// preserve hashes for next loop
+	om.fileHashes = hashes
 	return nil
+}
+
+func mergeConfigMaps(a, b map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(a))
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		if v, ok := v.(map[string]interface{}); ok {
+			if bv, ok := out[k]; ok {
+				if bv, ok := bv.(map[string]interface{}); ok {
+					out[k] = mergeConfigMaps(bv, v)
+					continue
+				}
+			}
+		}
+		out[k] = v
+	}
+	return out
 }
 
 func (om *Manager) setConfig(config interface{}) {

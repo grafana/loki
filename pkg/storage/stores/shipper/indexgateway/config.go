@@ -63,7 +63,7 @@ type RingCfg struct {
 // RegisterFlagsWithPrefix register all Index Gateway flags related to its ring but with a proper store prefix to avoid conflicts.
 func (cfg *RingCfg) RegisterFlags(prefix, storePrefix string, f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(prefix, storePrefix, f)
-	f.IntVar(&cfg.ReplicationFactor, "replication-factor", 3, "how many index gateway instances are assigned to each tenant")
+	f.IntVar(&cfg.ReplicationFactor, "replication-factor", 3, "How many index gateway instances are assigned to each tenant.")
 }
 
 // Config configures an Index Gateway server.
@@ -75,11 +75,11 @@ type Config struct {
 	//
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
-	Ring RingCfg `yaml:"ring,omitempty"`
+	Ring RingCfg `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the index gateway servers and clients in case the servers are configured to run in 'ring' mode. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Ring.RegisterFlags("index-gateway.", "collectors/", f)
-	f.StringVar((*string)(&cfg.Mode), "index-gateway.mode", SimpleMode.String(), "mode in which the index gateway client will be running")
+	f.StringVar((*string)(&cfg.Mode), "index-gateway.mode", SimpleMode.String(), "Defines in which mode the index gateway server will operate (default to 'simple'). It supports two modes:\n- 'simple': an index gateway server instance is responsible for handling, storing and returning requests for all indices for all tenants.\n- 'ring': an index gateway server instance is responsible for a subset of tenants instead of all tenants.")
 }

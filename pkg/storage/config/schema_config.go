@@ -36,11 +36,15 @@ const (
 	StorageTypeGCPColumnKey   = "gcp-columnkey"
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
+	StorageTypeLocal          = "local"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
 	TSDBType          = "tsdb"
+
+	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
+	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
 )
 
 var (
@@ -52,14 +56,44 @@ var (
 
 	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
 	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 )
 
+// TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
+// Both Start and End are inclusive.
+type TableRange struct {
+	Start, End   int64
+	PeriodConfig *PeriodConfig
+}
+
+// TableRanges represents a list of table ranges for multiple schemas.
+type TableRanges []TableRange
+
+// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
+func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+}
+
+func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
+	for _, r := range t {
+		if r.Start <= tableNumber && tableNumber <= r.End {
+			return r.PeriodConfig
+		}
+	}
+
+	return nil
+}
+
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        DayTime             `yaml:"from"`         // used when working with config
-	IndexType   string              `yaml:"store"`        // type of index client to use.
-	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
+	// used when working with config
+	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
+	// type of index client to use.
+	IndexType string `yaml:"store"`
+	// type of object client to use; if omitted, defaults to store.
+	ObjectType  string              `yaml:"object_store"`
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks"`
@@ -80,6 +114,16 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	// call VersionAsInt after unmarshaling to errcheck schema version and populate PeriodConfig.schemaInt
 	_, err = cfg.VersionAsInt()
 	return err
+}
+
+// GetIndexTableNumberRange returns the table number range calculated based on
+// the configured schema start date, index table period and the given schemaEndDate
+func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
+	return TableRange{
+		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		PeriodConfig: cfg,
+	}
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
@@ -148,12 +192,14 @@ func (cfg *SchemaConfig) Validate() error {
 	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType &&
+		cfg.Configs[activePCIndex].IndexTables.Period != ObjectStorageIndexRequiredPeriod && len(cfg.Configs)-1 == activePCIndex {
 		return errCurrentBoltdbShipperNon24Hours
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType &&
+		cfg.Configs[activePCIndex+1].IndexTables.Period != ObjectStorageIndexRequiredPeriod) {
 		return errUpcomingBoltdbShipperNon24Hours
 	}
 
@@ -205,23 +251,6 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 		default:
 			return false
 		}
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == BoltDBShipperType
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
-func UsingTSDB(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == TSDBType
 	}
 
 	return usingForPeriodConfigs(configs, fn)
@@ -279,6 +308,10 @@ func (cfg PeriodConfig) validate() error {
 	validateError := validateChunks(cfg)
 	if validateError != nil {
 		return validateError
+	}
+
+	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
+		return errTSDBNon24HoursIndexPeriod
 	}
 
 	// Ensure the tables period is a multiple of the bucket period

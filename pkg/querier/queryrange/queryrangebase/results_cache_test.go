@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
@@ -115,7 +116,8 @@ func mkExtentWithStep(start, end, step int64) Extent {
 
 func TestShouldCache(t *testing.T) {
 	maxCacheTime := int64(150 * 1000)
-	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader()}
+	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader(),
+		metrics: NewResultsCacheMetrics(nil)}
 	for _, tc := range []struct {
 		name                   string
 		request                Request
@@ -725,10 +727,11 @@ func TestHandleHit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sut := resultsCache{
-				extractor:      PrometheusResponseExtractor{},
-				minCacheExtent: 10,
-				limits:         mockLimits{},
-				merger:         PrometheusCodec,
+				extractor:         PrometheusResponseExtractor{},
+				minCacheExtent:    10,
+				limits:            mockLimits{},
+				merger:            PrometheusCodec,
+				parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
 				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
 				}),
@@ -752,7 +755,7 @@ func TestResultsCache(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
@@ -763,6 +766,10 @@ func TestResultsCache(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		func(_ context.Context, tenantIDs []string, r Request) int {
+			return mockLimits{}.MaxQueryParallelism("fake")
+		},
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -794,7 +801,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
@@ -805,6 +812,10 @@ func TestResultsCacheRecent(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		func(_ context.Context, tenantIDs []string, r Request) int {
+			return mockLimits{}.MaxQueryParallelism("fake")
+		},
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -857,7 +868,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 			require.NoError(t, err)
 			fakeLimits := tc.fakeLimits
 			rcm, err := NewResultsCacheMiddleware(
@@ -869,6 +880,10 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				func(_ context.Context, tenantIDs []string, r Request) int {
+					return tc.fakeLimits.MaxQueryParallelism("fake")
+				},
+				false,
 				nil,
 			)
 			require.NoError(t, err)
@@ -881,7 +896,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
 
 			// fill cache
-			key := constSplitter(day).GenerateCacheKey("1", req)
+			key := constSplitter(day).GenerateCacheKey(context.Background(), "1", req)
 			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
@@ -897,7 +912,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	rm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
@@ -908,6 +923,10 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		func(_ context.Context, tenantIDs []string, r Request) int {
+			return mockLimits{}.MaxQueryParallelism("fake")
+		},
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -964,7 +983,7 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
+			if got := constSplitter(tt.interval).GenerateCacheKey(context.Background(), "fake", tt.r); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1008,7 +1027,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 			require.NoError(t, err)
 			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
@@ -1019,6 +1038,10 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				tc.shouldCache,
+				func(_ context.Context, tenantIDs []string, r Request) int {
+					return mockLimits{}.MaxQueryParallelism("fake")
+				},
+				false,
 				nil,
 			)
 			require.NoError(t, err)
@@ -1047,3 +1070,5 @@ func newMockCacheGenNumberLoader() CacheGenNumberLoader {
 func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
 	return ""
 }
+
+func (l mockCacheGenNumberLoader) Stop() {}

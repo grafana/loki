@@ -14,19 +14,19 @@
 package remote
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sort"
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/prometheus/prometheus/prompb"
@@ -52,7 +52,7 @@ func (e HTTPError) Status() int {
 
 // DecodeReadRequest reads a remote.Request from a http.Request.
 func DecodeReadRequest(r *http.Request) (*prompb.ReadRequest, error) {
-	compressed, err := ioutil.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
+	compressed, err := io.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,8 @@ func ToQueryResult(ss storage.SeriesSet, sampleLimit int) (*prompb.QueryResult, 
 		iter := series.Iterator()
 		samples := []prompb.Sample{}
 
-		for iter.Next() {
+		for iter.Next() == chunkenc.ValFloat {
+			// TODO(beorn7): Add Histogram support.
 			numSamples++
 			if sampleLimit > 0 && numSamples > sampleLimit {
 				return nil, ss.Warnings(), HTTPError{
@@ -181,7 +182,7 @@ func NegotiateResponseType(accepted []prompb.ReadRequest_ResponseType) (prompb.R
 			return resType, nil
 		}
 	}
-	return 0, errors.Errorf("server does not support any of the requested response types: %v; supported: %v", accepted, supported)
+	return 0, fmt.Errorf("server does not support any of the requested response types: %v; supported: %v", accepted, supported)
 }
 
 // StreamChunkedReadResponses iterates over series, builds chunks and streams those to the caller.
@@ -215,7 +216,7 @@ func StreamChunkedReadResponses(
 			chk := iter.At()
 
 			if chk.Chunk == nil {
-				return ss.Warnings(), errors.Errorf("StreamChunkedReadResponses: found not populated chunk returned by SeriesSet at ref: %v", chk.Ref)
+				return ss.Warnings(), fmt.Errorf("StreamChunkedReadResponses: found not populated chunk returned by SeriesSet at ref: %v", chk.Ref)
 			}
 
 			// Cut the chunk.
@@ -240,11 +241,11 @@ func StreamChunkedReadResponses(
 				QueryIndex: queryIndex,
 			})
 			if err != nil {
-				return ss.Warnings(), errors.Wrap(err, "marshal ChunkedReadResponse")
+				return ss.Warnings(), fmt.Errorf("marshal ChunkedReadResponse: %w", err)
 			}
 
 			if _, err := stream.Write(b); err != nil {
-				return ss.Warnings(), errors.Wrap(err, "write to stream")
+				return ss.Warnings(), fmt.Errorf("write to stream: %w", err)
 			}
 			chks = chks[:0]
 		}
@@ -356,37 +357,65 @@ func newConcreteSeriersIterator(series *concreteSeries) chunkenc.Iterator {
 }
 
 // Seek implements storage.SeriesIterator.
-func (c *concreteSeriesIterator) Seek(t int64) bool {
+func (c *concreteSeriesIterator) Seek(t int64) chunkenc.ValueType {
 	if c.cur == -1 {
 		c.cur = 0
 	}
 	if c.cur >= len(c.series.samples) {
-		return false
+		return chunkenc.ValNone
 	}
 	// No-op check.
 	if s := c.series.samples[c.cur]; s.Timestamp >= t {
-		return true
+		return chunkenc.ValFloat
 	}
 	// Do binary search between current position and end.
 	c.cur += sort.Search(len(c.series.samples)-c.cur, func(n int) bool {
 		return c.series.samples[n+c.cur].Timestamp >= t
 	})
-	return c.cur < len(c.series.samples)
+	if c.cur < len(c.series.samples) {
+		return chunkenc.ValFloat
+	}
+	return chunkenc.ValNone
+	// TODO(beorn7): Add histogram support.
 }
 
-// At implements storage.SeriesIterator.
+// At implements chunkenc.Iterator.
 func (c *concreteSeriesIterator) At() (t int64, v float64) {
 	s := c.series.samples[c.cur]
 	return s.Timestamp, s.Value
 }
 
-// Next implements storage.SeriesIterator.
-func (c *concreteSeriesIterator) Next() bool {
-	c.cur++
-	return c.cur < len(c.series.samples)
+// AtHistogram always returns (0, nil) because there is no support for histogram
+// values yet.
+// TODO(beorn7): Fix that for histogram support in remote storage.
+func (c *concreteSeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+	return 0, nil
 }
 
-// Err implements storage.SeriesIterator.
+// AtFloatHistogram always returns (0, nil) because there is no support for histogram
+// values yet.
+// TODO(beorn7): Fix that for histogram support in remote storage.
+func (c *concreteSeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+	return 0, nil
+}
+
+// AtT implements chunkenc.Iterator.
+func (c *concreteSeriesIterator) AtT() int64 {
+	s := c.series.samples[c.cur]
+	return s.Timestamp
+}
+
+// Next implements chunkenc.Iterator.
+func (c *concreteSeriesIterator) Next() chunkenc.ValueType {
+	c.cur++
+	if c.cur < len(c.series.samples) {
+		return chunkenc.ValFloat
+	}
+	return chunkenc.ValNone
+	// TODO(beorn7): Add histogram support.
+}
+
+// Err implements chunkenc.Iterator.
 func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
@@ -396,16 +425,16 @@ func (c *concreteSeriesIterator) Err() error {
 func validateLabelsAndMetricName(ls labels.Labels) error {
 	for i, l := range ls {
 		if l.Name == labels.MetricName && !model.IsValidMetricName(model.LabelValue(l.Value)) {
-			return errors.Errorf("invalid metric name: %v", l.Value)
+			return fmt.Errorf("invalid metric name: %v", l.Value)
 		}
 		if !model.LabelName(l.Name).IsValid() {
-			return errors.Errorf("invalid label name: %v", l.Name)
+			return fmt.Errorf("invalid label name: %v", l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
-			return errors.Errorf("invalid label value: %v", l.Value)
+			return fmt.Errorf("invalid label value: %v", l.Value)
 		}
 		if i > 0 && l.Name == ls[i-1].Name {
-			return errors.Errorf("duplicate label with name: %v", l.Name)
+			return fmt.Errorf("duplicate label with name: %v", l.Name)
 		}
 	}
 	return nil
@@ -473,6 +502,56 @@ func exemplarProtoToExemplar(ep prompb.Exemplar) exemplar.Exemplar {
 	}
 }
 
+// HistogramProtoToHistogram extracts a (normal integer) Histogram from the
+// provided proto message. The caller has to make sure that the proto message
+// represents an interger histogram and not a float histogram.
+func HistogramProtoToHistogram(hp prompb.Histogram) *histogram.Histogram {
+	return &histogram.Histogram{
+		Schema:          hp.Schema,
+		ZeroThreshold:   hp.ZeroThreshold,
+		ZeroCount:       hp.GetZeroCountInt(),
+		Count:           hp.GetCountInt(),
+		Sum:             hp.Sum,
+		PositiveSpans:   spansProtoToSpans(hp.GetPositiveSpans()),
+		PositiveBuckets: hp.GetPositiveDeltas(),
+		NegativeSpans:   spansProtoToSpans(hp.GetNegativeSpans()),
+		NegativeBuckets: hp.GetNegativeDeltas(),
+	}
+}
+
+func spansProtoToSpans(s []*prompb.BucketSpan) []histogram.Span {
+	spans := make([]histogram.Span, len(s))
+	for i := 0; i < len(s); i++ {
+		spans[i] = histogram.Span{Offset: s[i].Offset, Length: s[i].Length}
+	}
+
+	return spans
+}
+
+func HistogramToHistogramProto(timestamp int64, h *histogram.Histogram) prompb.Histogram {
+	return prompb.Histogram{
+		Count:          &prompb.Histogram_CountInt{CountInt: h.Count},
+		Sum:            h.Sum,
+		Schema:         h.Schema,
+		ZeroThreshold:  h.ZeroThreshold,
+		ZeroCount:      &prompb.Histogram_ZeroCountInt{ZeroCountInt: h.ZeroCount},
+		NegativeSpans:  spansToSpansProto(h.NegativeSpans),
+		NegativeDeltas: h.NegativeBuckets,
+		PositiveSpans:  spansToSpansProto(h.PositiveSpans),
+		PositiveDeltas: h.PositiveBuckets,
+		Timestamp:      timestamp,
+	}
+}
+
+func spansToSpansProto(s []histogram.Span) []*prompb.BucketSpan {
+	spans := make([]*prompb.BucketSpan, len(s))
+	for i := 0; i < len(s); i++ {
+		spans[i] = &prompb.BucketSpan{Offset: s[i].Offset, Length: s[i].Length}
+	}
+
+	return spans
+}
+
 // LabelProtosToMetric unpack a []*prompb.Label to a model.Metric
 func LabelProtosToMetric(labelPairs []*prompb.Label) model.Metric {
 	metric := make(model.Metric, len(labelPairs))
@@ -524,7 +603,7 @@ func metricTypeToMetricTypeProto(t textparse.MetricType) prompb.MetricMetadata_M
 // DecodeWriteRequest from an io.Reader into a prompb.WriteRequest, handling
 // snappy decompression.
 func DecodeWriteRequest(r io.Reader) (*prompb.WriteRequest, error) {
-	compressed, err := ioutil.ReadAll(r)
+	compressed, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

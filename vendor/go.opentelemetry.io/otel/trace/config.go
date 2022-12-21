@@ -124,7 +124,7 @@ func NewSpanEndConfig(options ...SpanEndOption) SpanConfig {
 }
 
 // SpanStartOption applies an option to a SpanConfig. These options are applicable
-// only when the span is created
+// only when the span is created.
 type SpanStartOption interface {
 	applySpanStart(SpanConfig) SpanConfig
 }

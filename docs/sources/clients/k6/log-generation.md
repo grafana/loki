@@ -65,7 +65,8 @@ is used.
 
 ## Log format
 
-`xk6-loki` can emit log lines in six distinct formats. The label `format` of a stream defines the format of its log lines.
+`xk6-loki` can emit log lines in seven distinct formats. The label `format` of
+a stream defines the format of its log lines.
 
 * Apache common (`apache_common`)
 * Apache combined (`apache_combined`)
@@ -73,8 +74,10 @@ is used.
 * [BSD syslog](https://datatracker.ietf.org/doc/html/rfc3164) (`rfc3164`)
 * [Syslog](https://datatracker.ietf.org/doc/html/rfc5424) (`rfc5424`)
 * JSON (`json`)
+* [logfmt](https://pkg.go.dev/github.com/kr/logfmt) (`logfmt`)
 
-Under the hood, the extension uses the library [flog](https://github.com/mingrammer/flog) for generating log lines.
+Under the hood, the extension uses a fork the library
+[flog](https://github.com/mingrammer/flog) for generating log lines.
 
 ## Labels
 
@@ -83,7 +86,7 @@ Under the hood, the extension uses the library [flog](https://github.com/mingram
 | name      | type     | cardinality     |
 | --------- | -------- | --------------- |
 | instance  | fixed    | 1 per k6 worker |
-| format    | fixed    | 6               |
+| format    | fixed    | 7               |
 | os        | fixed    | 3               |
 | namespace | variable | >100            |
 | app       | variable | >100            |

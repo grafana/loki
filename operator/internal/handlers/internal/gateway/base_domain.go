@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/status"
 	configv1 "github.com/openshift/api/config/v1"
@@ -25,7 +25,7 @@ func GetOpenShiftBaseDomain(ctx context.Context, k k8s.Client, req ctrl.Request)
 		if apierrors.IsNotFound(err) {
 			return "", &status.DegradedError{
 				Message: "Missing cluster DNS configuration to read base domain",
-				Reason:  lokiv1beta1.ReasonMissingGatewayOpenShiftBaseDomain,
+				Reason:  lokiv1.ReasonMissingGatewayOpenShiftBaseDomain,
 				Requeue: true,
 			}
 		}

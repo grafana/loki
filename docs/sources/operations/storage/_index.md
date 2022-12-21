@@ -58,6 +58,8 @@ When using S3 as object storage, the following permissions are needed:
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
+See the [AWS deployment section](../../storage/#aws-deployment-s3-single-store) on the storage page for a detailed setup guide.
+
 ### DynamoDB
 
 When using DynamoDB for the index, the following permissions are needed:

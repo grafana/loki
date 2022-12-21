@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -404,7 +404,7 @@ func (m *mockS3) PutObjectWithContext(_ aws.Context, req *s3.PutObjectInput, _ .
 	m.Lock()
 	defer m.Unlock()
 
-	buf, err := ioutil.ReadAll(req.Body)
+	buf, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -423,6 +423,6 @@ func (m *mockS3) GetObjectWithContext(_ aws.Context, req *s3.GetObjectInput, _ .
 	}
 
 	return &s3.GetObjectOutput{
-		Body: ioutil.NopCloser(bytes.NewReader(buf)),
+		Body: io.NopCloser(bytes.NewReader(buf)),
 	}, nil
 }

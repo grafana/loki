@@ -150,8 +150,7 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 				grpcOpts = append(grpcOpts, timeoutDialerOption)
 			}
 			// Check if google-c2p resolver is enabled for DirectPath
-			// TODO(mohanli): remove grpc version guard once google-api-go-client is able to depends on the latest grpc
-			if grpc.Version >= "1.42" && strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
+			if strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
 				// google-c2p resolver target must not have a port number
 				if addr, _, err := net.SplitHostPort(endpoint); err == nil {
 					endpoint = "google-c2p-experimental:///" + addr

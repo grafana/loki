@@ -22,6 +22,11 @@ Parameters:
     Type: String
     Default: ""
     NoEcho: true
+  BearerToken:
+    Description: The bearer token, necessary if target endpoint requires it.
+    Type: String
+    Default: ""
+    NoEcho: true
   LambdaPromtailImage:
     Description: The ECR image URI to pull and use for lambda-promtail.
     Type: String
@@ -82,6 +87,7 @@ Resources:
           WRITE_ADDRESS: !Ref WriteAddress
           USERNAME: !Ref Username
           PASSWORD: !Ref Password
+          BEARER_TOKEN: !Ref BearerToken
           KEEP_STREAM: !Ref KeepStream
           EXTRA_LABELS: !Ref ExtraLabels
           TENANT_ID: !Ref TenantID

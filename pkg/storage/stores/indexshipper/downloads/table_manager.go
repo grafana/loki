@@ -3,36 +3,47 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
 	cacheCleanupInterval = time.Hour
-	durationDay          = 24 * time.Hour
+	daySeconds           = int64(24 * time.Hour / time.Second)
 )
+
+// regexp for finding the trailing index bucket number at the end of table name
+var extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 }
 
+// IndexGatewayOwnsTenant is invoked by an IndexGateway instance and answers whether if the given tenant is assigned to this instance or not.
+//
+// It is only relevant by an IndexGateway in the ring mode and if it returns false for a given tenant, that tenant will be ignored by this IndexGateway during query readiness.
+type IndexGatewayOwnsTenant func(tenant string) bool
+
 type TableManager interface {
 	Stop()
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 }
 
 type Config struct {
@@ -44,31 +55,39 @@ type Config struct {
 }
 
 type tableManager struct {
-	cfg                Config
-	openIndexFileFunc  index.OpenIndexFileFunc
-	indexStorageClient storage.Client
+	cfg                 Config
+	openIndexFileFunc   index.OpenIndexFileFunc
+	indexStorageClient  storage.Client
+	tableRangesToHandle config.TableRanges
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
+	metrics   *metrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	ownsTenant IndexGatewayOwnsTenant
 }
 
-func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client) (TableManager, error) {
+func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
+	ownsTenantFn IndexGatewayOwnsTenant, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &tableManager{
-		cfg:                cfg,
-		openIndexFileFunc:  openIndexFileFunc,
-		indexStorageClient: indexStorageClient,
-		tables:             make(map[string]Table),
-		ctx:                ctx,
-		cancel:             cancel,
+		cfg:                 cfg,
+		openIndexFileFunc:   openIndexFileFunc,
+		indexStorageClient:  indexStorageClient,
+		tableRangesToHandle: tableRangesToHandle,
+		ownsTenant:          ownsTenantFn,
+		tables:              make(map[string]Table),
+		metrics:             newMetrics(reg),
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 
 	// load the existing tables first.
@@ -137,6 +156,15 @@ func (tm *tableManager) Stop() {
 	}
 }
 
+// Only used by TSDB. boltdb-shipper manages concurrency elsewhere
+func (tm *tableManager) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	table, err := tm.getOrCreateTable(tableName)
+	if err != nil {
+		return err
+	}
+	return table.ForEachConcurrent(ctx, userID, callback)
+}
+
 func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 	table, err := tm.getOrCreateTable(tableName)
 	if err != nil {
@@ -167,7 +195,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc)
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 			tm.tables[tableName] = table
 		}
 	}
@@ -178,6 +206,19 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
+
+	start := time.Now()
+	var err error
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
+	}()
 
 	level.Info(util_log.Logger).Log("msg", "syncing tables")
 
@@ -215,8 +256,10 @@ func (tm *tableManager) cleanupCache() error {
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
+	distinctUsers := make(map[string]struct{})
+
 	defer func() {
-		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -247,21 +290,14 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		return err
 	}
 
-	// regexp for finding the trailing index bucket number at the end
-	re, err := regexp.Compile(`[0-9]+$`)
-	if err != nil {
-		return err
-	}
-
 	for _, tableName := range tables {
-		match := re.Find([]byte(tableName))
-		if match == nil {
-			continue
-		}
-
-		tableNumber, err := strconv.ParseInt(string(match), 10, 64)
+		tableNumber, err := extractTableNumberFromName(tableName)
 		if err != nil {
 			return err
+		}
+
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, tableName) {
+			continue
 		}
 
 		// continue if the table is not within query readiness
@@ -270,10 +306,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
+		operationStart := time.Now()
 		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}
+		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
 		usersToBeQueryReadyFor := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
@@ -283,17 +321,31 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			continue
 		}
 
+		operationStart = time.Now()
 		table, err := tm.getOrCreateTable(tableName)
 		if err != nil {
 			return err
 		}
+		createTableDuration := time.Since(operationStart)
 
-		perTableStart := time.Now()
+		for _, u := range usersToBeQueryReadyFor {
+			distinctUsers[u] = struct{}{}
+		}
+
+		operationStart = time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
-		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
+		ensureQueryReadinessDuration := time.Since(operationStart)
+
+		level.Info(util_log.Logger).Log(
+			"msg", "index pre-download for query readiness completed",
+			"users_len", len(usersToBeQueryReadyFor),
+			"query_readiness_duration", ensureQueryReadinessDuration,
+			"table", tableName,
+			"create_table_duration", createTableDuration,
+			"list_files_duration", listFilesDuration,
+		)
 	}
 
 	return nil
@@ -317,6 +369,10 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 			continue
 		}
 
+		if tm.ownsTenant != nil && !tm.ownsTenant(userID) {
+			continue
+		}
+
 		if activeTableNumber-tableNumber <= int64(queryReadyNumDays) {
 			usersToBeQueryReadyFor = append(usersToBeQueryReadyFor, userID)
 		}
@@ -327,31 +383,57 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 
 // loadLocalTables loads tables present locally.
 func (tm *tableManager) loadLocalTables() error {
-	filesInfo, err := ioutil.ReadDir(tm.cfg.CacheDir)
+	dirEntries, err := os.ReadDir(tm.cfg.CacheDir)
 	if err != nil {
 		return err
 	}
 
-	for _, fileInfo := range filesInfo {
-		if !fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
+		tableNumber, err := extractTableNumberFromName(entry.Name())
+		if err != nil {
+			return err
+		}
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, entry.Name()) {
+			continue
+		}
 
-		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()), tm.indexStorageClient, tm.openIndexFileFunc)
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
+
+		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 		if err != nil {
 			return err
 		}
 
-		tm.tables[fileInfo.Name()] = table
+		tm.tables[entry.Name()] = table
 	}
 
 	return nil
 }
 
-func getActiveTableNumber() int64 {
-	periodSecs := int64(durationDay / time.Second)
+// extractTableNumberFromName extract the table number from a given tableName.
+// if the tableName doesn't match the regex, it would return -1 as table number.
+func extractTableNumberFromName(tableName string) (int64, error) {
+	match := extractTableNumberRegex.Find([]byte(tableName))
+	if match == nil {
+		return -1, nil
+	}
 
-	return time.Now().Unix() / periodSecs
+	tableNumber, err := strconv.ParseInt(string(match), 10, 64)
+	if err != nil {
+		return -1, err
+	}
+
+	return tableNumber, nil
+}
+func getActiveTableNumber() int64 {
+	return getTableNumberForTime(model.Now())
+}
+
+func getTableNumberForTime(t model.Time) int64 {
+	return t.Unix() / daySeconds
 }

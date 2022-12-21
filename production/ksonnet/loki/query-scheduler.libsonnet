@@ -20,7 +20,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         max_outstanding_per_tenant: max_outstanding,
       },
       frontend_worker+: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local.:9095' % $._config.namespace,
+        frontend_address: 'query-frontend-headless.%s.svc.cluster.local.:9095' % $._config.namespace,
       },
     },
   },
@@ -32,10 +32,12 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     }
   else {},
 
+  query_scheduler_ports:: $.util.grpclbDefaultPorts,
+
   local container = k.core.v1.container,
   query_scheduler_container:: if $._config.query_scheduler_enabled then
     container.new('query-scheduler', $._images.query_scheduler) +
-    container.withPorts($.util.grpclbDefaultPorts) +
+    container.withPorts($.query_scheduler_ports) +
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
     k.util.resourcesRequests('2', '600Mi') +

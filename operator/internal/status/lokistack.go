@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,7 +17,7 @@ import (
 // DegradedError contains information about why the managed LokiStack has an invalid configuration.
 type DegradedError struct {
 	Message string
-	Reason  lokiv1beta1.LokiStackConditionReason
+	Reason  lokiv1.LokiStackConditionReason
 	Requeue bool
 }
 
@@ -28,7 +28,7 @@ func (e *DegradedError) Error() string {
 // SetReadyCondition updates or appends the condition Ready to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
 func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1beta1.LokiStack
+	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -37,17 +37,17 @@ func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) erro
 	}
 
 	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1beta1.ConditionReady) && cond.Status == metav1.ConditionTrue {
+		if cond.Type == string(lokiv1.ConditionReady) && cond.Status == metav1.ConditionTrue {
 			return nil
 		}
 	}
 
 	ready := metav1.Condition{
-		Type:               string(lokiv1beta1.ConditionReady),
+		Type:               string(lokiv1.ConditionReady),
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
 		Message:            "All components ready",
-		Reason:             string(lokiv1beta1.ReasonReadyComponents),
+		Reason:             string(lokiv1.ReasonReadyComponents),
 	}
 
 	index := -1
@@ -57,7 +57,7 @@ func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) erro
 		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
 
 		// Locate existing ready condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1beta1.ConditionReady) {
+		if s.Status.Conditions[i].Type == string(lokiv1.ConditionReady) {
 			index = i
 		}
 	}
@@ -74,7 +74,7 @@ func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) erro
 // SetFailedCondition updates or appends the condition Failed to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
 func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1beta1.LokiStack
+	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -83,17 +83,17 @@ func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) err
 	}
 
 	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1beta1.ConditionFailed) && cond.Status == metav1.ConditionTrue {
+		if cond.Type == string(lokiv1.ConditionFailed) && cond.Status == metav1.ConditionTrue {
 			return nil
 		}
 	}
 
 	failed := metav1.Condition{
-		Type:               string(lokiv1beta1.ConditionFailed),
+		Type:               string(lokiv1.ConditionFailed),
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
 		Message:            "Some LokiStack components failed",
-		Reason:             string(lokiv1beta1.ReasonFailedComponents),
+		Reason:             string(lokiv1.ReasonFailedComponents),
 	}
 
 	index := -1
@@ -103,7 +103,7 @@ func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) err
 		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
 
 		// Locate existing failed condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1beta1.ConditionFailed) {
+		if s.Status.Conditions[i].Type == string(lokiv1.ConditionFailed) {
 			index = i
 		}
 	}
@@ -120,7 +120,7 @@ func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) err
 // SetPendingCondition updates or appends the condition Pending to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
 func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1beta1.LokiStack
+	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -129,17 +129,17 @@ func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) er
 	}
 
 	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1beta1.ConditionPending) && cond.Status == metav1.ConditionTrue {
+		if cond.Type == string(lokiv1.ConditionPending) && cond.Status == metav1.ConditionTrue {
 			return nil
 		}
 	}
 
 	pending := metav1.Condition{
-		Type:               string(lokiv1beta1.ConditionPending),
+		Type:               string(lokiv1.ConditionPending),
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
 		Message:            "Some LokiStack components pending on dependendies",
-		Reason:             string(lokiv1beta1.ReasonPendingComponents),
+		Reason:             string(lokiv1.ReasonPendingComponents),
 	}
 
 	index := -1
@@ -149,7 +149,7 @@ func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) er
 		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
 
 		// Locate existing pending condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1beta1.ConditionPending) {
+		if s.Status.Conditions[i].Type == string(lokiv1.ConditionPending) {
 			index = i
 		}
 	}
@@ -164,8 +164,8 @@ func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) er
 }
 
 // SetDegradedCondition appends the condition Degraded to the lokistack status conditions.
-func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, msg string, reason lokiv1beta1.LokiStackConditionReason) error {
-	var s lokiv1beta1.LokiStack
+func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, msg string, reason lokiv1.LokiStackConditionReason) error {
+	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -175,13 +175,13 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, m
 
 	reasonStr := string(reason)
 	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1beta1.ConditionDegraded) && cond.Reason == reasonStr && cond.Status == metav1.ConditionTrue {
+		if cond.Type == string(lokiv1.ConditionDegraded) && cond.Reason == reasonStr && cond.Status == metav1.ConditionTrue {
 			return nil
 		}
 	}
 
 	degraded := metav1.Condition{
-		Type:               string(lokiv1beta1.ConditionDegraded),
+		Type:               string(lokiv1.ConditionDegraded),
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
 		Reason:             reasonStr,
@@ -195,7 +195,7 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, m
 		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
 
 		// Locate existing pending condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1beta1.ConditionDegraded) {
+		if s.Status.Conditions[i].Type == string(lokiv1.ConditionDegraded) {
 			index = i
 		}
 	}
