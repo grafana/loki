@@ -22,7 +22,7 @@ helm-cluster: prepare
 	$(CURDIR)/scripts/create_cluster.sh helm-cluster $(REGISTRY_PORT)
 	# wait 5s for the cluster to be ready
 	sleep 5
-	$(MAKE) -C $(CURDIR) apply-helm-cluster
+	# $(MAKE) -C $(CURDIR) apply-helm-cluster
 	
 apply-enterprise-logs:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/enterprise-logs
