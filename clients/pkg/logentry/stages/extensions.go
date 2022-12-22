@@ -62,7 +62,7 @@ func (c *cri) Run(entry chan Entry) chan Entry {
 			if len(c.partialLines) >= c.maxPartialLines {
 				// Merge existing partialLines
 				newPartialLine := e.Line
-				e.Line = strings.Join(c.partialLines, "\n")
+				e.Line = strings.Join(c.partialLines, "")
 				level.Warn(c.base.logger).Log("msg", "cri stage: partial lines upperbound exceeded. merging it to single line", "threshold", MaxPartialLinesSize)
 				c.partialLines = c.partialLines[:0]
 				c.partialLines = append(c.partialLines, newPartialLine)
@@ -73,7 +73,7 @@ func (c *cri) Run(entry chan Entry) chan Entry {
 		}
 		if len(c.partialLines) > 0 {
 			c.partialLines = append(c.partialLines, e.Line)
-			e.Line = strings.Join(c.partialLines, "\n")
+			e.Line = strings.Join(c.partialLines, "")
 			c.partialLines = c.partialLines[:0]
 		}
 		return e, false
