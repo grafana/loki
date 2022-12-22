@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"sort"
 	"testing"
 	"time"
@@ -21,10 +22,14 @@ import (
 
 func Test_DockerTarget(t *testing.T) {
 	h := func(w http.ResponseWriter, r *http.Request) {
-		dat, err := os.ReadFile("testdata/flog.log")
-		require.NoError(t, err)
-		_, err = w.Write(dat)
-		require.NoError(t, err)
+		if path.Base(r.URL.Path) == "logs" {
+			dat, err := os.ReadFile("testdata/flog.log")
+			require.NoError(t, err)
+			_, err = w.Write(dat)
+			require.NoError(t, err)
+		} else {
+			t.Fail()	
+		}
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(h))
