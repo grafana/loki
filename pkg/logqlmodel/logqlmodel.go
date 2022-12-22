@@ -1,11 +1,11 @@
 package logqlmodel
 
 import (
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 // ValueTypeStreams promql.ValueType for log streams
