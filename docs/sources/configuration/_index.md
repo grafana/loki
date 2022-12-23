@@ -1662,18 +1662,7 @@ hedging:
 #         region: us-west1
 # Named store from this example can be referred to as aws.store-1 from
 # period_config.
-named_stores:
-  [aws: <map of string to aws_storage_config>]
-
-  [azure: <map of string to azure_storage_config>]
-
-  [bos: <map of string to bos_storage_config>]
-
-  [filesystem: <map of string to local_storage_config>]
-
-  [gcs: <map of string to gcs_storage_config>]
-
-  [swift: <map of string to swift_storage_config>]
+[named_stores: <named_stores_config>]
 
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
@@ -4043,4 +4032,30 @@ The `local_storage_config` block configures the usage of local file system as ob
 # Directory to store chunks in.
 # CLI flag: -local.chunk-directory
 [directory: <string> | default = ""]
+```
+
+### named_stores_config
+
+Configures additional stores for a given storage provider.
+Example:
+storage_config:
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
+Named store from this example can be referred to as aws.store-1 from period_config.
+
+```yaml
+[aws: <map of string to aws_storage_config>]
+
+[azure: <map of string to azure_storage_config>]
+
+[bos: <map of string to bos_storage_config>]
+
+[filesystem: <map of string to local_storage_config>]
+
+[gcs: <map of string to gcs_storage_config>]
+
+[swift: <map of string to swift_storage_config>]
 ```

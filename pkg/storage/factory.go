@@ -55,8 +55,7 @@ type StoreLimits interface {
 	MaxQueryLength(userID string) time.Duration
 }
 
-type NamedAWSStorageConfig map[string]aws.StorageConfig
-
+// NamedStores helps configure additional stores from a given storage provider
 type NamedStores struct {
 	AWS        map[string]aws.StorageConfig         `yaml:"aws"`
 	Azure      map[string]azure.BlobStorageConfig   `yaml:"azure"`
@@ -79,7 +78,7 @@ type Config struct {
 	Swift                  openstack.SwiftConfig     `yaml:"swift"`
 	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
 	Hedging                hedging.Config            `yaml:"hedging"`
-	NamedStores            NamedStores               `yaml:"named_stores" doc:"description=Configures additional stores for a given storage provider.\nExample:\nstorage_config:\n  named_stores:\n    aws:\n      store-1:\n        endpoint: s3://foo-bucket\n        region: us-west1\nNamed store from this example can be referred to as aws.store-1 from period_config."`
+	NamedStores            NamedStores               `yaml:"named_stores"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
