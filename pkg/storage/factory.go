@@ -55,6 +55,8 @@ type StoreLimits interface {
 	MaxQueryLength(userID string) time.Duration
 }
 
+type NamedAWSStorageConfig map[string]aws.StorageConfig
+
 type NamedStores struct {
 	AWS        map[string]aws.StorageConfig         `yaml:"aws"`
 	Azure      map[string]azure.BlobStorageConfig   `yaml:"azure"`
@@ -66,7 +68,7 @@ type NamedStores struct {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig         `yaml:"aws" doc:"description=Configures storing chunks in AWS. Required options only required when aws is present."`
+	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
 	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
@@ -77,7 +79,7 @@ type Config struct {
 	Swift                  openstack.SwiftConfig     `yaml:"swift"`
 	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
 	Hedging                hedging.Config            `yaml:"hedging"`
-	NamedStores            NamedStores               `yaml:"named_stores"`
+	NamedStores            NamedStores               `yaml:"named_stores" doc:"description=Configures additional stores for a given storage provider.\nExample:\nstorage_config:\n  named_stores:\n    aws:\n      store-1:\n        endpoint: s3://foo-bucket\n        region: us-west1\nNamed store from this example can be referred to as aws.store-1 from period_config."`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
