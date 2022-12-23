@@ -82,7 +82,7 @@ relabel_configs:
     target_label: '__host__'
 ```
 
-See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration](../configuration/#kubernetes_sd_config).
+See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration]({{< relref "configuration.md#kubernetes_sd_config" >}}).
 
 ## Journal Scraping (Linux Only)
 
@@ -191,7 +191,7 @@ You can relabel default labels via [Relabeling](#relabeling) if required.
 Providing a path to a bookmark is mandatory, it will be used to persist the last event processed and allow
 resuming the target without skipping logs.
 
-see the [configuration](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#windows_events) section for more information.
+see the [configuration]({{< relref "configuration.md#windows_events" >}}) section for more information.
 
 ## GCP Log scraping
 
@@ -378,7 +378,7 @@ scrape_configs:
 ```
 
 Only the `brokers` and `topics` is required.
-see the [configuration](../../configuration/#kafka) section for more information.
+see the [configuration]({{< relref "configuration.md#kafka" >}}) section for more information.
 
 ## GELF
 
@@ -427,7 +427,7 @@ scrape_configs:
 ```
 
 Only `api_token` and `zone_id` are required.
-Refer to the [Cloudfare](configuration/#cloudflare) configuration section for details.
+Refer to the [Cloudfare]({{< relref "configuration.md#cloudflare" >}}) configuration section for details.
 
 ## Heroku Drain
 Promtail supports receiving logs from a Heroku application by using a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
@@ -454,7 +454,7 @@ Configuration is specified in a`heroku_drain` block within the Promtail `scrape_
 ```
 Within the `scrape_configs` configuration for a Heroku Drain target, the `job_name` must be a Prometheus-compatible [metric name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels).
 
-The [server](../configuration.md#server) section configures the HTTP server created for receiving logs.
+The [server]({{< relref "configuration.md#server" >}}) section configures the HTTP server created for receiving logs.
 `labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
 the timestamp received from Heroku.
 
@@ -558,5 +558,5 @@ clients:
   - [ <client_option> ]
 ```
 
-Refer to [`client_config`](./configuration#client_config) from the Promtail
+Refer to [`client_config`]({{< relref "configuration.md#client_config" >}}) from the Promtail
 Configuration reference for all available options.

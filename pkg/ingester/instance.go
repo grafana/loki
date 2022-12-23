@@ -319,7 +319,6 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALR
 // removeStream removes a stream from the instance.
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
-		i.streamRateCalculator.Remove(i.instanceID, s.labelHash)
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
