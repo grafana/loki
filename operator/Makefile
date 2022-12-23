@@ -26,8 +26,9 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= v0.0.1
+VERSION ?= v0.1.0
 COMMUNITY_VERSION ?= main-a4f3063
+COMMUNITY_RELEASE_VERSION=0.1.0
 CHANNELS ?= "stable"
 DEFAULT_CHANNEL ?= "stable"
 
@@ -343,3 +344,14 @@ web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
 .PHONY: web-serve
 web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
 	@cd $(WEBSITE_DIR) && $(HUGO) serve
+
+
+.PHONY: operatorhub
+operatorhub: check-operatorhub-pr-template
+	./hack/operatorhub.sh
+
+.PHONY: check-operatorhub-pr-template
+check-operatorhub-pr-template:
+	curl https://raw.githubusercontent.com/operator-framework/community-operators/master/docs/pull_request_template.md -o hack/.operatorhub-pr-template.md -s > /dev/null 2>&1
+	git diff -s --exit-code hack/.operatorhub-pr-template.md || (echo "Build failed: the PR template for OperatorHub has changed. Sync it and try again." && exit 1)
+
