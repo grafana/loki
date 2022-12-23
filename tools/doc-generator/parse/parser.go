@@ -256,16 +256,30 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 			_, isCustomType := getFieldCustomType(field.Type)
 			isSliceOfStructs := field.Type.Kind() == reflect.Slice && (field.Type.Elem().Kind() == reflect.Struct || field.Type.Elem().Kind() == reflect.Ptr)
 			if !isCustomType && isSliceOfStructs {
+				// Check if slice element type is a root block
+				// and add it to the blocks structure
+				rootName, rootDesc, isRoot := isRootBlock(field.Type.Elem(), rootBlocks)
+				if isRoot {
+					sliceElementBlock, err := config(nil, reflect.New(field.Type.Elem()).Interface(), flags, rootBlocks)
+					if err != nil {
+						return nil, errors.Wrapf(err, "couldn't inspect slice, element_type=%s", field.Type.Elem())
+					}
+					if len(sliceElementBlock) == 1 {
+						element = &ConfigBlock{
+							Name:    rootName,
+							Desc:    rootDesc,
+							Entries: sliceElementBlock[0].Entries,
+						}
+						blocks = append(blocks, element)
+					}
+				}
+
+				// Add slice element to current block
 				element = &ConfigBlock{
 					Name: fieldName,
 					Desc: getFieldDescription(cfg, field, ""),
 				}
 				kind = KindSlice
-
-				_, err = config(element, reflect.New(field.Type.Elem()).Interface(), flags, rootBlocks)
-				if err != nil {
-					return nil, errors.Wrapf(err, "couldn't inspect slice, element_type=%s", field.Type.Elem())
-				}
 			}
 		}
 
@@ -338,6 +352,8 @@ func getFieldCustomType(t reflect.Type) (string, bool) {
 		return "url", true
 	case reflect.TypeOf(time.Duration(0)).String():
 		return "duration", true
+	case reflect.TypeOf(storage_config.DayTime{}).String():
+		return "daytime", true
 	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
 		return fieldString, true
 	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
@@ -429,6 +445,8 @@ func getCustomFieldType(t reflect.Type) (string, bool) {
 		return "url", true
 	case reflect.TypeOf(time.Duration(0)).String():
 		return "duration", true
+	case reflect.TypeOf(storage_config.DayTime{}).String():
+		return "daytime", true
 	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
 		return fieldString, true
 	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
