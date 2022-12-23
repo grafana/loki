@@ -228,7 +228,7 @@ var (
 		{
 			Name:       "named_stores_config",
 			StructType: reflect.TypeOf(storage.NamedStores{}),
-			Desc: `Configures additional stores for a given storage provider.
+			Desc: `Configures additional object stores for a given storage provider.
 Example:
 storage_config:
   named_stores:
@@ -236,6 +236,6 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be referred to as aws.store-1 from period_config.`},
+Named store from this example can be used by setting object_store to aws.store-1 in period_config.`},
 	}
 )
