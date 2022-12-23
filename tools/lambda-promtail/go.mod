@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/aws/aws-lambda-go v1.26.0
+	github.com/aws/aws-sdk-go v1.42.28
 	github.com/aws/aws-sdk-go-v2 v1.11.2
 	github.com/aws/aws-sdk-go-v2/config v1.11.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.22.0
@@ -12,6 +13,7 @@ require (
 	github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 	github.com/grafana/loki v1.6.2-0.20220128102010-431d018ec64f
 	github.com/prometheus/common v0.32.1
+	github.com/stretchr/testify v1.7.0
 )
 
 require (
@@ -60,6 +62,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/memberlist v0.3.0 // indirect
 	github.com/hashicorp/serf v0.9.6 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mattn/go-colorable v0.1.9 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
@@ -83,7 +86,6 @@ require (
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
-	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e // indirect

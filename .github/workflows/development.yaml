@@ -1,0 +1,30 @@
+jobs:
+  docker_build_golang_service:
+    name: Build and push lambda_promtail docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: "actions/checkout@v2"
+      - id: changes
+        uses: "dorny/paths-filter@v2"
+        with:
+          filters: |
+            filechange:
+              - 'tools/lambda_promtail/**'
+      - if: "steps.changes.outputs.filechange == 'true'"
+        name: Push lambda_promtail
+        uses: "kciter/aws-ecr-action@master"
+        with:
+          access_key_id: "${{ secrets.BS_RESOURCES_AWS_ACCESS_KEY_ID }}"
+          account_id: "${{ secrets.BS_RESOURCES_AWS_ACCOUNT_ID }}"
+          create_repo: 'false'
+          dockerfile: tools/lambda_promtail/Dockerfile
+          path: .
+          region: "${{ secrets.BS_RESOURCES_AWS_DEFAULT_REGION }}"
+          repo: development/blues/lambda_promtail/lambda
+          secret_access_key: "${{ secrets.BS_RESOURCES_AWS_SECRET_ACCESS_KEY }}"
+          tags: "latest,${{ github.sha }}"
+name: Build images for dev
+on:
+  push:
+    branches:
+      - master

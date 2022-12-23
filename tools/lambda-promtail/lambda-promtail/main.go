@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -36,28 +35,26 @@ var (
 )
 
 func setupArguments() {
-	addr := os.Getenv("WRITE_ADDRESS")
-	if addr == "" {
-		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
-	}
+	config := GetConfigFromSsmParameters()
 
 	var err error
-	writeAddress, err = url.Parse(addr)
+	writeAddress, err = url.Parse(config.WriteAddress)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println("write address: ", writeAddress.String())
 
-	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
+	extraLabelsRaw = config.ExtraLabels
 	extraLabels, err = parseExtraLabels(extraLabelsRaw)
 	if err != nil {
 		panic(err)
 	}
 
-	username = os.Getenv("USERNAME")
-	password = os.Getenv("PASSWORD")
 	// If either username or password is set then both must be.
+	username = config.Username
+	password = config.Password
+
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
 	}
@@ -68,7 +65,7 @@ func setupArguments() {
 		panic("both username and bearerToken are not allowed")
 	}
 
-	tenantID = os.Getenv("TENANT_ID")
+	tenantID = config.TenantId
 
 	keep := os.Getenv("KEEP_STREAM")
 	// Anything other than case-insensitive 'true' is treated as 'false'.
