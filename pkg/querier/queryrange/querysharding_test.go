@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
