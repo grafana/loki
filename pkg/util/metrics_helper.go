@@ -805,3 +805,23 @@ type CollectorVec interface {
 	prometheus.Collector
 	Delete(labels prometheus.Labels) bool
 }
+
+// RegisterCounterVec registers new CounterVec with given name,namespace and labels.
+// If metric was already registered it returns existing instance.
+func RegisterCounterVec(registerer prometheus.Registerer, namespace, name, help string, labels []string) *prometheus.CounterVec {
+	vec := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      name,
+		Help:      help,
+	}, labels)
+	err := registerer.Register(vec)
+	if err != nil {
+		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			vec = existing.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			// Same behavior as MustRegister if the error is not for AlreadyRegistered
+			panic(err)
+		}
+	}
+	return vec
+}

@@ -99,14 +99,14 @@ func ConfigOptions(opt Options) config.Options {
 			},
 			ServerNames: config.TLSServerNames{
 				GRPC: config.GRPCServerNames{
+					Compactor:     fqdn(serviceNameCompactorGRPC(opt.Name), opt.Namespace),
 					IndexGateway:  fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),
 					Ingester:      fqdn(serviceNameIngesterGRPC(opt.Name), opt.Namespace),
 					QueryFrontend: fqdn(serviceNameQueryFrontendGRPC(opt.Name), opt.Namespace),
 					Ruler:         fqdn(serviceNameRulerGRPC(opt.Name), opt.Namespace),
 				},
 				HTTP: config.HTTPServerNames{
-					Compactor: fqdn(serviceNameCompactorHTTP(opt.Name), opt.Namespace),
-					Querier:   fqdn(serviceNameQuerierHTTP(opt.Name), opt.Namespace),
+					Querier: fqdn(serviceNameQuerierHTTP(opt.Name), opt.Namespace),
 				},
 			},
 		},

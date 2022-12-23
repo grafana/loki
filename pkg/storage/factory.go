@@ -57,14 +57,14 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
+	AWSStorageConfig       aws.StorageConfig         `yaml:"aws" doc:"description=Configures storing chunks in AWS. Required options only required when aws is present."`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb"`
-	FSConfig               local.FSConfig            `yaml:"filesystem"`
+	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
+	GCSConfig              gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
+	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Configures storing chunks and/or the index in Cassandra."`
+	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
+	FSConfig               local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
 	Swift                  openstack.SwiftConfig     `yaml:"swift"`
 	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
 	Hedging                hedging.Config            `yaml:"hedging"`
@@ -76,7 +76,7 @@ type Config struct {
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
 	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper"`
+	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
 	TSDBShipperConfig   indexshipper.Config `yaml:"tsdb_shipper"`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.

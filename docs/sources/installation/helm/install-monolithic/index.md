@@ -12,7 +12,7 @@ keywords: []
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 
-If the filesyste is set to `filesystem`, this chart configures Loki to run the `all` target in a [monolothic](../../fundamentals/architecture/deployment-modes/#monolithic-mode), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
+If the filesystem is set to `filesystem`, this chart configures Loki to run the `all` target in a [monolothic](../../fundamentals/architecture/deployment-modes/#monolithic-mode), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
 
 It is not possible to install the single binary with a different storage type.
 
