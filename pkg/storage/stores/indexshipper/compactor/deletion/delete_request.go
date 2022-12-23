@@ -143,7 +143,8 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		return true, nil
 	}
 
-	// delete request is without a line filter so initialize it to always return true to simplify the code below for partial chunk deletion
+	// delete request is without a line filter so initialize it to always return true to simplify the code below for partial chunk deletion.
+	// Partial chunk deletion is anyways done by iterating through the logs so this should not add much overhead.
 	if ff == nil {
 		ff = func(_ time.Time, _ string) bool {
 			return true

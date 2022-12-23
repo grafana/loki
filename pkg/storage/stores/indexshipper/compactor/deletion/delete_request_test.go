@@ -198,9 +198,9 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			require.NotNil(t, filterFunc)
 
 			for start := chunkEntry.From; start <= chunkEntry.Through; start = start.Add(time.Minute) {
-				line := "foo"
+				line := "foo bar"
 				if start.Time().Minute()%2 == 1 {
-					line = "filter"
+					line = "filter bar"
 				}
 				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line), filterFunc(start.Time(), line), "line", line, "time", start.Time(), "now", now.Time())
 			}
