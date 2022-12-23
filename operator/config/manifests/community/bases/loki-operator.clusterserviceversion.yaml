@@ -1431,21 +1431,17 @@ spec:
         - urn:alm:descriptor:io.kubernetes.conditions
       version: v1beta1
   description: |-
-    # Loki Operator
-
-    ## Introduction
-
     The Community Loki Operator provides Kubernetes native deployment and management of Loki and related logging components.
     The purpose of this project is to simplify and automate the configuration of a Loki based logging stack for Kubernetes clusters.
 
-    ## Operator features
+    ### Operator features
 
     The Loki operator includes, but is not limited to, the following features:
 
     * Kubernetes Custom Resources: Use Kubernetes custom resources to deploy and manage Loki, Alerting rules, Recording rules, and related components.
     * Simplified Deployment Configuration: Configure the fundamentals of Loki like tenants, limits, replication factor and storage from a native Kubernetes resource.
 
-    ## Before you start
+    ### Before you start
 
     1. Ensure that [cert-manager](https://operatorhub.io/operator/cert-manager) is installed first.
     2. Ensure that the appropriate object storage solution, that will be used by Loki, is avaliable and configured.
