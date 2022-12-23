@@ -1652,7 +1652,7 @@ hedging:
   # CLI flag: -store.hedge-max-per-second
   [max_per_second: <int> | default = 5]
 
-# Configures additional stores for a given storage provider.
+# Configures additional object stores for a given storage provider.
 # Example:
 # storage_config:
 #   named_stores:
@@ -1660,8 +1660,8 @@ hedging:
 #       store-1:
 #         endpoint: s3://foo-bucket
 #         region: us-west1
-# Named store from this example can be referred to as aws.store-1 from
-# period_config.
+# Named store from this example can be used by setting object_store to
+# aws.store-1 in period_config.
 [named_stores: <named_stores_config>]
 
 # Cache validity for active index entries. Should be no higher than
@@ -4036,7 +4036,7 @@ The `local_storage_config` block configures the usage of local file system as ob
 
 ### named_stores_config
 
-Configures additional stores for a given storage provider.
+Configures additional object stores for a given storage provider.
 Example:
 storage_config:
   named_stores:
@@ -4044,7 +4044,7 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be referred to as aws.store-1 from period_config.
+Named store from this example can be used by setting object_store to aws.store-1 in period_config.
 
 ```yaml
 [aws: <map of string to aws_storage_config>]
