@@ -22,7 +22,7 @@ var rctt = []struct {
 	err  *apierrors.StatusError
 }{
 	{
-		desc: "valid spec with no AM credentials",
+		desc: "valid spec with no AM header credentials",
 		spec: v1beta1.RulerConfigSpec{
 			AlertManagerSpec: &lokiv1beta1.AlertManagerSpec{
 				Client: &lokiv1beta1.AlertManagerClientConfig{
