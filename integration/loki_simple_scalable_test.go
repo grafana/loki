@@ -21,10 +21,12 @@ func TestSimpleScalable_Legacy_IngestQuery(t *testing.T) {
 	var (
 		tRead = clu.AddComponent(
 			"read",
+			cluster.ComponentConfig{},
 			"-target=read",
 		)
 		tWrite = clu.AddComponent(
 			"write",
+			cluster.ComponentConfig{},
 			"-target=write",
 		)
 	)
@@ -84,10 +86,12 @@ func TestSimpleScalable_IngestQuery(t *testing.T) {
 	var (
 		tWrite = clu.AddComponent(
 			"write",
+			cluster.ComponentConfig{},
 			"-target=write",
 		)
 		tBackend = clu.AddComponent(
 			"backend",
+			cluster.ComponentConfig{},
 			"-target=backend",
 			"-legacy-read-mode=false",
 		)
@@ -96,6 +100,7 @@ func TestSimpleScalable_IngestQuery(t *testing.T) {
 
 	tRead := clu.AddComponent(
 		"read",
+		cluster.ComponentConfig{},
 		"-target=read",
 		"-common.compactor-address="+tBackend.HTTPURL(),
 		"-legacy-read-mode=false",

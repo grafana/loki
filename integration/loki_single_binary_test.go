@@ -21,6 +21,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	var (
 		tAll = clu.AddComponent(
 			"all",
+			cluster.ComponentConfig{},
 			"-target=all",
 		)
 	)

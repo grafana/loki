@@ -999,7 +999,6 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	boltdbShipperConfig := shipper.Config{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = "filesystem"
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
@@ -1010,6 +1009,11 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	cfg := Config{
 		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		BoltDBShipperConfig: boltdbShipperConfig,
+		NamedStores: NamedStores{
+			Filesystem: map[string]local.FSConfig{
+				"named-store": {Directory: path.Join(tempDir, "named-store")},
+			},
+		},
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -1021,17 +1025,17 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 				Schema:     "v9",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
-					Period: time.Hour * 168,
+					Period: time.Hour * 24,
 				},
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
+				ObjectType: "filesystem.named-store",
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
-					Period: time.Hour * 168,
+					Period: time.Hour * 24,
 				},
 				RowShards: 2,
 			},

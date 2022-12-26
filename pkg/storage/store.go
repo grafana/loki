@@ -253,7 +253,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() confi
 			}, nil
 		}
 
-		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
+		objectClient, err := NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}

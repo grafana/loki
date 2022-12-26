@@ -16,8 +16,10 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
@@ -51,16 +53,29 @@ limits_config:
   per_stream_rate_limit_burst: 50MB
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
+  reject_old_samples: false
 
 storage_config:
+  named_stores:
+    filesystem:
+      store-1:
+        directory: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
-    shared_store: filesystem
     active_index_directory: {{.dataPath}}/index
     cache_location: {{.dataPath}}/boltdb-cache
 
 schema_config:
   configs:
-    - from: 2020-10-24
+{{if .additionalPeriodConfig}}
+    - from: {{.additionalPeriodStart}}
+      store: boltdb-shipper
+      object_store: filesystem.store-1
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+{{end}}
+    - from: {{.curPeriodStart}}
       store: boltdb-shipper
       object_store: filesystem
       schema: v11
@@ -82,6 +97,8 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
+  query_ingesters_within: 0
+
 
 {{if .remoteWriteUrls}}
 ruler:
@@ -155,6 +172,7 @@ type Cluster struct {
 	sharedPath string
 	components []*Component
 	waitGroup  sync.WaitGroup
+	initedAt   model.Time
 }
 
 func New() *Cluster {
@@ -166,6 +184,7 @@ func New() *Cluster {
 
 	return &Cluster{
 		sharedPath: sharedPath,
+		initedAt:   model.Now(),
 	}
 }
 
@@ -233,12 +252,13 @@ func (c *Cluster) stop(cleanupFiles bool) error {
 	return errs.Err()
 }
 
-func (c *Cluster) AddComponent(name string, flags ...string) *Component {
+func (c *Cluster) AddComponent(name string, config ComponentConfig, flags ...string) *Component {
 	component := &Component{
-		name:    name,
-		cluster: c,
-		flags:   flags,
-		running: false,
+		name:            name,
+		cluster:         c,
+		flags:           flags,
+		running:         false,
+		ComponentConfig: config,
 	}
 
 	c.components = append(c.components, component)
@@ -260,7 +280,12 @@ type Component struct {
 	running bool
 	wg      sync.WaitGroup
 
-	RemoteWriteUrls []string
+	ComponentConfig
+}
+
+type ComponentConfig struct {
+	AdditionalPeriodConfig bool
+	RemoteWriteUrls        []string
 }
 
 func (c *Component) HTTPURL() string {
@@ -320,12 +345,18 @@ func (c *Component) writeConfig() error {
 		rulesConfigFile.Close()
 	}
 
+	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
+	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
+
 	if err := configTemplate.Execute(configFile, map[string]interface{}{
-		"dataPath":        c.dataPath,
-		"sharedDataPath":  c.cluster.sharedPath,
-		"remoteWriteUrls": c.RemoteWriteUrls,
-		"rulesPath":       c.rulesPath,
-		"rulerWALPath":    c.rulerWALPath,
+		"dataPath":               c.dataPath,
+		"sharedDataPath":         c.cluster.sharedPath,
+		"remoteWriteUrls":        c.RemoteWriteUrls,
+		"rulesPath":              c.rulesPath,
+		"rulerWALPath":           c.rulerWALPath,
+		"curPeriodStart":         periodStart.String(),
+		"additionalPeriodConfig": c.AdditionalPeriodConfig,
+		"additionalPeriodStart":  additionalPeriodStart.String(),
 	}); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
