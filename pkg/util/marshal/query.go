@@ -59,6 +59,14 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 			return nil, fmt.Errorf("unexpected type %T for matrix", m)
 		}
 
+		value = NewHistogramMatrix(m)
+	case loghttp.ResultTypeHistogram:
+		m, ok := v.(promql.Matrix)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T for matrix", m)
+		}
+
 		value = NewMatrix(m)
 	default:
 		return nil, fmt.Errorf("v1 endpoints do not support type %s", v.Type())
@@ -152,6 +160,11 @@ func NewMatrix(m promql.Matrix) loghttp.Matrix {
 	return ret
 }
 
+// NewHistogramMatrix constructs a Matrix from a promql.Matrix
+func NewHistogramMatrix(m promql.Matrix) loghttp.Histogram {
+	return loghttp.Histogram(m)
+}
+
 // NewSampleStream constructs a model.SampleStream from a promql.Series
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
@@ -199,7 +212,7 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream) error {
 
 	s.WriteObjectField("resultType")
 	s.WriteString(string(v.Data.Type()))
-
+	fmt.Printf("data type=%s\n", v.Data.Type())
 	s.WriteMore()
 	s.WriteObjectField("result")
 	err := encodeResult(v.Data, s)

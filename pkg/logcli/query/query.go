@@ -173,6 +173,8 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 		q.printMatrix(value.(loghttp.Matrix))
 	case loghttp.ResultTypeVector:
 		q.printVector(value.(loghttp.Vector))
+	case loghttp.ResultTypeHistogram:
+		q.printHistogram(value.(loghttp.Histogram))
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", value.Type())
 	}
@@ -421,6 +423,18 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
+	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
+	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
+	// we might add output options such as render to an image file on disk
+	bytes, err := json.MarshalIndent(matrix, "", "  ")
+	if err != nil {
+		log.Fatalf("Error marshalling matrix: %v", err)
+	}
+
+	fmt.Print(string(bytes))
+}
+
+func (q *Query) printHistogram(matrix loghttp.Histogram) {
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk

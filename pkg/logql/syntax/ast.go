@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -733,9 +732,6 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
-
-	OpHistogramLinearBuckets      = "linear_buckets"
-	OpHistogramExponentialBuckets = "exponential_buckets"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -767,18 +763,22 @@ type SampleExpr interface {
 }
 
 type HistogramExpr struct {
-	Left      *LogRange
-	Buckets   *BucketExpr
-	Grouping  *Grouping
-	Operation string
+	Left                        *LogRange
+	NativeHistogramBucketFactor float64
+	Grouping                    *Grouping
+	Operation                   string
 	implicit
 }
 
-func newHistogramExpr(left *LogRange, bucketExpr *BucketExpr, gr *Grouping) SampleExpr {
+func newHistogramExpr(left *LogRange, nativeHistogramBucketFactor string, gr *Grouping) SampleExpr {
+	f, err := strconv.ParseFloat(nativeHistogramBucketFactor, 64)
+	if err != nil {
+		fmt.Printf("histogram float parse error %s\n", err.Error())
+	}
 	e := &HistogramExpr{
-		Left:     left,
-		Grouping: gr,
-		Buckets:  bucketExpr,
+		Left:                        left,
+		Grouping:                    gr,
+		NativeHistogramBucketFactor: f,
 	}
 	return e
 }
@@ -792,7 +792,9 @@ func (e *HistogramExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpRangeTypeHistogram)
 	sb.WriteString("(")
-	sb.WriteString(e.Buckets.String())
+	//sb.WriteString(e.Buckets.String())
+
+	sb.WriteString(strconv.FormatFloat(e.NativeHistogramBucketFactor, 'f', -1, 64))
 	sb.WriteString(",")
 	sb.WriteString(e.Left.String())
 
@@ -828,66 +830,6 @@ func (e *HistogramExpr) MatcherGroups() []MatcherRange {
 		}
 	}
 	return nil
-}
-
-func newBuckets(start, scale float64, count int64, operation string) []float64 {
-	switch operation {
-	case OpHistogramLinearBuckets:
-		return linearBuckets(start, scale, int(count))
-	case OpHistogramExponentialBuckets:
-		return exponentialBuckets(start, scale, int(count))
-	default:
-		panic(logqlmodel.NewParseError(fmt.Sprintf("invalid bucket operation %s", operation), 0, 0))
-	}
-}
-
-func linearBuckets(start, width float64, count int) []float64 {
-	return prometheus.LinearBuckets(start, width, count)
-}
-
-func exponentialBuckets(start, factor float64, count int) []float64 {
-	return prometheus.ExponentialBuckets(start, factor, count)
-}
-
-type BucketExpr struct {
-	Operation    string
-	Start, Scale float64
-	Count        int64
-	Buckets      []float64
-}
-
-func (b *BucketExpr) String() string {
-	var sb strings.Builder
-	if b.Operation != "" {
-		sb.WriteString(b.Operation)
-		sb.WriteString("(")
-		sb.WriteString(fmt.Sprintf("%f,%f,%d", b.Start, b.Scale, b.Count))
-		sb.WriteString(")")
-	} else {
-		sb.WriteString("(")
-		bucketStr := make([]string, 0, len(b.Buckets))
-		for _, bucket := range b.Buckets {
-			bucketStr = append(bucketStr, strconv.FormatFloat(bucket, 'f', -1, 64))
-		}
-		sb.WriteString(strings.Join(bucketStr, ","))
-		sb.WriteString(")")
-	}
-
-	return sb.String()
-}
-
-func newBucketExpr(operation string, start, scale float64, count int64, buckets []float64) *BucketExpr {
-	bkts := buckets
-	if operation != "" {
-		bkts = newBuckets(start, scale, count, operation)
-	}
-	return &BucketExpr{
-		Operation: operation,
-		Start:     start,
-		Scale:     scale,
-		Count:     count,
-		Buckets:   bkts,
-	}
 }
 
 type RangeAggregationExpr struct {

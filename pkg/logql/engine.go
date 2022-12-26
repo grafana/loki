@@ -359,6 +359,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 				}
 				seriesIndex[hash] = series
 			}
+			if p.H != nil {
+				series.Points = append(series.Points, promql.Point{
+					T: ts,
+					H: p.H,
+				})
+				continue
+			}
 			series.Points = append(series.Points, promql.Point{
 				T: ts,
 				V: p.V,
@@ -380,6 +387,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	result := promql.Matrix(series)
 	sort.Sort(result)
+	fmt.Printf("Result=%v\n", result)
 	return result, stepEvaluator.Error()
 }
 

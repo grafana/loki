@@ -438,7 +438,7 @@ func rangeAggEvaluator(
 		return nil, err
 	}
 	iter, err := newRangeVectorIterator(
-		it, expr,
+		it, expr, nil,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
@@ -504,9 +504,9 @@ func histogramAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
-	agg := bucketsOverTime(expr.Buckets.Buckets)
+	agg := bucketsOverTime(expr.NativeHistogramBucketFactor)
 	iter, _ := newRangeVectorIterator(
-		it, nil,
+		it, nil, expr,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),

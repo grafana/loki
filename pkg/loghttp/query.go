@@ -10,6 +10,7 @@ import (
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -63,10 +64,11 @@ type ResultType string
 
 // ResultType values
 const (
-	ResultTypeStream = "streams"
-	ResultTypeScalar = "scalar"
-	ResultTypeVector = "vector"
-	ResultTypeMatrix = "matrix"
+	ResultTypeStream    = "streams"
+	ResultTypeScalar    = "scalar"
+	ResultTypeVector    = "vector"
+	ResultTypeMatrix    = "matrix"
+	ResultTypeHistogram = "histogram"
 )
 
 // ResultValue interface mimics the promql.Value interface
@@ -92,6 +94,8 @@ func (Vector) Type() ResultType { return ResultTypeVector }
 
 // Type implements the promql.Value interface
 func (Matrix) Type() ResultType { return ResultTypeMatrix }
+
+func (Histogram) Type() ResultType { return ResultTypeHistogram }
 
 // Streams is a slice of Stream
 type Streams []Stream
@@ -237,6 +241,8 @@ type Vector []model.Sample
 
 // Matrix is a slice of SampleStreams
 type Matrix []model.SampleStream
+
+type Histogram promql.Matrix
 
 // InstantQuery defines a log instant query.
 type InstantQuery struct {

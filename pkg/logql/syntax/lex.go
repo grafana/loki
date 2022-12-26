@@ -93,6 +93,7 @@ var functionTokens = map[string]int{
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
 	OpTypeVector:           VECTOR,
+	OpRangeTypeHistogram:   BUCKETS_OVER_TIME,
 
 	// vec ops
 	OpTypeSum:      SUM,
@@ -113,9 +114,6 @@ var functionTokens = map[string]int{
 
 	// filterOp
 	OpFilterIP: IP,
-
-	OpHistogramLinearBuckets:      LINEAR_BUCKETS,
-	OpHistogramExponentialBuckets: EXPONENTIAL_BUCKETS,
 }
 
 type lexer struct {

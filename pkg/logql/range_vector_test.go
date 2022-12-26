@@ -214,7 +214,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 		i := 0
 		expr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
 		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
-			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
+			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, nil, tt.selRange,
 			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 		if err != nil {
 			panic(err)
@@ -352,7 +352,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			func(t *testing.T) {
 				expr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
 				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
-					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
+					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, nil, tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 				require.NoError(t, err)
 
@@ -540,7 +540,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Samples: samples,
 		}))
 	it, err := newRangeVectorIterator(badIterator,
-		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
+		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, nil, (30 * time.Second).Nanoseconds(),
 		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
 	require.NoError(t, err)
 
@@ -586,7 +586,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			expr := &syntax.RangeAggregationExpr{Left: &syntax.LogRange{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op}
 			it, err := newRangeVectorIterator(sampleIter(tt.negative),
-				expr,
+				expr, nil,
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 

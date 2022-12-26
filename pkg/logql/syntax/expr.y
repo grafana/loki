@@ -20,10 +20,7 @@ import (
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
   HistogramExpr           SampleExpr
-  BucketExpr              *BucketExpr
-  Buckets                 []float64
-  HistogramOp             string
-  BucketOp                string 
+  HistogramOp             string 
   RangeOp                 string
   ConvOp                  string
   Selector                []*labels.Matcher
@@ -77,12 +74,9 @@ import (
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
-%type <Buckets>               buckets
 %type <HistogramExpr>         histogramExpr
-%type <BucketExpr>            bucketExpr
 %type <RangeAggregationExpr>  rangeAggregationExpr
 %type <HistogramOp>           histogramOp
-%type <BucketOp>              bucketOp
 %type <RangeOp>               rangeOp
 %type <ConvOp>                convOp
 %type <Selector>              selector
@@ -127,7 +121,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE BUCKETS_OVER_TIME LINEAR_BUCKETS EXPONENTIAL_BUCKETS
+                  DECOLORIZE BUCKETS_OVER_TIME
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -158,27 +152,11 @@ metricExpr:
     ;
 
 histogramExpr:
-      histogramOp OPEN_PARENTHESIS bucketExpr COMMA logRangeExpr CLOSE_PARENTHESIS { $$ = newHistogramExpr($5, $3, nil) }
-    | histogramOp OPEN_PARENTHESIS bucketExpr COMMA logRangeExpr CLOSE_PARENTHESIS grouping { $$ = newHistogramExpr($5, $3, $7) }
+      histogramOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping { $$ = newHistogramExpr($5, $3, $7) }
     ;
 
 histogramOp:
       BUCKETS_OVER_TIME  { $$ = OpRangeTypeHistogram }
-    ;
-
-bucketOp:
-      LINEAR_BUCKETS { $$ = OpHistogramLinearBuckets }
-    | EXPONENTIAL_BUCKETS { $$ = OpHistogramExponentialBuckets }
-    ;
-
-bucketExpr:
-      OPEN_PARENTHESIS buckets CLOSE_PARENTHESIS { $$ = newBucketExpr("", 0, 0, 0, $2) }
-    | bucketOp OPEN_PARENTHESIS NUMBER COMMA NUMBER COMMA NUMBER CLOSE_PARENTHESIS { $$ = newBucketExpr($1, mustNewFloat($3), mustNewFloat($5), mustNewInt($7), nil) }
-    ;
-
-buckets:
-      NUMBER { $$ = []float64{ mustNewFloat($1) } }
-    | buckets COMMA NUMBER { $$ = append($1, mustNewFloat($3)) }
     ;
 
 logExpr:
