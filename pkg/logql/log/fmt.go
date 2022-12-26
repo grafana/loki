@@ -55,9 +55,6 @@ var (
 				return 0, err
 			}
 			matches := r.FindAllStringIndex(s, -1)
-			if matches == nil {
-				return 0, nil
-			}
 			return len(matches), nil
 		},
 	}
