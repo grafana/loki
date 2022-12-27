@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -77,18 +80,17 @@ func (b *batch) replay(entry api.Entry) {
 	}
 }
 
-func writeEntryToWAL(entry api.Entry, wal WAL, tenantID string) error {
+func writeEntryToWAL(entry api.Entry, wal WAL, tenantID string, logger log.Logger) {
 	// Reset wal record slices
 	walRecord.RefEntries = walRecord.RefEntries[:0]
 	walRecord.Series = walRecord.Series[:0]
 	// todo: maybe the UserID in wal records is used in some other way
 	walRecord.UserID = tenantID
 
-	// todo: log the error
 	defer func() {
 		err := wal.Log(walRecord)
 		if err != nil {
-			fmt.Println("err: ", err)
+			level.Error(logger).Log("msg", "failed to write to WAL", "err", err)
 		}
 	}()
 
@@ -108,46 +110,19 @@ func writeEntryToWAL(entry api.Entry, wal WAL, tenantID string) error {
 		Ref:    chunks.HeadSeriesRef(fp),
 		Labels: lbs,
 	})
-	return nil
 }
 
 // add an entry to the batch
 func (b *batch) add(entry api.Entry) error {
 	b.bytes += len(entry.Line)
-	// Reset wal record slices
-	walRecord.RefEntries = walRecord.RefEntries[:0]
-	walRecord.Series = walRecord.Series[:0]
-
-	// todo: log the error
-	defer func() {
-		err := b.wal.Log(walRecord)
-		if err != nil {
-			fmt.Println("err: ", err)
-		}
-	}()
-
-	var fp uint64
-	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
-	sort.Sort(lbs)
-	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
 
 	// Append the entry to an already existing stream (if any)
 	labelsString := labelsMapToString(entry.Labels, ReservedLabelTenantID)
 
-	walRecord.RefEntries = append(walRecord.RefEntries, ingester.RefEntries{
-		Ref: chunks.HeadSeriesRef(fp),
-		Entries: []logproto.Entry{
-			entry.Entry,
-		},
-	})
 	if stream, ok := b.streams[labelsString]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
 		return nil
 	}
-	walRecord.Series = append(walRecord.Series, record.RefSeries{
-		Ref:    chunks.HeadSeriesRef(fp),
-		Labels: lbs,
-	})
 	streams := len(b.streams)
 	if b.maxStreams > 0 && streams >= b.maxStreams {
 		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labelsString)

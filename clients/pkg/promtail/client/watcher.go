@@ -59,6 +59,7 @@ func NewWALWatcher(walDir string, consumer WALConsumer, logger log.Logger) *WALW
 	}
 }
 
+// Start runs the  watcher main loop.
 func (w *WALWatcher) Start() {
 	go w.loop()
 }
@@ -74,7 +75,7 @@ func (w *WALWatcher) loop() {
 	defer close(w.done)
 	for !isClosed(w.quit) {
 		//w.SetStartTime(time.Now())
-		if err := w.Run(); err != nil {
+		if err := w.run(); err != nil {
 			level.Error(w.logger).Log("msg", "error tailing WAL", "err", err)
 		}
 
@@ -88,7 +89,7 @@ func (w *WALWatcher) loop() {
 
 // Run the watcher, which will tail the WAL until the quit channel is closed
 // or an error case is hit.
-func (w *WALWatcher) Run() error {
+func (w *WALWatcher) run() error {
 	_, lastSegment, err := w.firstAndLast()
 	if err != nil {
 		return fmt.Errorf("wal.Segments: %w", err)

@@ -369,8 +369,7 @@ func (c *client) runWithWAL() {
 			e, tenantID := c.processEntry(e)
 			// Get WAL, and write entry to it
 			w, _ := c.wal.getWAL(tenantID)
-			// todo pablo: no error here, should be checked?
-			_ = writeEntryToWAL(e, w, tenantID)
+			writeEntryToWAL(e, w, tenantID, c.logger)
 		}
 	}
 	go receiveAndWriteToWAL()
@@ -412,10 +411,6 @@ func (c *client) runSendSide(entries chan api.Entry) {
 				return
 			}
 			e, tenantID := c.processEntry(e)
-			// Get WAL, and write entry to it
-			w, _ := c.wal.getWAL(tenantID)
-			// todo pablo: no error here, should be checked?
-			_ = writeEntryToWAL(e, w, tenantID)
 
 			batch, ok := batches[tenantID]
 
@@ -436,9 +431,6 @@ func (c *client) runSendSide(entries chan api.Entry) {
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
-				if err := batch.wal.Delete(); err != nil {
-					level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
-				}
 				new := c.newBatch(tenantID)
 				new.add(e)
 				batches[tenantID] = new
@@ -462,9 +454,6 @@ func (c *client) runSendSide(entries chan api.Entry) {
 					continue
 				}
 				c.sendBatch(tenantID, batch)
-				if err := batch.wal.Delete(); err != nil {
-					level.Error(c.logger).Log("msg", "failed to close delete WAL", "err", err)
-				}
 				delete(batches, tenantID)
 			}
 		}
@@ -696,7 +685,7 @@ func (c *clientWAL) getWAL(tenant string) (WAL, error) {
 	}
 	consumer := newClientConsumer(c.readChannel, c.client.logger)
 	watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
-	go watcher.Run()
+	watcher.Start()
 	c.watchers[tenant] = watcher
 	c.tenantWALs[tenant] = wal
 	return wal, nil
