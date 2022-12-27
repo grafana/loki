@@ -17,6 +17,7 @@
 * [7817](https://github.com/grafana/loki/pull/7817) **kavirajk**: fix(memcached): panic on send on closed channel.
 * [7916](https://github.com/grafana/loki/pull/7916) **ssncferreira**: Add `doc-generator` tool to generate configuration flags documentation.
 * [7997](https://github.com/grafana/loki/pull/7997) **kavirajk**: fix(promtail): Fix cri tags extra new lines when joining partial lines
+* [7975](https://github.com/grafana/loki/pull/7975) **adityacs**: add ignore_errors and label_format_rename_errors stages to logql pipeline
 
 ##### Fixes
 
