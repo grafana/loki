@@ -489,24 +489,3 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 	}
 	return entry, nil
 }
-
-type IgnoreErrors struct {
-	filter *StringLabelFilter
-}
-
-func NewIgnoreErrors(filter *StringLabelFilter) *IgnoreErrors {
-	return &IgnoreErrors{filter: filter}
-}
-
-func (ie *IgnoreErrors) Process(ts int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
-	_, valid := ie.filter.Process(ts, line, lbls)
-	if valid {
-		if ie.filter.Name == logqlmodel.ErrorLabel || ie.filter.Name == logqlmodel.ErrorDetailsLabel {
-			lbls.ResetError()
-			lbls.ResetErrorDetails()
-		}
-	}
-	return line, true
-}
-
-func (ie *IgnoreErrors) RequiredLabelNames() []string { return []string{} }

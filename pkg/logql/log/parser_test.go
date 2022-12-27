@@ -885,3 +885,71 @@ func Test_PatternParser(t *testing.T) {
 		})
 	}
 }
+
+func Test_IgnoreErrors(t *testing.T) {
+	tests := []struct {
+		Name       string
+		Filter     *StringLabelFilter
+		err        string
+		errDetails string
+		lbs        labels.Labels
+		want       labels.Labels
+	}{
+		{
+			"filter by __error__",
+			NewStringLabelFilter(&labels.Matcher{
+				Type:  labels.MatchEqual,
+				Name:  logqlmodel.ErrorLabel,
+				Value: errJSON,
+			}),
+			errJSON,
+			"json error",
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+		},
+		{
+			"filter with other name",
+			NewStringLabelFilter(&labels.Matcher{
+				Type:  labels.MatchEqual,
+				Name:  "test",
+				Value: errJSON,
+			}),
+			errJSON,
+			"json error",
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
+				{Name: logqlmodel.ErrorDetailsLabel, Value: "json error"},
+			},
+		},
+		{
+			"without filter",
+			nil,
+			errJSON,
+			"json error",
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		ie := NewIgnoreErrors(tt.Filter)
+		lbls := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+		lbls.Reset()
+		lbls.SetErr(tt.err)
+		lbls.SetErrorDetails(tt.errDetails)
+		ie.Process(0, []byte(""), lbls)
+		sort.Sort(tt.want)
+		require.Equal(t, tt.want, lbls.LabelsResult().Labels())
+	}
+}

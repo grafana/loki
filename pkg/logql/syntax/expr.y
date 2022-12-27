@@ -364,7 +364,7 @@ numberFilter:
     ;
 
 ignoreErrorsExpr:
-     IGNORE_ERRORS matcher { $$ = newIgnoreErrorsExpr(log.NewStringLabelFilter($2)) }
+     IGNORE_ERRORS matcher { $$ = newIgnoreErrorsExpr(log.NewFilter($2)) }
     ;
 
 // Operator precedence only works if each of these is listed separately.
