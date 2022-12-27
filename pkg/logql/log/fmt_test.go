@@ -23,6 +23,28 @@ func Test_lineFormatter_Format(t *testing.T) {
 		in      []byte
 	}{
 		{
+			"count",
+			newMustLineFormatter(
+				`{{.foo | count "abc" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("3"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
+			"count regex",
+			newMustLineFormatter(
+				`{{.foo | count "a|b|c" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("9"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
@@ -365,9 +387,8 @@ func newMustLineFormatter(tmpl string) *LineFormatter {
 
 func Test_labelsFormatter_Format(t *testing.T) {
 	tests := []struct {
-		name         string
-		fmter        *LabelsFormatter
-		renameErrors bool
+		name  string
+		fmter *LabelsFormatter
 
 		in   labels.Labels
 		want labels.Labels
@@ -375,7 +396,6 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "foo", Value: "blip and blop"}, {Name: "bar", Value: "blop"}},
 		},
@@ -385,7 +405,6 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				NewTemplateLabelFmt("blip", "{{.foo}} and {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "blip and blop"}, {Name: "bar", Value: "blip"}},
 		},
@@ -395,14 +414,12 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				NewTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
 		},
 		{
 			"math",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("status", "{{div .status 100 }}")}),
-			false,
 			labels.Labels{{Name: "status", Value: "200"}},
 			labels.Labels{{Name: "status", Value: "2"}},
 		},
@@ -411,14 +428,12 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{
 				NewTemplateLabelFmt("blip", `{{.foo | default "-" }} and {{.bar}}`),
 			}),
-			false,
 			labels.Labels{{Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
 		},
 		{
 			"template error",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{replace \"test\" .foo}}")}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -430,7 +445,6 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"line",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("line", "{{ __line__ }}")}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -441,7 +455,6 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"timestamp",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | date \"2006-01-02\" }}")}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -452,7 +465,6 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"timestamp_unix",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("ts", "{{ __timestamp__ | unixEpoch }}")}),
-			false,
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{
 				{Name: "foo", Value: "blip"},
@@ -461,14 +473,22 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			},
 		},
 		{
-			"rename errors",
-			mustNewLabelsFormatter([]LabelFmt{
-				NewRenameLabelFmt("error", "__error__"),
-				NewRenameLabelFmt("error_details", "__error_details__"),
-			}),
-			true,
+			"count",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "test" }}`)}),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "error", Value: errJSON}, {Name: "", Value: ""}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "count", Value: "1"},
+			},
+		},
+		{
+			"count regex no matches",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "notmatching.*" }}`)}),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "count", Value: "0"},
+			},
 		},
 	}
 
@@ -547,6 +567,30 @@ func mustNewLabelsFormatterRenameErrors(fmts []LabelFmt) *LabelsFormatter {
 		panic(err)
 	}
 	return lf
+}
+
+func Test_InvalidRegex(t *testing.T) {
+	t.Run("regexReplaceAll", func(t *testing.T) {
+		cntFunc := functionMap["regexReplaceAll"]
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("a|b|\\q", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
+	t.Run("regexReplaceAllLiteral", func(t *testing.T) {
+		cntFunc := functionMap["regexReplaceAllLiteral"]
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("\\h", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
+	t.Run("count", func(t *testing.T) {
+		cntFunc := functionMap["count"]
+		f := cntFunc.(func(string, string) (int, error))
+		ret, err := f("a|b|\\K", "input")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
 }
 
 func Test_validate(t *testing.T) {
