@@ -242,9 +242,9 @@ func TestIgnoreErrorsPipeline(t *testing.T) {
 		p := NewPipeline(tt.stages)
 		sp := p.ForStream(labels.Labels{})
 		for i, line := range tt.lines {
-			_, final_lbs, _ := sp.Process(0, line)
+			_, finalLbs, _ := sp.Process(0, line)
 			sort.Sort(tt.wantLabels[i])
-			require.Equal(t, tt.wantLabels[i], final_lbs.Labels())
+			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
 		}
 	}
 
