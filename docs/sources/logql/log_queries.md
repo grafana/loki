@@ -562,6 +562,12 @@ will give the result as
 
 ### Ignore errors expression
 
+**Syntax**: 
+
+`|ignore_errors` -- Without filter
+
+`|ignore_errors __error__="JSONParserErr"` -- With filter. Only supports filtering on `__error__` field
+
 The `| ignore_errors` expression will remove any previously added `__error__` and `__error_details__` labels in the pipeline. The default behaviour is to ignore the lines which has errors. However, using `ignore_errors` expression overrides this behaviour. This expression can be used in scenarios where you want to query for multiple log formats in a single query. Although, the current implementation supports this, it adds  `__error__` and `__error_details__` labels.
 
 For example, for the query `{job="varlogs"}|json` with below two log lines
