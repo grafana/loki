@@ -44,16 +44,14 @@ type batch struct {
 	createdAt time.Time
 
 	maxStreams int
-	wal        WAL
 }
 
-func newBatch(wal WAL, maxStreams int, entries ...api.Entry) *batch {
+func newBatch(maxStreams int, entries ...api.Entry) *batch {
 	b := &batch{
 		streams:    map[string]*logproto.Stream{},
 		bytes:      0,
 		createdAt:  time.Now(),
 		maxStreams: maxStreams,
-		wal:        wal,
 	}
 
 	// Add entries to the batch

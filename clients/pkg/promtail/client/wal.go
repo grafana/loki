@@ -1,8 +1,11 @@
 package client
 
 import (
+	"fmt"
 	"os"
 	"path"
+	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/grafana/loki/pkg/ingester"
@@ -26,6 +29,7 @@ type WAL interface {
 	Delete() error
 	Sync() error
 	Dir() string
+	DeleteSegment(segmentNum int) error
 }
 
 type noopWAL struct{}
@@ -46,12 +50,17 @@ func (n noopWAL) Dir() string {
 	return ""
 }
 
+func (n noopWAL) DeleteSegment(segmentNum int) error {
+	return nil
+}
+
 type walWrapper struct {
 	wal *wal.WAL
 	log log.Logger
 }
 
-// newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
+// newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL. Note that the WAL created by
+// newWAL uses as directory the following path structure: cfg.Dir/clientName/tenantID.
 func newWAL(log log.Logger, registerer prometheus.Registerer, cfg WALConfig, clientName string, tenantID string) (WAL, error) {
 	if !cfg.Enabled {
 		return NoopWAL, nil
@@ -119,6 +128,35 @@ func (w *walWrapper) Sync() error {
 
 func (w *walWrapper) Dir() string {
 	return w.wal.Dir()
+}
+
+func (w *walWrapper) DeleteSegment(segmentNum int) error {
+	// First, find segment file name corresponding to segment number
+	files, err := os.ReadDir(w.Dir())
+	if err != nil {
+		return fmt.Errorf("error reading wal dir")
+	}
+	var segmentName string
+	for _, f := range files {
+		fileName := f.Name()
+		fileNameAsNumber, err := strconv.Atoi(fileName)
+		if err != nil {
+			continue
+		}
+		if fileNameAsNumber == segmentNum {
+			// found segment to delete
+			segmentName = fileName
+			break
+		}
+	}
+	if segmentName == "" {
+		return fmt.Errorf("segment not found")
+	}
+	// Now we know the segment file name, delete it
+	if err = os.Remove(filepath.Join(w.Dir(), segmentName)); err != nil {
+		return fmt.Errorf("failed deleting segment: %w", err)
+	}
+	return nil
 }
 
 type resettingPool struct {

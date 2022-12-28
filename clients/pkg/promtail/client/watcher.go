@@ -32,8 +32,9 @@ type WALReader interface {
 }
 
 type WALConsumer interface {
-	SetStream(tenantID string, series record.RefSeries) error
-	Push(tenantID string, entries ingester.RefEntries) error
+	ConsumeSeries(series record.RefSeries) error
+	ConsumeEntries(entries ingester.RefEntries) error
+	SegmentEnd(segmentNum int)
 }
 
 // Based in the implementation of prometheus wal watcher
@@ -138,6 +139,9 @@ func (w *WALWatcher) run() error {
 			return nil
 		}
 
+		// we now a new segment has been cut, upon advancing the segment pointer, emit the send batch call
+		// the call to sending the batch will be locking, since the sender routine is a single one
+		w.consumer.SegmentEnd(currentSegment)
 		currentSegment++
 	}
 
@@ -333,7 +337,7 @@ func (w *WALWatcher) decodeAndDispatch(b []byte) error {
 	// First process all series to ensure we don't write entries to nonexistant series.
 	var firstErr error
 	for _, s := range rec.Series {
-		if err := w.consumer.SetStream(rec.UserID, s); err != nil {
+		if err := w.consumer.ConsumeSeries(s); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -342,7 +346,7 @@ func (w *WALWatcher) decodeAndDispatch(b []byte) error {
 	}
 
 	for _, entries := range rec.RefEntries {
-		if err := w.consumer.Push(rec.UserID, entries); err != nil && firstErr == nil {
+		if err := w.consumer.ConsumeEntries(entries); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

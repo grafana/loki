@@ -319,7 +319,7 @@ func (c *client) replayWAL() error {
 
 		// todo, reduce allocations
 		// todo: thepalbi, use correct maxStreams here
-		b := newBatch(NoopWAL, 0)
+		b := newBatch(0)
 		seriesRecs := make(map[uint64]model.LabelSet)
 		for r.Next() {
 			rec := recordPool.GetRecord()
@@ -342,9 +342,9 @@ func (c *client) replayWAL() error {
 							c.sendBatch(tenantID, b)
 							// todo: thepalbi why is the WAL deleted here?
 							// ahhh it deletes the WAL for that specific batch, not the one being replayed
-							if err := b.wal.Delete(); err != nil {
-								level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
-							}
+							//if err := b.wal.Delete(); err != nil {
+							//	level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
+							//}
 							new := c.newBatch(tenantID)
 							new.replay(entry)
 							b = new
@@ -461,10 +461,7 @@ func (c *client) runSendSide(entries chan api.Entry) {
 }
 
 func (c *client) newBatch(tenantID string) *batch {
-	// todo: callum, how to handle this error
-	w, _ := c.wal.getWAL(tenantID)
-	// todo: thepalbi, fix maxStreams here
-	return newBatch(w, 0)
+	return newBatch(0)
 }
 
 func (c *client) Chan() chan<- api.Entry {
@@ -479,11 +476,11 @@ func asSha256(o interface{}) string {
 	return temp[:6]
 }
 
-func (c *client) sendBatch(tenantID string, batch *batch) {
+func (c *client) sendBatch(tenantID string, batch *batch) error {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
-		return
+		return err
 	}
 	bufBytes := float64(len(buf))
 	c.metrics.encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
@@ -505,7 +502,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				if err != nil {
 					// is this possible?
 					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
-					return
+					return err
 				}
 
 				//nolint:staticcheck
@@ -532,8 +529,9 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}
-			return
+			return nil
 		}
+		// we know err != nil
 
 		// Only retry 429s, 500s and connection-level errors.
 		if status > 0 && status != 429 && status/100 != 5 {
@@ -555,6 +553,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(bufBytes)
 		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(entriesCount))
 	}
+	return err
 }
 
 func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, error) {
@@ -683,7 +682,9 @@ func (c *clientWAL) getWAL(tenant string) (WAL, error) {
 		// set the wall to noop
 		return nil, err
 	}
-	consumer := newClientConsumer(c.readChannel, c.client.logger)
+	consumer := newClientConsumer(c.readChannel, c.client.logger, func(b *batch) error {
+		return c.client.sendBatch(tenant, b)
+	}, wal)
 	watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
 	watcher.Start()
 	c.watchers[tenant] = watcher
@@ -698,36 +699,59 @@ func (c *clientWAL) Stop() {
 	close(c.readChannel)
 }
 
-type clientConsumer struct {
-	series      map[uint64]model.LabelSet
-	pushChannel chan api.Entry
-	logger      log.Logger
+type sendBatchFunc func(*batch) error
+
+type SegmentDeleter interface {
+	DeleteSegment(segmentNum int) error
 }
 
-func newClientConsumer(pushChannel chan api.Entry, logger log.Logger) *clientConsumer {
+type clientConsumer struct {
+	series         map[uint64]model.LabelSet
+	pushChannel    chan api.Entry
+	logger         log.Logger
+	currentBatch   *batch
+	sendBatch      sendBatchFunc
+	segmentDeleter SegmentDeleter
+}
+
+func newClientConsumer(pushChannel chan api.Entry, logger log.Logger, sendBatch sendBatchFunc, segmentDeleter SegmentDeleter) *clientConsumer {
 	return &clientConsumer{
-		series:      map[uint64]model.LabelSet{},
-		pushChannel: pushChannel,
-		logger:      logger,
+		series:         map[uint64]model.LabelSet{},
+		pushChannel:    pushChannel,
+		logger:         logger,
+		currentBatch:   newBatch(0),
+		sendBatch:      sendBatch,
+		segmentDeleter: segmentDeleter,
 	}
 }
 
-func (c *clientConsumer) SetStream(tenantID string, series record.RefSeries) error {
+func (c *clientConsumer) ConsumeSeries(series record.RefSeries) error {
 	c.series[uint64(series.Ref)] = util.MapToModelLabelSet(series.Labels.Map())
 	return nil
 }
 
-func (c *clientConsumer) Push(tenantID string, samples ingester.RefEntries) error {
+func (c *clientConsumer) ConsumeEntries(samples ingester.RefEntries) error {
 	var entry api.Entry
 	if l, ok := c.series[uint64(samples.Ref)]; ok {
 		entry.Labels = l
 		for _, e := range samples.Entries {
 			entry.Entry = e
-			c.pushChannel <- entry
+			// Using replay since we know the batch needs to be sent once the segment ends
+			c.currentBatch.replay(entry)
 		}
 	} else {
 		// if series is not present for sample, just log for now
 		level.Debug(c.logger).Log("series for sample not found")
 	}
 	return nil
+}
+
+func (c *clientConsumer) SegmentEnd(segmentNum int) {
+	if err := c.sendBatch(c.currentBatch); err == nil {
+		// once the batch has been sent, delete segment if no error
+		level.Debug(c.logger).Log("msg", "batch sent successfully. Deleting segment", "segmentNum", segmentNum)
+		if err := c.segmentDeleter.DeleteSegment(segmentNum); err != nil {
+			level.Error(c.logger).Log("msg", "failed to delete segment after sending batch", "segmentNum", segmentNum)
+		}
+	}
 }
