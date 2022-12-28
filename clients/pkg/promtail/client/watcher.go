@@ -272,7 +272,7 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 
 			// Since we know last > segmentNum, there must be a new segment. Read the remaining from the segmentNum segment
 			// and return from `watch` to read the next one
-			err = w.readSegment(reader, segmentNum, tail)
+			err = w.readSegment(reader, segmentNum)
 
 			// Ignore errors reading to end of segment whilst replaying the WAL.
 			if !tail {
@@ -288,7 +288,7 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 			return nil
 
 		case <-readTicker.C:
-			err = w.readSegment(reader, segmentNum, tail)
+			err = w.readSegment(reader, segmentNum)
 
 			// Ignore all errors reading to end of segment whilst replaying the WAL.
 			if !tail {
@@ -314,7 +314,7 @@ func (w *WALWatcher) logIgnoredErrorWhileReplaying(err error, readerOffset, size
 
 // Read from a segment and pass the details to w.writer.
 // Also used with readCheckpoint - implements segmentReadFn.
-func (w *WALWatcher) readSegment(r *wal.LiveReader, segmentNum int, tail bool) error {
+func (w *WALWatcher) readSegment(r *wal.LiveReader, segmentNum int) error {
 	for r.Next() && !isClosed(w.quit) {
 		b := r.Record()
 		if err := r.Err(); err != nil {

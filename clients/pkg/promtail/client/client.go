@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -263,6 +264,8 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 	c.wg.Add(1)
 
 	if cfg.WAL.Enabled {
+		// first replay WAL
+		c.replayWAL()
 		go c.runWithWAL()
 	} else {
 		go c.runSendSide(c.sendBatch)
@@ -284,16 +287,47 @@ func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, 
 	return c, nil
 }
 
+// the code below is copied from prometheus wal
+type segmentRef struct {
+	name  string
+	index int
+}
+
+func listSegments(dir string) (refs []segmentRef, err error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range files {
+		fn := f.Name()
+		k, err := strconv.Atoi(fn)
+		if err != nil {
+			continue
+		}
+		refs = append(refs, segmentRef{name: fn, index: k})
+	}
+	sort.Slice(refs, func(i, j int) bool {
+		return refs[i].index < refs[j].index
+	})
+	for i := 0; i < len(refs)-1; i++ {
+		if refs[i].index+1 != refs[i+1].index {
+			return nil, errors.New("segments are not sequential")
+		}
+	}
+	return refs, nil
+}
+
 // TODO: can this be turned into an implementation of the pkg/ingester/recovery.go Recoverer interface
 // with the current file structure would I need to build a list of all the timestamp/segment files first?
 func (c *client) replayWAL() error {
 	var recordPool = newRecordPool()
 
+	// from wal dir, the structured followed is wal_dir/clientName/tenantID/[segment files...]
 	clientBaseWALDir := path.Join(c.cfg.WAL.Dir, c.name)
 	// look for the WAL dir
 	_, err := os.Stat(clientBaseWALDir)
 	if os.IsNotExist(err) {
-		return err
+		return fmt.Errorf("wal directory doesn't exist: %w", err)
 	}
 	// get tenant directories for the client, since we could have multiple as a result of the tenant pipeline stage
 	// Note: Ignoring errors.
@@ -311,6 +345,9 @@ func (c *client) replayWAL() error {
 	}
 	for _, tenantDir := range tenantDirs {
 		tenantID := tenantDir[strings.LastIndex(tenantDir, "/")+1:]
+
+		// the way the wal works, it keeps a one segment per batch relation while running. Since we are replaying, we can read the
+		// wal at once and re-create the batches for sending
 		r, closer, err := wal.NewWalReader(tenantDir, -1)
 		if err != nil {
 			return err
@@ -340,17 +377,11 @@ func (c *client) replayWAL() error {
 						// size allowed, we do send the current batch and then create a new one
 						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
 							c.sendBatch(tenantID, b)
-							// todo: thepalbi why is the WAL deleted here?
-							// ahhh it deletes the WAL for that specific batch, not the one being replayed
-							//if err := b.wal.Delete(); err != nil {
-							//	level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
-							//}
 							new := c.newBatch(tenantID)
 							new.replay(entry)
 							b = new
 							break
 						}
-
 						// The max size of the batch isn't reached, so we can add the entry
 						b.replay(entry)
 					}
@@ -358,7 +389,27 @@ func (c *client) replayWAL() error {
 				}
 			}
 		}
-		c.sendBatch(tenantID, b)
+		// send last batch if there are entries left
+		if b.bytes > 0 {
+			c.sendBatch(tenantID, b)
+		}
+		if err = cleanWALDir(tenantDir, c.logger); err != nil {
+			level.Error(c.logger).Log("msg", fmt.Sprintf("failed to clean WAL directory: %s", tenantDir), "err", err)
+		}
+	}
+	return nil
+}
+
+func cleanWALDir(dir string, logger log.Logger) error {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		// ignore errors and keep going
+		if err := os.Remove(filepath.Join(dir, f.Name())); err != nil {
+			level.Error(logger).Log("msg", "failed to delete wal file", "err", err)
+		}
 	}
 	return nil
 }
@@ -698,13 +749,16 @@ func (c *clientWAL) getWAL(tenant string) (WAL, error) {
 		// set the wall to noop
 		return nil, err
 	}
-	consumer := newClientConsumer(c.readChannel, c.client.logger, func(b *batch) error {
-		return c.client.sendBatch(tenant, b)
-	}, wal)
-	watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
-	watcher.Start()
-	c.watchers[tenant] = watcher
-	c.tenantWALs[tenant] = wal
+	// find a cleaner way to do this
+	if c.client.cfg.WAL.Enabled {
+		consumer := newClientConsumer(c.readChannel, c.client.logger, func(b *batch) error {
+			return c.client.sendBatch(tenant, b)
+		}, wal)
+		watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
+		watcher.Start()
+		c.watchers[tenant] = watcher
+		c.tenantWALs[tenant] = wal
+	}
 	return wal, nil
 }
 
