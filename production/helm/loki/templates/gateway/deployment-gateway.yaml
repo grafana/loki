@@ -60,6 +60,10 @@ spec:
             {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}
           securityContext:
             {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
+          {{- with .Values.gateway.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/nginx
