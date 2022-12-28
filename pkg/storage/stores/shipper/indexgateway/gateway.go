@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -81,11 +83,22 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 }
 
 func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	var outerErr error
-	var innerErr error
+	log, _ := spanlogger.New(context.Background(), "IndexGateway.QueryIndex")
+	defer log.Finish()
+
+	var outerErr, innerErr error
 
 	queries := make([]index.Query, 0, len(request.Queries))
 	for _, query := range request.Queries {
+		tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
+		if err != nil {
+			level.Warn(log).Log("msg", "skipping table", "table", query.TableName, "err", err)
+		}
+
+		if tableNumber == -1 {
+			level.Warn(log).Log("msg", "skipping table", "table", query.TableName, "err", "invalid table number")
+		}
+
 		queries = append(queries, index.Query{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
@@ -96,53 +109,31 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 	}
 
 	sort.Slice(queries, func(i, j int) bool {
-		return queries[i].TableName < queries[j].TableName
+		ta, _ := config.ExtractTableNumberFromName(queries[i].TableName)
+		tb, _ := config.ExtractTableNumberFromName(queries[j].TableName)
+		return ta < tb
 	})
 	sort.Slice(g.indexClients, func(i, j int) bool {
 		return g.indexClients[i].TableRange.Start < g.indexClients[j].TableRange.Start
 	})
 
 	sendBatchMtx := sync.Mutex{}
-
-	var start int
 	for _, indexClient := range g.indexClients {
-		offset := 0
-		for _, query := range queries[start:] {
-			tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
-			if err != nil {
-				return err
-			}
+		start := sort.Search(len(queries), func(i int) bool {
+			tableNumber, _ := config.ExtractTableNumberFromName(queries[i].TableName)
+			return tableNumber >= indexClient.TableRange.Start
+		})
 
-			if tableNumber == -1 || tableNumber < indexClient.TableRange.Start {
-				offset += 1
-				continue
-			}
+		end := sort.Search(len(queries), func(j int) bool {
+			tableNumber, _ := config.ExtractTableNumberFromName(queries[j].TableName)
+			return tableNumber > indexClient.TableRange.End
+		})
 
-			break
-		}
-		// skip tables before the range
-		start += offset
-
-		offset = 0
-		for _, query := range queries[start:] {
-			tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
-			if err != nil {
-				return err
-			}
-
-			if !indexClient.TableRange.TableInRange(tableNumber, query.TableName) {
-				// break at the end of the range
-				break
-			}
-
-			offset += 1
-		}
-
-		if offset == 0 {
+		if end-start <= 0 {
 			continue
 		}
 
-		outerErr = indexClient.QueryPages(server.Context(), queries[start:start+offset], func(query index.Query, batch index.ReadBatchResult) bool {
+		outerErr = indexClient.QueryPages(server.Context(), queries[start:end], func(query index.Query, batch index.ReadBatchResult) bool {
 			innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
 				// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
 				sendBatchMtx.Lock()
@@ -165,8 +156,6 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 		if outerErr != nil {
 			return outerErr
 		}
-
-		start += offset
 	}
 
 	return nil

@@ -176,6 +176,8 @@ func (s *store) init() error {
 			continue
 		}
 
+		// getTableRange is used only for initializing index client for boltdb and tsdb.
+		// Computing TableRange for other indexes might cause a panic since PeriodConfig.IndexTables.Period might not be configured
 		getTableRange := func() config.TableRange {
 			periodEndTime := config.DayTime{Time: math.MaxInt64}
 			if i < len(s.schemaCfg.Configs)-1 {

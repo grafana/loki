@@ -1049,22 +1049,20 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 			continue
 		}
 
-		getTableRange := func() config.TableRange {
-			periodEndTime := config.DayTime{Time: math.MaxInt64}
-			if i < len(t.Cfg.SchemaConfig.Configs)-1 {
-				periodEndTime = config.DayTime{Time: t.Cfg.SchemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
-			}
-			return period.GetIndexTableNumberRange(periodEndTime)
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(t.Cfg.SchemaConfig.Configs)-1 {
+			periodEndTime = config.DayTime{Time: t.Cfg.SchemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
 		}
+		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 
-		indexClient, err := storage.NewIndexClient(period, getTableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant, prometheus.DefaultRegisterer)
+		indexClient, err := storage.NewIndexClient(period, func() config.TableRange { return tableRange }, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}
 
 		indexClients = append(indexClients, indexgateway.IndexClientWithRange{
 			IndexClient: indexClient,
-			TableRange:  getTableRange(),
+			TableRange:  tableRange,
 		})
 		found = true
 	}

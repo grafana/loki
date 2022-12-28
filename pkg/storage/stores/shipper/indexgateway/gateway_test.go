@@ -73,11 +73,13 @@ func (m *mockQueryIndexServer) Context() context.Context {
 
 type mockIndexClient struct {
 	index.Client
-	response *mockBatch
+	response      *mockBatch
+	tablesQueried []string
 }
 
-func (m mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (m *mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
+		m.tablesQueried = append(m.tablesQueried, query.TableName)
 		callback(query, m.response)
 	}
 
@@ -130,7 +132,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		}
 		expectedQueryKey = util.QueryKey(query)
 		gateway.indexClients = []IndexClientWithRange{{
-			IndexClient: mockIndexClient{response: &mockBatch{size: responseSize}},
+			IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
 			TableRange: config.TableRange{
 				Start: 0,
 				End:   math.MaxInt64,
@@ -152,4 +154,80 @@ func TestGateway_QueryIndex(t *testing.T) {
 		// verify that we actually got responses back by checking if expectedRanges got cleared.
 		require.Len(t, expectedRanges, 0)
 	}
+}
+
+func TestGateway_QueryIndex_multistore(t *testing.T) {
+	var (
+		responseSize    = 99
+		expectedQueries = []int{0, 1, 3, 4}
+		queries         []*logproto.IndexQuery
+	)
+
+	var server logproto.IndexGateway_QueryIndexServer = &mockQueryIndexServer{
+		callback: func(resp *logproto.QueryIndexResponse) {
+			require.True(t, len(expectedQueries) > 0)
+			require.Equal(t, util.QueryKey(index.Query{
+				TableName:        queries[expectedQueries[0]].TableName,
+				HashValue:        queries[expectedQueries[0]].HashValue,
+				RangeValuePrefix: queries[expectedQueries[0]].RangeValuePrefix,
+				RangeValueStart:  queries[expectedQueries[0]].RangeValueStart,
+				ValueEqual:       queries[expectedQueries[0]].ValueEqual,
+			}), resp.QueryKey)
+			require.Len(t, resp.Rows, responseSize)
+
+			expectedQueries = expectedQueries[1:]
+		},
+	}
+
+	gateway := Gateway{}
+
+	// builds queries to query the listed tables
+	for _, i := range []int{6, 10, 12, 16, 99} {
+		queries = append(queries, &logproto.IndexQuery{
+			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
+			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
+			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),
+			RangeValueStart:  []byte(fmt.Sprintf("%s%d", rangeValueStartPrefix, i)),
+			ValueEqual:       []byte(fmt.Sprintf("%s%d", valueEqualPrefix, i)),
+		})
+	}
+
+	gateway.indexClients = []IndexClientWithRange{{
+		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+		// no matching queries for this range
+		TableRange: config.TableRange{
+			Start: 0,
+			End:   4,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+			},
+		},
+	}, {
+		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+		TableRange: config.TableRange{
+			Start: 5,
+			End:   10,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+			},
+		},
+	}, {
+		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+		TableRange: config.TableRange{
+			Start: 15,
+			End:   math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+			},
+		},
+	}}
+
+	err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: queries}, server)
+	require.NoError(t, err)
+
+	require.ElementsMatch(t, gateway.indexClients[0].IndexClient.(*mockIndexClient).tablesQueried, []string{})
+	require.ElementsMatch(t, gateway.indexClients[1].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name6", "table-name10"})
+	require.ElementsMatch(t, gateway.indexClients[2].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name16", "table-name99"})
+
+	require.Len(t, expectedQueries, 0)
 }
