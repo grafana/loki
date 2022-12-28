@@ -265,7 +265,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 	if cfg.WAL.Enabled {
 		go c.runWithWAL()
 	} else {
-		go c.runSendSide(c.entries)
+		go c.runSendSide(c.sendBatch)
 	}
 	return c, nil
 }
@@ -364,19 +364,23 @@ func (c *client) replayWAL() error {
 }
 
 func (c *client) runWithWAL() {
-	receiveAndWriteToWAL := func() {
-		for e := range c.entries {
-			e, tenantID := c.processEntry(e)
-			// Get WAL, and write entry to it
-			w, _ := c.wal.getWAL(tenantID)
-			writeEntryToWAL(e, w, tenantID, c.logger)
+	go c.runSendSide(func(tenantID string, b *batch) error {
+		wal, err := c.wal.getWAL(tenantID)
+		if err != nil {
+			// wrap this
+			return err
 		}
-	}
-	go receiveAndWriteToWAL()
-	go c.runSendSide(c.wal.Chan())
+		// cut a segment, that means the watcher will find the segment has ended and send the batch
+		if _, err = wal.NextSegment(); err != nil {
+			return fmt.Errorf("failed to cut new segment in wal: %w", err)
+		}
+		return nil
+	})
 }
 
-func (c *client) runSendSide(entries chan api.Entry) {
+type onBatchCompletedFunc func(tenantID string, b *batch) error
+
+func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
 	batches := map[string]*batch{}
 
 	// Given the client handles multiple batches (1 per tenant) and each batch
@@ -397,21 +401,33 @@ func (c *client) runSendSide(entries chan api.Entry) {
 		maxWaitCheck.Stop()
 		// Send all pending batches
 		for tenantID, batch := range batches {
-			c.sendBatch(tenantID, batch)
+			onBatchCompleted(tenantID, batch)
 		}
 
 		c.wg.Done()
 	}()
 
+	// todo: lighten this maybe, the batch building logic is repeated here and in the WAL consumer
 	for {
 		select {
-		case e, ok := <-entries:
+		case e, ok := <-c.entries:
 
 			if !ok {
 				return
 			}
 			e, tenantID := c.processEntry(e)
 
+			wal, err := c.wal.getWAL(tenantID)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "failed to get WAL", "err", err)
+				// return here?
+				return
+			}
+			// write to wal
+			writeEntryToWAL(e, wal, tenantID, c.logger)
+
+			// after writing to wal, keep track of batch size to know when to cut the batch. That is either
+			// send it, or cut a segment in the wal
 			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
@@ -430,7 +446,7 @@ func (c *client) runSendSide(entries chan api.Entry) {
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				c.sendBatch(tenantID, batch)
+				onBatchCompleted(tenantID, batch)
 				new := c.newBatch(tenantID)
 				new.add(e)
 				batches[tenantID] = new
@@ -438,7 +454,7 @@ func (c *client) runSendSide(entries chan api.Entry) {
 			}
 
 			// The max size of the batch isn't reached, so we can add the entry
-			err := batch.add(e)
+			err = batch.add(e)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
 				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(len(e.Line)))
@@ -453,7 +469,7 @@ func (c *client) runSendSide(entries chan api.Entry) {
 				if batch.age() < c.cfg.BatchWait {
 					continue
 				}
-				c.sendBatch(tenantID, batch)
+				onBatchCompleted(tenantID, batch)
 				delete(batches, tenantID)
 			}
 		}

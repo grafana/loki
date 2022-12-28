@@ -30,6 +30,7 @@ type WAL interface {
 	Sync() error
 	Dir() string
 	DeleteSegment(segmentNum int) error
+	NextSegment() (int, error)
 }
 
 type noopWAL struct{}
@@ -52,6 +53,10 @@ func (n noopWAL) Dir() string {
 
 func (n noopWAL) DeleteSegment(segmentNum int) error {
 	return nil
+}
+
+func (n noopWAL) NextSegment() (int, error) {
+	return 0, nil
 }
 
 type walWrapper struct {
@@ -157,6 +162,10 @@ func (w *walWrapper) DeleteSegment(segmentNum int) error {
 		return fmt.Errorf("failed deleting segment: %w", err)
 	}
 	return nil
+}
+
+func (w *walWrapper) NextSegment() (int, error) {
+	return w.wal.NextSegmentSync()
 }
 
 type resettingPool struct {
