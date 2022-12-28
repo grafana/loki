@@ -24,7 +24,7 @@ func TestBatch_MaxStreams(t *testing.T) {
 		{Labels: model.LabelSet{"app": "app-4"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	}
 
-	b := newBatch(NoopWAL, maxStream)
+	b := newBatch(maxStream)
 
 	errCount := 0
 	for _, entry := range inputEntries {
@@ -75,7 +75,7 @@ func TestBatch_add(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			b := newBatch(NoopWAL, 0)
+			b := newBatch(0)
 
 			for _, entry := range testData.inputEntries {
 				err := b.add(entry)
@@ -95,13 +95,13 @@ func TestBatch_encode(t *testing.T) {
 		expectedEntriesCount int
 	}{
 		"empty batch": {
-			inputBatch:           func() *batch { return newBatch(NoopWAL, 0) },
+			inputBatch:           func() *batch { return newBatch(0) },
 			expectedEntriesCount: 0,
 		},
 		"single stream with single log entry": {
 			inputBatch: func() *batch {
 				b := newBatch(
-					NoopWAL, 0,
+					0,
 				)
 				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry})
 				return b
@@ -111,7 +111,7 @@ func TestBatch_encode(t *testing.T) {
 		"single stream with multiple log entries": {
 			inputBatch: func() *batch {
 				b := newBatch(
-					NoopWAL, 0,
+					0,
 				)
 				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry})
 				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry})
@@ -122,7 +122,7 @@ func TestBatch_encode(t *testing.T) {
 		"multiple streams with multiple log entries": {
 			inputBatch: func() *batch {
 				b := newBatch(
-					NoopWAL, 0,
+					0,
 				)
 				b.add(api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry})
 				b.add(api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry})
@@ -147,7 +147,7 @@ func TestBatch_encode(t *testing.T) {
 }
 
 func TestHashCollisions(t *testing.T) {
-	b := newBatch(NoopWAL, 0)
+	b := newBatch(0)
 
 	ls1 := model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}
 	ls2 := model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}

@@ -268,7 +268,9 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 		c.replayWAL()
 		go c.runWithWAL()
 	} else {
-		go c.runSendSide(c.sendBatch)
+		go c.runSendSide(c.sendBatch, func(b *batch, e api.Entry) error {
+			return b.add(e)
+		})
 	}
 	return c, nil
 }
@@ -377,7 +379,7 @@ func (c *client) replayWAL() error {
 						// size allowed, we do send the current batch and then create a new one
 						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
 							c.sendBatch(tenantID, b)
-							new := c.newBatch(tenantID)
+							new := c.newBatch()
 							new.replay(entry)
 							b = new
 							break
@@ -426,13 +428,21 @@ func (c *client) runWithWAL() {
 			return fmt.Errorf("failed to cut new segment in wal: %w", err)
 		}
 		return nil
+	}, func(b *batch, e api.Entry) error {
+		//since on the writer side of the WAL we just need to keep track of two characteristic of batches:
+		//- size
+		//- creation time
+		//instead of adding all entry lines to the batch, we just keep track of the total byte size
+		b.bytes += len(e.Line)
+		return nil
 	})
 }
 
 type onBatchCompletedFunc func(tenantID string, b *batch) error
 
-func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
+func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc, addEntryToBatch func(b *batch, e api.Entry) error) {
 	batches := map[string]*batch{}
+	entryWriter := NewWALEntryWriter()
 
 	// Given the client handles multiple batches (1 per tenant) and each batch
 	// can be created at a different point in time, we look for batches whose
@@ -458,7 +468,6 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
 		c.wg.Done()
 	}()
 
-	// todo: lighten this maybe, the batch building logic is repeated here and in the WAL consumer
 	for {
 		select {
 		case e, ok := <-c.entries:
@@ -475,7 +484,7 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
 				return
 			}
 			// write to wal
-			writeEntryToWAL(e, wal, tenantID, c.logger)
+			entryWriter.WriteEntry(e, wal, c.logger)
 
 			// after writing to wal, keep track of batch size to know when to cut the batch. That is either
 			// send it, or cut a segment in the wal
@@ -483,9 +492,9 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				b := c.newBatch(tenantID)
+				b := c.newBatch()
 				batches[tenantID] = b
-				b.add(e)
+				addEntryToBatch(b, e)
 				// Initialize counters to 0 so the metrics are exported before the first
 				// occurrence of incrementing to avoid missing metrics.
 				for _, counter := range c.metrics.countersWithTenant {
@@ -498,14 +507,14 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				onBatchCompleted(tenantID, batch)
-				new := c.newBatch(tenantID)
-				new.add(e)
+				new := c.newBatch()
+				addEntryToBatch(new, e)
 				batches[tenantID] = new
 				break
 			}
 
 			// The max size of the batch isn't reached, so we can add the entry
-			err = batch.add(e)
+			err = addEntryToBatch(batch, e)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
 				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(len(e.Line)))
@@ -527,7 +536,7 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc) {
 	}
 }
 
-func (c *client) newBatch(tenantID string) *batch {
+func (c *client) newBatch() *batch {
 	return newBatch(0)
 }
 

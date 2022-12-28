@@ -6,28 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/record"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
-)
-
-var (
-	walRecord = &ingester.WALRecord{
-		RefEntries: make([]ingester.RefEntries, 0, 1),
-		Series:     make([]record.RefSeries, 0, 1),
-	}
 )
 
 const (
@@ -78,36 +62,8 @@ func (b *batch) replay(entry api.Entry) {
 	}
 }
 
-func writeEntryToWAL(entry api.Entry, wal WAL, tenantID string, logger log.Logger) {
-	// Reset wal record slices
-	walRecord.RefEntries = walRecord.RefEntries[:0]
-	walRecord.Series = walRecord.Series[:0]
-	// todo: maybe the UserID in wal records is used in some other way
-	walRecord.UserID = tenantID
-
-	defer func() {
-		err := wal.Log(walRecord)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed to write to WAL", "err", err)
-		}
-	}()
-
-	var fp uint64
-	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
-	sort.Sort(lbs)
-	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
-
-	// Append the entry to an already existing stream (if any)
-	walRecord.RefEntries = append(walRecord.RefEntries, ingester.RefEntries{
-		Ref: chunks.HeadSeriesRef(fp),
-		Entries: []logproto.Entry{
-			entry.Entry,
-		},
-	})
-	walRecord.Series = append(walRecord.Series, record.RefSeries{
-		Ref:    chunks.HeadSeriesRef(fp),
-		Labels: lbs,
-	})
+func (b *batch) registerLineLength(entry api.Entry) {
+	b.bytes += len(entry.Line)
 }
 
 // add an entry to the batch

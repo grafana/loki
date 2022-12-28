@@ -24,6 +24,12 @@ const (
 	segmentCheckPeriod = 100 * time.Millisecond
 )
 
+// Based in the implementation of prometheus WAL watcher
+// https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go. Includes some changes to make it suitable
+// for log WAL entries, but also, the consumer surface has been implemented according to the actions necessary for
+// Promtail's WAL.
+
+// WALReader is a dependency interface to inject generic WAL readers into the WALWatcher.
 type WALReader interface {
 	Next() bool
 	Err() error
@@ -31,17 +37,19 @@ type WALReader interface {
 	Record() []byte
 }
 
-type WALConsumer interface {
+// WatcherConsumer is responsible for doing the necessary work to process both series and entries while the WALWatcher
+// is reading / tailing segments. Also, when a new segment is detected, and the watcher is moving on from one to the other,
+// the SegmentEnd callback is available if action is required.
+// The implementor of this interface is not expected to implement thread safety if used on a single watched, since the
+// watcher will call each callback synchronously.
+type WatcherConsumer interface {
 	ConsumeSeries(series record.RefSeries) error
 	ConsumeEntries(entries ingester.RefEntries) error
 	SegmentEnd(segmentNum int)
 }
 
-// Based in the implementation of prometheus wal watcher
-// https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go
-
 type WALWatcher struct {
-	consumer   WALConsumer
+	consumer   WatcherConsumer
 	done       chan struct{}
 	quit       chan struct{}
 	walDir     string
@@ -49,7 +57,7 @@ type WALWatcher struct {
 	MaxSegment int
 }
 
-func NewWALWatcher(walDir string, consumer WALConsumer, logger log.Logger) *WALWatcher {
+func NewWALWatcher(walDir string, consumer WatcherConsumer, logger log.Logger) *WALWatcher {
 	return &WALWatcher{
 		walDir:     walDir,
 		consumer:   consumer,
@@ -60,19 +68,19 @@ func NewWALWatcher(walDir string, consumer WALConsumer, logger log.Logger) *WALW
 	}
 }
 
-// Start runs the  watcher main loop.
+// Start runs the watcher main loop.
 func (w *WALWatcher) Start() {
-	go w.loop()
+	go w.mainLoop()
 }
 
 func (w *WALWatcher) Stop() {
-	// first close the quit channel to order main loop routine to stop
+	// first close the quit channel to order main mainLoop routine to stop
 	close(w.quit)
-	// upon calling stop, wait for main loop execution to stop
+	// upon calling stop, wait for main mainLoop execution to stop
 	<-w.done
 }
 
-func (w *WALWatcher) loop() {
+func (w *WALWatcher) mainLoop() {
 	defer close(w.done)
 	for !isClosed(w.quit) {
 		//w.SetStartTime(time.Now())
@@ -96,31 +104,6 @@ func (w *WALWatcher) run() error {
 		return fmt.Errorf("wal.Segments: %w", err)
 	}
 
-	// We want to ensure this is false across iterations since
-	// Run will be called again if there was a failure to read the WAL.
-	//w.sendSamples = false
-
-	//level.Info(w.logger).Log("msg", "Replaying WAL", "queue", w.name)
-
-	// Backfill from the checkpoint first if it exists.
-	//lastCheckpoint, checkpointIndex, err := LastCheckpoint(w.walDir)
-	//if err != nil && err != record.ErrNotFound {
-	//	return errors.Wrap(err, "tsdb.LastCheckpoint")
-	//}
-	//
-	//if err == nil {
-	//	if err = w.readCheckpoint(lastCheckpoint, (*Watcher).readSegment); err != nil {
-	//		return errors.Wrap(err, "readCheckpoint")
-	//	}
-	//}
-	//w.lastCheckpoint = lastCheckpoint
-
-	//currentSegment, err := w.findSegmentForIndex(checkpointIndex)
-	//if err != nil {
-	//	return err
-	//}
-
-	// todo: change me when decided if we should do checkpoints
 	currentSegment := lastSegment
 	//level.Debug(w.logger).Log("msg", "Tailing WAL", "lastCheckpoint", lastCheckpoint, "checkpointIndex", checkpointIndex, "currentSegment", currentSegment, "lastSegment", lastSegment)
 	level.Debug(w.logger).Log("msg", "Tailing WAL", "currentSegment", currentSegment, "lastSegment", lastSegment)
@@ -236,28 +219,6 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 		select {
 		case <-w.quit:
 			return nil
-
-			// todo: commenting out casees when it's not sure if it's the case for promtail
-
-		//case <-checkpointTicker.C:
-		//	// Periodically check if there is a new checkpoint so we can garbage
-		//	// collect labels. As this is considered an optimisation, we ignore
-		//	// errors during checkpoint processing. Doing the process asynchronously
-		//	// allows the current WAL segment to be processed while reading the
-		//	// checkpoint.
-		//	select {
-		//	case gcSem <- struct{}{}:
-		//		go func() {
-		//			defer func() {
-		//				<-gcSem
-		//			}()
-		//			if err := w.garbageCollectSeries(segmentNum); err != nil {
-		//				level.Warn(w.logger).Log("msg", "Error process checkpoint", "err", err)
-		//			}
-		//		}()
-		//	default:
-		//		// Currently doing a garbage collect, try again later.
-		//	}
 
 		case <-segmentTicker.C:
 			_, last, err := w.firstAndLast()

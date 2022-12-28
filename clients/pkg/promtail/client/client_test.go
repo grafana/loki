@@ -542,10 +542,9 @@ func TestReplayWAL(t *testing.T) {
 	c, err := New(m, cfg, nil, 0, log.NewNopLogger())
 	require.NoError(t, err)
 
-	tenant := "tenant1"
 	numEntries := 10
 	for i := 0; i < numEntries; i++ {
-		batch := c.(*client).newBatch(tenant)
+		batch := c.(*client).newBatch()
 		batch.add(api.Entry{
 			Labels: model.LabelSet{"foo": "bar", "i": model.LabelValue(strconv.Itoa(i))},
 			Entry: logproto.Entry{
