@@ -229,6 +229,7 @@ var (
 			Name:       "named_stores_config",
 			StructType: reflect.TypeOf(storage.NamedStores{}),
 			Desc: `Configures additional object stores for a given storage provider.
+Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
 storage_config:
   named_stores:

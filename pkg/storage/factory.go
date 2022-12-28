@@ -55,7 +55,7 @@ type StoreLimits interface {
 	MaxQueryLength(userID string) time.Duration
 }
 
-// NamedStores helps configure additional stores from a given storage provider
+// NamedStores helps configure additional object stores from a given storage provider
 type NamedStores struct {
 	AWS        map[string]aws.StorageConfig         `yaml:"aws"`
 	Azure      map[string]azure.BlobStorageConfig   `yaml:"azure"`
@@ -150,20 +150,20 @@ func (cfg *Config) Validate() error {
 }
 
 func (cfg *Config) validateNamedStores() error {
-	for name, cfg := range cfg.NamedStores.AWS {
-		if err := cfg.Validate(); err != nil {
+	for name, awsCfg := range cfg.NamedStores.AWS {
+		if err := awsCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid AWS Storage config with name %s", name))
 		}
 	}
 
-	for name, cfg := range cfg.NamedStores.Azure {
-		if err := cfg.Validate(); err != nil {
+	for name, azureCfg := range cfg.NamedStores.Azure {
+		if err := azureCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid Azure Storage config with name %s", name))
 		}
 	}
 
-	for name, cfg := range cfg.NamedStores.Swift {
-		if err := cfg.Validate(); err != nil {
+	for name, swiftCfg := range cfg.NamedStores.Swift {
+		if err := swiftCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid Swift Storage config with name %s", name))
 		}
 	}
@@ -421,7 +421,7 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 	case config.StorageTypeSwift:
 		swiftCfg := cfg.Swift
-		if namedStore != "" && cfg.NamedStores.Swift != nil {
+		if namedStore != "" {
 			var ok bool
 			swiftCfg, ok = cfg.NamedStores.Swift[namedStore]
 			if !ok {
