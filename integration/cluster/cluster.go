@@ -97,7 +97,6 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
-  query_ingesters_within: 0
 
 
 {{if .remoteWriteUrls}}
@@ -254,11 +253,11 @@ func (c *Cluster) stop(cleanupFiles bool) error {
 
 func (c *Cluster) AddComponent(name string, config ComponentConfig, flags ...string) *Component {
 	component := &Component{
-		name:            name,
-		cluster:         c,
-		flags:           flags,
-		running:         false,
-		ComponentConfig: config,
+		name:         name,
+		cluster:      c,
+		flags:        flags,
+		running:      false,
+		componentCfg: config,
 	}
 
 	c.components = append(c.components, component)
@@ -280,12 +279,17 @@ type Component struct {
 	running bool
 	wg      sync.WaitGroup
 
-	ComponentConfig
+	componentCfg ComponentConfig
 }
 
 type ComponentConfig struct {
 	AdditionalPeriodConfig bool
 	RemoteWriteUrls        []string
+}
+
+// component should be restarted if it's already running for the new flags to take effect
+func (c *Component) AddFlags(flags ...string) {
+	c.flags = append(c.flags, flags...)
 }
 
 func (c *Component) HTTPURL() string {
@@ -314,7 +318,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
 
-	if len(c.RemoteWriteUrls) > 0 {
+	if len(c.componentCfg.RemoteWriteUrls) > 0 {
 		c.rulesPath, err = os.MkdirTemp(c.cluster.sharedPath, "rules")
 		if err != nil {
 			return fmt.Errorf("error creating rules path: %w", err)
@@ -351,11 +355,11 @@ func (c *Component) writeConfig() error {
 	if err := configTemplate.Execute(configFile, map[string]interface{}{
 		"dataPath":               c.dataPath,
 		"sharedDataPath":         c.cluster.sharedPath,
-		"remoteWriteUrls":        c.RemoteWriteUrls,
+		"remoteWriteUrls":        c.componentCfg.RemoteWriteUrls,
 		"rulesPath":              c.rulesPath,
 		"rulerWALPath":           c.rulerWALPath,
 		"curPeriodStart":         periodStart.String(),
-		"additionalPeriodConfig": c.AdditionalPeriodConfig,
+		"additionalPeriodConfig": c.componentCfg.AdditionalPeriodConfig,
 		"additionalPeriodStart":  additionalPeriodStart.String(),
 	}); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)

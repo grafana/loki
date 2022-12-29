@@ -200,8 +200,8 @@ func NewIndexClient(periodCfg config.PeriodConfig, getTableRange func() config.T
 		}
 
 		tableRange := getTableRange()
-		prefix := fmt.Sprintf("%s_%d", periodCfg.ObjectType, tableRange.Start)
-		return shipper.NewShipper(prefix, cfg.BoltDBShipperConfig, objectClient, limits,
+		instanceName := fmt.Sprintf("%s_%d", periodCfg.ObjectType, tableRange.Start)
+		return shipper.NewShipper(instanceName, cfg.BoltDBShipperConfig, objectClient, limits,
 			ownsTenantFn, tableRange, registerer)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", periodCfg.IndexType, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)

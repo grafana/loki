@@ -148,10 +148,6 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 			cluster.ComponentConfig{AdditionalPeriodConfig: true},
 			"-target=compactor",
 			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
-			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
-			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
@@ -220,7 +216,24 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 		require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
 	})
 
-	t.Run("query", func(t *testing.T) {
+	t.Run("query-lookback-default", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
+		require.NoError(t, err)
+		assert.Equal(t, "streams", resp.Data.ResultType)
+
+		var lines []string
+		for _, stream := range resp.Data.Stream {
+			for _, val := range stream.Values {
+				lines = append(lines, val[1])
+			}
+		}
+		assert.ElementsMatch(t, []string{"lineC", "lineD"}, lines)
+	})
+
+	t.Run("query-lookback-set-to-zero", func(t *testing.T) {
+		tQuerier.AddFlags("-querier.query-ingesters-within=0")
+		require.NoError(t, tQuerier.Restart())
+
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
@@ -244,6 +257,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 		require.NoError(t, err)
 		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 1)
 
+		tQuerier.AddFlags("-querier.query-store-only=true")
 		require.NoError(t, tQuerier.Restart())
 	})
 

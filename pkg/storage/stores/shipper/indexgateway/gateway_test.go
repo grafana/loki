@@ -159,7 +159,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 func TestGateway_QueryIndex_multistore(t *testing.T) {
 	var (
 		responseSize    = 99
-		expectedQueries = []int{0, 1, 3, 4}
+		expectedQueries = []int{3, 4, 0, 1}
 		queries         []*logproto.IndexQuery
 	)
 
@@ -181,7 +181,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 
 	gateway := Gateway{}
 
-	// builds queries to query the listed tables
+	// builds queries for the listed tables
 	for _, i := range []int{6, 10, 12, 16, 99} {
 		queries = append(queries, &logproto.IndexQuery{
 			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
@@ -225,9 +225,10 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 	err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: queries}, server)
 	require.NoError(t, err)
 
-	require.ElementsMatch(t, gateway.indexClients[0].IndexClient.(*mockIndexClient).tablesQueried, []string{})
+	// since indexClients are sorted, 0 index would contain the latest period
+	require.ElementsMatch(t, gateway.indexClients[0].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name16", "table-name99"})
 	require.ElementsMatch(t, gateway.indexClients[1].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name6", "table-name10"})
-	require.ElementsMatch(t, gateway.indexClients[2].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name16", "table-name99"})
+	require.ElementsMatch(t, gateway.indexClients[2].IndexClient.(*mockIndexClient).tablesQueried, []string{})
 
 	require.Len(t, expectedQueries, 0)
 }

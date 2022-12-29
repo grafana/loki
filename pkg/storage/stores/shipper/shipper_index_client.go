@@ -52,7 +52,6 @@ type writer interface {
 	Stop()
 }
 
-// metrics singleton
 var shipperMetrics *metrics
 
 type indexClient struct {

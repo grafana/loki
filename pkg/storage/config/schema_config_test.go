@@ -774,8 +774,8 @@ func TestTableRange_TableInRange(t *testing.T) {
 			expResp:     true,
 		},
 		{
-			tableNumber: 15,
-			tableName:   "index_5",
+			tableNumber: 12,
+			tableName:   "index_12",
 		},
 		{
 			tableNumber: 5,

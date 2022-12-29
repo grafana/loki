@@ -94,7 +94,6 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 		if err != nil {
 			level.Warn(log).Log("msg", "skipping table", "table", query.TableName, "err", err)
 		}
-
 		if tableNumber == -1 {
 			level.Warn(log).Log("msg", "skipping table", "table", query.TableName, "err", "invalid table number")
 		}
@@ -113,8 +112,9 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 		tb, _ := config.ExtractTableNumberFromName(queries[j].TableName)
 		return ta < tb
 	})
+	// query newer periods first
 	sort.Slice(g.indexClients, func(i, j int) bool {
-		return g.indexClients[i].TableRange.Start < g.indexClients[j].TableRange.Start
+		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
 	})
 
 	sendBatchMtx := sync.Mutex{}
@@ -123,12 +123,10 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 			tableNumber, _ := config.ExtractTableNumberFromName(queries[i].TableName)
 			return tableNumber >= indexClient.TableRange.Start
 		})
-
 		end := sort.Search(len(queries), func(j int) bool {
 			tableNumber, _ := config.ExtractTableNumberFromName(queries[j].TableName)
 			return tableNumber > indexClient.TableRange.End
 		})
-
 		if end-start <= 0 {
 			continue
 		}

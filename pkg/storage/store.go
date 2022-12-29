@@ -162,22 +162,22 @@ func (s *store) init() error {
 			return err
 		}
 
-		if p.IndexType == config.BoltDBShipperType && s.cfg.BoltDBShipperConfig.SharedStoreType != "" && p.ObjectType != "" &&
+		if p.IndexType == config.BoltDBShipperType && s.cfg.BoltDBShipperConfig.SharedStoreType != "" &&
 			s.cfg.BoltDBShipperConfig.SharedStoreType != p.ObjectType {
 			level.Info(s.logger).Log("skipping store init for this period as object store does not match -boltdb.shipper.shared-store",
 				"from", p.From.String(), "object-type", p.ObjectType)
 			continue
 		}
 
-		if p.IndexType == config.TSDBType && s.cfg.TSDBShipperConfig.SharedStoreType != "" && p.ObjectType != "" &&
+		if p.IndexType == config.TSDBType && s.cfg.TSDBShipperConfig.SharedStoreType != "" &&
 			s.cfg.TSDBShipperConfig.SharedStoreType != p.ObjectType {
 			level.Info(s.logger).Log("skipping store init for this period as object store does not match -tsdb.shipper.shared-store",
 				"from", p.From.String(), "object-type", p.ObjectType)
 			continue
 		}
 
-		// getTableRange is used only for initializing index client for boltdb and tsdb.
-		// Computing TableRange for other indexes might cause a panic since PeriodConfig.IndexTables.Period might not be configured
+		// getTableRange is used only for initializing boltdb and tsdb index clients.
+		// Computing TableRange for other indexTypes might cause a panic if PeriodConfig.IndexTables.Period is not configured.
 		getTableRange := func() config.TableRange {
 			periodEndTime := config.DayTime{Time: math.MaxInt64}
 			if i < len(s.schemaCfg.Configs)-1 {
@@ -279,8 +279,8 @@ func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() confi
 			}
 		}
 
-		prefix := fmt.Sprintf("%s_%d", p.ObjectType, tableRange.Start)
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(prefix, s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+		instanceName := fmt.Sprintf("%s_%d", p.ObjectType, tableRange.Start)
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(instanceName, s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
 			tableRange, backupIndexWriter, indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err

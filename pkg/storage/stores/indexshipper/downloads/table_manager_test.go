@@ -291,7 +291,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			queryReadyNumDaysCfg: 5,
 			tableRangeToHandle: &config.TableRange{
 				End:   buildTableNumber(2),
-				Start: buildTableNumber(5),
+				Start: buildTableNumber(4),
 				PeriodConfig: &config.PeriodConfig{
 					IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
 				},
@@ -300,7 +300,6 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				buildTableName(2): {"user1", "user2"},
 				buildTableName(3): {},
 				buildTableName(4): {},
-				buildTableName(5): {},
 			},
 		},
 	} {

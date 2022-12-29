@@ -51,6 +51,7 @@ const (
 var (
 	errInvalidSchemaVersion     = errors.New("invalid schema version")
 	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
+	errInvalidTableName         = errors.New("invalid table name")
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
 	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
@@ -64,12 +65,12 @@ var (
 	extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 )
 
-// ExtractTableNumberFromName extract the table number from a given tableName.
-// if the tableName doesn't match the regex, it would return -1 as table number.
+// ExtractTableNumberFromName extracts the table number from a given tableName.
+// returns -1 on error.
 func ExtractTableNumberFromName(tableName string) (int64, error) {
 	match := extractTableNumberRegex.Find([]byte(tableName))
 	if match == nil {
-		return -1, nil
+		return -1, errInvalidTableName
 	}
 
 	tableNumber, err := strconv.ParseInt(string(match), 10, 64)
@@ -89,8 +90,9 @@ type TableRange struct {
 
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
 func (t TableRange) TableInRange(tableNumber int64, tableName string) bool {
-	return t.Start <= tableNumber && tableNumber <= t.End &&
-		fmt.Sprintf("%s%s", t.PeriodConfig.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil &&
+		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
 }
 
 func (t TableRange) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
