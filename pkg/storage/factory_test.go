@@ -88,14 +88,14 @@ func TestNamedStores(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	t.Run("refer to named store", func(t *testing.T) {
+	t.Run("period config referring to configured named store", func(t *testing.T) {
 		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 		require.NoError(t, err)
 
 		store.Stop()
 	})
 
-	t.Run("refer to unrecognized store", func(t *testing.T) {
+	t.Run("period config referring to unrecognized named store", func(t *testing.T) {
 		schemaConfig := schemaConfig
 		schemaConfig.Configs[0].ObjectType = "filesystem.not-found"
 		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
