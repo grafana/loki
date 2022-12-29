@@ -21,9 +21,9 @@ The configuration acquired with these installation instructions run Loki as a si
 Copy and paste the commands below into your command line.
 
 ```bash
-wget https://raw.githubusercontent.com/grafana/loki/v2.6.1/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.7.1/cmd/loki/loki-local-config.yaml -O loki-config.yaml
 docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.6.1 -config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.6.1/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.7.1/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
 docker run --name promtail -d -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.6.1 -config.file=/mnt/config/promtail-config.yaml
 ```
 
@@ -39,9 +39,9 @@ Copy and paste the commands below into your terminal. Note that you will need to
 
 ```bash
 cd "<local-path>"
-wget https://raw.githubusercontent.com/grafana/loki/v2.6.1/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.7.1/cmd/loki/loki-local-config.yaml -O loki-config.yaml
 docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.6.1 --config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.6.1/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.7.1/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
 docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.6.1 --config.file=/mnt/config/promtail-config.yaml
 ```
 
@@ -54,6 +54,6 @@ Navigate to http://localhost:3100/metrics to view the output.
 Run the following commands in your command line. They work for Windows or Linux systems.
 
 ```bash
-wget https://raw.githubusercontent.com/grafana/loki/v2.6.1/production/docker-compose.yaml -O docker-compose.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.7.1/production/docker-compose.yaml -O docker-compose.yaml
 docker-compose -f docker-compose.yaml up
 ```
