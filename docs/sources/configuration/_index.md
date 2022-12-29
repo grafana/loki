@@ -1653,6 +1653,7 @@ hedging:
   [max_per_second: <int> | default = 5]
 
 # Configures additional object stores for a given storage provider.
+# Supported stores: aws, azure, bos, filesystem, gcs, swift.
 # Example:
 # storage_config:
 #   named_stores:
@@ -3473,8 +3474,8 @@ The `period_config` block configures what index schemas should be used for from 
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs,
-# cassandra, swift or filesystem. If omitted, defaults to the same value as
-# store.
+# cassandra, swift, filesystem or a named_store (refer to named_stores_config).
+# If omitted, defaults to the same value as store.
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v11.
@@ -4037,6 +4038,7 @@ The `local_storage_config` block configures the usage of local file system as ob
 ### named_stores_config
 
 Configures additional object stores for a given storage provider.
+Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
 storage_config:
   named_stores:
