@@ -91,44 +91,32 @@ func TestBatch_encode(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		inputBatch           func() *batch
+		inputBatch           *batch
 		expectedEntriesCount int
 	}{
 		"empty batch": {
-			inputBatch:           func() *batch { return newBatch(0) },
+			inputBatch:           newBatch(0),
 			expectedEntriesCount: 0,
 		},
 		"single stream with single log entry": {
-			inputBatch: func() *batch {
-				b := newBatch(
-					0,
-				)
-				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry})
-				return b
-			},
+			inputBatch: newBatch(0,
+				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
+			),
 			expectedEntriesCount: 1,
 		},
 		"single stream with multiple log entries": {
-			inputBatch: func() *batch {
-				b := newBatch(
-					0,
-				)
-				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry})
-				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry})
-				return b
-			},
+			inputBatch: newBatch(0,
+				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
+				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
+			),
 			expectedEntriesCount: 2,
 		},
 		"multiple streams with multiple log entries": {
-			inputBatch: func() *batch {
-				b := newBatch(
-					0,
-				)
-				b.add(api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry})
-				b.add(api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry})
-				b.add(api.Entry{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry})
-				return b
-			},
+			inputBatch: newBatch(0,
+				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
+				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
+				api.Entry{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
+			),
 			expectedEntriesCount: 3,
 		},
 	}
@@ -139,7 +127,7 @@ func TestBatch_encode(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			_, entriesCount, err := testData.inputBatch().encode()
+			_, entriesCount, err := testData.inputBatch.encode()
 			require.NoError(t, err)
 			assert.Equal(t, testData.expectedEntriesCount, entriesCount)
 		})

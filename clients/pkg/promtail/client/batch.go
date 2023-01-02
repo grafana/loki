@@ -47,8 +47,8 @@ func newBatch(maxStreams int, entries ...api.Entry) *batch {
 	return b
 }
 
-// replay adds an entry without writing it to the log, to be used
-// when replaying WAL segments at startup
+// replay adds an entry to the batch without checking the maximum number of streams, or registering
+// the byte size of the entry. Useful when we are adding entries to a batch we already know has the desired size.
 func (b *batch) replay(entry api.Entry) {
 	labelsString := labelsMapToString(entry.Labels, ReservedLabelTenantID)
 	if stream, ok := b.streams[labelsString]; ok {
@@ -62,11 +62,7 @@ func (b *batch) replay(entry api.Entry) {
 	}
 }
 
-func (b *batch) registerLineLength(entry api.Entry) {
-	b.bytes += len(entry.Line)
-}
-
-// add an entry to the batch
+// add an entry to the batch.
 func (b *batch) add(entry api.Entry) error {
 	b.bytes += len(entry.Line)
 
