@@ -128,9 +128,9 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 			tsdbMetrics = NewMetrics(reg)
 		}
 
-		// TODO: when dealing with multiple periods, we need to run a separate instance of index shipper for each period.
-		// But we don't have to run head manager for each period since we do not do any schema specific handling yet.
-		// We could try to use a single instance of head manager and logic to route index handovers to the appropriate instance of the index shipper.
+		// TODO: when dealing with multiple periods, we need to initialise a separate index shipper for each period.
+		// But we don't have to do the same with head manager since we do not do any schema specific handling yet.
+		// We could try to use a single instance of head manager and add logic for routing index handovers to shipper instances.
 		tsdbManager := NewTSDBManager(
 			nodeName,
 			dir,
