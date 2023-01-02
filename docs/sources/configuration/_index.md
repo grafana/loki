@@ -1653,6 +1653,7 @@ hedging:
   [max_per_second: <int> | default = 5]
 
 # Configures additional object stores for a given storage provider.
+# Supported stores: aws, azure, bos, filesystem, gcs, swift.
 # Example:
 # storage_config:
 #   named_stores:
@@ -4037,6 +4038,7 @@ The `local_storage_config` block configures the usage of local file system as ob
 ### named_stores_config
 
 Configures additional object stores for a given storage provider.
+Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
 storage_config:
   named_stores:

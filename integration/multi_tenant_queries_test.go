@@ -13,7 +13,7 @@ import (
 )
 
 func TestMultiTenantQuery(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(cluster.ConfigWithBoltDB(false))
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -21,7 +21,6 @@ func TestMultiTenantQuery(t *testing.T) {
 	var (
 		tAll = clu.AddComponent(
 			"all",
-			cluster.ComponentConfig{},
 			"-target=all",
 		)
 	)

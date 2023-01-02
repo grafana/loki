@@ -13,7 +13,7 @@ import (
 )
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(cluster.ConfigWithBoltDB(false))
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -22,7 +22,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	var (
 		tCompactor = clu.AddComponent(
 			"compactor",
-			cluster.ComponentConfig{},
 			"-target=compactor",
 			"-boltdb.shipper.compactor.compaction-interval=1s",
 			"-boltdb.shipper.compactor.retention-delete-delay=1s",
@@ -32,7 +31,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
-			cluster.ComponentConfig{},
 			"-target=distributor",
 		)
 	)
@@ -42,13 +40,11 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	var (
 		tIngester = clu.AddComponent(
 			"ingester",
-			cluster.ComponentConfig{},
 			"-target=ingester",
 			"-ingester.flush-on-shutdown=true",
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
-			cluster.ComponentConfig{},
 			"-target=query-scheduler",
 			"-query-scheduler.use-scheduler-ring=false",
 		)
@@ -59,7 +55,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	var (
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
-			cluster.ComponentConfig{},
 			"-target=query-frontend",
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-frontend.default-validity=0s",
@@ -67,7 +62,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		)
 		tQuerier = clu.AddComponent(
 			"querier",
-			cluster.ComponentConfig{},
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),

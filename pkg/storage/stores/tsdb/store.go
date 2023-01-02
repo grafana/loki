@@ -35,18 +35,6 @@ type store struct {
 	stopOnce          sync.Once
 }
 
-var storeInstance *store
-
-// This must only be called in test cases where a new store instances
-// cannot be explicitly created.
-func ResetStoreInstance() {
-	if storeInstance == nil {
-		return
-	}
-	storeInstance.Stop()
-	storeInstance = nil
-}
-
 type newStoreFactoryFunc func(
 	name string,
 	indexShipperCfg indexshipper.Config,
@@ -63,14 +51,9 @@ type newStoreFactoryFunc func(
 	err error,
 )
 
-// NewStore creates a new store if not initialized already.
-// Each call to NewStore will always build a new stores.ChunkWriter even if the store was already initialized since
-// fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
-// for storing chunks.
-// It also helps us make tsdb store a singleton because
-// we do not need to build store for each schema config since we do not do any schema specific handling yet.
-// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
-// running multiple head managers would be complicated and wasteful.
+var tsdbMetrics *Metrics
+
+// NewStore creates a new tsdb index readerwriter.
 var NewStore = func() newStoreFactoryFunc {
 	return func(
 		name string,
@@ -87,17 +70,16 @@ var NewStore = func() newStoreFactoryFunc {
 		func(),
 		error,
 	) {
-		if storeInstance == nil {
-			if backupIndexWriter == nil {
-				backupIndexWriter = noopBackupIndexWriter{}
-			}
-			storeInstance = &store{
-				backupIndexWriter: backupIndexWriter,
-			}
-			err := storeInstance.init(name, indexShipperCfg, objectClient, limits, tableRange, reg)
-			if err != nil {
-				return nil, nil, err
-			}
+		if backupIndexWriter == nil {
+			backupIndexWriter = noopBackupIndexWriter{}
+		}
+
+		storeInstance := &store{
+			backupIndexWriter: backupIndexWriter,
+		}
+		err := storeInstance.init(name, indexShipperCfg, objectClient, limits, tableRange, reg)
+		if err != nil {
+			return nil, nil, err
 		}
 
 		return storeInstance, storeInstance.Stop, nil
@@ -142,7 +124,13 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 			dir      = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
 		)
 
-		tsdbMetrics := NewMetrics(reg)
+		if tsdbMetrics == nil {
+			tsdbMetrics = NewMetrics(reg)
+		}
+
+		// TODO: when dealing with multiple periods, we need to run a separate instance of index shipper for each period.
+		// But we don't have to run head manager for each period since we do not do any schema specific handling yet.
+		// We could try to use a single instance of head manager and logic to route index handovers to the appropriate instance of the index shipper.
 		tsdbManager := NewTSDBManager(
 			nodeName,
 			dir,

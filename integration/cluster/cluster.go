@@ -26,7 +26,7 @@ import (
 var (
 	wrapRegistryOnce sync.Once
 
-	configTemplate = template.Must(template.New("").Parse(`
+	defaultConfigTemplate = `
 auth_enabled: true
 
 server:
@@ -63,25 +63,9 @@ storage_config:
   boltdb_shipper:
     active_index_directory: {{.dataPath}}/index
     cache_location: {{.dataPath}}/boltdb-cache
-
-schema_config:
-  configs:
-{{if .additionalPeriodConfig}}
-    - from: {{.additionalPeriodStart}}
-      store: boltdb-shipper
-      object_store: filesystem.store-1
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-{{end}}
-    - from: {{.curPeriodStart}}
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
+  tsdb_shipper:
+    active_index_directory: {{.dataPath}}/index
+    cache_location: {{.dataPath}}/boltdb-cache
 
 compactor:
   working_directory: {{.dataPath}}/retention
@@ -97,6 +81,9 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 2048
 
 
 {{if .remoteWriteUrls}}
@@ -120,7 +107,49 @@ ruler:
       remote_client2:
         url: {{index .remoteWriteUrls 1}}/api/v1/write
 {{end}}
-`))
+`
+
+	schemaConfigHeader = `
+schema_config:
+  configs:`
+
+	boltDBShipperSchemaConfigTemplate = `
+    - from: {{.curPeriodStart}}
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+`
+	additionalBoltDBShipperSchemaConfigTemplate = `
+    - from: {{.additionalPeriodStart}}
+      store: boltdb-shipper
+      object_store: filesystem.store-1
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+`
+
+	tsdbShipperSchemaConfigTemplate = `
+    - from: {{.curPeriodStart}}
+      store: tsdb
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+`
+	additionalTSDBShipperSchemaConfigTemplate = `
+    - from: {{.additionalPeriodStart}}
+      store: tsdb
+      object_store: filesystem.store-1
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+`
 
 	rulesConfig = `
 groups:
@@ -137,6 +166,25 @@ groups:
       summary: test
 `
 )
+
+func ConfigWithBoltDB(additionalPeriod bool) *template.Template {
+	schemaConfig := schemaConfigHeader
+	if additionalPeriod {
+		schemaConfig += additionalBoltDBShipperSchemaConfigTemplate
+	}
+	schemaConfig += boltDBShipperSchemaConfigTemplate
+
+	return template.Must(template.New("").Parse(defaultConfigTemplate + schemaConfig))
+}
+
+func ConfigWithTSDB(additionalPeriod bool) *template.Template {
+	schemaConfig := schemaConfigHeader
+	if additionalPeriod {
+		schemaConfig += additionalTSDBShipperSchemaConfigTemplate
+	}
+	schemaConfig += tsdbShipperSchemaConfigTemplate
+	return template.Must(template.New("").Parse(defaultConfigTemplate + schemaConfig))
+}
 
 func wrapRegistry() {
 	wrapRegistryOnce.Do(func() {
@@ -168,13 +216,14 @@ func (w *wrappedRegisterer) MustRegister(collectors ...prometheus.Collector) {
 }
 
 type Cluster struct {
+	configTmpl *template.Template
 	sharedPath string
 	components []*Component
 	waitGroup  sync.WaitGroup
 	initedAt   model.Time
 }
 
-func New() *Cluster {
+func New(configTmpl *template.Template) *Cluster {
 	wrapRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
@@ -182,6 +231,7 @@ func New() *Cluster {
 	}
 
 	return &Cluster{
+		configTmpl: configTmpl,
 		sharedPath: sharedPath,
 		initedAt:   model.Now(),
 	}
@@ -251,13 +301,12 @@ func (c *Cluster) stop(cleanupFiles bool) error {
 	return errs.Err()
 }
 
-func (c *Cluster) AddComponent(name string, config ComponentConfig, flags ...string) *Component {
+func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 	component := &Component{
-		name:         name,
-		cluster:      c,
-		flags:        flags,
-		running:      false,
-		componentCfg: config,
+		name:    name,
+		cluster: c,
+		flags:   flags,
+		running: false,
 	}
 
 	c.components = append(c.components, component)
@@ -276,15 +325,9 @@ type Component struct {
 	rulesPath    string
 	RulesTenant  string
 
-	running bool
-	wg      sync.WaitGroup
-
-	componentCfg ComponentConfig
-}
-
-type ComponentConfig struct {
-	AdditionalPeriodConfig bool
-	RemoteWriteUrls        []string
+	running         bool
+	wg              sync.WaitGroup
+	RemoteWriteUrls []string
 }
 
 // component should be restarted if it's already running for the new flags to take effect
@@ -318,7 +361,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
 
-	if len(c.componentCfg.RemoteWriteUrls) > 0 {
+	if len(c.RemoteWriteUrls) > 0 {
 		c.rulesPath, err = os.MkdirTemp(c.cluster.sharedPath, "rules")
 		if err != nil {
 			return fmt.Errorf("error creating rules path: %w", err)
@@ -352,15 +395,13 @@ func (c *Component) writeConfig() error {
 	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
 	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
 
-	if err := configTemplate.Execute(configFile, map[string]interface{}{
-		"dataPath":               c.dataPath,
-		"sharedDataPath":         c.cluster.sharedPath,
-		"remoteWriteUrls":        c.componentCfg.RemoteWriteUrls,
-		"rulesPath":              c.rulesPath,
-		"rulerWALPath":           c.rulerWALPath,
-		"curPeriodStart":         periodStart.String(),
-		"additionalPeriodConfig": c.componentCfg.AdditionalPeriodConfig,
-		"additionalPeriodStart":  additionalPeriodStart.String(),
+	if err := c.cluster.configTmpl.Execute(configFile, map[string]interface{}{
+		"dataPath":              c.dataPath,
+		"sharedDataPath":        c.cluster.sharedPath,
+		"rulesPath":             c.rulesPath,
+		"rulerWALPath":          c.rulerWALPath,
+		"curPeriodStart":        periodStart.String(),
+		"additionalPeriodStart": additionalPeriodStart.String(),
 	}); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
