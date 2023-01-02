@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -129,17 +128,4 @@ func TestWatcher_CallbackOnSegmentClosed(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return len(consumer.Entries) == 1 && consumer.LastSegmentClosed == 0
 	}, waitFor, checkTicker)
-}
-
-type syncer interface {
-	Sync() error
-}
-
-// getSyncCall extracts the WAL sync method from the Client implementation, used for doing an fsync on the WAL
-// when testing.
-func getSyncCall(client Client) (func() error, error) {
-	if clientSync, ok := client.(syncer); ok {
-		return clientSync.Sync, nil
-	}
-	return nil, fmt.Errorf("client does not implement Sync() error")
 }

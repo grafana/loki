@@ -39,9 +39,9 @@ type WALReader interface {
 
 // WatcherConsumer is responsible for doing the necessary work to process both series and entries while the WALWatcher
 // is reading / tailing segments. Also, when a new segment is detected, and the watcher is moving on from one to the other,
-// the SegmentEnd callback is available if action is required.
-// The implementor of this interface is not expected to implement thread safety if used on a single watched, since the
-// watcher will call each callback synchronously.
+// the SegmentEnd callback is available to take action if required.
+// The implementor of this interface is not expected to implement thread safety if used on a single watcher, since each
+// callback is called synchronously.
 type WatcherConsumer interface {
 	ConsumeSeries(series record.RefSeries) error
 	ConsumeEntries(entries ingester.RefEntries) error

@@ -12,13 +12,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -27,6 +24,7 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
@@ -264,13 +262,20 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 	c.wg.Add(1)
 
 	if cfg.WAL.Enabled {
-		// first replay WAL
-		c.replayWAL()
+		// First replay WAL
+		if err = c.replayWAL(); err != nil {
+			level.Error(c.logger).Log("msg", "failed to replay WAL", "err", err)
+		}
+		// Run the client in WAL-enabled mode
 		go c.runWithWAL()
 	} else {
-		go c.runSendSide(c.sendBatch, func(b *batch, e api.Entry) error {
-			return b.add(e)
-		})
+		// If WAL is disabled, run the client in normal mode. That is, the dispatch action for when a batch is completed
+		// is to send it. And when an entry is added to a batch, it's added as a whole.
+		go c.runSendSide(
+			c.sendBatch,
+			func(b *batch, e api.Entry) error {
+				return b.add(e)
+			})
 	}
 	return c, nil
 }
@@ -289,38 +294,10 @@ func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, 
 	return c, nil
 }
 
-// the code below is copied from prometheus wal
-type segmentRef struct {
-	name  string
-	index int
-}
-
-func listSegments(dir string) (refs []segmentRef, err error) {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range files {
-		fn := f.Name()
-		k, err := strconv.Atoi(fn)
-		if err != nil {
-			continue
-		}
-		refs = append(refs, segmentRef{name: fn, index: k})
-	}
-	sort.Slice(refs, func(i, j int) bool {
-		return refs[i].index < refs[j].index
-	})
-	for i := 0; i < len(refs)-1; i++ {
-		if refs[i].index+1 != refs[i+1].index {
-			return nil, errors.New("segments are not sequential")
-		}
-	}
-	return refs, nil
-}
-
-// TODO: can this be turned into an implementation of the pkg/ingester/recovery.go Recoverer interface
-// with the current file structure would I need to build a list of all the timestamp/segment files first?
+// replayWAL looks walks the WAL directory. Following the "walDir/clientName/tenantID" structure, if any existing WAL s
+// are found, read over them and send all pending entries. Since the client is not running yet, we do not care about the
+// segment/batch relation here, and rebuild batches in place. After replaying, this will delete the contents of each WAL
+// directory.
 func (c *client) replayWAL() error {
 	var recordPool = newRecordPool()
 
@@ -357,7 +334,6 @@ func (c *client) replayWAL() error {
 		defer closer.Close()
 
 		// todo, reduce allocations
-		// todo: thepalbi, use correct maxStreams here
 		b := newBatch(0)
 		seriesRecs := make(map[uint64]model.LabelSet)
 		for r.Next() {
@@ -378,7 +354,7 @@ func (c *client) replayWAL() error {
 						// If adding the entry to the batch will increase the size over the max
 						// size allowed, we do send the current batch and then create a new one
 						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
-							c.sendBatch(tenantID, b)
+							_ = c.sendBatch(tenantID, b)
 							new := c.newBatch()
 							new.replay(entry)
 							b = new
@@ -393,7 +369,7 @@ func (c *client) replayWAL() error {
 		}
 		// send last batch if there are entries left
 		if b.bytes > 0 {
-			c.sendBatch(tenantID, b)
+			_ = c.sendBatch(tenantID, b)
 		}
 		if err = cleanWALDir(tenantDir, c.logger); err != nil {
 			level.Error(c.logger).Log("msg", fmt.Sprintf("failed to clean WAL directory: %s", tenantDir), "err", err)
@@ -402,6 +378,7 @@ func (c *client) replayWAL() error {
 	return nil
 }
 
+// cleanWALDir removes all files from a WAL directory.
 func cleanWALDir(dir string, logger log.Logger) error {
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -416,6 +393,10 @@ func cleanWALDir(dir string, logger log.Logger) error {
 	return nil
 }
 
+// runWithWAL implements the sending side of the client with a WAL in-between. That is, upon receiving an entry, the size
+// of the batches being built is tracked and the entry is written to the WAL. Once the max batch size is reached, of the
+// maximum wait to for a batch to be sent, a segment in cut on the WAL. This triggers the reading side of the WAL to send
+// all entries read from that segment in a single batch.
 func (c *client) runWithWAL() {
 	go c.runSendSide(func(tenantID string, b *batch) error {
 		wal, err := c.wal.getWAL(tenantID)
@@ -423,24 +404,30 @@ func (c *client) runWithWAL() {
 			// wrap this
 			return err
 		}
-		// cut a segment, that means the watcher will find the segment has ended and send the batch
+		// Cut a segment, that means the watcher will find the segment has ended and send all entries read from there in
+		// a single batch.
 		if _, err = wal.NextSegment(); err != nil {
 			return fmt.Errorf("failed to cut new segment in wal: %w", err)
 		}
 		return nil
 	}, func(b *batch, e api.Entry) error {
-		//since on the writer side of the WAL we just need to keep track of two characteristic of batches:
-		//- size
-		//- creation time
-		//instead of adding all entry lines to the batch, we just keep track of the total byte size
+		// When the client is running in WAL-enabled mode, we just use the batches to track the total byte size, and the
+		// batch age. Since the age is being tracked as of the moment the batch object is created, we just increment the
+		// batch size when an entry is to be added.
 		b.bytes += len(e.Line)
 		return nil
 	})
 }
 
-type onBatchCompletedFunc func(tenantID string, b *batch) error
+// dispatchBatchFunc is a function type that implements the action taken once a batch is ready to be dispatched.
+type dispatchBatchFunc func(tenantID string, b *batch) error
 
-func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc, addEntryToBatch func(b *batch, e api.Entry) error) {
+// runSendSide is a generic implementation of the main send loop of client. Upon receiving an entry, it starts packing
+// them into batches, and once a specific threshold has been reached such as batch size, or age, the batch is dispatched.
+func (c *client) runSendSide(
+	dispatchBatch dispatchBatchFunc,
+	addEntryToBatch func(b *batch, e api.Entry) error,
+) {
 	batches := map[string]*batch{}
 	entryWriter := NewWALEntryWriter()
 
@@ -462,7 +449,7 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc, addEntryToBa
 		maxWaitCheck.Stop()
 		// Send all pending batches
 		for tenantID, batch := range batches {
-			onBatchCompleted(tenantID, batch)
+			_ = dispatchBatch(tenantID, batch)
 		}
 
 		c.wg.Done()
@@ -494,7 +481,7 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc, addEntryToBa
 			if !ok {
 				b := c.newBatch()
 				batches[tenantID] = b
-				addEntryToBatch(b, e)
+				_ = addEntryToBatch(b, e)
 				// Initialize counters to 0 so the metrics are exported before the first
 				// occurrence of incrementing to avoid missing metrics.
 				for _, counter := range c.metrics.countersWithTenant {
@@ -506,9 +493,9 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc, addEntryToBa
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				onBatchCompleted(tenantID, batch)
+				_ = dispatchBatch(tenantID, batch)
 				new := c.newBatch()
-				addEntryToBatch(new, e)
+				_ = addEntryToBatch(new, e)
 				batches[tenantID] = new
 				break
 			}
@@ -522,14 +509,12 @@ func (c *client) runSendSide(onBatchCompleted onBatchCompletedFunc, addEntryToBa
 				return
 			}
 		case <-maxWaitCheck.C:
-			// todo cut a segment and  read from the wal instead
-
 			// Send all batches whose max wait time has been reached
 			for tenantID, batch := range batches {
 				if batch.age() < c.cfg.BatchWait {
 					continue
 				}
-				onBatchCompleted(tenantID, batch)
+				_ = dispatchBatch(tenantID, batch)
 				delete(batches, tenantID)
 			}
 		}
@@ -713,15 +698,14 @@ func (c *client) Name() string {
 	return c.name
 }
 
-func (c *client) Sync() error {
-	for _, wal := range c.wal.tenantWALs {
-		if err := wal.Sync(); err != nil {
-			return err
-		}
-	}
-	return nil
+// stoppable is a small interface to keep track of resources that need cleanup.
+type stoppable interface {
+	Stop()
 }
 
+// clientWAL provides a WAL for a given tenant, handling the creation of it and its corresponding watched. Also, it
+// handles a graceful stop for all created resources.
+// If WAL support is disabled, this will return a no-op WAL for when requested.
 type clientWAL struct {
 	client      *client
 	tenantWALs  map[string]WAL
@@ -729,10 +713,7 @@ type clientWAL struct {
 	watchers    map[string]stoppable
 }
 
-type stoppable interface {
-	Stop()
-}
-
+// newClientWAL creates a new clientWAL.
 func newClientWAL(c *client) clientWAL {
 	return clientWAL{
 		client:      c,
@@ -742,31 +723,27 @@ func newClientWAL(c *client) clientWAL {
 	}
 }
 
-// Chan returns an api.Entry channel where all WAL watchers write to.
-func (c *clientWAL) Chan() chan api.Entry {
-	return c.readChannel
-}
-
-func (c *clientWAL) getWAL(tenant string) (WAL, error) {
-	if w, ok := c.tenantWALs[tenant]; ok {
+// getWAL is clientWAL main method. Given a tenantID, it retrieves it's corresponding WAL. If none exists, it creates
+// a new one, and launches a watcher that listens to entries being added, builds batch and sends them when a signaled.
+func (c *clientWAL) getWAL(tenantID string) (WAL, error) {
+	if w, ok := c.tenantWALs[tenantID]; ok {
 		return w, nil
 	}
-	// new wal created, start WAL and watcher to read channel
-	wal, err := newWAL(c.client.logger, c.client.metrics.registerer, c.client.cfg.WAL, c.client.name, tenant)
+	// No WAL exists, create new one and launch watcher. If WAL is disabled, this just returns a no-op implementation.
+	wal, err := newWAL(c.client.logger, c.client.metrics.registerer, c.client.cfg.WAL, c.client.name, tenantID)
 	if err != nil {
 		level.Error(c.client.logger).Log("msg", "could not start WAL", "err", err)
-		// set the wall to noop
 		return nil, err
 	}
-	// find a cleaner way to do this
+	// todo: find a cleaner way to do this
 	if c.client.cfg.WAL.Enabled {
-		consumer := newClientConsumer(c.readChannel, c.client.logger, func(b *batch) error {
-			return c.client.sendBatch(tenant, b)
-		}, wal)
+		consumer := newClientConsumer(func(b *batch) error {
+			return c.client.sendBatch(tenantID, b)
+		}, wal, c.client.logger)
 		watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
 		watcher.Start()
-		c.watchers[tenant] = watcher
-		c.tenantWALs[tenant] = wal
+		c.watchers[tenantID] = watcher
+		c.tenantWALs[tenantID] = wal
 	}
 	return wal, nil
 }
@@ -784,19 +761,21 @@ type SegmentDeleter interface {
 	DeleteSegment(segmentNum int) error
 }
 
+// clientConsumer implements a WatcherConsumer that builds batches with the entries read from the WAL. When the watcher
+// signals that a new segment is found, that means the WAL-writing side decided the entries are enough for a batch to be
+// sent, therefore, the current batch is sent. After the batch is sent successfully, the previous segment can be cleaned
+// up.
 type clientConsumer struct {
 	series         map[uint64]model.LabelSet
-	pushChannel    chan api.Entry
 	logger         log.Logger
 	currentBatch   *batch
 	sendBatch      sendBatchFunc
 	segmentDeleter SegmentDeleter
 }
 
-func newClientConsumer(pushChannel chan api.Entry, logger log.Logger, sendBatch sendBatchFunc, segmentDeleter SegmentDeleter) *clientConsumer {
+func newClientConsumer(sendBatch sendBatchFunc, segmentDeleter SegmentDeleter, logger log.Logger) *clientConsumer {
 	return &clientConsumer{
 		series:         map[uint64]model.LabelSet{},
-		pushChannel:    pushChannel,
 		logger:         logger,
 		currentBatch:   newBatch(0),
 		sendBatch:      sendBatch,
