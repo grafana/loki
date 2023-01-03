@@ -13,7 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/pkg/ingester"
 )
@@ -183,14 +183,14 @@ func isClosed(c chan struct{}) bool {
 // actively being written to. If false, assume it's a full segment, and we're
 // replaying it on start to cache the series records.
 func (w *WALWatcher) watch(segmentNum int, tail bool) error {
-	segment, err := wal.OpenReadSegment(wal.SegmentName(w.walDir, segmentNum))
+	segment, err := wlog.OpenReadSegment(wlog.SegmentName(w.walDir, segmentNum))
 	if err != nil {
 		return err
 	}
 	defer segment.Close()
 
 	// todo: fix nil livereader metrics
-	reader := wal.NewLiveReader(w.logger, nil, segment)
+	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
 	readTicker := time.NewTicker(readPeriod)
 	defer readTicker.Stop()
@@ -275,7 +275,7 @@ func (w *WALWatcher) logIgnoredErrorWhileReplaying(err error, readerOffset, size
 
 // Read from a segment and pass the details to w.writer.
 // Also used with readCheckpoint - implements segmentReadFn.
-func (w *WALWatcher) readSegment(r *wal.LiveReader, segmentNum int) error {
+func (w *WALWatcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
 	for r.Next() && !isClosed(w.quit) {
 		b := r.Record()
 		if err := r.Err(); err != nil {
@@ -318,7 +318,7 @@ func (w *WALWatcher) decodeAndDispatch(b []byte) error {
 // Get size of segment.
 func getSegmentSize(dir string, index int) (int64, error) {
 	i := int64(-1)
-	fi, err := os.Stat(wal.SegmentName(dir, index))
+	fi, err := os.Stat(wlog.SegmentName(dir, index))
 	if err == nil {
 		i = fi.Size()
 	}

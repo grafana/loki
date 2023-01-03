@@ -47,39 +47,13 @@ const (
 	HostLabel    = "host"
 	ClientLabel  = "client"
 
-"io"
-"net/http"
-"sort"
-"strconv"
-"sync"
-"time"
-
-"github.com/go-kit/log"
-"github.com/go-kit/log/level"
-"github.com/grafana/dskit/backoff"
-"github.com/prometheus/client_golang/prometheus"
-"github.com/prometheus/common/config"
-"github.com/prometheus/common/model"
-"github.com/prometheus/prometheus/model/labels"
-"github.com/prometheus/prometheus/promql/parser"
-"github.com/prometheus/prometheus/tsdb/chunks"
-"github.com/prometheus/prometheus/tsdb/record"
-"github.com/prometheus/prometheus/tsdb/wal"
-
-"github.com/grafana/loki/clients/pkg/promtail/api"
-
-"github.com/grafana/loki/pkg/ingester"
-"github.com/grafana/loki/pkg/util"
-lokiutil "github.com/grafana/loki/pkg/util"
-"github.com/grafana/loki/pkg/util/build"
-)
-	TenantLabel  = "tenant"
+	TenantLabel = "tenant"
 )
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
 type Metrics struct {
-	registerer prometheus.Registerer
+	registerer         prometheus.Registerer
 	encodedBytes       *prometheus.CounterVec
 	sentBytes          *prometheus.CounterVec
 	droppedBytes       *prometheus.CounterVec
@@ -707,19 +681,17 @@ type stoppable interface {
 // handles a graceful stop for all created resources.
 // If WAL support is disabled, this will return a no-op WAL for when requested.
 type clientWAL struct {
-	client      *client
-	tenantWALs  map[string]WAL
-	readChannel chan api.Entry
-	watchers    map[string]stoppable
+	client     *client
+	tenantWALs map[string]WAL
+	watchers   map[string]stoppable
 }
 
 // newClientWAL creates a new clientWAL.
 func newClientWAL(c *client) clientWAL {
 	return clientWAL{
-		client:      c,
-		tenantWALs:  make(map[string]WAL),
-		readChannel: make(chan api.Entry),
-		watchers:    make(map[string]stoppable),
+		client:     c,
+		tenantWALs: make(map[string]WAL),
+		watchers:   make(map[string]stoppable),
 	}
 }
 
@@ -752,7 +724,6 @@ func (c *clientWAL) Stop() {
 	for _, watcher := range c.watchers {
 		watcher.Stop()
 	}
-	close(c.readChannel)
 }
 
 type sendBatchFunc func(*batch) error

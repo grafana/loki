@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 )
 
 var (
@@ -60,7 +60,7 @@ func (n noopWAL) NextSegment() (int, error) {
 }
 
 type walWrapper struct {
-	wal *wal.WAL
+	wal *wlog.WL
 	log log.Logger
 }
 
@@ -72,7 +72,7 @@ func newWAL(log log.Logger, registerer prometheus.Registerer, cfg WALConfig, cli
 	}
 
 	dir := path.Join(cfg.Dir, clientName, tenantID)
-	tsdbWAL, err := wal.NewSize(log, registerer, dir, wal.DefaultSegmentSize, false)
+	tsdbWAL, err := wlog.NewSize(log, registerer, dir, wlog.DefaultSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}
