@@ -9,7 +9,7 @@ jobs:
         with:
           filters: |
             filechange:
-              - 'tools/lambda_promtail/**'
+              - 'tools/lambda-promtail/**'
       - if: "steps.changes.outputs.filechange == 'true'"
         name: Push lambda_promtail
         uses: "kciter/aws-ecr-action@master"
