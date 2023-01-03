@@ -666,6 +666,12 @@ The `frontend` block configures the Loki query-frontend.
 # frontend.grpc-client-config
 [grpc_client_config: <grpc_client>]
 
+# Time to wait for inflight requests to finish before forcefully shutting down.
+# This needs to be aligned with the query timeout and the graceful termination
+# period of the process orchestrator.
+# CLI flag: -frontend.graceful-shutdown-timeout
+[graceful_shutdown_timeout: <duration> | default = 5m]
+
 # Name of network interface to read address from. This address is sent to
 # query-scheduler and querier, which uses it to send the query response back to
 # query-frontend.
