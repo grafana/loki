@@ -330,12 +330,12 @@ func (c *client) replayWAL() error {
 						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
 							_ = c.sendBatch(tenantID, b)
 							new := c.newBatch()
-							new.replay(entry)
+							new.add(entry)
 							b = new
 							break
 						}
 						// The max size of the batch isn't reached, so we can add the entry
-						b.replay(entry)
+						b.add(entry)
 					}
 
 				}

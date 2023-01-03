@@ -524,9 +524,10 @@ func TestReplayWAL(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{
-		URL:            serverURL,
-		BatchWait:      100 * time.Millisecond,
-		BatchSize:      10,
+		URL:       serverURL,
+		BatchWait: 100 * time.Millisecond,
+		// Use a big enough batch size so that all entries are written on the same batch
+		BatchSize:      1024 << 10,
 		Client:         config.HTTPClientConfig{},
 		BackoffConfig:  backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: 3},
 		ExternalLabels: lokiflag.LabelSet{},
@@ -536,31 +537,34 @@ func TestReplayWAL(t *testing.T) {
 			Enabled: true,
 			Dir:     dir,
 		},
+		Name: "test",
 	}
 
-	m := NewMetrics(reg, nil)
-	c, err := New(m, cfg, nil, 0, log.NewNopLogger())
+	// First, instantiate the WAL and use the WAL writer to write several entries
+	wal, err := newWAL(debugLogger, nil, WALConfig{
+		Enabled: true,
+		Dir:     dir,
+	}, "test", "tenant1")
 	require.NoError(t, err)
 
+	writer := NewWALEntryWriter()
 	numEntries := 10
 	for i := 0; i < numEntries; i++ {
-		batch := c.(*client).newBatch()
-		batch.add(api.Entry{
+		writer.WriteEntry(api.Entry{
 			Labels: model.LabelSet{"foo": "bar", "i": model.LabelValue(strconv.Itoa(i))},
 			Entry: logproto.Entry{
 				Timestamp: ts,
 				Line:      "hello",
 			},
-		})
+		}, wal, debugLogger)
 	}
+	// Sync the wal so disk changes are flushed
+	require.NoError(t, wal.Sync(), "error syncing wal")
 
-	// Wait until the expected push requests are received (with a timeout)
-	deadline := time.Now().Add(2 * time.Second)
-	for len(receivedReqsChan) < 1 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	assert.NoError(t, c.(*client).replayWAL())
+	// Creating a new client with WAL enabled will first run recover
+	m := NewMetrics(reg, nil)
+	c, err := New(m, cfg, nil, 0, debugLogger)
+	require.NoError(t, err, "error starting client and therefore running replay")
 
 	// Stop the client: it waits until the current batch is sent
 	c.Stop()
