@@ -370,8 +370,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 		BoltDBShipperConfig: shipper.Config{
 			Config: indexshipper.Config{
 				SharedStoreType:      config.StorageTypeFileSystem,
-				ActiveIndexDirectory: dir,
-				CacheLocation:        dir,
+				ActiveIndexDirectory: path.Join(dir, "index"),
+				CacheLocation:        path.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
 				ResyncInterval:       24 * time.Hour,
 			},
