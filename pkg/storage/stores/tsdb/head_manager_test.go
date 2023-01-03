@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -173,7 +174,13 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
+	tableRange := config.TableRange{
+		End: math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_",
+		}},
+	}
+	mgr := NewHeadManager(log.NewNopLogger(), dir, tableRange, NewMetrics(nil), newNoopTSDBManager(dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(dir) {
@@ -257,7 +264,13 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
+	tableRange := config.TableRange{
+		End: math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_",
+		}},
+	}
+	mgr := NewHeadManager(log.NewNopLogger(), dir, tableRange, NewMetrics(nil), newNoopTSDBManager(dir))
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 

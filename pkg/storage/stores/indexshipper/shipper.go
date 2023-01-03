@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"path"
 	"sync"
 	"time"
 
@@ -149,7 +148,7 @@ func (s *indexShipper) init(name string, storageClient client.ObjectClient, limi
 
 	if s.cfg.Mode != ModeWriteOnly {
 		cfg := downloads.Config{
-			CacheDir:          path.Join(s.cfg.CacheLocation, name),
+			CacheDir:          s.cfg.CacheLocation,
 			SyncInterval:      s.cfg.ResyncInterval,
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,

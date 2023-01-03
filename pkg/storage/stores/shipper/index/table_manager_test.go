@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
@@ -29,7 +31,14 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFun
 		Uploader: "test-table-manager",
 		IndexDir: indexPath,
 	}
-	tm, err := NewTableManager(cfg, mockIndexShipper, nil)
+
+	tableRange := config.TableRange{
+		End: math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_",
+		}},
+	}
+	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil)
 	require.NoError(t, err)
 
 	return tm, tm.Stop
@@ -90,7 +99,13 @@ func TestLoadTables(t *testing.T) {
 		IndexDir: indexPath,
 	}
 
-	tm, err := NewTableManager(cfg, mockIndexShipper, nil)
+	tableRange := config.TableRange{
+		End: math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_",
+		}},
+	}
+	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil)
 	require.NoError(t, err)
 	defer tm.Stop()
 

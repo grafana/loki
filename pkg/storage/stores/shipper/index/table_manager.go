@@ -2,7 +2,6 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,11 +10,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -35,9 +36,10 @@ type TableManager struct {
 	cfg          Config
 	indexShipper Shipper
 
-	metrics   *metrics
-	tables    map[string]*Table
-	tablesMtx sync.RWMutex
+	metrics    *metrics
+	tables     map[string]*Table
+	tableRange config.TableRange
+	tablesMtx  sync.RWMutex
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -49,7 +51,7 @@ type Shipper interface {
 	ForEach(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
 }
 
-func NewTableManager(cfg Config, indexShipper Shipper, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRange, registerer prometheus.Registerer) (*TableManager, error) {
 	err := chunk_util.EnsureDirectory(cfg.IndexDir)
 	if err != nil {
 		return nil, err
@@ -64,6 +66,7 @@ func NewTableManager(cfg Config, indexShipper Shipper, registerer prometheus.Reg
 		cfg:          cfg,
 		indexShipper: indexShipper,
 		metrics:      tmMetrics,
+		tableRange:   tableRange,
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -188,6 +191,13 @@ func (tm *TableManager) handoverIndexesToShipper(force bool) {
 }
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
+
+	// as we are running multiple instances of TableManger - one for each period
+	// existing tables should be migrated to period specific directory
+	if err := migrateTables(tm.cfg.IndexDir, tm.tableRange); err != nil {
+		return nil, errors.Wrap(err, "migrating tables")
+	}
+
 	localTables := make(map[string]*Table)
 	dirEntries, err := os.ReadDir(tm.cfg.IndexDir)
 	if err != nil {
@@ -259,4 +269,29 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	}
 
 	return localTables, nil
+}
+
+func migrateTables(dir string, tableRange config.TableRange) error {
+	parentDir := filepath.Dir(filepath.Clean(dir))
+	entries, err := os.ReadDir(parentDir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
+		if err != nil {
+			continue
+		}
+
+		if !tableRange.TableInRange(tableNumber, entry.Name()) {
+			continue
+		}
+
+		if err := os.Rename(filepath.Join(parentDir, entry.Name()), filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

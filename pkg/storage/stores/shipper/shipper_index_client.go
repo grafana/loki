@@ -107,7 +107,7 @@ func (i *indexClient) init(name string, storageClient client.ObjectClient, limit
 			DBRetainPeriod:       i.cfg.IngesterDBRetainPeriod,
 			MakePerTenantBuckets: i.cfg.BuildPerTenantIndex,
 		}
-		i.writer, err = index.NewTableManager(cfg, i.indexShipper, registerer)
+		i.writer, err = index.NewTableManager(cfg, i.indexShipper, tableRange, registerer)
 		if err != nil {
 			return err
 		}

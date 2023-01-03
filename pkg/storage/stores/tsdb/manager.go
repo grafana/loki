@@ -87,6 +87,12 @@ func (m *tsdbManager) Start() (err error) {
 		)
 	}()
 
+	// as we are running multiple instances of tsdbManager, one for each period
+	// existing tables should be migrated to period specific directory
+	if err := migrateMultitenantDir(m.dir, m.tableRange); err != nil {
+		return errors.Wrap(err, "migrating multitenant dir")
+	}
+
 	// regexp for finding the trailing index bucket number at the end of table name
 	extractBucketNumberRegex, err := regexp.Compile(`[0-9]+$`)
 	if err != nil {
@@ -274,6 +280,46 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 
 		err := m.buildFromHead(tmp)
 		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func migrateMultitenantDir(dir string, tableRange config.TableRange) error {
+	parentDir := filepath.Dir(filepath.Clean(dir))
+	mulitenantDir := managerMultitenantDir(parentDir)
+	if _, err := os.Stat(mulitenantDir); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+
+		// no files to migrate as multitenant dir does not exist
+		return nil
+	}
+
+	targetMultitenantDir := managerMultitenantDir(dir)
+	files, err := os.ReadDir(mulitenantDir)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		tableNumber, err := config.ExtractTableNumberFromName(f.Name())
+		if err != nil {
+			continue
+		}
+
+		if !tableRange.TableInRange(tableNumber, f.Name()) {
+			continue
+		}
+
+		if err := os.Rename(filepath.Join(mulitenantDir, f.Name()), filepath.Join(targetMultitenantDir, f.Name())); err != nil {
 			return err
 		}
 	}
