@@ -27,4 +27,4 @@ name: Build images for dev
 on:
   push:
     branches:
-      - master
+      - main
