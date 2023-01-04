@@ -537,7 +537,7 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, 
 		// we should not consider the case where baseLiteral is not marked as case insensitive
 		// and alternate expression is marked as case insensitive. For example, for the original expression
 		// f|f(?i)oo the extracted expression would be "f (?:)|(?i:OO)" i.e. f with empty match
-		// and fOO. For, fOO, we can't initialize containsFilter with caseInsensitve variable as either true or false
+		// and fOO. For fOO, we can't initialize containsFilter with caseInsensitve variable as either true or false
 		isAltCaseInsensitive := isCaseInsensitive(alt)
 		if !baseLiteralIsCaseInsensitive && isAltCaseInsensitive {
 			return nil, false
