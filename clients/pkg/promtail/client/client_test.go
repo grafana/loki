@@ -575,14 +575,6 @@ func TestReplayWAL(t *testing.T) {
 	for req := range receivedReqsChan {
 		receivedReqs = append(receivedReqs, req)
 	}
-	assert.Equal(t, numEntries, len(receivedReqs[0].pushReq.Streams))
-
-	// Due to implementation details (maps iteration ordering is random) we just check
-	// that the expected requests are equal to the received requests, without checking
-	// the exact order which is not guaranteed in case of multi-tenant
-	// TODO: callum, I think we cannot even do this now just because of nesting and the way the elements match works
-	// require.ElementsMatch(t, expectedReqs, receivedReqs, "received did not match expected\n\treceived: %+v\n\texpected: %+v\n", receivedReqs, expectedReqs)
-
-	// for some reason this doesn't work as just testutil.ToFloat64(metrics.sentEntries)
+	require.Equal(t, numEntries, len(receivedReqs[0].pushReq.Streams))
 	require.Equal(t, testutil.ToFloat64(c.(*client).metrics.sentEntries), float64(numEntries))
 }

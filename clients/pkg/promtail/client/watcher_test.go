@@ -62,8 +62,8 @@ func TestWatcher_SimpleWriteAndRead(t *testing.T) {
 		_ = w.Delete()
 	}()
 
-	watchedWALConsumer := newMockConsumer()
-	watcher := NewWALWatcher(w.Dir(), watchedWALConsumer, debugLogger)
+	consumer := newMockConsumer()
+	watcher := NewWALWatcher(w.Dir(), "test", NewWALWatcherMetrics(nil), consumer, debugLogger)
 	watcher.Start()
 	defer watcher.Stop()
 
@@ -80,7 +80,7 @@ func TestWatcher_SimpleWriteAndRead(t *testing.T) {
 	require.NoError(t, w.Sync(), "failed to sync wal")
 
 	require.Eventually(t, func() bool {
-		return len(watchedWALConsumer.Entries) == 1
+		return len(consumer.Entries) == 1
 	}, waitFor, checkTicker)
 }
 
@@ -97,7 +97,7 @@ func TestWatcher_CallbackOnSegmentClosed(t *testing.T) {
 	}()
 
 	consumer := newMockConsumer()
-	watcher := NewWALWatcher(w.Dir(), consumer, debugLogger)
+	watcher := NewWALWatcher(w.Dir(), "test", NewWALWatcherMetrics(nil), consumer, debugLogger)
 	watcher.Start()
 	defer watcher.Stop()
 

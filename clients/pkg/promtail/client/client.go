@@ -64,6 +64,8 @@ type Metrics struct {
 	countersWithHost   []*prometheus.CounterVec
 	countersWithTenant []*prometheus.CounterVec
 	streamLag          *prometheus.GaugeVec
+
+	watcherMetrics *WALWatcherMetrics
 }
 
 func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
@@ -133,6 +135,8 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		m.batchRetries = mustRegisterOrGet(reg, m.batchRetries).(*prometheus.CounterVec)
 		m.streamLag = mustRegisterOrGet(reg, m.streamLag).(*prometheus.GaugeVec)
 	}
+
+	m.watcherMetrics = NewWALWatcherMetrics(reg)
 
 	return &m
 }
@@ -719,7 +723,13 @@ func (c *clientWAL) getWAL(tenantID string) (WAL, error) {
 		consumer := newClientConsumer(func(b *batch) error {
 			return c.client.sendBatch(tenantID, b)
 		}, wal, c.client.logger)
-		watcher := NewWALWatcher(wal.Dir(), consumer, c.client.logger)
+		watcher := NewWALWatcher(
+			wal.Dir(),
+			c.client.name,
+			c.client.metrics.watcherMetrics,
+			consumer,
+			c.client.logger,
+		)
 		watcher.Start()
 		c.watchers[tenantID] = watcher
 		c.tenantWALs[tenantID] = wal

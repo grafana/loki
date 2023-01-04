@@ -33,7 +33,6 @@ const (
 type WALReader interface {
 	Next() bool
 	Err() error
-	// Record should not be used across multiple calls to Next()
 	Record() []byte
 }
 
@@ -49,41 +48,41 @@ type WatcherConsumer interface {
 }
 
 type WALWatcher struct {
+	name       string
 	consumer   WatcherConsumer
 	done       chan struct{}
 	quit       chan struct{}
 	walDir     string
 	logger     log.Logger
 	MaxSegment int
+
+	metrics *WALWatcherMetrics
 }
 
-func NewWALWatcher(walDir string, consumer WatcherConsumer, logger log.Logger) *WALWatcher {
+func NewWALWatcher(walDir, name string, metrics *WALWatcherMetrics, consumer WatcherConsumer, logger log.Logger) *WALWatcher {
 	return &WALWatcher{
 		walDir:     walDir,
+		name:       name,
 		consumer:   consumer,
 		quit:       make(chan struct{}),
 		done:       make(chan struct{}),
 		MaxSegment: -1,
 		logger:     logger,
+		metrics:    metrics,
 	}
 }
 
 // Start runs the watcher main loop.
 func (w *WALWatcher) Start() {
+	w.metrics.watchersRunning.WithLabelValues().Inc()
 	go w.mainLoop()
 }
 
-func (w *WALWatcher) Stop() {
-	// first close the quit channel to order main mainLoop routine to stop
-	close(w.quit)
-	// upon calling stop, wait for main mainLoop execution to stop
-	<-w.done
-}
-
+// mainLoop retries when there's an error reading a specific segment or advancing one, but leaving a bigger time in-between
+// retries.
 func (w *WALWatcher) mainLoop() {
 	defer close(w.done)
 	for !isClosed(w.quit) {
-		//w.SetStartTime(time.Now())
 		if err := w.run(); err != nil {
 			level.Error(w.logger).Log("msg", "error tailing WAL", "err", err)
 		}
@@ -105,14 +104,13 @@ func (w *WALWatcher) run() error {
 	}
 
 	currentSegment := lastSegment
-	//level.Debug(w.logger).Log("msg", "Tailing WAL", "lastCheckpoint", lastCheckpoint, "checkpointIndex", checkpointIndex, "currentSegment", currentSegment, "lastSegment", lastSegment)
 	level.Debug(w.logger).Log("msg", "Tailing WAL", "currentSegment", currentSegment, "lastSegment", lastSegment)
 	for !isClosed(w.quit) {
-		//w.currentSegmentMetric.Set(float64(currentSegment))
+		w.metrics.currentSegment.WithLabelValues(w.name).Set(float64(currentSegment))
 		level.Debug(w.logger).Log("msg", "Processing segment", "currentSegment", currentSegment)
 
-		// On start, after reading the existing WAL for series records, we have a pointer to what is the latest segment.
-		// On subsequent calls to this function, currentSegment will have been incremented and we should open that segment.
+		// On start, we have a pointer to what is the latest segment. On subsequent calls to this function,
+		// currentSegment will have been incremented, and we should open that segment.
 		if err := w.watch(currentSegment, currentSegment >= lastSegment); err != nil {
 			return err
 		}
@@ -131,57 +129,9 @@ func (w *WALWatcher) run() error {
 	return nil
 }
 
-// firstAndList finds the first and last segment number for a WAL directory.
-func (w *WALWatcher) firstAndLast() (int, int, error) {
-	refs, err := w.segments(w.walDir)
-	if err != nil {
-		return -1, -1, err
-	}
-
-	if len(refs) == 0 {
-		return -1, -1, nil
-	}
-	return refs[0], refs[len(refs)-1], nil
-}
-
-// Copied from tsdb/wlog/wlog.go so we do not have to open a WAL.
-// Plan is to move WAL watcher to TSDB and dedupe these implementations.
-func (w *WALWatcher) segments(dir string) ([]int, error) {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	var refs []int
-	for _, f := range files {
-		k, err := strconv.Atoi(f.Name())
-		if err != nil {
-			continue
-		}
-		refs = append(refs, k)
-	}
-	sort.Ints(refs)
-	for i := 0; i < len(refs)-1; i++ {
-		if refs[i]+1 != refs[i+1] {
-			return nil, fmt.Errorf("segments are not sequential")
-		}
-	}
-	return refs, nil
-}
-
-// isClosed checks in a non-blocking manner if a channel is closed or not.
-func isClosed(c chan struct{}) bool {
-	select {
-	case <-c:
-		return true
-	default:
-		return false
-	}
-}
-
 // Use tail true to indicate that the reader is currently on a segment that is
 // actively being written to. If false, assume it's a full segment, and we're
-// replaying it on start to cache the series records.
+// replaying it.
 func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 	segment, err := wlog.OpenReadSegment(wlog.SegmentName(w.walDir, segmentNum))
 	if err != nil {
@@ -189,7 +139,6 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 	}
 	defer segment.Close()
 
-	// todo: fix nil livereader metrics
 	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
 	readTicker := time.NewTicker(readPeriod)
@@ -214,7 +163,6 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 		}
 	}
 
-	//gcSem := make(chan struct{}, 1)
 	for {
 		select {
 		case <-w.quit:
@@ -273,14 +221,14 @@ func (w *WALWatcher) logIgnoredErrorWhileReplaying(err error, readerOffset, size
 	}
 }
 
-// Read from a segment and pass the details to w.writer.
-// Also used with readCheckpoint - implements segmentReadFn.
+// Read entries from a segment, decode them and dispatch them.
 func (w *WALWatcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
 	for r.Next() && !isClosed(w.quit) {
 		b := r.Record()
 		if err := r.Err(); err != nil {
 			return err
 		}
+		w.metrics.recordsRead.WithLabelValues().Inc()
 
 		if err := w.decodeAndDispatch(b); err != nil {
 			return err
@@ -289,13 +237,16 @@ func (w *WALWatcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
 	return errors.Wrapf(r.Err(), "segment %d: %v", segmentNum, r.Err())
 }
 
+// decodeAndDispatch first decodes a WAL record. Upon reading either Series or Entries from the WAL record, call the
+// appropriate callbacks in the consumer.
 func (w *WALWatcher) decodeAndDispatch(b []byte) error {
 	rec := recordPool.GetRecord()
 	if err := ingester.DecodeWALRecord(b, rec); err != nil {
+		w.metrics.recordDecodeFails.WithLabelValues(w.name).Inc()
 		return err
 	}
 
-	// First process all series to ensure we don't write entries to nonexistant series.
+	// First process all series to ensure we don't write entries to non-existent series.
 	var firstErr error
 	for _, s := range rec.Series {
 		if err := w.consumer.ConsumeSeries(s); err != nil {
@@ -303,7 +254,6 @@ func (w *WALWatcher) decodeAndDispatch(b []byte) error {
 				firstErr = err
 			}
 		}
-
 	}
 
 	for _, entries := range rec.RefEntries {
@@ -313,6 +263,63 @@ func (w *WALWatcher) decodeAndDispatch(b []byte) error {
 	}
 
 	return firstErr
+}
+
+func (w *WALWatcher) Stop() {
+	// first close the quit channel to order main mainLoop routine to stop
+	close(w.quit)
+	// upon calling stop, wait for main mainLoop execution to stop
+	<-w.done
+
+	w.metrics.watchersRunning.WithLabelValues().Dec()
+}
+
+// firstAndList finds the first and last segment number for a WAL directory.
+func (w *WALWatcher) firstAndLast() (int, int, error) {
+	refs, err := w.segments(w.walDir)
+	if err != nil {
+		return -1, -1, err
+	}
+
+	if len(refs) == 0 {
+		return -1, -1, nil
+	}
+	return refs[0], refs[len(refs)-1], nil
+}
+
+// Copied from tsdb/wlog/wlog.go so we do not have to open a WAL.
+// Plan is to move WAL watcher to TSDB and dedupe these implementations.
+func (w *WALWatcher) segments(dir string) ([]int, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var refs []int
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
+		if err != nil {
+			continue
+		}
+		refs = append(refs, k)
+	}
+	sort.Ints(refs)
+	for i := 0; i < len(refs)-1; i++ {
+		if refs[i]+1 != refs[i+1] {
+			return nil, fmt.Errorf("segments are not sequential")
+		}
+	}
+	return refs, nil
+}
+
+// isClosed checks in a non-blocking manner if a channel is closed or not.
+func isClosed(c chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
 }
 
 // Get size of segment.
