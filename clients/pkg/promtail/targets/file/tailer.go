@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/hpcloud/tail"
+	"github.com/grafana/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"

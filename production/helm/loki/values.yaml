@@ -697,34 +697,34 @@ monitoring:
       # -- Additional clients for remote write
       clients: null
 
-    # The Loki canary pushes logs to and queries from this loki installation to test
-    # that it's working correctly
-    lokiCanary:
-      enabled: true
-      # -- Additional annotations for the `loki-canary` Daemonset
-      annotations: {}
-      # -- Additional CLI arguments for the `loki-canary' command
-      extraArgs: []
-      # -- Environment variables to add to the canary pods
-      extraEnv: []
-      # -- Environment variables from secrets or configmaps to add to the canary pods
-      extraEnvFrom: []
-      # -- Resource requests and limits for the canary
-      resources: {}
-      # -- Node selector for canary pods
-      nodeSelector: {}
-      # -- Tolerations for canary pods
-      tolerations: []
-      # -- Image to use for loki canary
-      image:
-        # -- The Docker registry
-        registry: docker.io
-        # -- Docker image repository
-        repository: grafana/loki-canary
-        # -- Overrides the image tag whose default is the chart's appVersion
-        tag: null
-        # -- Docker image pull policy
-        pullPolicy: IfNotPresent
+  # The Loki canary pushes logs to and queries from this loki installation to test
+  # that it's working correctly
+  lokiCanary:
+    enabled: true
+    # -- Additional annotations for the `loki-canary` Daemonset
+    annotations: {}
+    # -- Additional CLI arguments for the `loki-canary' command
+    extraArgs: []
+    # -- Environment variables to add to the canary pods
+    extraEnv: []
+    # -- Environment variables from secrets or configmaps to add to the canary pods
+    extraEnvFrom: []
+    # -- Resource requests and limits for the canary
+    resources: {}
+    # -- Node selector for canary pods
+    nodeSelector: {}
+    # -- Tolerations for canary pods
+    tolerations: []
+    # -- Image to use for loki canary
+    image:
+      # -- The Docker registry
+      registry: docker.io
+      # -- Docker image repository
+      repository: grafana/loki-canary
+      # -- Overrides the image tag whose default is the chart's appVersion
+      tag: null
+      # -- Docker image pull policy
+      pullPolicy: IfNotPresent
 
 # Configuration for the write
 write:

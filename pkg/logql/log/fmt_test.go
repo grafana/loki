@@ -23,6 +23,28 @@ func Test_lineFormatter_Format(t *testing.T) {
 		in      []byte
 	}{
 		{
+			"count",
+			newMustLineFormatter(
+				`{{.foo | count "abc" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("3"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
+			"count regex",
+			newMustLineFormatter(
+				`{{.foo | count "a|b|c" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("9"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
@@ -450,6 +472,24 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				{Name: "ts", Value: "1661518453"},
 			},
 		},
+		{
+			"count",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "test" }}`)}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "count", Value: "1"},
+			},
+		},
+		{
+			"count regex no matches",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "notmatching.*" }}`)}),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "count", Value: "0"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -469,6 +509,30 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 		panic(err)
 	}
 	return lf
+}
+
+func Test_InvalidRegex(t *testing.T) {
+	t.Run("regexReplaceAll", func(t *testing.T) {
+		cntFunc := functionMap["regexReplaceAll"]
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("a|b|\\q", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
+	t.Run("regexReplaceAllLiteral", func(t *testing.T) {
+		cntFunc := functionMap["regexReplaceAllLiteral"]
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("\\h", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
+	t.Run("count", func(t *testing.T) {
+		cntFunc := functionMap["count"]
+		f := cntFunc.(func(string, string) (int, error))
+		ret, err := f("a|b|\\K", "input")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
 }
 
 func Test_validate(t *testing.T) {

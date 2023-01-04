@@ -28,7 +28,7 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
+	ingester_client "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
@@ -63,41 +63,43 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix   string                 `yaml:"http_prefix"`
+	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
 	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
 	//				 These are only here to allow us to test the new functionality.
-	UseBufferedLogger bool `yaml:"use_buffered_logger"`
-	UseSyncLogger     bool `yaml:"use_sync_logger"`
+	UseBufferedLogger bool `yaml:"use_buffered_logger" doc:"hidden"`
+	UseSyncLogger     bool `yaml:"use_sync_logger" doc:"hidden"`
 
-	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty"`
-
-	Common              common.Config               `yaml:"common,omitempty"`
 	Server              server.Config               `yaml:"server,omitempty"`
-	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty"`
+	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty" doc:"hidden"`
 	Distributor         distributor.Config          `yaml:"distributor,omitempty"`
 	Querier             querier.Config              `yaml:"querier,omitempty"`
-	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty"`
-	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
-	IngesterClient      client.Config               `yaml:"ingester_client,omitempty"`
+	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
+	IngesterClient      ingester_client.Config      `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
-	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
 	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
+	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
-	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
-	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
-	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
-	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
-	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
-	RuntimeConfig       runtimeconfig.Config        `yaml:"runtime_config,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
-	Tracing             tracing.Config              `yaml:"tracing"`
 	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
-	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
-	UsageReport         usagestats.Config           `yaml:"analytics"`
+	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
+	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
+	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist" doc:"hidden"`
+
+	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
+	Tracing       tracing.Config       `yaml:"tracing"`
+	UsageReport   usagestats.Config    `yaml:"analytics"`
+
+	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
+
+	Common common.Config `yaml:"common,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -107,12 +109,24 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Set the default module list to 'all'
 	c.Target = []string{All}
-	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
-		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
-		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
-	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
-	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
-		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
+	f.Var(&c.Target, "target",
+		"A comma-separated list of components to run. "+
+			"The default value 'all' runs Loki in single binary mode. "+
+			"The value 'read' is an alias to run only read-path related components such as the querier and query-frontend, but all in the same process. "+
+			"The value 'write' is an alias to run only write-path related components such as the distributor and compactor, but all in the same process. "+
+			"Supported values: all, compactor, distributor, ingester, querier, query-scheduler, ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write. "+
+			"A full list of available targets can be printed when running Loki with the '-list-targets' command line flag. ",
+	)
+	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
+		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
+			"If false, the OrgID will always be set to 'fake'.",
+	)
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
+		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
+			"Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size. "+
+			"The ballast will not consume physical memory, because it is never read from. "+
+			"It will, however, distort metrics, because it is counted as live memory. ",
+	)
 	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
 	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
@@ -469,6 +483,7 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
 
 	t.Server.HTTP.Path("/debug/fgprof").Methods("GET", "POST").Handler(fgprof.Handler())
+	t.Server.HTTP.Path("/loki/api/v1/format_query").Methods("GET", "POST").HandlerFunc(formatQueryHandler())
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
