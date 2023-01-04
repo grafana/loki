@@ -92,6 +92,15 @@ var (
 			return false
 		},
 	})
+	createUpdateOrDeletePred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
+				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	})
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -194,7 +203,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
-		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred)
+		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
+		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueAllLokiStacksHandler(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
