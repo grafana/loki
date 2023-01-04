@@ -122,8 +122,8 @@ func (w *WALWatcher) run() error {
 			return nil
 		}
 
-		// we now a new segment has been cut, upon advancing the segment pointer, emit the send batch call
-		// the call to sending the batch will be locking, since the sender routine is a single one
+		// We know new segment has been cut upon advancing the segment pointer. Call the consumer's `SegmentEnd`
+		// callback to notify that a segment was read fully.
 		w.consumer.SegmentEnd(currentSegment)
 		currentSegment++
 	}
