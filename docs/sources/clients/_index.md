@@ -2,7 +2,7 @@
 title: Clients
 weight: 600
 ---
-# Grafana Loki clients
+# Grafana Loki clients for sending data to Loki
 
 Grafana Loki supports the following official clients for sending logs:
 
@@ -76,3 +76,8 @@ when using or writing a third-party client.
 - [mjaron-tinyloki-java](https://github.com/mjfryc/mjaron-tinyloki-java) (Java)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
+
+# Loki Clients for reading data
+
+ - [LogCLI, Grafana Loki’s command-line interface](https://grafana.com/docs/loki/latest/tools/logcli/)
+
