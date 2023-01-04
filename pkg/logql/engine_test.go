@@ -585,7 +585,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		},
 		//sort and sort_desc
 		{
-			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -603,7 +603,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),

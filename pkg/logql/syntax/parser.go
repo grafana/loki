@@ -169,9 +169,23 @@ func validateSampleExpr(expr SampleExpr) error {
 		return validateSampleExpr(e.RHS)
 	case *LiteralExpr, *VectorExpr:
 		return nil
+	case *VectorAggregationExpr:
+		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
+			return validateSortGrouping(e.Grouping)
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		return validateMatchers(expr.Selector().Matchers())
 	}
+}
+
+// validateSortGrouping prevent by|without groupings on sort operations.
+// This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
+func validateSortGrouping(grouping *Grouping) error {
+	if grouping != nil && len(grouping.Groups) > 0 {
+		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+	}
+	return nil
 }
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`

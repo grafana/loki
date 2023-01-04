@@ -199,6 +199,19 @@ func Test_SampleExpr_String_Fail(t *testing.T) {
 	}
 }
 
+func Test_SampleExpr_Sort_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "sort and sort_desc doesn't allow grouping by")
+		})
+	}
+}
+
 func TestMatcherGroups(t *testing.T) {
 	for i, tc := range []struct {
 		query string
