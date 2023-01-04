@@ -171,7 +171,9 @@ func validateSampleExpr(expr SampleExpr) error {
 		return nil
 	case *VectorAggregationExpr:
 		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
-			return validateSortGrouping(e.Grouping)
+			if err := validateSortGrouping(e.Grouping); err != nil {
+				return err
+			}
 		}
 		return validateSampleExpr(e.Left)
 	default:
