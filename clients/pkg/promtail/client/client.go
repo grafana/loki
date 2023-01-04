@@ -307,15 +307,15 @@ func (c *client) replayWAL() error {
 		}
 		defer closer.Close()
 
-		// todo, reduce allocations
 		b := newBatch(0)
 		seriesRecs := make(map[uint64]model.LabelSet)
 		for r.Next() {
 			rec := recordPool.GetRecord()
 			entry := api.Entry{}
 			if err := ingester.DecodeWALRecord(r.Record(), rec); err != nil {
-				// this error doesn't need to be fatal, we should maybe just throw out this batch?
-				level.Warn(c.logger).Log("msg", "failed to decode a wal record", "err", err)
+				// this error doesn't need to be fatal, skipping entry that couldn't be decoded
+				level.Warn(c.logger).Log("msg", "failed to decode a wal record. Continuing", "err", err)
+				continue
 			}
 			for _, series := range rec.Series {
 				seriesRecs[uint64(series.Ref)] = util.MapToModelLabelSet(series.Labels.Map())
@@ -325,8 +325,6 @@ func (c *client) replayWAL() error {
 					entry.Labels = l
 					for _, e := range samples.Entries {
 						entry.Entry = e
-						// If adding the entry to the batch will increase the size over the max
-						// size allowed, we do send the current batch and then create a new one
 						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
 							_ = c.sendBatch(tenantID, b)
 							new := c.newBatch()
@@ -341,7 +339,6 @@ func (c *client) replayWAL() error {
 				}
 			}
 		}
-		// send last batch if there are entries left
 		if b.bytes > 0 {
 			_ = c.sendBatch(tenantID, b)
 		}
@@ -423,7 +420,10 @@ func (c *client) runSendSide(
 		maxWaitCheck.Stop()
 		// Send all pending batches
 		for tenantID, batch := range batches {
-			_ = dispatchBatch(tenantID, batch)
+			if err := dispatchBatch(tenantID, batch); err != nil {
+				level.Error(c.logger).Log("msg",
+					"Failed to dispatch batch. If WAL is enabled, this could bigger batches to be sent", "err", err)
+			}
 		}
 
 		c.wg.Done()
@@ -441,10 +441,8 @@ func (c *client) runSendSide(
 			wal, err := c.wal.getWAL(tenantID)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "failed to get WAL", "err", err)
-				// return here?
 				return
 			}
-			// write to wal
 			entryWriter.WriteEntry(e, wal, c.logger)
 
 			// after writing to wal, keep track of batch size to know when to cut the batch. That is either
@@ -467,7 +465,10 @@ func (c *client) runSendSide(
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				_ = dispatchBatch(tenantID, batch)
+				if err := dispatchBatch(tenantID, batch); err != nil {
+					level.Error(c.logger).Log("msg",
+						"Failed to dispatch batch. If WAL is enabled, this could bigger batches to be sent", "err", err)
+				}
 				new := c.newBatch()
 				_ = addEntryToBatch(new, e)
 				batches[tenantID] = new
@@ -488,7 +489,10 @@ func (c *client) runSendSide(
 				if batch.age() < c.cfg.BatchWait {
 					continue
 				}
-				_ = dispatchBatch(tenantID, batch)
+				if err := dispatchBatch(tenantID, batch); err != nil {
+					level.Error(c.logger).Log("msg",
+						"Failed to dispatch batch. If WAL is enabled, this could bigger batches to be sent", "err", err)
+				}
 				delete(batches, tenantID)
 			}
 		}
@@ -566,7 +570,6 @@ func (c *client) sendBatch(tenantID string, batch *batch) error {
 			}
 			return nil
 		}
-		// we know err != nil
 
 		// Only retry 429s, 500s and connection-level errors.
 		if status > 0 && status != 429 && status/100 != 5 {
@@ -695,8 +698,13 @@ func newClientWAL(c *client) clientWAL {
 	}
 }
 
-// getWAL is clientWAL main method. Given a tenantID, it retrieves it's corresponding WAL. If none exists, it creates
-// a new one, and launches a watcher that listens to entries being added, builds batch and sends them when a signaled.
+// getWAL is clientWAL main method. Given a tenantID, it retrieves it's corresponding WAL.
+//
+// If WAL is enabled and none
+// exists, it creates a new one, and launches a watcher that listens to entries being added, builds batch and sends them
+// when a signaled.
+//
+// If WAL is disabled, returns a no-op WAL implementation.
 func (c *clientWAL) getWAL(tenantID string) (WAL, error) {
 	if w, ok := c.tenantWALs[tenantID]; ok {
 		return w, nil
@@ -707,7 +715,6 @@ func (c *clientWAL) getWAL(tenantID string) (WAL, error) {
 		level.Error(c.client.logger).Log("msg", "could not start WAL", "err", err)
 		return nil, err
 	}
-	// todo: find a cleaner way to do this
 	if c.client.cfg.WAL.Enabled {
 		consumer := newClientConsumer(func(b *batch) error {
 			return c.client.sendBatch(tenantID, b)
@@ -720,6 +727,7 @@ func (c *clientWAL) getWAL(tenantID string) (WAL, error) {
 	return wal, nil
 }
 
+// Stop all watchers launched for each WAL.
 func (c *clientWAL) Stop() {
 	for _, watcher := range c.watchers {
 		watcher.Stop()
