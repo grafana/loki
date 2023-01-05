@@ -3,15 +3,19 @@ package storage
 import (
 	"os"
 	"path"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
+	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
@@ -48,60 +52,6 @@ func TestFactoryStop(t *testing.T) {
 	require.NoError(t, err)
 
 	store.Stop()
-}
-
-func TestNamedStores(t *testing.T) {
-	tempDir := t.TempDir()
-
-	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
-	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = "filesystem.named-store"
-	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
-
-	cfg := Config{
-		NamedStores: NamedStores{
-			Filesystem: map[string]local.FSConfig{
-				"named-store": {Directory: path.Join(tempDir, "chunks")},
-			},
-		},
-		BoltDBShipperConfig: boltdbShipperConfig,
-	}
-
-	schemaConfig := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:       config.DayTime{Time: timeToModelTime(parseDate("2019-01-01"))},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem.named-store",
-				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
-				},
-			},
-		},
-	}
-
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
-	require.NoError(t, err)
-
-	t.Run("period config referring to configured named store", func(t *testing.T) {
-		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
-		require.NoError(t, err)
-
-		store.Stop()
-	})
-
-	t.Run("period config referring to unrecognized named store", func(t *testing.T) {
-		schemaConfig := schemaConfig
-		schemaConfig.Configs[0].ObjectType = "filesystem.not-found"
-		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "Unrecognized named filesystem storage config filesystem.not-found")
-	})
 }
 
 func TestCassandraInMultipleSchemas(t *testing.T) {
@@ -141,6 +91,148 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	require.NoError(t, err)
 
 	store.Stop()
+}
+
+func TestNamedStores(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := shipper.Config{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	boltdbShipperConfig.SharedStoreType = "named-store"
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+
+	cfg := Config{
+		NamedStores: NamedStores{
+			Filesystem: map[string]local.FSConfig{
+				"named-store": {Directory: path.Join(tempDir, "named-store")},
+			},
+		},
+		FSConfig: local.FSConfig{
+			Directory: path.Join(tempDir, "default"),
+		},
+		BoltDBShipperConfig: boltdbShipperConfig,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(parseDate("2019-01-01"))},
+				IndexType:  "boltdb-shipper",
+				ObjectType: "named-store",
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 168,
+				},
+			},
+		},
+	}
+
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	t.Run("period config referring to configured named store", func(t *testing.T) {
+		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		require.NoError(t, err)
+		defer store.Stop()
+
+		// FSObjectClient creates the configured dir on init, ensure that correct cfg is picked by checking for it.
+		_, err = os.Stat(cfg.NamedStores.Filesystem["named-store"].Directory)
+		require.NoError(t, err)
+
+		// dir specified in StorageConfig/FSConfig should not be created as we are not referring to it.
+		_, err = os.Stat(cfg.FSConfig.Directory)
+		require.Error(t, err)
+		require.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("period config referring to unrecognized store", func(t *testing.T) {
+		schemaConfig := schemaConfig
+		schemaConfig.Configs[0].ObjectType = "not-found"
+		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Unrecognized storage client not-found, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store")
+	})
+}
+
+func TestNamedStores_checkForDuplicates(t *testing.T) {
+	for name, tbl := range map[string]struct {
+		ns          NamedStores
+		expectedErr string
+	}{
+		"illegal store name": {
+			ns: NamedStores{
+				GCS: map[string]gcp.GCSConfig{
+					"aws": {},
+				},
+			},
+			expectedErr: "named store aws should not match with the name of a predefined storage type",
+		},
+		"found duplicates": {
+			ns: NamedStores{
+				AWS: map[string]aws.StorageConfig{
+					"store-1": {},
+					"store-2": {},
+				},
+				GCS: map[string]gcp.GCSConfig{
+					"store-1": {},
+				},
+			},
+			expectedErr: "named store store-1 is already defined under",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := tbl.ns.checkForDuplicates()
+			require.ErrorContains(t, err, tbl.expectedErr)
+		})
+	}
+}
+
+func TestNamedStores_lookupStoreType(t *testing.T) {
+	ns := NamedStores{
+		GCS: map[string]gcp.GCSConfig{
+			"store-1": {},
+			"store-2": {},
+		},
+		AWS: map[string]aws.StorageConfig{
+			"store-3": {},
+		},
+	}
+
+	storeType, ok := ns.lookupStoreType("store-1")
+	assert.True(t, ok)
+	assert.Equal(t, "gcs", storeType)
+
+	storeType, ok = ns.lookupStoreType("store-3")
+	assert.True(t, ok)
+	assert.Equal(t, "aws", storeType)
+
+	_, ok = ns.lookupStoreType("store-4")
+	assert.False(t, ok)
+}
+
+func TestGetYamlTagKey(t *testing.T) {
+	v := reflect.TypeOf(struct {
+		foo    string `yaml:"footag" doc:"abc"`
+		bar    bool   `yaml:"bartag,omitempty"`
+		baz    int    `yaml:"-"`
+		foobar int
+	}{})
+
+	f, _ := v.FieldByName("foo")
+	require.Equal(t, "footag", getYAMLTagKey(f))
+
+	f, _ = v.FieldByName("bar")
+	require.Equal(t, "bartag", getYAMLTagKey(f))
+
+	f, _ = v.FieldByName("baz")
+	require.Equal(t, "", getYAMLTagKey(f))
+
+	f, _ = v.FieldByName("foobar")
+	require.Equal(t, "", getYAMLTagKey(f))
 }
 
 // DefaultSchemaConfig creates a simple schema config for testing

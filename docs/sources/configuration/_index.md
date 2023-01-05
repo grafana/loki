@@ -1661,8 +1661,8 @@ hedging:
 #       store-1:
 #         endpoint: s3://foo-bucket
 #         region: us-west1
-# Named store from this example can be used by setting object_store to
-# aws.store-1 in period_config.
+# Named store from this example can be used by setting object_store to store-1
+# in period_config.
 [named_stores: <named_stores_config>]
 
 # Cache validity for active index entries. Should be no higher than
@@ -4046,7 +4046,7 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be used by setting object_store to aws.store-1 in period_config.
+Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
 [aws: <map of string to aws_storage_config>]
