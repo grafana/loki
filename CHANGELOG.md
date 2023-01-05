@@ -5,7 +5,6 @@
 #### Loki
 
 ##### Enhancements
-* [8024](https://github.com/grafana/loki/pull/8024) **jijotj**: Support passing loki address as environment variable
 * [7951](https://github.com/grafana/loki/pull/7951) **MichelHollands**: Add a count template function to line_format and label_format.
 * [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap.
 * [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
@@ -58,6 +57,9 @@
 #### Fluent Bit
 
 #### Loki Canary
+
+##### Enhancements
+* [8024](https://github.com/grafana/loki/pull/8024) **jijotj**: Support passing loki address as environment variable
 
 #### Jsonnet
 
