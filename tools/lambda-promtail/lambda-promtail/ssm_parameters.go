@@ -98,6 +98,7 @@ func getArrayOfParameterNames(parameterNames map[string]string) []*string {
 	for _, name := range parameterNames {
 		names = append(names, &name)
 	}
+
 	return names
 }
 
