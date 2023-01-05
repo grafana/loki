@@ -36,14 +36,15 @@ type AuthorizationSpec struct {
 // extra lokistack gateway k8s objects (e.g. ServiceAccount, Route, RBAC)
 // on openshift.
 type BuildOptions struct {
-	LokiStackName        string
-	LokiStackNamespace   string
-	GatewayName          string
-	GatewaySvcName       string
-	GatewaySvcTargetPort string
-	RulerName            string
-	Labels               map[string]string
-	AlertManagerEnabled  bool
+	LokiStackName                   string
+	LokiStackNamespace              string
+	GatewayName                     string
+	GatewaySvcName                  string
+	GatewaySvcTargetPort            string
+	RulerName                       string
+	Labels                          map[string]string
+	AlertManagerEnabled             bool
+	UserWorkloadAlertManagerEnabled bool
 }
 
 // TenantData defines the existing cookieSecret for lokistack reconcile.

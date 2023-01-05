@@ -642,15 +642,17 @@ func newOffsetExpr(offset time.Duration) *OffsetExpr {
 
 const (
 	// vector ops
-	OpTypeSum     = "sum"
-	OpTypeAvg     = "avg"
-	OpTypeMax     = "max"
-	OpTypeMin     = "min"
-	OpTypeCount   = "count"
-	OpTypeStddev  = "stddev"
-	OpTypeStdvar  = "stdvar"
-	OpTypeBottomK = "bottomk"
-	OpTypeTopK    = "topk"
+	OpTypeSum      = "sum"
+	OpTypeAvg      = "avg"
+	OpTypeMax      = "max"
+	OpTypeMin      = "min"
+	OpTypeCount    = "count"
+	OpTypeStddev   = "stddev"
+	OpTypeStdvar   = "stdvar"
+	OpTypeBottomK  = "bottomk"
+	OpTypeTopK     = "topk"
+	OpTypeSort     = "sort"
+	OpTypeSortDesc = "sort_desc"
 
 	// range vector ops
 	OpRangeTypeCount       = "count_over_time"

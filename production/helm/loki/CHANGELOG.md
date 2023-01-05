@@ -11,6 +11,10 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 3.8.1
+
+- [ENHANCEMENT] Add the ability to specify container lifecycle
+
 ## 3.8.0
 
 - [BUGFIX] Added `helm-weight` annotations to the tokengen and provisioner jobs to make sure tokengen always runs before provisioner

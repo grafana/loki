@@ -4,16 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/prometheus/common/model"
 	"math"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
-
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -21,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -29,7 +28,7 @@ var (
 	nilShardingMetrics = logql.NewShardMapperMetrics(nil)
 	defaultReq         = func() *LokiRequest {
 		return &LokiRequest{
-			Step: 1000,
+			Step:      1000,
 			Limit:     100,
 			StartTs:   start,
 			EndTs:     end,
@@ -403,24 +402,24 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 	now := model.Now()
 	confs := ShardingConfigs{
 		{
-			From:        config.DayTime{Time: now.Add(-30*24*time.Hour)},
-			RowShards:   2,
+			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
+			RowShards: 2,
 		},
 		{
-			From: config.DayTime{Time: now.Add(-24*time.Hour)},
+			From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 			RowShards: 3,
 		},
 	}
 
-	for _, tc := range []struct{
-		name string
-		req queryrangebase.Request
-		resp queryrangebase.Response
+	for _, tc := range []struct {
+		name              string
+		req               queryrangebase.Request
+		resp              queryrangebase.Response
 		numExpectedShards int
 	}{
 		{
 			name: "logs query touching just the active schema config",
-			req: defaultReq().WithStartEndTime(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEndTime(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -431,7 +430,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "logs query touching just the prev schema config",
-			req: defaultReq().WithStartEndTime(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -442,7 +441,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query touching just the active schema config",
-			req: defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -459,7 +458,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query touching just the prev schema config",
-			req: defaultReq().WithStartEndTime(confs[0].From.Time.Add(time.Hour).Time(), confs[0].From.Time.Add(2*time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Add(time.Hour).Time(), confs[0].From.Time.Add(2*time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -476,7 +475,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "logs query covering both schemas",
-			req: defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -487,7 +486,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query covering both schemas",
-			req: defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -504,7 +503,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough range to cover previous schema too",
-			req: defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
+			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -521,7 +520,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough offset to shift it to previous schema",
-			req: defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m] offset 12h)`),
+			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m] offset 12h)`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -536,7 +535,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			},
 			numExpectedShards: 1,
 		},
-	}{
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var lock sync.Mutex
 			called := 0
@@ -572,25 +571,25 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 	now := model.Now()
 	confs := ShardingConfigs{
 		{
-			From:        config.DayTime{Time: now.Add(-30*24*time.Hour)},
-			RowShards:   2,
+			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
+			RowShards: 2,
 		},
 		{
-			From: config.DayTime{Time: now.Add(-24*time.Hour)},
+			From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 			RowShards: 3,
 		},
 	}
 
-	for _, tc := range []struct{
-		name string
-		req *LokiSeriesRequest
+	for _, tc := range []struct {
+		name              string
+		req               *LokiSeriesRequest
 		numExpectedShards int
 	}{
 		{
 			name: "series query touching just the active schema config",
 			req: &LokiSeriesRequest{
 				Match:   []string{"foo", "bar"},
-				StartTs: confs[1].From.Time.Add(5*time.Minute).Time(),
+				StartTs: confs[1].From.Time.Add(5 * time.Minute).Time(),
 				EndTs:   now.Time(),
 				Path:    "foo",
 			},
@@ -613,9 +612,9 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				StartTs: confs[0].From.Time.Time(),
 				EndTs:   now.Time(),
 				Path:    "foo",
-			},			numExpectedShards: 1,
+			}, numExpectedShards: 1,
 		},
-	}{
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			var lock sync.Mutex
@@ -643,7 +642,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				return &LokiSeriesResponse{
 					Status:  "success",
 					Version: 1,
-					Data: []logproto.SeriesIdentifier{},
+					Data:    []logproto.SeriesIdentifier{},
 				}, nil
 			})).Do(ctx, tc.req)
 			require.NoError(t, err)

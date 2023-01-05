@@ -570,7 +570,8 @@ spec:
         name: ""
         version: v1
       specDescriptors:
-      - description: Limits defines the limits to be applied to log stream processing.
+      - description: Limits defines the per-tenant limits to be applied to log stream
+          processing and the per-tenant the config overrides.
         displayName: Rate Limiting
         path: limits
         x-descriptors:
@@ -638,7 +639,7 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Tenants defines the limits applied per tenant.
+      - description: Tenants defines the limits and overrides applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
       - description: IngestionBurstSize defines the local rate-limited sample size
@@ -1018,6 +1019,54 @@ spec:
         path: alertmanager
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: alertmanager.client
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Basic Authentication
+        path: alertmanager.client.basicAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The subject's password for the basic authentication configuration.
+        displayName: Password
+        path: alertmanager.client.basicAuth.password
+      - description: The subject's username for the basic authentication configuration.
+        displayName: Username
+        path: alertmanager.client.basicAuth.username
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
+        path: alertmanager.client.headerAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The credentials for the header authentication configuration.
+        displayName: Credentials
+        path: alertmanager.client.headerAuth.credentials
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
+        displayName: Credentials File
+        path: alertmanager.client.headerAuth.credentialsFile
+      - description: The authentication type for the header authentication configuration.
+        displayName: Type
+        path: alertmanager.client.headerAuth.type
+      - description: TLS configuration for reaching the alertmanager endpoints.
+        displayName: TLS
+        path: alertmanager.client.tls
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The CA certificate file path for the TLS configuration.
+        displayName: CA Path
+        path: alertmanager.client.tls.caPath
+      - description: The client-side certificate file path for the TLS configuration.
+        displayName: Cert Path
+        path: alertmanager.client.tls.certPath
+      - description: The client-side key file path for the TLS configuration.
+        displayName: Key Path
+        path: alertmanager.client.tls.keyPath
+      - description: The server name to validate in the alertmanager server certificates.
+        displayName: Server Name
+        path: alertmanager.client.tls.serverName
       - description: Defines the configuration for DNS-based discovery of AlertManager
           hosts.
         displayName: DNS Discovery
@@ -1114,6 +1163,152 @@ spec:
       - description: Interval on how frequently to evaluate rules.
         displayName: Evaluation Interval
         path: evaluationInterval
+      - description: Overrides defines the config overrides to be applied per-tenant.
+        displayName: Rate Limiting
+        path: overrides
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: overrides.alertmanager.client
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Basic Authentication
+        path: overrides.alertmanager.client.basicAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The subject's password for the basic authentication configuration.
+        displayName: Password
+        path: overrides.alertmanager.client.basicAuth.password
+      - description: The subject's username for the basic authentication configuration.
+        displayName: Username
+        path: overrides.alertmanager.client.basicAuth.username
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
+        path: overrides.alertmanager.client.headerAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The credentials for the header authentication configuration.
+        displayName: Credentials
+        path: overrides.alertmanager.client.headerAuth.credentials
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
+        displayName: Credentials File
+        path: overrides.alertmanager.client.headerAuth.credentialsFile
+      - description: The authentication type for the header authentication configuration.
+        displayName: Type
+        path: overrides.alertmanager.client.headerAuth.type
+      - description: TLS configuration for reaching the alertmanager endpoints.
+        displayName: TLS
+        path: overrides.alertmanager.client.tls
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The CA certificate file path for the TLS configuration.
+        displayName: CA Path
+        path: overrides.alertmanager.client.tls.caPath
+      - description: The client-side certificate file path for the TLS configuration.
+        displayName: Cert Path
+        path: overrides.alertmanager.client.tls.certPath
+      - description: The client-side key file path for the TLS configuration.
+        displayName: Key Path
+        path: overrides.alertmanager.client.tls.keyPath
+      - description: The server name to validate in the alertmanager server certificates.
+        displayName: Server Name
+        path: overrides.alertmanager.client.tls.serverName
+      - description: Defines the configuration for DNS-based discovery of AlertManager
+          hosts.
+        displayName: DNS Discovery
+        path: overrides.alertmanager.discovery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Use DNS SRV records to discover Alertmanager hosts.
+        displayName: Enable SRV
+        path: overrides.alertmanager.discovery.enableSRV
+      - description: How long to wait between refreshing DNS resolutions of Alertmanager
+          hosts.
+        displayName: Refresh Interval
+        path: overrides.alertmanager.discovery.refreshInterval
+      - description: If enabled, then requests to Alertmanager use the v2 API.
+        displayName: Enable AlertManager V2 API
+        path: overrides.alertmanager.enableV2
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
+          URL is treated as a separate group in the configuration. Multiple Alertmanagers
+          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+        displayName: AlertManager Endpoints
+        path: overrides.alertmanager.endpoints
+      - description: Additional labels to add to all alerts.
+        displayName: Extra Alert Labels
+        path: overrides.alertmanager.externalLabels
+      - description: URL for alerts return path.
+        displayName: Alert External URL
+        path: overrides.alertmanager.externalUrl
+      - description: Defines the configuration for the notification queue to AlertManager
+          hosts.
+        displayName: Notification Queue
+        path: overrides.alertmanager.notificationQueue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Capacity of the queue for notifications to be sent to the Alertmanager.
+        displayName: Notification Queue Capacity
+        path: overrides.alertmanager.notificationQueue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum duration between alert and restored "for" state. This
+          is maintained only for alerts with configured "for" time greater than the
+          grace period.
+        displayName: Firing Grace Period
+        path: overrides.alertmanager.notificationQueue.forGracePeriod
+      - description: Max time to tolerate outage for restoring "for" state of alert.
+        displayName: Outage Tolerance
+        path: overrides.alertmanager.notificationQueue.forOutageTolerance
+      - description: Minimum amount of time to wait before resending an alert to Alertmanager.
+        displayName: Resend Delay
+        path: overrides.alertmanager.notificationQueue.resendDelay
+      - description: HTTP timeout duration when sending notifications to the Alertmanager.
+        displayName: Timeout
+        path: overrides.alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: overrides.alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: overrides.alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: overrides.alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: overrides.alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: overrides.alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: overrides.alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: overrides.alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: overrides.alertmanager.relabelConfigs[0].targetLabel
       - description: Interval on how frequently to poll for new rule definitions.
         displayName: Poll Interval
         path: pollInterval

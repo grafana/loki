@@ -666,6 +666,12 @@ The `frontend` block configures the Loki query-frontend.
 # frontend.grpc-client-config
 [grpc_client_config: <grpc_client>]
 
+# Time to wait for inflight requests to finish before forcefully shutting down.
+# This needs to be aligned with the query timeout and the graceful termination
+# period of the process orchestrator.
+# CLI flag: -frontend.graceful-shutdown-timeout
+[graceful_shutdown_timeout: <duration> | default = 5m]
+
 # Name of network interface to read address from. This address is sent to
 # query-scheduler and querier, which uses it to send the query response back to
 # query-frontend.
@@ -3608,6 +3614,55 @@ fifocache:
 # The maximum number of enqueued asynchronous writeback cache allowed.
 # CLI flag: -<prefix>.max-async-cache-write-back-buffer-size
 [async_cache_write_back_buffer_size: <int> | default = 500]
+```
+
+### period_config
+
+The `period_config` block configures what index schemas should be used for from specific time periods.
+
+```yaml
+# The date of the first day that index buckets should be created. Use a date in
+# the past if this is your only period_config, otherwise use a date when you
+# want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15.
+[from: <daytime>]
+
+# store and object_store below affect which <storage_config> key is used.
+# Which store to use for the index. Either aws, aws-dynamo, gcp, bigtable,
+# bigtable-hashed, cassandra, boltdb or boltdb-shipper.
+[store: <string> | default = ""]
+
+# Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs,
+# cassandra, swift or filesystem. If omitted, defaults to the same value as
+# store.
+[object_store: <string> | default = ""]
+
+# The schema version to use, current recommended schema is v11.
+[schema: <string> | default = ""]
+
+# Configures how the index is updated and stored.
+index:
+  # Table prefix for all period tables.
+  [prefix: <string> | default = ""]
+
+  # Table period.
+  [period: <duration>]
+
+  # A map to be added to all managed tables.
+  [tags: <map of string to string>]
+
+# Configured how the chunks are updated and stored.
+chunks:
+  # Table prefix for all period tables.
+  [prefix: <string> | default = ""]
+
+  # Table period.
+  [period: <duration>]
+
+  # A map to be added to all managed tables.
+  [tags: <map of string to string>]
+
+# How many shards will be created. Only used if schema is v10 or greater.
+[row_shards: <int>]
 ```
 
 ### azure_storage_config

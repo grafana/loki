@@ -1,0 +1,14 @@
+---
+enterprise:
+  enabled: true
+  adminTokenSecret: "gel-admin-token"
+  provisioner:
+    provisionedSecretPrefix: "provisioned-secret"
+    tenants:
+      - loki
+monitoring:
+  selfMonitoring+:
+    tenant: "loki"
+  serviceMonitor:
+    labels:
+      release: "prometheus"

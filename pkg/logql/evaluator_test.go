@@ -1,11 +1,10 @@
 package logql
 
 import (
-	"math"
-	"testing"
-
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"math"
+	"testing"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
@@ -33,7 +32,22 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		false,
 	).Point.V))
 }
+func TestDefaultEvaluator_Sortable(t *testing.T) {
+	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
+	sortable, err := Sortable(LiteralParams{qs: logqlSort})
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, true, sortable)
 
+	logqlSum := `sum(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
+	sortableSum, err := Sortable(LiteralParams{qs: logqlSum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, false, sortableSum)
+
+}
 func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string

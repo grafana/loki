@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_SplitRangeInterval(t *testing.T) {
