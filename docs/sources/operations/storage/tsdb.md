@@ -1,0 +1,85 @@
+---
+title: TSDB
+weight: 1000
+---
+
+# TSDB
+
+"TSDB" is the new index in Loki, generally available starting in Loki v2.8. It is heavily inspired and takes much code from Prometheus's TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). For a deeper explanation you can read Owen's [blog post](https://lokidex.com/posts/tsdb/). The short version is that this new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper](./boltdb-shipper) index which preceded it.
+
+## Example Configuration
+
+To get started using TSDB, add the following configurations:
+
+```yaml
+schema_config:
+  configs:
+    # Old boltdb-shipper schema. Included in example for reference but does not need changing.
+    - from: "2023-01-03" # <---- A date in the past
+      index:
+        period: 24h
+        prefix: index_
+      object_store: gcs
+      schema: v12
+      store: boltdb-shipper
+    # New TSDB schema below
+    - from: "2023-01-05" # <---- A date in the future
+      index:
+        period: 24h
+        prefix: index_
+      object_store: gcs
+      schema: v12
+      store: tsdb
+
+storage_config:
+  # Old boltdb-shipper configuration. Included in example for reference but does not need changing.
+  boltdb_shipper:
+    active_index_directory: /data/index
+    build_per_tenant_index: true
+    cache_location: /data/boltdb-cache
+    index_gateway_client:
+      # only applicable if using microservices where index-gateways are independently deployed.
+      # This example is using kubernetes-style naming.
+      server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
+    shared_store: gcs
+  # New tsdb-shipper configuration
+  tsdb_shipper:
+    active_index_directory: /data/tsdb-index
+    cache_location: /data/tsdb-cache
+    index_gateway_client:
+      # only applicable if using microservices where index-gateways are independently deployed.
+      # This example is using kubernetes-style naming.
+      server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
+    shared_store: gcs
+
+query_scheduler:
+  # the TSDB index dispatches many more, but each individually smaller, requests. 
+  # We increase the pending request queue sizes to compensate.
+  max_outstanding_requests_per_tenant: 32768
+
+querier:
+  # Each `querier` component process runs a number of parallel workers to process queries simultaneously.
+  # You may want to adjust this up or down depending on your resource usage
+  # (more available cpu and memory can tolerate higher values and vice versa),
+  # but we find the most success running at around `16` with tsdb
+  max_concurrent: 16
+
+```
+
+## Operations
+
+### Limits
+
+We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `512` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
+
+### Fine-Tuning
+
+This section shouldn't be necessary for the vast majority of users, but if you're tuning performance on larger loki deployments, this may be for you.
+
+1) Frontend `scheduler_worker_concurrency`
+Loki frontends create a number of goroutines per `query-scheduler` responsible for enqueueing incoming queries to the schedulers. These are "subqueries" post query planning splits, resulting in potentially many subqueries per user query. By default there are `5` goroutines per frontend+scheduler pair. Under very high load, you may want to increase this:
+
+```yaml
+frontend:
+  scheduler_worker_concurrency: 60
+```
