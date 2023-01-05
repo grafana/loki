@@ -50,7 +50,6 @@ It is not possible to run the scalable mode with the `filesystem` storage.
           admin: admin
         type: s3
         s3:
-          s3: <WHAT SHOULD GO HERE?>
           endpoint: <endpoint>
           region: <AWS region>
           secretAccessKey: <AWS secret access key>

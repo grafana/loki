@@ -103,6 +103,26 @@ func GetRangeType(q Params) QueryRangeType {
 	return RangeType
 }
 
+// Sortable logql contain sort or sort_desc.
+func Sortable(q Params) (bool, error) {
+	var sortable bool
+	expr, err := syntax.ParseSampleExpr(q.Query())
+	if err != nil {
+		return false, err
+	}
+	expr.Walk(func(e interface{}) {
+		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
+		if !ok {
+			return
+		}
+		if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
+			sortable = true
+			return
+		}
+	})
+	return sortable, nil
+}
+
 // Evaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
 	SampleEvaluator
@@ -303,6 +323,18 @@ func vectorAggEvaluator(
 						Point:  promql.Point{V: s.V},
 						Metric: s.Metric,
 					})
+				} else if expr.Operation == syntax.OpTypeSortDesc {
+					result[groupingKey].heap = make(vectorByValueHeap, 0)
+					heap.Push(&result[groupingKey].heap, &promql.Sample{
+						Point:  promql.Point{V: s.V},
+						Metric: s.Metric,
+					})
+				} else if expr.Operation == syntax.OpTypeSort {
+					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
+					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
+						Point:  promql.Point{V: s.V},
+						Metric: s.Metric,
+					})
 				}
 				continue
 			}
@@ -354,6 +386,16 @@ func vectorAggEvaluator(
 						Metric: s.Metric,
 					})
 				}
+			case syntax.OpTypeSortDesc:
+				heap.Push(&group.heap, &promql.Sample{
+					Point:  promql.Point{V: s.V},
+					Metric: s.Metric,
+				})
+			case syntax.OpTypeSort:
+				heap.Push(&group.reverseHeap, &promql.Sample{
+					Point:  promql.Point{V: s.V},
+					Metric: s.Metric,
+				})
 			default:
 				panic(errors.Errorf("expected aggregation operator but got %q", expr.Operation))
 			}
@@ -373,7 +415,7 @@ func vectorAggEvaluator(
 			case syntax.OpTypeStdvar:
 				aggr.value = aggr.value / float64(aggr.groupCount)
 
-			case syntax.OpTypeTopK:
+			case syntax.OpTypeTopK, syntax.OpTypeSortDesc:
 				// The heap keeps the lowest value on top, so reverse it.
 				sort.Sort(sort.Reverse(aggr.heap))
 				for _, v := range aggr.heap {
@@ -387,7 +429,7 @@ func vectorAggEvaluator(
 				}
 				continue // Bypass default append.
 
-			case syntax.OpTypeBottomK:
+			case syntax.OpTypeBottomK, syntax.OpTypeSort:
 				// The heap keeps the lowest value on top, so reverse it.
 				sort.Sort(sort.Reverse(aggr.reverseHeap))
 				for _, v := range aggr.reverseHeap {

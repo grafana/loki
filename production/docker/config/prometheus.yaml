@@ -11,7 +11,6 @@ scrape_configs:
       - names:
           - loki-read
           - loki-write
-          - loki-frontend
         type: A
         port: 3100
   - job_name: 'promtail'

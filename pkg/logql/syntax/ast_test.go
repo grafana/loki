@@ -73,6 +73,8 @@ func Test_SampleExpr_String(t *testing.T) {
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
 		`vector(123)`,
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -193,6 +195,19 @@ func Test_SampleExpr_String_Fail(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			_, err := ParseExpr(tc)
 			require.ErrorContains(t, err, "parse error : invalid parameter (must be greater than 0)")
+		})
+	}
+}
+
+func Test_SampleExpr_Sort_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "sort and sort_desc doesn't allow grouping by")
 		})
 	}
 }
