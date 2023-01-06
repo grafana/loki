@@ -37,7 +37,7 @@ helm repo update
 Finally, Promtail can be deployed with:
 
 ```bash
-$ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
+helm upgrade --install promtail grafana/promtail
 ```
 
 ## Kubernetes

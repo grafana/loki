@@ -60,5 +60,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     service.mixin.metadata.withName('query-frontend-headless'),
 
   query_frontend_service:
-    k.util.serviceFor($.query_frontend_deployment, $._config.service_ignored_labels),
+    $.util.grpclbServiceFor($.query_frontend_deployment),
 }
