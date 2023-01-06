@@ -33,6 +33,7 @@ var (
 	batchSize                                                 int
 	s3Clients                                                 map[string]*s3.Client
 	extraLabels                                               model.LabelSet
+	skipTlsVerify                                             bool
 )
 
 func setupArguments() {
@@ -66,6 +67,12 @@ func setupArguments() {
 	// If username and password are set, bearer token is not allowed
 	if username != "" && bearerToken != "" {
 		panic("both username and bearerToken are not allowed")
+	}
+
+	skipTls := os.Getenv("SKIP_TLS_VERIFY")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(skipTls, "true") {
+		skipTlsVerify = true
 	}
 
 	tenantID = os.Getenv("TENANT_ID")
