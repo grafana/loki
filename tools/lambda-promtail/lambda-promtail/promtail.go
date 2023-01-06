@@ -197,8 +197,6 @@ func send(ctx context.Context, buf []byte) (int, error) {
 	}
 
 	resp, err := promtailClient.Do(req.WithContext(ctx))
-
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err
 	}
