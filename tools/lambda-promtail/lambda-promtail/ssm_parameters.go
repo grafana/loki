@@ -112,8 +112,6 @@ func getEnvironmentVariables(varNames []string) (variables map[string]string) {
 			variables[varName] = value
 			continue
 		}
-
-		panic(fmt.Sprintf("%s is not preset", varName))
 	}
 
 	return
