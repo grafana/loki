@@ -17,10 +17,17 @@ type MockBatch struct {
 }
 
 func (b *MockBatch) add(ctx context.Context, e entry) error {
-	b.streams[e.labels.String()] = &logproto.Stream{
-		Labels: e.labels.String(),
+	if b.streams[e.labels.String()] == nil {
+		b.streams[e.labels.String()] = &logproto.Stream{
+			Labels: e.labels.String(),
+		}
+		b.streams[e.labels.String()].Entries = []logproto.Entry{e.entry}
+		return nil
+
 	}
+	b.streams[e.labels.String()].Entries = append(b.streams[e.labels.String()].Entries, e.entry)
 	return nil
+
 }
 
 func (b *MockBatch) flushBatch(ctx context.Context) error {

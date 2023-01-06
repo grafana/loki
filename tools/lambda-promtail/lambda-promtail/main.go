@@ -14,7 +14,6 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const (
@@ -31,7 +30,7 @@ var (
 	username, password, extraLabelsRaw, tenantID, bearerToken string
 	keepStream                                                bool
 	batchSize                                                 int
-	s3Clients                                                 map[string]*s3.Client
+	s3Clients                                                 map[string]S3Client
 	extraLabels                                               model.LabelSet
 )
 
@@ -83,7 +82,7 @@ func setupArguments() {
 		batchSize, _ = strconv.Atoi(batch)
 	}
 
-	s3Clients = make(map[string]*s3.Client)
+	s3Clients = make(map[string]S3Client)
 }
 
 func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
@@ -146,7 +145,8 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	switch evt := event.(type) {
 	case *events.S3Event:
-		return processS3Event(ctx, evt)
+		_, err := processS3Event(ctx, evt)
+		return err
 	case *events.CloudwatchLogsEvent:
 		return processCWEvent(ctx, evt)
 	case *events.KinesisEvent:

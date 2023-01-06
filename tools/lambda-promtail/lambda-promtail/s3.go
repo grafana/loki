@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"fmt"
 	"io"
 	"regexp"
 	"time"
@@ -29,8 +28,20 @@ var (
 	timestampRegex = regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`)
 )
 
+type S3Client interface {
+	GetObject(context.Context, *s3.GetObjectInput) (*s3.GetObjectOutput, error)
+}
+
+type Client struct {
+	c s3.Client
+}
+
+func (cl Client) GetObject(ctx context.Context, in *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	return cl.c.GetObject(ctx, in)
+}
+
 func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, error) {
-	var s3Client *s3.Client
+	var s3Client S3Client
 
 	if c, ok := s3Clients[labels["bucket_region"]]; ok {
 		s3Client = c
@@ -39,7 +50,7 @@ func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, 
 		if err != nil {
 			return nil, err
 		}
-		s3Client = s3.NewFromConfig(cfg)
+		s3Client = Client{c: *s3.NewFromConfig(cfg)}
 		s3Clients[labels["bucket_region"]] = s3Client
 	}
 
@@ -51,14 +62,13 @@ func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, 
 		})
 
 	if err != nil {
-		fmt.Printf("Failed to get object %s from bucket %s on account %s\n", labels["key"], labels["bucket"], labels["bucketOwner"])
 		return nil, err
 	}
 
 	return obj.Body, nil
 }
 
-func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser) error {
+func parseS3Log(ctx context.Context, b batchIf, labels map[string]string, obj io.ReadCloser) error {
 	gzreader, err := gzip.NewReader(obj)
 	if err != nil {
 		return err
@@ -73,14 +83,16 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	}
 
 	ls = applyExtraLabels(ls)
-
 	for scanner.Scan() {
 		log_line := scanner.Text()
-		match := timestampRegex.FindStringSubmatch(log_line)
 
-		timestamp, err := time.Parse(time.RFC3339, match[1])
-		if err != nil {
-			return err
+		match := timestampRegex.FindStringSubmatch(log_line)
+		timestamp := time.Now()
+		if len(match) != 0 {
+			timestamp, err = time.Parse(time.RFC3339, match[1])
+			if err != nil {
+				return err
+			}
 		}
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
@@ -104,6 +116,9 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket_region"] = record.AWSRegion
 
 	match := filenameRegex.FindStringSubmatch(labels["key"])
+	if len(match) == 0 {
+		return labels, nil
+	}
 	for i, name := range filenameRegex.SubexpNames() {
 		if i != 0 && name != "" {
 			labels[name] = match[i]
@@ -113,34 +128,38 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	return labels, nil
 }
 
-func processS3Event(ctx context.Context, ev *events.S3Event) error {
+func parseS3Record(ctx context.Context, record events.S3EventRecord, batch batchIf) (bool, error) {
+	labels, err := getLabels(record)
+	if err != nil {
+		return false, err
+	}
+
+	obj, err := getS3Object(ctx, labels)
+	if err != nil {
+		return false, err
+	}
+
+	err = parseS3Log(ctx, batch, labels, obj)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func processS3Event(ctx context.Context, ev *events.S3Event) (bool, error) {
 	batch, err := newBatch(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	for _, record := range ev.Records {
-		labels, err := getLabels(record)
-		if err != nil {
-			return err
-		}
-
-		obj, err := getS3Object(ctx, labels)
-		if err != nil {
-			return err
-		}
-
-		err = parseS3Log(ctx, batch, labels, obj)
-		if err != nil {
-			return err
-		}
-
+		parseS3Record(ctx, record, batch)
 	}
 
 	err = sendToPromtail(ctx, batch)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
