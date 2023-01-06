@@ -95,6 +95,7 @@ func failOnInvalidParameters(output *ssm.GetParametersOutput) {
 
 func getArrayOfParameterNames(parameterNames map[string]string) []*string {
 	names := make([]*string, len(parameterNames))
+
 	for _, name := range parameterNames {
 		names = append(names, &name)
 	}
