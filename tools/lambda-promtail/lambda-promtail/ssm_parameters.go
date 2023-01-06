@@ -49,7 +49,11 @@ func getParameters(parameterNames map[string]string) map[string]string {
 	sess := session.Must(session.NewSession())
 	ssmClient := ssm.New(sess)
 
-	fmt.Printf("Requesting parameters: %g", names)
+	fmt.Printf("Requesting parameters(%d): ", len(names))
+	for _, name := range names {
+		fmt.Printf("%s, ", *name)
+	}
+	fmt.Println()
 
 	decryption := true
 	output, err := ssmClient.GetParameters(&ssm.GetParametersInput{
@@ -68,8 +72,9 @@ func getParameters(parameterNames map[string]string) map[string]string {
 func normalizeParametersNames(parameterNames map[string]string, output *ssm.GetParametersOutput) map[string]string {
 	parameters := make(map[string]string)
 
-	for key, paramName := range parameterNames {
+	for key := range parameterNames {
 		for _, param := range output.Parameters {
+			paramName := parameterNames[key]
 			if param.Name != &paramName {
 				continue
 			}
@@ -86,7 +91,7 @@ func failOnInvalidParameters(output *ssm.GetParametersOutput) {
 		return
 	}
 
-	invalidParams := make([]string, len(output.InvalidParameters))
+	invalidParams := make([]string, 0)
 
 	for _, invalidParameter := range output.InvalidParameters {
 		invalidParams = append(invalidParams, *invalidParameter)
@@ -96,17 +101,18 @@ func failOnInvalidParameters(output *ssm.GetParametersOutput) {
 }
 
 func getArrayOfParameterNames(parameterNames map[string]string) []*string {
-	names := make([]*string, len(parameterNames))
+	names := make([]*string, 0)
 
-	for _, name := range parameterNames {
-		names = append(names, &name)
+	for key, _ := range parameterNames {
+		paramName := parameterNames[key]
+		names = append(names, &paramName)
 	}
 
 	return names
 }
 
 func getEnvironmentVariables(varNames []string) (variables map[string]string) {
-	variables = make(map[string]string, len(varNames))
+	variables = make(map[string]string)
 
 	for _, varName := range varNames {
 		value, present := os.LookupEnv(varName)
