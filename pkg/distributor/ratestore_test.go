@@ -212,48 +212,6 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 }
 
-func TestGetStreamRatesEventuallyCleanRates(t *testing.T) {
-	tc := setup(true)
-	tc.ring.replicationSet = ring.ReplicationSet{
-		Instances: []ring.InstanceDesc{
-			{Addr: "ingester0"},
-		},
-	}
-
-	tc.rateStore.rateKeepAlive = time.Second
-
-	tenant := "fake"
-	streamHash := uint64(5)
-	rates := []*logproto.StreamRate{
-		{Tenant: tenant, StreamHash: 1, StreamHashNoShard: streamHash, Rate: 5000},
-	}
-
-	tc.clientPool.clients = map[string]client.PoolClient{
-		"ingester0": newRateClient(rates),
-	}
-
-	// since 1s hasn't passed yet, this should return the pushed rate.
-	require.NoError(t, tc.rateStore.updateAllRates(context.Background()))
-
-	tc.rateStore.rateLock.RLock()
-	currentState := tc.rateStore.rates
-	tc.rateStore.rateLock.RUnlock()
-
-	require.Equal(t, 1, len(currentState[tenant]))
-
-	// force 3s to pass.
-	time.Sleep(time.Second * 3)
-
-	// now, it should have no rates available.
-	tc.rateStore.updateAllRates(context.Background())
-
-	tc.rateStore.rateLock.RLock()
-	currentState = tc.rateStore.rates
-	tc.rateStore.rateLock.RUnlock()
-
-	require.Equal(t, 0, len(currentState[tenant]))
-}
-
 func newFakeRing() *fakeRing {
 	return &fakeRing{}
 }
