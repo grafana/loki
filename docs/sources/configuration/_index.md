@@ -13,7 +13,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{< relref "examples" >}}) document.
+Configuration examples can be found in the [Configuration Examples](examples/) document.
 
 ## Printing Loki config at runtime
 
@@ -21,7 +21,7 @@ If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`,
 Loki will dump the entire config object it has created from the built-in defaults combined first with
 overrides from config file, and second by overrides from flags.
 
-The result is the value for every config object in the Loki config struct, which is very large.
+The result is the value for every config object in the Loki config struct, which is very large...
 
 Many values will not be relevant to your install such as storage configs which you are not using and which you did not define,
 this is expected as every option has a default value if it is being used or not.
@@ -282,7 +282,7 @@ grpc_tls_config:
   # CLI flag: -server.grpc-tls-ca-path
   [client_ca_file: <string> | default = ""]
 
-# Register the instrumentation handlers (/metrics etc).
+# Register the intrumentation handlers (/metrics etc).
 # CLI flag: -server.register-instrumentation
 [register_instrumentation: <boolean> | default = true]
 
@@ -3408,6 +3408,8 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
+
+&nbsp;
 
 ```yaml
 # Cache config for index entry writing.(deprecated: use embedded-cache instead)
