@@ -141,7 +141,9 @@ func updateSamples(rates []logproto.StreamRate, samples map[string]map[uint64]lo
 			tenantRates[streamRate.StreamHash] = streamRate
 		}
 
-		samples[streamRate.Tenant] = tenantRates
+		if streamRate.Rate != 0 {
+			samples[streamRate.Tenant] = tenantRates
+		}
 	}
 
 	return samples
