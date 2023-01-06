@@ -66,11 +66,11 @@ secrets: secrets/grafana.jwt secrets/gel.jwt
 
 secrets/grafana.jwt:
 	mkdir -p secrets/
-	op document get "loki/grafana.jwt" > $(CURDIR)/secrets/grafana.jwt
+	op document get "loki/grafana.jwt" --output=$(CURDIR)/secrets/grafana.jwt
 
 secrets/gel.jwt:
 	mkdir -p secrets/
-	op document get "loki/gel.jwt" > $(CURDIR)/secrets/gel.jwt
+	op document get "loki/gel.jwt" --output=$(CURDIR)/secrets/gel.jwt
 
 prepare: create-registry update-repos secrets
 
@@ -81,4 +81,4 @@ build-latest-image:
 
 HELM_DIR := $(shell cd $(CURDIR)/../../../production/helm/loki && pwd)
 helm-install-enterprise-logs:
-	helm install loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
