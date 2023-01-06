@@ -19,7 +19,7 @@ jobs:
           create_repo: 'false'
           dockerfile: tools/lambda-promtail/Dockerfile
           path: .
-          region: "${{ secrets.BS_RESOURCES_AWS_DEFAULT_REGION }}"
+          region: "${{ secrets.STAGING_AWS_REGION }}"
           repo: staging/blues/lambda_promtail/lambda
           secret_access_key: "${{ secrets.BS_RESOURCES_AWS_SECRET_ACCESS_KEY }}"
           tags: "latest,${{ github.sha }}"
