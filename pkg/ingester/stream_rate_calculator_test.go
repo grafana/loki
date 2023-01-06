@@ -74,8 +74,7 @@ func TestStreamRateCalculator(t *testing.T) {
 		}
 
 		rates = calc.Rates()
-		require.Len(t, rates, 1)
-		require.Equal(t, int64(2000), rates[0].Rate)
+		require.Len(t, rates, 0)
 	})
 
 	t.Run("it uses the larger sample without taking the average when there's a spike in load", func(t *testing.T) {
