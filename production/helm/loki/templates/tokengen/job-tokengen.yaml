@@ -75,7 +75,7 @@ spec:
           image: {{ include "loki.kubectlImage" . }}
           imagePullPolicy: {{ .Values.kubectlImage.pullPolicy }}
           command:
-            - /bin/bash
+            - ! test -f /shared/admin-token && /bin/bash
             - -euc
             - |
               kubectl create secret generic "{{ include "enterprise-logs.adminTokenSecret" . }}" --from-file=token=/shared/admin-token
