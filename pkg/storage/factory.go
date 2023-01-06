@@ -4,8 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"reflect"
-	"regexp"
 	"strings"
 	"time"
 
@@ -39,8 +37,6 @@ var (
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
 	boltDBIndexClientWithShipper index.Client
-
-	yamlTagKeyParser = regexp.MustCompile("^[^,]+")
 )
 
 // ResetBoltDBIndexClientWithShipper allows to reset the singleton.
@@ -69,79 +65,76 @@ type NamedStores struct {
 	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
 	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
 	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
+
+	// contains mapping from named store reference name to store type
+	storeType map[string]string `yaml:"-"`
 }
 
-func (ns NamedStores) checkForDuplicates() error {
-	t := reflect.TypeOf(ns)
-	v := reflect.ValueOf(ns)
+func (ns *NamedStores) populateStoreType() error {
+	ns.storeType = make(map[string]string)
 
-	seen := make(map[string]string)
-	// iterate over the struct fields
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Type.Kind() != reflect.Map {
-			continue
+	checkForDuplicates := func(name string) error {
+		switch name {
+		case config.StorageTypeAWS, config.StorageTypeAWSDynamo, config.StorageTypeS3,
+			config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGCS,
+			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift, config.StorageTypeCassandra,
+			config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
+			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
-		objectType := getYAMLTagKey(field)
-		// ignore fields without a valid yaml name
-		if objectType == "" {
-			continue
+		if st, ok := ns.storeType[name]; ok {
+			return fmt.Errorf("named store %q is already defined under %s", name, st)
 		}
 
-		for _, key := range v.FieldByIndex(field.Index).MapKeys() {
-			if key.Kind() != reflect.String {
-				break
-			}
+		return nil
+	}
 
-			name := key.Interface().(string)
-
-			// return error if the name matches a predefined storage type
-			switch name {
-			case config.StorageTypeAWS, config.StorageTypeAWSDynamo, config.StorageTypeS3,
-				config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGCS,
-				config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift, config.StorageTypeCassandra,
-				config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
-				return fmt.Errorf("named store %s should not match with the name of a predefined storage type", name)
-			}
-
-			if objectType, ok := seen[name]; ok {
-				return fmt.Errorf("named store %s is already defined under %s", name, objectType)
-			}
-			seen[name] = objectType
+	for name := range ns.AWS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
 		}
+		ns.storeType[name] = config.StorageTypeAWS
+	}
+
+	for name := range ns.Azure {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeAzure
+	}
+
+	for name := range ns.BOS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeBOS
+	}
+
+	for name := range ns.Filesystem {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeFileSystem
+	}
+
+	for name := range ns.GCS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeGCS
+	}
+
+	for name := range ns.Swift {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeSwift
 	}
 
 	return nil
 }
 
-func (ns NamedStores) lookupStoreType(name string) (string, bool) {
-	t := reflect.TypeOf(ns)
-	v := reflect.ValueOf(ns)
-
-	// iterate over the struct fields
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Type.Kind() != reflect.Map {
-			continue
-		}
-
-		objectType := getYAMLTagKey(field)
-		// ignore fields without a valid yaml name
-		if objectType == "" {
-			continue
-		}
-
-		// perform lookup and check for non-zero value
-		if v := v.FieldByIndex(field.Index).MapIndex(reflect.ValueOf(name)); v.IsValid() {
-			return objectType, true
-		}
-	}
-
-	return "", false
-}
-
-func (ns NamedStores) validate() error {
+func (ns *NamedStores) validate() error {
 	for name, awsCfg := range ns.AWS {
 		if err := awsCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid AWS Storage config with name %s", name))
@@ -160,7 +153,7 @@ func (ns NamedStores) validate() error {
 		}
 	}
 
-	return ns.checkForDuplicates()
+	return ns.populateStoreType()
 }
 
 // Config chooses which storage client to use.
@@ -313,7 +306,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 	)
 
 	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.lookupStoreType(name); ok {
+	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
 		storeType = nsType
 	}
 
@@ -456,7 +449,7 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 	)
 
 	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.lookupStoreType(name); ok {
+	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
 		storeType = nsType
 		namedStore = name
 	}
@@ -534,15 +527,4 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem)
 	}
-}
-
-func getYAMLTagKey(field reflect.StructField) string {
-	tag := field.Tag.Get("yaml")
-
-	key := yamlTagKeyParser.FindString(tag)
-	if key == "-" {
-		return ""
-	}
-
-	return key
 }

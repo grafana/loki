@@ -3,7 +3,6 @@ package storage
 import (
 	"os"
 	"path"
-	"reflect"
 	"testing"
 	"time"
 
@@ -115,6 +114,8 @@ func TestNamedStores(t *testing.T) {
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
+	err := cfg.NamedStores.validate()
+	require.NoError(t, err)
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -135,6 +136,16 @@ func TestNamedStores(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("period config referring to configured named store", func(t *testing.T) {
+		err := os.Remove(cfg.NamedStores.Filesystem["named-store"].Directory)
+		if err != nil {
+			require.True(t, os.IsNotExist(err))
+		}
+
+		err = os.Remove(cfg.FSConfig.Directory)
+		if err != nil {
+			require.True(t, os.IsNotExist(err))
+		}
+
 		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 		require.NoError(t, err)
 		defer store.Stop()
@@ -145,8 +156,8 @@ func TestNamedStores(t *testing.T) {
 
 		// dir specified in StorageConfig/FSConfig should not be created as we are not referring to it.
 		_, err = os.Stat(cfg.FSConfig.Directory)
-		require.Error(t, err)
 		require.True(t, os.IsNotExist(err))
+
 	})
 
 	t.Run("period config referring to unrecognized store", func(t *testing.T) {
@@ -158,81 +169,64 @@ func TestNamedStores(t *testing.T) {
 	})
 }
 
-func TestNamedStores_checkForDuplicates(t *testing.T) {
-	for name, tbl := range map[string]struct {
-		ns          NamedStores
-		expectedErr string
-	}{
-		"illegal store name": {
-			ns: NamedStores{
-				GCS: map[string]gcp.GCSConfig{
-					"aws": {},
-				},
+func TestNamedStores_populateStoreType(t *testing.T) {
+	t.Run("found duplicates", func(t *testing.T) {
+		ns := NamedStores{
+			AWS: map[string]aws.StorageConfig{
+				"store-1": {},
+				"store-2": {},
 			},
-			expectedErr: "named store aws should not match with the name of a predefined storage type",
-		},
-		"found duplicates": {
-			ns: NamedStores{
-				AWS: map[string]aws.StorageConfig{
-					"store-1": {},
-					"store-2": {},
-				},
-				GCS: map[string]gcp.GCSConfig{
-					"store-1": {},
-				},
+			GCS: map[string]gcp.GCSConfig{
+				"store-1": {},
 			},
-			expectedErr: "named store store-1 is already defined under",
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			err := tbl.ns.checkForDuplicates()
-			require.ErrorContains(t, err, tbl.expectedErr)
-		})
-	}
-}
+		}
 
-func TestNamedStores_lookupStoreType(t *testing.T) {
-	ns := NamedStores{
-		GCS: map[string]gcp.GCSConfig{
-			"store-1": {},
-			"store-2": {},
-		},
-		AWS: map[string]aws.StorageConfig{
-			"store-3": {},
-		},
-	}
+		err := ns.populateStoreType()
+		require.ErrorContains(t, err, `named store "store-1" is already defined under`)
 
-	storeType, ok := ns.lookupStoreType("store-1")
-	assert.True(t, ok)
-	assert.Equal(t, "gcs", storeType)
+	})
 
-	storeType, ok = ns.lookupStoreType("store-3")
-	assert.True(t, ok)
-	assert.Equal(t, "aws", storeType)
+	t.Run("illegal store name", func(t *testing.T) {
+		ns := NamedStores{
+			GCS: map[string]gcp.GCSConfig{
+				"aws": {},
+			},
+		}
 
-	_, ok = ns.lookupStoreType("store-4")
-	assert.False(t, ok)
-}
+		err := ns.populateStoreType()
+		require.ErrorContains(t, err, `named store "aws" should not match with the name of a predefined storage type`)
 
-func TestGetYamlTagKey(t *testing.T) {
-	v := reflect.TypeOf(struct {
-		foo    string `yaml:"footag" doc:"abc"`
-		bar    bool   `yaml:"bartag,omitempty"`
-		baz    int    `yaml:"-"`
-		foobar int
-	}{})
+	})
 
-	f, _ := v.FieldByName("foo")
-	require.Equal(t, "footag", getYAMLTagKey(f))
+	t.Run("lookup populated entries", func(t *testing.T) {
+		ns := NamedStores{
+			AWS: map[string]aws.StorageConfig{
+				"store-1": {},
+				"store-2": {},
+			},
+			GCS: map[string]gcp.GCSConfig{
+				"store-3": {},
+			},
+		}
 
-	f, _ = v.FieldByName("bar")
-	require.Equal(t, "bartag", getYAMLTagKey(f))
+		err := ns.populateStoreType()
+		require.NoError(t, err)
 
-	f, _ = v.FieldByName("baz")
-	require.Equal(t, "", getYAMLTagKey(f))
+		storeType, ok := ns.storeType["store-1"]
+		assert.True(t, ok)
+		assert.Equal(t, config.StorageTypeAWS, storeType)
 
-	f, _ = v.FieldByName("foobar")
-	require.Equal(t, "", getYAMLTagKey(f))
+		storeType, ok = ns.storeType["store-2"]
+		assert.True(t, ok)
+		assert.Equal(t, config.StorageTypeAWS, storeType)
+
+		storeType, ok = ns.storeType["store-3"]
+		assert.True(t, ok)
+		assert.Equal(t, config.StorageTypeGCS, storeType)
+
+		_, ok = ns.storeType["store-4"]
+		assert.False(t, ok)
+	})
 }
 
 // DefaultSchemaConfig creates a simple schema config for testing
