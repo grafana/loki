@@ -1068,16 +1068,9 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		distributors[i] = d
 	}
 
-	if distributors[0].ringStore != nil {
+	if distributors[0].lifecycler != nil {
 		test.Poll(t, time.Second, numDistributors, func() interface{} {
-			active := 0
-			for i := 0; i < numDistributors; i++ {
-				ringState := distributors[i].lifecycler.GetState()
-				if ringState == ring.ACTIVE {
-					active++
-				}
-			}
-			return active
+			return distributors[0].HealthyInstancesCount()
 		})
 	}
 

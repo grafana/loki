@@ -95,7 +95,6 @@ type Distributor struct {
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
 	lifecycler            *ring.BasicLifecycler
-	ringStore             kv.Client
 	healthyInstancesCount *atomic.Uint32
 
 	rateLimitStrat string
