@@ -2,9 +2,11 @@ package distributor
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -54,39 +56,25 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceID, "distributor.ring.instance-id", hostname, "Instance ID to register in the ring.")
 }
 
-// ToLifecyclerConfig returns a LifecyclerConfig based on the distributor
+// ToLifecyclerConfig returns a BasicLifecyclerConfig based on the distributor
 // ring config.
-func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
-	// We have to make sure that the ring.LifecyclerConfig and ring.Config
-	// defaults are preserved
-	lc := ring.LifecyclerConfig{}
-	rc := ring.Config{}
+func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger)
+	if err != nil {
+		return ring.BasicLifecyclerConfig{}, err
+	}
 
-	flagext.DefaultValues(&lc)
-	flagext.DefaultValues(&rc)
+	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
-	// Configure ring
-	rc.KVStore = cfg.KVStore
-	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
-	rc.ReplicationFactor = 1
-
-	// Configure lifecycler
-	lc.RingConfig = rc
-	lc.ListenPort = cfg.ListenPort
-	lc.Addr = cfg.InstanceAddr
-	lc.Port = cfg.InstancePort
-	lc.ID = cfg.InstanceID
-	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.UnregisterOnShutdown = true
-	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
-	lc.HeartbeatTimeout = cfg.HeartbeatTimeout
-	lc.ObservePeriod = 0
-	lc.NumTokens = 1
-	lc.JoinAfter = 0
-	lc.MinReadyDuration = 0
-	lc.FinalSleep = 0
-
-	return lc
+	return ring.BasicLifecyclerConfig{
+		ID:                              cfg.InstanceID,
+		Addr:                            fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		HeartbeatPeriod:                 cfg.HeartbeatPeriod,
+		HeartbeatTimeout:                cfg.HeartbeatTimeout,
+		TokensObservePeriod:             0,
+		NumTokens:                       1,
+		KeepInstanceInTheRingOnShutdown: false,
+	}, nil
 }
 
 func (cfg *RingConfig) ToRingConfig() ring.Config {
