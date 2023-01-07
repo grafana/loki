@@ -187,7 +187,7 @@ func New(
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		rateLimitStrat = validation.GlobalIngestionRateStrategy
+		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
 		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer)
 		if err != nil {
