@@ -65,6 +65,17 @@ func getParameters(parameterNames map[string]string) map[string]string {
 		panic(err)
 	}
 
+	fmt.Printf("Valid parameters: ")
+	for _, p := range output.Parameters {
+		fmt.Printf("%s=%s, ", p.Name, p.Value)
+	}
+
+	fmt.Printf("\nInvalid parameters: ")
+	for _, p := range output.InvalidParameters {
+		fmt.Printf("%s, ", *p)
+	}
+	fmt.Println()
+
 	failOnInvalidParameters(output)
 	return normalizeParametersNames(parameterNames, output)
 }
