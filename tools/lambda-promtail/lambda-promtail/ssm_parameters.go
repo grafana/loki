@@ -73,9 +73,10 @@ func normalizeParametersNames(parameterNames map[string]string, output *ssm.GetP
 	parameters := make(map[string]string)
 
 	for key := range parameterNames {
+		paramName := parameterNames[key]
+
 		for _, param := range output.Parameters {
-			paramName := parameterNames[key]
-			if param.Name != &paramName {
+			if *param.Name != paramName {
 				continue
 			}
 
