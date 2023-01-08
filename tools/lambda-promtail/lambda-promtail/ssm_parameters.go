@@ -65,17 +65,6 @@ func getParameters(parameterNames map[string]string) map[string]string {
 		panic(err)
 	}
 
-	fmt.Printf("Valid parameters: ")
-	for _, p := range output.Parameters {
-		fmt.Printf("%s=%s, ", p.Name, p.Value)
-	}
-
-	fmt.Printf("\nInvalid parameters: ")
-	for _, p := range output.InvalidParameters {
-		fmt.Printf("%s, ", *p)
-	}
-	fmt.Println()
-
 	failOnInvalidParameters(output)
 	return normalizeParametersNames(parameterNames, output)
 }
@@ -84,9 +73,10 @@ func normalizeParametersNames(parameterNames map[string]string, output *ssm.GetP
 	parameters := make(map[string]string)
 
 	for key := range parameterNames {
+		paramName := parameterNames[key]
+
 		for _, param := range output.Parameters {
-			paramName := parameterNames[key]
-			if param.Name != &paramName {
+			if *param.Name != paramName {
 				continue
 			}
 
