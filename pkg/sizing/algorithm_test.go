@@ -8,7 +8,7 @@ import (
 )
 
 func Test_AlgorithTest_Algorith(t *testing.T) {
-	f := func(ingest int) bool {
+	f := func(ingest float64) bool {
 		if ingest < 0 {
 			ingest = -ingest
 		}
