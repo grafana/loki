@@ -339,8 +339,12 @@ enterprise:
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
 
-  # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
-  adminTokenSecret: null
+  adminToken:
+    # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
+    secret: null
+    # -- Additional namespace to also create the token in. Useful if your Grafana instance
+    # is in a different namespace
+    additionalNamespaces: []
 
   # -- Alternative name of the secret to store token for the canary
   canarySecret: null
@@ -381,10 +385,14 @@ enterprise:
     # -- Whether the job should be part of the deployment
     enabled: true
     # -- Name of the secret to store provisioned tokens in
-    provisionedSecretPrefix: '{{ include "loki.name" . }}-provisioned'
-    # -- Tenants to be created. Each tenant will get a read and write policy
-    # and associated token.
-    tenants: []
+    provisionedSecretPrefix: null
+    # -- Additional tenants to be created. Each tenant will get a read and write policy
+    # and associated token. Tenant must have a name and a namespace for the secret containting
+    # the token to be created in. For example
+    # additionalTenants:
+    #   - name: loki
+    #     secretNamespace: grafana
+    additionalTenants: []
     # -- Additional Kubernetes environment
     env: []
     # -- Additional labels for the `provisioner` Job
@@ -551,7 +559,12 @@ monitoring:
     enabled: true
 
     # -- Tenant to use for self monitoring
-    tenant: "self-monitoring"
+    tenant:
+      # -- Name of the tenant
+      name: "self-monitoring"
+      # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
+      # is in a separate namespace. Token will still be created in the canary namespace.
+      secretNamespace: "{{ .Release.Namespace }}"
 
     # Grafana Agent configuration
     grafanaAgent:
@@ -570,8 +583,6 @@ monitoring:
 
     # PodLogs configuration
     podLogs:
-      # -- Alternative namespace for PodLogs resources
-      namespace: null
       # -- PodLogs annotations
       annotations: {}
       # -- Additional PodLogs labels
@@ -582,8 +593,6 @@ monitoring:
 
     # LogsInstance configuration
     logsInstance:
-      # -- Alternative namespace for LogsInstance resources
-      namespace: null
       # -- LogsInstance annotations
       annotations: {}
       # -- Additional LogsInstance labels

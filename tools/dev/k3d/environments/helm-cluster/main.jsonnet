@@ -74,6 +74,7 @@ local spec = (import './spec.json').spec;
            + grafana.withEnterpriseLicenseText(importstr '../../secrets/grafana.jwt')
            + grafana.addDatasource('prometheus', $.prometheus_datasource)
            + grafana.addDatasource('loki', $.loki_datasource)
+           + grafana.addPlugin('https://dl.grafana.com/gel/releases/grafana-enterprise-logs-app-v2.6.0.zip;grafana-enterprise-logs-app')
            + {
              local container = k.core.v1.container,
              grafana_deployment+:
@@ -110,8 +111,7 @@ local spec = (import './spec.json').spec;
                ]) + k.apps.v1.deployment.mapContainers(
                  function(c) c {
                    env+: [
-                     envVar.new('GF_INSTALL_PLUGINS', 'https://dl.grafana.com/gel/releases/grafana-enterprise-logs-app-v2.6.0.zip;grafana-enterprise-logs-app'),
-                     envVar.fromSecretRef('PROVISIONED_TENANT_TOKEN', '%s-%s' % [provisionedSecretPrefix, tenant], 'token-read'),
+                     envVar.fromSecretRef('PROVISIONED_TENANT_TOKEN', '%s-%s' % [provisionedSecretPrefix, tenant], 'password'),
                    ],
                  }
                ),
