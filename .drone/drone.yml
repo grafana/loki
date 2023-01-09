@@ -1,8 +1,6 @@
 ---
 kind: pipeline
 name: loki-build-image
-node:
-  type: no-parallel
 steps:
 - image: plugins/docker
   name: test-image
