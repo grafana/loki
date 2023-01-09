@@ -269,6 +269,7 @@ accepts the following query parameters in the URL:
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
 - `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
@@ -439,6 +440,7 @@ It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -480,6 +482,7 @@ It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -731,6 +734,7 @@ URL query parameters:
 - `match[]=<series_selector>`: Repeated log stream selector argument that selects the streams to return. At least one `match[]` argument must be provided.
 - `start=<nanosecond Unix epoch>`: Start timestamp.
 - `end=<nanosecond Unix epoch>`: End timestamp.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
 
@@ -1217,6 +1221,7 @@ support the following values:
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 - `regexp`: a regex to filter the returned results
 
@@ -1284,6 +1289,7 @@ the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
 
@@ -1320,6 +1326,7 @@ accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/api/prom/label` is exposed by the querier.
 

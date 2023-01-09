@@ -4,7 +4,7 @@ name: loki
 description: Helm chart for Grafana Loki in simple, scalable mode
 type: application
 appVersion: 2.7.0
-version: 3.8.0
+version: 3.8.1
 home: https://grafana.github.io/helm-charts
 sources:
   - https://github.com/grafana/loki
@@ -24,3 +24,4 @@ dependencies:
     condition: monitoring.selfMonitoring.grafanaAgent.installOperator
 maintainers:
   - name: trevorwhitney
+  - name: jeschkies

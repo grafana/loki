@@ -753,6 +753,8 @@ write:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the write pods
   extraEnvFrom: []
+  # -- Lifecycle for the write container
+  lifecycle: {}
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
@@ -826,6 +828,8 @@ read:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the read pods
   extraEnvFrom: []
+  # -- Lifecycle for the read container
+  lifecycle: {}
   # -- Volume mounts to add to the read pods
   extraVolumeMounts: []
   # -- Volumes to add to the read pods
@@ -1012,6 +1016,8 @@ gateway:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the gateway pods
   extraEnvFrom: []
+  # -- Lifecycle for the gateway container
+  lifecycle: {}
   # -- Volumes to add to the gateway pods
   extraVolumes: []
   # -- Volume mounts to add to the gateway pods
