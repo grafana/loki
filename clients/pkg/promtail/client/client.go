@@ -426,7 +426,7 @@ func (c *client) runSendSide(
 		for tenantID, batch := range batches {
 			if err := dispatchBatch(tenantID, batch); err != nil {
 				level.Error(c.logger).Log("msg",
-					"Failed to dispatch batch. If WAL is enabled, this could bigger batches to be sent", "err", err)
+					"Failed to dispatch batch. If WAL is enabled, this could lead to bigger batches being sent", "err", err)
 			}
 		}
 
@@ -783,7 +783,10 @@ func (c *clientConsumer) ConsumeEntries(samples ingester.RefEntries) error {
 		entry.Labels = l
 		for _, e := range samples.Entries {
 			entry.Entry = e
-			// Using replay since we know the batch needs to be sent once the segment ends
+			// Using replay since we know the batch needs to be sent once the segment ends. This coupling happens because
+			// the bucketing of incoming entries into batches is taken care by the WAL writer. This should be changed
+			// to `batch.add` once we decouple the batch creation from the WAL writer completely. See
+			// https://github.com/grafana/loki/pull/7993#discussion_r1062706323 for details.
 			c.currentBatch.replay(entry)
 		}
 	} else {

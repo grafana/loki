@@ -228,7 +228,7 @@ func (w *WALWatcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
 		if err := r.Err(); err != nil {
 			return err
 		}
-		w.metrics.recordsRead.WithLabelValues().Inc()
+		w.metrics.recordsRead.WithLabelValues(w.name).Inc()
 
 		if err := w.decodeAndDispatch(b); err != nil {
 			return err
