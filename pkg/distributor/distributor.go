@@ -94,8 +94,9 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
-	lifecycler            *ring.BasicLifecycler
-	healthyInstancesCount *atomic.Uint32
+	distributorsLifecycler *ring.BasicLifecycler
+	distributorsRing       *ring.Ring
+	healthyInstancesCount  *atomic.Uint32
 
 	rateLimitStrat string
 
@@ -201,6 +202,9 @@ func New(
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
 	}
 
+	d.distributorsRing = distributorsRing
+	d.distributorsLifecycler = distributorsLifecycler
+
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
@@ -231,7 +235,18 @@ func New(
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
-	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+	if err := services.StartManagerAndAwaitHealthy(ctx, d.subservices); err != nil {
+		return errors.Wrap(err, "unable to start distributor services")
+	}
+
+	if d.distributorsLifecycler != nil {
+		level.Info(util_log.Logger).Log("msg", "waiting until distributor is ACTIVE in the ring")
+		if err := ring.WaitInstanceState(ctx, d.distributorsRing, d.distributorsLifecycler.GetInstanceAddr(), ring.ACTIVE); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (d *Distributor) running(ctx context.Context) error {
