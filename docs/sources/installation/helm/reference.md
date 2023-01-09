@@ -246,7 +246,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminTokenSecret</td>
+			<td>enterprise.adminToken.additionalNamespaces</td>
+			<td>list</td>
+			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
 			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
 			<td><pre lang="json">
@@ -361,6 +370,7 @@ null
 			<td>Configuration for `provisioner` target</td>
 			<td><pre lang="json">
 {
+  "additionalTenants": [],
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -373,15 +383,23 @@ null
   },
   "labels": {},
   "priorityClassName": null,
-  "provisionedSecretPrefix": "{{ include \"loki.name\" . }}-provisioned",
+  "provisionedSecretPrefix": null,
   "securityContext": {
     "fsGroup": 10001,
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  },
-  "tenants": []
+  }
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.additionalTenants</td>
+			<td>list</td>
+			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -494,7 +512,7 @@ null
 			<td>string</td>
 			<td>Name of the secret to store provisioned tokens in</td>
 			<td><pre lang="json">
-"{{ include \"loki.name\" . }}-provisioned"
+null
 </pre>
 </td>
 		</tr>
@@ -509,15 +527,6 @@ null
   "runAsNonRoot": true,
   "runAsUser": 10001
 }
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.provisioner.tenants</td>
-			<td>list</td>
-			<td>Tenants to be created. Each tenant will get a read and write policy and associated token.</td>
-			<td><pre lang="json">
-[]
 </pre>
 </td>
 		</tr>
@@ -2231,15 +2240,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.logsInstance.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for LogsInstance resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.podLogs.annotations</td>
 			<td>object</td>
 			<td>PodLogs annotations</td>
@@ -2258,15 +2258,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.podLogs.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for PodLogs resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.podLogs.relabelings</td>
 			<td>list</td>
 			<td>PodLogs relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig</td>
@@ -2277,10 +2268,31 @@ null
 		</tr>
 		<tr>
 			<td>monitoring.selfMonitoring.tenant</td>
-			<td>string</td>
+			<td>object</td>
 			<td>Tenant to use for self monitoring</td>
 			<td><pre lang="json">
+{
+  "name": "self-monitoring",
+  "secretNamespace": "{{ .Release.Namespace }}"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.name</td>
+			<td>string</td>
+			<td>Name of the tenant</td>
+			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
+			<td>string</td>
+			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
+			<td><pre lang="json">
+"{{ .Release.Namespace }}"
 </pre>
 </td>
 		</tr>
