@@ -9,12 +9,12 @@ Every attempt is made to keep Grafana Loki backwards compatible, such that upgra
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 
-If we have any expectation of difficulty upgrading we will document it here.
+If we have any expectation of difficulty upgrading, we will document it here.
 
 As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once.
 If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
-# Checking for config changes
+## Checking for config changes
 
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
@@ -25,7 +25,7 @@ export CONFIG_FILE=loki-local-config.yaml
 diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```
 
-the `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
+The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
 
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
@@ -1133,13 +1133,9 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-One such config change which will affect Loki users:
+In the [cache_config]({{< relref "../configuration#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
 
-In the [cache_config](../../configuration#cache_config):
-
-`defaul_validity` has changed to `default_validity`
-
-Also in the unlikely case you were configuring your schema via arguments and not a config file, this is no longer supported.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
+If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
 The other config changes should not be relevant to Loki.
 
