@@ -42,7 +42,10 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   </div>
 
   <div v-if="clusterSize">
-  Read Replicase: {{ clusterSize.totalReadReplicase }}
+  Read Replicas: {{ clusterSize.TotalReadReplicas }}
+  Write Replicas: {{ clusterSize.TotalWriteReplicas }}
+  Cores: {{ clusterSize.TotalCoresLimit }}
+  Nodes: {{ clusterSize.TotalNodes }}
   </div>
 
   <a v-bind:href="helmURL" class="primary-button">Generate and download values file</a>
