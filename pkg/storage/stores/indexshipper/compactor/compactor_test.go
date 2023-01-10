@@ -109,7 +109,7 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 				IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
 			},
 		},
-	}, nil, nil)
+	}, nil, nil, local.FSConfig{Directory: tempDir})
 	require.NoError(t, err)
 
 	c.RegisterIndexCompactor(indexType, testIndexCompactor{})
