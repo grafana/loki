@@ -1416,6 +1416,38 @@ volumes:
     path: /var/run/docker.sock
   name: docker
 ---
+kind: pipeline
+name: docker-driver
+steps:
+- commands:
+  - make docker-driver-push
+  depends_on:
+  - clone
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+  image: grafana/loki-build-image:0.26.0
+  name: build and push
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+trigger:
+  event:
+  - push
+  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+volumes:
+- host:
+    path: /var/run/docker.sock
+  name: docker
+---
 depends_on:
 - check
 kind: pipeline
@@ -1633,6 +1665,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 62f0aea10366a3c443c26cdc0b088eae7825d731a8651165148b2c102c1ffc93
+hmac: 199921967d959534bbc5df76733d2175979aa04da4494dd8938aebc75a874d4e
 
 ...

@@ -758,6 +758,38 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           }) { when: { event: ['tag'] } },
     ],
   },
+  pipeline('docker-driver') {
+    trigger+: onTagOrMain,
+    steps: [
+      {
+        name: 'build and push',
+        image: 'grafana/loki-build-image:%s' % build_image_version,
+        depends_on: ['clone'],
+        environment: {
+          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
+          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
+        },
+        commands: [
+          'make docker-driver-push',
+        ],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    volumes: [
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
+    ],
+  },
 ]
 + [
   lambda_promtail(arch)
