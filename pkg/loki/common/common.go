@@ -94,5 +94,5 @@ type FilesystemConfig struct {
 func (cfg *FilesystemConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ChunksDirectory, prefix+"filesystem.chunk-directory", "", "Directory to store chunks in.")
 	f.StringVar(&cfg.RulesDirectory, prefix+"filesystem.rules-directory", "", "Directory to store rules in.")
-  f.IntVar(&cfg.SizeBasedRetentionPercentage, prefix+".size-based-retention-percentage", 80, "Size based retention percentage")
+	f.IntVar(&cfg.SizeBasedRetentionPercentage, prefix+".size-based-retention-percentage", 80, "Size based retention percentage")
 }
