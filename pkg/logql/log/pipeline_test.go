@@ -135,7 +135,7 @@ var (
 	resSample     float64
 )
 
-func TestIgnoreErrorsPipeline(t *testing.T) {
+func TestDropLabelsPipeline(t *testing.T) {
 	tests := []struct {
 		name       string
 		stages     []Stage
@@ -144,11 +144,16 @@ func TestIgnoreErrorsPipeline(t *testing.T) {
 		wantLabels []labels.Labels
 	}{
 		{
-			"with ignore_errors",
+			"drop __error__",
 			[]Stage{
 				NewLogfmtParser(),
 				NewJSONParser(),
-				NewIgnoreErrors(nil),
+				NewDropLabels([]DropLabel{
+					{
+						nil,
+						"__error__",
+					},
+				}),
 			},
 			[][]byte{
 				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
@@ -174,10 +179,32 @@ func TestIgnoreErrorsPipeline(t *testing.T) {
 			},
 		},
 		{
-			"without ignore_errors",
+			"drop __error__ with matching value",
 			[]Stage{
 				NewLogfmtParser(),
 				NewJSONParser(),
+				NewDropLabels([]DropLabel{
+					{
+						&labels.Matcher{
+							Name:  logqlmodel.ErrorLabel,
+							Type:  labels.MatchEqual,
+							Value: errLogfmt,
+						},
+						"",
+					},
+					{
+						&labels.Matcher{
+							Name:  "status",
+							Type:  labels.MatchEqual,
+							Value: "200",
+						},
+						"",
+					},
+					{
+						nil,
+						"app",
+					},
+				}),
 			},
 			[][]byte{
 				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
@@ -192,45 +219,10 @@ func TestIgnoreErrorsPipeline(t *testing.T) {
 					{Name: "level", Value: "info"},
 					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
 					{Name: "caller", Value: "metrics.go:81"},
-					{Name: "status", Value: "200"},
 					{Name: logqlmodel.ErrorLabel, Value: errJSON},
 					{Name: logqlmodel.ErrorDetailsLabel, Value: "expecting json object(6), but it is not"},
 				},
 				{
-					{Name: "app", Value: "foo"},
-					{Name: "namespace", Value: "prod"},
-					{Name: "pod_uuid", Value: "foo"},
-					{Name: "pod_deployment_ref", Value: "foobar"},
-					{Name: logqlmodel.ErrorLabel, Value: errLogfmt},
-					{Name: logqlmodel.ErrorDetailsLabel, Value: "logfmt syntax error at pos 2 : unexpected '\"'"},
-				},
-			},
-		},
-		{
-			"with ignore_errors by filter",
-			[]Stage{
-				NewLogfmtParser(),
-				NewIgnoreErrors(NewStringLabelFilter(&labels.Matcher{Type: labels.MatchEqual, Name: logqlmodel.ErrorLabel, Value: errLogfmt})),
-				NewJSONParser(),
-				NewIgnoreErrors(NewStringLabelFilter(&labels.Matcher{Type: labels.MatchEqual, Name: logqlmodel.ErrorLabel, Value: errJSON})),
-			},
-			[][]byte{
-				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
-				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
-			},
-			[][]byte{
-				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
-				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
-			},
-			[]labels.Labels{
-				{
-					{Name: "level", Value: "info"},
-					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
-					{Name: "caller", Value: "metrics.go:81"},
-					{Name: "status", Value: "200"},
-				},
-				{
-					{Name: "app", Value: "foo"},
 					{Name: "namespace", Value: "prod"},
 					{Name: "pod_uuid", Value: "foo"},
 					{Name: "pod_deployment_ref", Value: "foobar"},
