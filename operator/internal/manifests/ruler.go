@@ -99,21 +99,19 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	for _, name := range opts.RulesConfigMapNames {
-
 		volumes = append(volumes, corev1.Volume{
-			Name: rulesStorageVolumeName + "-" + name,
+			Name: name,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					DefaultMode: &defaultConfigMapMode,
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: name,
 					},
-					Items: ruleVolumeItems(opts.Tenants.Configs),
 				},
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      rulesStorageVolumeName + name,
+			Name:      name,
 			ReadOnly:  false,
 			MountPath: fmt.Sprintf("%s/%s", rulesStorageDirectory, name),
 		})
@@ -343,19 +341,4 @@ func configureRulerObjsForMode(opts Options) []client.Object {
 	}
 
 	return openShiftObjs
-}
-
-func ruleVolumeItems(tenants map[string]TenantConfig) []corev1.KeyToPath {
-	var items []corev1.KeyToPath
-
-	for id, tenant := range tenants {
-		for _, rule := range tenant.RuleFiles {
-			items = append(items, corev1.KeyToPath{
-				Key:  rule,
-				Path: fmt.Sprintf("%s/%s", id, rule),
-			})
-		}
-	}
-
-	return items
 }

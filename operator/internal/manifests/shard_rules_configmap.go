@@ -8,12 +8,11 @@ import (
 )
 
 // MaxConfigMapDataSizeBytes is the maximum data size in bytes that a single ConfigMap
-// may contain. This is lower than 1MB  in order to reserve space for
-// metadata and the rest of the ConfigMap k8s object.
+// may contain. This is lower than 1MB  in order to reserve space for metadata
 const MaxConfigMapDataSizeBytes = (1 * 1024 * 1024) - 50_000
 
 // ShardedConfigMap is the configmap data that is sharded across multiple
-// k8s configmaps in case the maximum data size is exceeded
+// configmaps in case MaxConfigMapDataSizeBytes is exceeded
 type ShardedConfigMap struct {
 	namePrefix      string
 	template        *corev1.ConfigMap
@@ -42,7 +41,7 @@ func makeShardConfigMapName(prefix string, index int) string {
 	return fmt.Sprintf("%s-%d", prefix, index)
 }
 
-func (cm *ShardedConfigMap) Shard() []*corev1.ConfigMap {
+func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 	var keys []string
 	for k := range cm.data {
 		keys = append(keys, k)
@@ -55,9 +54,9 @@ func (cm *ShardedConfigMap) Shard() []*corev1.ConfigMap {
 	currentCMSize := 0
 	currentCM := cm.newConfigMapShard(currentCMIndex)
 
-	for _, key := range keys {
-		v := cm.data[key]
-		dataSize := len(key) + len(v)
+	for _, k := range keys {
+		v := cm.data[k]
+		dataSize := len(k) + len(v)
 		if currentCMSize+dataSize > MaxConfigMapDataSizeBytes {
 			cm.configMapShards = append(cm.configMapShards, currentCM)
 			currentCMIndex++
@@ -65,8 +64,9 @@ func (cm *ShardedConfigMap) Shard() []*corev1.ConfigMap {
 			currentCM = cm.newConfigMapShard(currentCMIndex)
 		}
 		currentCMSize += dataSize
-		currentCM.Data[key] = v
+		currentCM.Data[k] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)
+
 	return cm.configMapShards
 }

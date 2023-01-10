@@ -19,10 +19,10 @@ func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
 	cm := cm_shards[0]
 
 	require.Len(t, cm.Data, 4)
-	require.Contains(t, cm.Data, "dev-alerting-rules-alerts1.yaml")
-	require.Contains(t, cm.Data, "dev-recording-rules-recs1.yaml")
-	require.Contains(t, cm.Data, "prod-alerting-rules-alerts2.yaml")
-	require.Contains(t, cm.Data, "prod-recording-rules-recs2.yaml")
+	require.Contains(t, cm.Data, "tenant-a-dev-alerting-rules-alerts1.yaml")
+	require.Contains(t, cm.Data, "tenant-b-dev-recording-rules-recs1.yaml")
+	require.Contains(t, cm.Data, "tenant-a-prod-alerting-rules-alerts2.yaml")
+	require.Contains(t, cm.Data, "tenant-b-prod-recording-rules-recs2.yaml")
 }
 
 func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
@@ -33,11 +33,11 @@ func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
 
 	cm := cm_shards[0]
 	require.Len(t, cm.Data, 4)
-	fmt.Print(opts.Tenants.Configs)
-	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "dev-alerting-rules-alerts1.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "prod-alerting-rules-alerts2.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "dev-recording-rules-recs1.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "prod-recording-rules-recs2.yaml")
+	//fmt.Print(opts.Tenants.Configs)
+	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "tenant-a-dev-alerting-rules-alerts1.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "tenant-a-prod-alerting-rules-alerts2.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "tenant-b-dev-recording-rules-recs1.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "tenant-b-prod-recording-rules-recs2.yaml")
 }
 
 func TestRulesConfigMapSharding(t *testing.T) {

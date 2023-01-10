@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 )
 
 func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -132,17 +131,12 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 
 	vs := sts.Spec.Template.Spec.Volumes
 
-	var (
-		volumeNames []string
-		volumeItems []corev1.KeyToPath
-	)
+	var volumeNames []string
 	for _, v := range vs {
 		volumeNames = append(volumeNames, v.Name)
-		volumeItems = append(volumeItems, v.ConfigMap.Items...)
 	}
 
 	require.NotEmpty(t, volumeNames)
-	require.NotEmpty(t, volumeItems)
 }
 
 func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
@@ -162,17 +156,11 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 
 	vs := sts.Spec.Template.Spec.Volumes
 
-	var (
-		volumeNames []string
-		volumeItems []corev1.KeyToPath
-	)
-
+	var volumeNames []string
 	for _, v := range vs {
 		volumeNames = append(volumeNames, v.Name)
-		volumeItems = append(volumeItems, v.ConfigMap.Items...)
 	}
 
 	// There will be 3 volumes: 1 config and 2 rules ConfigMap shards
 	require.Len(t, volumeNames, 3)
-	require.NotEmpty(t, volumeItems)
 }
