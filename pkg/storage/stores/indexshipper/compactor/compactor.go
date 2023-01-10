@@ -87,8 +87,7 @@ type Config struct {
 	DeleteMaxInterval            time.Duration   `yaml:"delete_max_interval"`
 	MaxCompactionParallelism     int             `yaml:"max_compaction_parallelism"`
 	UploadParallelism            int             `yaml:"upload_parallelism"`
-	CompactorRing                util.RingConfig `yaml:"compactor_ring,omitempty"`
-	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring"`
+	CompactorRing                util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring"`
 	RunOnce                      bool            `yaml:"_"`
 	TablesToCompact              int             `yaml:"tables_to_compact"`
 	SkipLatestNTables            int             `yaml:"skip_latest_n_tables"`
