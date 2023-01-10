@@ -4,7 +4,6 @@ resources:
 - ../../manager
 - ../../webhook
 - ../../certmanager
-- ../../prometheus
 
 # Adds namespace to all resources.
 namespace: loki-operator
@@ -39,7 +38,6 @@ patchesStrategicMerge:
 - manager_related_image_patch.yaml
 - manager_run_flags_patch.yaml
 - manager_webhook_patch.yaml
-- prometheus_service_monitor_patch.yaml
 - webhookcainjection_patch.yaml
 
 images:
