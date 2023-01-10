@@ -258,8 +258,9 @@ type labelFormatter struct {
 }
 
 type LabelsFormatter struct {
-	formats     []labelFormatter
-	buf         *bytes.Buffer
+	formats []labelFormatter
+	buf     *bytes.Buffer
+
 	currentLine []byte
 	currentTs   int64
 }

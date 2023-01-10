@@ -510,6 +510,7 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 	}
 	return lf
 }
+
 func Test_InvalidRegex(t *testing.T) {
 	t.Run("regexReplaceAll", func(t *testing.T) {
 		cntFunc := functionMap["regexReplaceAll"]
