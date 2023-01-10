@@ -2,7 +2,6 @@ package retention
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"sort"
 
@@ -23,7 +22,7 @@ func DeleteChunksBasedOnBlockSize(ctx context.Context, directory string, diskUsa
 }
 
 func purgeOldFiles(diskUsage util_storage.DiskStatus, directory string, cleanupThreshold int) error {
-	files, error := ioutil.ReadDir(directory)
+	files, error := os.ReadDir(directory)
 	bytesToDelete := bytesToDelete(diskUsage, cleanupThreshold)
 	bytesDeleted := 0.0
 	level.Info(util_log.Logger).Log("msg", "bytesToDelete", bytesToDelete)
