@@ -1420,20 +1420,23 @@ kind: pipeline
 name: docker-driver
 steps:
 - commands:
-  - make BUILD_IN_CONTAINER=false docker-driver
+  - make docker-driver-push
   depends_on:
   - clone
-  environment: {}
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
   image: grafana/loki-build-image:0.26.0
-  name: docker-driver
+  name: build and push
   privileged: true
   volumes:
   - name: docker
     path: /var/run/docker.sock
 trigger:
   event:
-  - push
-  - tag
+  - pull_request
   ref:
   - refs/heads/main
   - refs/heads/k???
@@ -1661,6 +1664,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: c27d4a04e02cbd1a5a3cf0c55e173a2eaf627f04dd459c2c957de4f808934991
+hmac: 5670c2aa589c1426a5209a42f5e4085aab36d374239b9a493c238a056757f04f
 
 ...
