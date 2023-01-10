@@ -40,10 +40,7 @@ func (dl *DropLabels) Process(ts int64, line []byte, lbls *LabelsBuilder) ([]byt
 func (dl *DropLabels) RequiredLabelNames() []string { return []string{} }
 
 func isErrorLabel(name string) bool {
-	if name == logqlmodel.ErrorLabel {
-		return true
-	}
-	return false
+	return name == logqlmodel.ErrorLabel
 }
 
 func dropLabelNames(name string, lbls *LabelsBuilder) {
