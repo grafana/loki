@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"testing"
 
-	util_storage "github.com/grafana/loki/pkg/util"
 	"github.com/stretchr/testify/require"
+
+	util_storage "github.com/grafana/loki/pkg/util"
 )
 
 func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
@@ -65,9 +66,7 @@ func generateFiles(t *testing.T, files int, content []byte, chunksDir string) {
 
 	for i := 0; i < totalFiles; i++ {
 		filename := file + strconv.Itoa(i)
-		f, err := os.Create(filename)
-		os.WriteFile(filename, fileContent, 0666)
+		err := os.WriteFile(filename, fileContent, 0666)
 		require.NoError(t, err)
-		require.NoError(t, f.Close())
 	}
 }

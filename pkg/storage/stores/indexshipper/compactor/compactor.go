@@ -333,7 +333,9 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 	if c.sizeBasedRetention != nil {
 		c.sizeBasedRetention.RetentionLoop = services.NewTimerService(c.sizeBasedRetention.RetentionLoopInterval, nil,
 			c.sizeBasedRetention.RunIteration, nil)
-		services.StartAndAwaitRunning(ctx, c.sizeBasedRetention.RetentionLoop)
+		if err := services.StartAndAwaitRunning(ctx, c.sizeBasedRetention.RetentionLoop); err != nil {
+			return errors.Wrap(err, "unable to start size based retention subservices")
+		}
 	}
 
 	// The BasicLifecycler does not automatically move state to ACTIVE such that any additional work that

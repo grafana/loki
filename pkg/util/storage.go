@@ -9,7 +9,7 @@ type DiskStatus struct {
 	All         uint64  `json:"All"`
 	Used        uint64  `json:"Used"`
 	Free        uint64  `json:"Free"`
-	UsedPercent float64 `json:UsedPercent`
+	UsedPercent float64 `json:"UsedPercent"`
 }
 
 // Function to get
