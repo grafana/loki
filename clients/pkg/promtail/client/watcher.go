@@ -3,7 +3,6 @@ package client
 import (
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -111,7 +110,7 @@ func (w *WALWatcher) run() error {
 
 		// On start, we have a pointer to what is the latest segment. On subsequent calls to this function,
 		// currentSegment will have been incremented, and we should open that segment.
-		if err := w.watch(currentSegment, currentSegment >= lastSegment); err != nil {
+		if err := w.watch(currentSegment); err != nil {
 			return err
 		}
 
@@ -129,10 +128,10 @@ func (w *WALWatcher) run() error {
 	return nil
 }
 
-// Use tail true to indicate that the reader is currently on a segment that is
-// actively being written to. If false, assume it's a full segment, and we're
-// replaying it.
-func (w *WALWatcher) watch(segmentNum int, tail bool) error {
+// watch will start reading from the segment identified by segmentNum. If an EOF is reached, it will keep
+// reading for more WAL records with a wlog.LiveReader. Periodically, it will check if there's a new segment, and if positive
+// read the remaining from the current one and return.
+func (w *WALWatcher) watch(segmentNum int) error {
 	segment, err := wlog.OpenReadSegment(wlog.SegmentName(w.walDir, segmentNum))
 	if err != nil {
 		return err
@@ -144,24 +143,8 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 	readTicker := time.NewTicker(readPeriod)
 	defer readTicker.Stop()
 
-	checkpointTicker := time.NewTicker(checkpointPeriod)
-	defer checkpointTicker.Stop()
-
 	segmentTicker := time.NewTicker(segmentCheckPeriod)
 	defer segmentTicker.Stop()
-
-	// If we're replaying the segment we need to know the size of the file to know
-	// when to return from watch and move on to the next segment.
-	size := int64(math.MaxInt64)
-	if !tail {
-		segmentTicker.Stop()
-		checkpointTicker.Stop()
-		var err error
-		size, err = getSegmentSize(w.walDir, segmentNum)
-		if err != nil {
-			return fmt.Errorf("getSegmentSize: %w", err)
-		}
-	}
 
 	for {
 		select {
@@ -183,13 +166,7 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 			// and return from `watch` to read the next one
 			err = w.readSegment(reader, segmentNum)
 
-			// Ignore errors reading to end of segment whilst replaying the WAL.
-			if !tail {
-				w.logIgnoredErrorWhileReplaying(err, reader.Offset(), size, segmentNum)
-				return nil
-			}
-
-			// Otherwise, when we are tailing, non-EOFs are fatal.
+			// When we are tailing, non-EOFs are fatal.
 			if errors.Cause(err) != io.EOF {
 				return err
 			}
@@ -198,12 +175,6 @@ func (w *WALWatcher) watch(segmentNum int, tail bool) error {
 
 		case <-readTicker.C:
 			err = w.readSegment(reader, segmentNum)
-
-			// Ignore all errors reading to end of segment whilst replaying the WAL.
-			if !tail {
-				w.logIgnoredErrorWhileReplaying(err, reader.Offset(), size, segmentNum)
-				return nil
-			}
 
 			// Otherwise, when we are tailing, non-EOFs are fatal.
 			if errors.Cause(err) != io.EOF {
