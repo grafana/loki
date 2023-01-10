@@ -503,56 +503,6 @@ func Test_labelsFormatter_Format(t *testing.T) {
 	}
 }
 
-func Test_labelsFormatter_Rename_Errors_Format(t *testing.T) {
-	tests := []struct {
-		name         string
-		fmter        *LabelsFormatter
-		renameErrors bool
-
-		errorString        string
-		errorDetailsString string
-
-		in   labels.Labels
-		want labels.Labels
-	}{
-		{
-			"rename __error__",
-			mustNewLabelsFormatterRenameErrors([]LabelFmt{
-				NewRenameLabelFmt("error", "__error__"),
-			}),
-			true,
-			errJSON,
-			"logfmt syntax error",
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "error", Value: errJSON}, {Name: logqlmodel.ErrorDetailsLabel, Value: "logfmt syntax error"}},
-		},
-		{
-			"rename __error__ and __error_details ",
-			mustNewLabelsFormatterRenameErrors([]LabelFmt{
-				NewRenameLabelFmt("error", "__error__"),
-				NewRenameLabelFmt("error_details", "__error_details__"),
-			}),
-			true,
-			errJSON,
-			"logfmt syntax error",
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "error", Value: errJSON}, {Name: "error_details", Value: "logfmt syntax error"}},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
-			builder.Reset()
-			builder.SetErr(tt.errorString)
-			builder.SetErrorDetails(tt.errorDetailsString)
-			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
-			sort.Sort(tt.want)
-			require.Equal(t, tt.want, builder.LabelsResult().Labels())
-		})
-	}
-}
-
 func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 	lf, err := NewLabelsFormatter(fmts)
 	if err != nil {
@@ -560,15 +510,6 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 	}
 	return lf
 }
-
-func mustNewLabelsFormatterRenameErrors(fmts []LabelFmt) *LabelsFormatter {
-	lf, err := NewLabelsFormatter(fmts)
-	if err != nil {
-		panic(err)
-	}
-	return lf
-}
-
 func Test_InvalidRegex(t *testing.T) {
 	t.Run("regexReplaceAll", func(t *testing.T) {
 		cntFunc := functionMap["regexReplaceAll"]
@@ -602,10 +543,6 @@ func Test_validate(t *testing.T) {
 		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
 		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
 		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, true},
-		{"label error __error__", []LabelFmt{NewRenameLabelFmt("error", "bar")}, true},
-		{"label no error __error__", []LabelFmt{NewRenameLabelFmt("error", logqlmodel.ErrorLabel)}, false},
-		{"label error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", "bar")}, true},
-		{"label no error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", logqlmodel.ErrorDetailsLabel)}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

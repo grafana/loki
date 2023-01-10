@@ -258,11 +258,10 @@ type labelFormatter struct {
 }
 
 type LabelsFormatter struct {
-	formats            []labelFormatter
-	buf                *bytes.Buffer
-	formatRenameErrors bool
-	currentLine        []byte
-	currentTs          int64
+	formats     []labelFormatter
+	buf         *bytes.Buffer
+	currentLine []byte
+	currentTs   int64
 }
 
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
@@ -346,7 +345,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
 	var names []string
 	for _, fm := range lf.formats {
-		if fm.Rename && !lf.formatRenameErrors {
+		if fm.Rename {
 			names = append(names, fm.Value)
 			continue
 		}
