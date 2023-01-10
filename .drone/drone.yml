@@ -1436,7 +1436,8 @@ steps:
     path: /var/run/docker.sock
 trigger:
   event:
-  - pull_request
+  - push
+  - tag
   ref:
   - refs/heads/main
   - refs/heads/k???
@@ -1664,6 +1665,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 5670c2aa589c1426a5209a42f5e4085aab36d374239b9a493c238a056757f04f
+hmac: 199921967d959534bbc5df76733d2175979aa04da4494dd8938aebc75a874d4e
 
 ...
