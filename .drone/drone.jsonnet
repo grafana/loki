@@ -759,7 +759,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
   },
   pipeline('docker-driver') {
-    trigger+: onPRs,
+    trigger+: onTagOrMain,
     steps: [
       make('docker-driver', container=false) {
         depends_on: ['clone'],
