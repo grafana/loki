@@ -139,14 +139,6 @@ func New(
 		return nil, err
 	}
 
-	// Create the configured ingestion rate limit strategy (local or global).
-	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsLifecycler *ring.BasicLifecycler
-	var distributorsRing *ring.Ring
-
-	var servs []services.Service
-
-	rateLimitStrat := validation.LocalIngestionRateStrategy
 	labelCache, err := lru.New(maxLabelCacheSize)
 	if err != nil {
 		return nil, err
@@ -160,11 +152,9 @@ func New(
 		ingestersRing:         ingestersRing,
 		validator:             validator,
 		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
-		ingestionRateLimiter:  limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
-		rateLimitStrat:        rateLimitStrat,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -187,6 +177,13 @@ func New(
 		}),
 	}
 
+	// Create the configured ingestion rate limit strategy (local or global).
+	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var distributorsLifecycler *ring.BasicLifecycler
+	var distributorsRing *ring.Ring
+	var servs []services.Service
+	rateLimitStrat := validation.LocalIngestionRateStrategy
+
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
@@ -202,6 +199,8 @@ func New(
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
 	}
 
+	d.rateLimitStrat = rateLimitStrat
+	d.ingestionRateLimiter = limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second)
 	d.distributorsRing = distributorsRing
 	d.distributorsLifecycler = distributorsLifecycler
 
@@ -241,7 +240,7 @@ func (d *Distributor) starting(ctx context.Context) error {
 
 	if d.distributorsLifecycler != nil {
 		level.Info(util_log.Logger).Log("msg", "waiting until distributor is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, d.distributorsRing, d.distributorsLifecycler.GetInstanceAddr(), ring.ACTIVE); err != nil {
+		if err := ring.WaitInstanceState(ctx, d.distributorsRing, d.distributorsLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
 			return err
 		}
 	}
