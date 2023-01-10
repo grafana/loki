@@ -554,7 +554,7 @@ func Test_labelsFormatter_Rename_Errors_Format(t *testing.T) {
 }
 
 func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
-	lf, err := NewLabelsFormatter(fmts, false)
+	lf, err := NewLabelsFormatter(fmts)
 	if err != nil {
 		panic(err)
 	}
@@ -562,7 +562,7 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 }
 
 func mustNewLabelsFormatterRenameErrors(fmts []LabelFmt) *LabelsFormatter {
-	lf, err := NewLabelsFormatter(fmts, true)
+	lf, err := NewLabelsFormatter(fmts)
 	if err != nil {
 		panic(err)
 	}
@@ -595,22 +595,21 @@ func Test_InvalidRegex(t *testing.T) {
 
 func Test_validate(t *testing.T) {
 	tests := []struct {
-		name             string
-		fmts             []LabelFmt
-		fmtRenameErrrors bool
-		wantErr          bool
+		name    string
+		fmts    []LabelFmt
+		wantErr bool
 	}{
-		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false, false},
-		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, false, true},
-		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, false, true},
-		{"label error __error__", []LabelFmt{NewRenameLabelFmt("error", "bar")}, true, true},
-		{"label no error __error__", []LabelFmt{NewRenameLabelFmt("error", logqlmodel.ErrorLabel)}, true, false},
-		{"label error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", "bar")}, true, true},
-		{"label no error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", logqlmodel.ErrorDetailsLabel)}, true, false},
+		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
+		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, true},
+		{"label error __error__", []LabelFmt{NewRenameLabelFmt("error", "bar")}, true},
+		{"label no error __error__", []LabelFmt{NewRenameLabelFmt("error", logqlmodel.ErrorLabel)}, false},
+		{"label error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", "bar")}, true},
+		{"label no error __error_details__", []LabelFmt{NewRenameLabelFmt("error_details", logqlmodel.ErrorDetailsLabel)}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validate(tt.fmts, tt.fmtRenameErrrors); (err != nil) != tt.wantErr {
+			if err := validate(tt.fmts); (err != nil) != tt.wantErr {
 				t.Errorf("validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

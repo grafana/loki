@@ -497,15 +497,13 @@ func (e *LineFmtExpr) String() string {
 }
 
 type LabelFmtExpr struct {
-	Formats            []log.LabelFmt
-	FormatRenameErrors bool
+	Formats []log.LabelFmt
 	implicit
 }
 
-func newLabelFmtExpr(fmts []log.LabelFmt, formatRenameErrors bool) *LabelFmtExpr {
+func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 	return &LabelFmtExpr{
-		Formats:            fmts,
-		FormatRenameErrors: formatRenameErrors,
+		Formats: fmts,
 	}
 }
 
@@ -514,7 +512,7 @@ func (e *LabelFmtExpr) Shardable() bool { return false }
 func (e *LabelFmtExpr) Walk(f WalkFn) { f(e) }
 
 func (e *LabelFmtExpr) Stage() (log.Stage, error) {
-	return log.NewLabelsFormatter(e.Formats, e.FormatRenameErrors)
+	return log.NewLabelsFormatter(e.Formats)
 }
 
 func (e *LabelFmtExpr) String() string {

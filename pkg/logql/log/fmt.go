@@ -268,15 +268,14 @@ type LabelsFormatter struct {
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
 // Either by renaming or using text template.
 // It is not allowed to reformat the same label twice within the same formatter.
-func NewLabelsFormatter(fmts []LabelFmt, formatRenameErrors bool) (*LabelsFormatter, error) {
-	if err := validate(fmts, formatRenameErrors); err != nil {
+func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
+	if err := validate(fmts); err != nil {
 		return nil, err
 	}
 	formats := make([]labelFormatter, 0, len(fmts))
 
 	lf := &LabelsFormatter{
-		buf:                bytes.NewBuffer(make([]byte, 1024)),
-		formatRenameErrors: formatRenameErrors,
+		buf: bytes.NewBuffer(make([]byte, 1024)),
 	}
 
 	functions := addLineAndTimestampFunctions(func() string {
@@ -300,16 +299,13 @@ func NewLabelsFormatter(fmts []LabelFmt, formatRenameErrors bool) (*LabelsFormat
 	return lf, nil
 }
 
-func validate(fmts []LabelFmt, formatRenameErrors bool) error {
+func validate(fmts []LabelFmt) error {
 	// it would be too confusing to rename and change the same label value.
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
-		if f.Name == logqlmodel.ErrorLabel && !formatRenameErrors {
+		if f.Name == logqlmodel.ErrorLabel {
 			return fmt.Errorf("%s cannot be formatted", f.Name)
-		}
-		if formatRenameErrors && f.Value != logqlmodel.ErrorLabel && f.Value != logqlmodel.ErrorDetailsLabel {
-			return fmt.Errorf("labels_format_rename_errors can only rename %s and %s but got %s", logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, f.Value)
 		}
 		if _, ok := uniqueLabelName[f.Name]; ok {
 			return fmt.Errorf("multiple label name '%s' not allowed in a single format operation", f.Name)
@@ -325,18 +321,6 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 
 	var data interface{}
 	for _, f := range lf.formats {
-		if lf.formatRenameErrors && f.Value == logqlmodel.ErrorLabel {
-			v := lbs.GetErr()
-			lbs.Set(f.Name, v)
-			lbs.ResetError()
-			continue
-		}
-		if lf.formatRenameErrors && f.Value == logqlmodel.ErrorDetailsLabel {
-			v := lbs.GetErrorDetails()
-			lbs.Set(f.Name, v)
-			lbs.ResetErrorDetails()
-			continue
-		}
 		if f.Rename {
 			v, ok := lbs.Get(f.Value)
 			if ok {
