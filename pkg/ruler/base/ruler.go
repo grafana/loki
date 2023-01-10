@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
@@ -411,8 +412,54 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
+func tokenForRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) uint32 {
+	ringHasher := fnv.New32a()
+
+	// Hasher never returns err.
+	_, _ = ringHasher.Write([]byte(g.User))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(g.Namespace))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(g.Name))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(getRuleIdentifier(r)))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(r.Expr))
+
+	// TODO: determine if we need this level of specificity
+	// it's _possible_ that two rules can have the same expression with different labels, but this is quite unlikely
+	// and would it be so bad if they both executed on the same ruler? probably not...?
+	//_, _ = ringHasher.Write(sep)
+	//_, _ = ringHasher.Write([]byte(logproto.FromLabelAdaptersToLabels(r.Labels).String()))
+
+	return ringHasher.Sum32()
+}
+
+func getRuleIdentifier(r *rulespb.RuleDesc) string {
+	if r == nil {
+		return ""
+	}
+
+	if r.Alert == "" {
+		return r.Record
+	}
+
+	return r.Alert
+}
+
 func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
+
+	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
+	if err != nil {
+		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
+	}
+
+	return rlrs.Instances[0].Addr == instanceAddr, nil
+}
+
+func instanceOwnsRule(r ring.ReadRing, rg *rulespb.RuleGroupDesc, rd *rulespb.RuleDesc, instanceAddr string) (bool, error) {
+	hash := tokenForRule(rg, rd)
 
 	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
@@ -508,6 +555,9 @@ func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGr
 	case r.cfg.ShardingStrategy == util.ShardingStrategyDefault:
 		result, err = r.listRulesShardingDefault(ctx)
 
+	case r.cfg.ShardingStrategy == util.ShardingStrategyByRule:
+		result, err = r.listRulesShardingByRule(ctx)
+
 	case r.cfg.ShardingStrategy == util.ShardingStrategyShuffle:
 		result, err = r.listRulesShuffleSharding(ctx)
 
@@ -541,6 +591,22 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
 		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		if len(filtered) > 0 {
+			filteredConfigs[userID] = filtered
+		}
+	}
+	return filteredConfigs, nil
+}
+
+func (r *Ruler) listRulesShardingByRule(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	configs, err := r.store.ListAllRuleGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	filteredConfigs := make(map[string]rulespb.RuleGroupList, len(configs))
+	for userID, groups := range configs {
+		filtered := filterRules(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -636,6 +702,50 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 			result = append(result, g)
 		} else {
 			level.Debug(log).Log("msg", "rule group not owned, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+		}
+	}
+
+	return result
+}
+
+// filterRules returns a map of rule groups ONLY with rules that the given instance "owns" based on supplied ring.
+func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, logger log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
+	var result = make([]*rulespb.RuleGroupDesc, 0, len(ruleGroups))
+
+	for _, g := range ruleGroups {
+		var filteredRules = make([]*rulespb.RuleDesc, 0, len(g.Rules))
+
+		logger = log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
+
+		for _, r := range g.Rules {
+			logger = log.With(logger, "rule", getRuleIdentifier(r))
+
+			owned, err := instanceOwnsRule(ring, g, r, instanceAddr)
+			if err != nil {
+				ringCheckErrors.Inc()
+				level.Error(logger).Log("msg", "failed to check if the ruler replica owns the rule", "err", err)
+				continue
+			}
+
+			if owned {
+				level.Debug(logger).Log("msg", "rule owned")
+				filteredRules = append(filteredRules, r)
+			} else {
+				level.Debug(logger).Log("msg", "rule not owned, ignoring")
+			}
+		}
+
+		if len(filteredRules) > 0 {
+			// clone the group and replace the rules
+			clone, ok := proto.Clone(g).(*rulespb.RuleGroupDesc)
+			if !ok {
+				level.Error(logger).Log("msg", "failed to filter rules", "err", "failed to clone rule group; type coercion failed")
+				continue
+			}
+
+			clone.Rules = filteredRules
+			result = append(result, clone)
 		}
 	}
 
