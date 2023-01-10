@@ -41,6 +41,10 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   </label>
   </div>
 
+  <div v-if="clusterSize">
+  Read Replicase: {{ clusterSize.totalReadReplicase }}
+  </div>
+
   <a v-bind:href="helmURL" class="primary-button">Generate and download values file</a>
 
   <blockquote v-if="help">
@@ -85,7 +89,8 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 </style>
 
 <script>
-const API_URL = `https://logql-analyzer.grafana.net/next/api/sizing`
+//const API_URL = `https://logql-analyzer.grafana.net/next/api/sizing`
+const API_URL = `http://localhost:3001/api/sizing`
 const { createApp } = Vue
 
 createApp({
@@ -96,7 +101,8 @@ createApp({
       ingest: null,
       retention: null,
       queryperf: 'Basic',
-      help: null
+      help: null,
+      clusterSize: null
     }
   },
 
@@ -115,7 +121,22 @@ createApp({
     async fetchNodeTypes() {
       const url = `${API_URL}/nodes`
       this.nodes = await (await fetch(url,{mode: 'cors'})).json()
+    },
+    async calculateClusterSize() {
+      if (this.node == 'Loading...' || this.ingest == null || this.retention == null) {
+        return
+      }
+      const url = `${API_URL}/cluster?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.ingest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+      console.log(url)
+      this.clusterSize = await (await fetch(url,{mode: 'cors'})).json()
     }
+  },
+
+  watch: {
+    node:      'calculateClusterSize',
+    ingest:    'calculateClusterSize',
+    retention: 'calculateClusterSize',
+    queryperf: 'calculateClusterSize'
   }
 }).mount('#app')
 </script>
