@@ -453,33 +453,36 @@ func (c *client) runSendSide(
 			// send it, or cut a segment in the wal
 			batch, ok := batches[tenantID]
 
+			// First, check conditions in which the retrieved batch does not exist, or it's ready to send
+
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
 				b := c.newBatch()
 				batches[tenantID] = b
-				_ = addEntryToBatch(b, e)
+				batch = b
 				// Initialize counters to 0 so the metrics are exported before the first
 				// occurrence of incrementing to avoid missing metrics.
 				for _, counter := range c.metrics.countersWithTenant {
 					counter.WithLabelValues(c.cfg.URL.Host, tenantID).Add(0)
 				}
-				break
-			}
-
-			// If adding the entry to the batch will increase the size over the max
-			// size allowed, we do send the current batch and then create a new one
-			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
+			} else if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
+				// If adding the entry to the batch will increase the size over the max
+				// size allowed, we do send the current batch and then create a new one
 				if err := dispatchBatch(tenantID, batch); err != nil {
 					level.Error(c.logger).Log("msg",
 						"Failed to dispatch batch. If WAL is enabled, this could bigger batches to be sent", "err", err)
 				}
 				new := c.newBatch()
-				_ = addEntryToBatch(new, e)
 				batches[tenantID] = new
-				break
+				batch = new
 			}
 
-			// The max size of the batch isn't reached, so we can add the entry
+			// We know now one of the conditions is true:
+			// - the retrieved batch exists, and it's max size of the batch isn't reached
+			// - the batch didn't exist, so a new one was created
+			// - the permitted max size for the batch was reached, so it was dispatched a new one created
+			//
+			// Therefore, we can add the entry to it
 			err = addEntryToBatch(batch, e)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
