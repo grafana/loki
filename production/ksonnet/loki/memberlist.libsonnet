@@ -124,7 +124,8 @@
   index_gateway_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   ingester_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   query_scheduler_deployment+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
-  ruler_deployment+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled then {} else gossipLabel,
+  ruler_deployment+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled || $._config.stateful_rulers then {} else gossipLabel,
+  ruler_statefulset+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled || !$._config.stateful_rulers then {} else gossipLabel,
 
   // Headless service (= no assigned IP, DNS returns all targets instead) pointing to gossip network members.
   gossip_ring_service:

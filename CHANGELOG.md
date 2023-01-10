@@ -5,7 +5,8 @@
 #### Loki
 
 ##### Enhancements
-* [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap
+* [7951](https://github.com/grafana/loki/pull/7951) **MichelHollands**: Add a count template function to line_format and label_format.
+* [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap.
 * [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
 * [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
 * [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
@@ -14,13 +15,27 @@
 * [7785](https://github.com/grafana/loki/pull/7785) **dannykopping**: Add query blocker for queries and rules.
 * [7804](https://github.com/grafana/loki/pull/7804) **sandeepsukhani**: Use grpc for communicating with compactor for query time filtering of data requested for deletion.
 * [7817](https://github.com/grafana/loki/pull/7817) **kavirajk**: fix(memcached): panic on send on closed channel.
+* [7916](https://github.com/grafana/loki/pull/7916) **ssncferreira**: Add `doc-generator` tool to generate configuration flags documentation.
+* [7964](https://github.com/grafana/loki/pull/7964) **slim-bean**: Add a `since` query parameter to allow querying based on relative time.
+* [7989](https://github.com/grafana/loki/pull/7989) **liguozhong**: logql support `sort` and `sort_desc`.
+* [7997](https://github.com/grafana/loki/pull/7997) **kavirajk**: fix(promtail): Fix cri tags extra new lines when joining partial lines
+* [8027](https://github.com/grafana/loki/pull/8027) **kavirajk**: chore(promtail): Make `batchwait` and `batchsize` config explicit with yaml tags
+* [7978](https://github.com/grafana/loki/pull/7978) **chaudum**: Shut down query frontend gracefully to allow inflight requests to complete.
+* [8047](https://github.com/grafana/loki/pull/8047) **bboreham**: Dashboards: add k8s resource requests to CPU and memory panels.
+* [8061](https://github.com/grafana/loki/pull/8061) **kavirajk**: Remove circle from Loki OSS
 
 ##### Fixes
 
+* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
 * [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
 * [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix multitenant querying.
 * [7784](https://github.com/grafana/loki/pull/7784) **isodude**: Fix default values of connect addresses for compactor and querier workers to work with IPv6.
 * [7880](https://github.com/grafana/loki/pull/7880) **sandeepsukhani**: consider range and offset in queries while looking for schema config for query sharding.
+* [7937](https://github.com/grafana/loki/pull/7937) **ssncferreira**: Deprecate CLI flag `-ruler.wal-cleaer.period` and replace it with `-ruler.wal-cleaner.period`.
+* [7906](https://github.com/grafana/loki/pull/7906) **kavirajk**: Add API endpoint that formats LogQL expressions and support new `fmt` subcommand in `logcli` to format LogQL query.
+* [7966](https://github.com/grafana/loki/pull/7966) **sandeepsukhani**: Fix query-frontend request load balancing when using k8s service.
+* [7988](https://github.com/grafana/loki/pull/7988) **ashwanthgoli** store: write overlapping chunks to multiple stores.
+* [7925](https://github.com/grafana/loki/pull/7925) **sandeepsukhani**: Fix bugs in logs results caching causing query-frontend to return logs outside of query window.
 
 ##### Changes
 
@@ -46,7 +61,14 @@
 
 #### Loki Canary
 
+##### Enhancements
+* [8024](https://github.com/grafana/loki/pull/8024) **jijotj**: Support passing loki address as environment variable
+
 #### Jsonnet
+
+#### Build
+
+* [7938](https://github.com/grafana/loki/pull/7938) **ssncferreira**: Add DroneCI pipeline step to validate configuration flags documentation generation.
 
 ### Notes
 
@@ -111,9 +133,9 @@ Check the history of the branch FIXME.
 * [6835](https://github.com/grafana/loki/pull/6835) **DylanGuedes**: Add new per-tenant query timeout configuration and remove engine query timeout.
 * [7212](https://github.com/grafana/loki/pull/7212) **Juneezee**: Replaces deprecated `io/ioutil` with `io` and `os`.
 * [7361](https://github.com/grafana/loki/pull/7361) **szczepad**: Renames metric `loki_log_messages_total` to `loki_internal_log_messages_total`
+* [7416](https://github.com/grafana/loki/pull/7416) **mstrzele**: Use the stable `HorizontalPodAutoscaler` v2, if possible, when installing using Helm
 * [7510](https://github.com/grafana/loki/pull/7510) **slim-bean**: Limited queries (queries without filter expressions) will now be split and sharded.
 * [5400](https://github.com/grafana/loki/pull/5400) **BenoitKnecht**: promtail/server: Disable profiling by default
-
 
 #### Promtail
 
@@ -147,6 +169,7 @@ Check the history of the branch FIXME.
 
 #### Jsonnet
 * [6189](https://github.com/grafana/loki/pull/6189) **irizzant**: Add creation of a `ServiceMonitor` object for Prometheus scraping through configuration parameter `create_service_monitor`. Simplify mixin usage by adding (https://github.com/prometheus-operator/kube-prometheus) library.
+* [6662](https://github.com/grafana/loki/pull/6662) **Whyeasy**: Fixes memberlist error when using a stateful ruler.
 
 
 ### Notes

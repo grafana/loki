@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/log"
+	"github.com/grafana/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
@@ -113,7 +113,7 @@ type result struct {
 }
 
 func memcacheStatusCode(err error) string {
-	// See https://godoc.org/github.com/bradfitz/gomemcache/memcache#pkg-variables
+	// See https://godoc.org/github.com/grafana/gomemcache/memcache#pkg-variables
 	switch err {
 	case nil:
 		return "200"

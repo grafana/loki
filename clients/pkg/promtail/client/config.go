@@ -25,8 +25,8 @@ const (
 type Config struct {
 	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
-	BatchWait time.Duration
-	BatchSize int
+	BatchWait time.Duration `yaml:"batchwait"`
+	BatchSize int           `yaml:"batchsize"`
 
 	Client config.HTTPClientConfig `yaml:",inline"`
 

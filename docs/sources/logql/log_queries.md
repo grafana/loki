@@ -65,7 +65,17 @@ Regex log stream examples:
 - `{name !~ "mysql.+"}`
 - `` {name !~ `mysql-\d+`} ``
 
-**Note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+**Note:** Unlike the [line filter regex expressions](#line-filter-expression), the `=~` and `!~` regex operators are fully anchored.
+This means that the regex expression must match against the *entire* string, **including newlines**. 
+The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+Alternatively, you can use the `\s` (match whitespaces, including newline) in combination with `\S` (match not whitespace characters) to match all characters, including newlines.
+Refer to [Google's RE2 syntax](https://github.com/google/re2/wiki/Syntax) for more information.
+
+Regex log stream newlines:
+
+- `{name =~ ".*mysql.*"}`: does not match log label values with newline character
+- `{name =~ "(?s).*mysql.*}`: match log label values with newline character
+- `{name =~ "[\S\s]*mysql[\S\s]*}`: match log label values with newline character
 
 ## Log pipeline
 
@@ -95,7 +105,7 @@ and
 The line filter expression does a distributed `grep`
 over the aggregated logs from the matching log streams.
 It searches the contents of the log line,
-discarding those lines that do not match the case sensitive expression.
+discarding those lines that do not match the case-sensitive expression.
 
 Each line filter expression has a **filter operator**
 followed by text or a regular expression.
@@ -105,6 +115,9 @@ These filter operators are supported:
 - `!=`: Log line does not contain string
 - `|~`: Log line contains a match to the regular expression
 - `!~`: Log line does not contain a match to the regular expression
+
+**Note:** Unlike the [label matcher regex operators](#log-stream-selector), the `|~` and `!~` regex operators are not fully anchored.
+This means that the `.` regex character matches all characters, **including newlines**.
 
 Line filter expression examples:
 

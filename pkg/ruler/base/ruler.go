@@ -80,7 +80,7 @@ type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// Labels to add to all alerts
-	ExternalLabels labels.Labels `yaml:"external_labels,omitempty"`
+	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
 	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
@@ -88,7 +88,7 @@ type Config struct {
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
-	StoreConfig RuleStoreConfig `yaml:"storage" doc:"description=Deprecated. Use -ruler-storage.* CLI flags and their respective YAML config options instead."`
+	StoreConfig RuleStoreConfig `yaml:"storage" doc:"deprecated|description=Use -ruler-storage. CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 
@@ -106,7 +106,7 @@ type Config struct {
 	EnableSharding   bool          `yaml:"enable_sharding"`
 	ShardingStrategy string        `yaml:"sharding_strategy"`
 	SearchPendingFor time.Duration `yaml:"search_pending_for"`
-	Ring             RingConfig    `yaml:"ring"`
+	Ring             RingConfig    `yaml:"ring" doc:"description=Ring used by Loki ruler. The CLI flags prefix for this block configuration is 'ruler.ring'."`
 	FlushCheckPeriod time.Duration `yaml:"flush_period"`
 
 	EnableAPI bool `yaml:"enable_api"`
@@ -157,10 +157,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
-	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
-	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
+	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
+	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
 
-	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
+	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of Alertmanager URLs to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via '-ruler.alertmanager-discovery'.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", alertmanagerRefreshIntervalDefault, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
 	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to Alertmanager will utilize the V2 API.")
@@ -168,20 +168,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", alertmanagerNotificationTimeoutDefault, "HTTP timeout duration when sending notifications to the Alertmanager.")
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
-	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
+	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend.")
 	f.StringVar(&cfg.ShardingStrategy, "ruler.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
-	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
-	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
+	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "File path to store temporary rule files.")
+	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler API.")
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
-	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
+	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than the grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
-	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
+	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }

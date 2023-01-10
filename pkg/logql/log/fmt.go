@@ -35,13 +35,27 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
-		"regexReplaceAll": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllString(s, repl)
+		"regexReplaceAll": func(regex string, s string, repl string) (string, error) {
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return "", err
+			}
+			return r.ReplaceAllString(s, repl), nil
 		},
-		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllLiteralString(s, repl)
+		"regexReplaceAllLiteral": func(regex string, s string, repl string) (string, error) {
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return "", err
+			}
+			return r.ReplaceAllLiteralString(s, repl), nil
+		},
+		"count": func(regexsubstr string, s string) (int, error) {
+			r, err := regexp.Compile(regexsubstr)
+			if err != nil {
+				return 0, err
+			}
+			matches := r.FindAllStringIndex(s, -1)
+			return len(matches), nil
 		},
 	}
 

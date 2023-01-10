@@ -1,4 +1,4 @@
-{{- with .Values.monitoring.selfMonitoring.lokiCanary -}}
+{{- with .Values.monitoring.lokiCanary -}}
 {{- if .enabled -}}
 ---
 apiVersion: apps/v1
