@@ -118,6 +118,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.selector</td>
 			<td>string</td>
 			<td>Selector for persistent disk</td>
@@ -954,6 +963,15 @@ false
     "secretName": "loki-gateway-tls"
   }
 ]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the gateway container</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2685,6 +2703,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>read.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the read container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
@@ -3301,6 +3328,15 @@ null
 			<td>Docker image tag for the write image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the write container</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
