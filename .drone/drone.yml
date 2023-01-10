@@ -1,8 +1,6 @@
 ---
 kind: pipeline
 name: loki-build-image
-node:
-  type: no-parallel
 steps:
 - image: plugins/docker
   name: test-image
@@ -1194,6 +1192,19 @@ steps:
     target: loki-canary
     username:
       from_secret: docker_username
+- depends_on:
+  - clone
+  - manifest-loki-canary
+  image: plugins/manifest
+  name: manifest-loki-operator
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki-operator
+    username:
+      from_secret: docker_username
 trigger:
   event:
   - push
@@ -1622,6 +1633,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: fe9a2585353898836876a160d6817e1a954d79b72953fc89f25cb16d87c50432
+hmac: b07d95d16c5f0170c2f5c16a7b73a73b5c3989b531bf4a79e8487166cc8bf77b
 
 ...
