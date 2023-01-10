@@ -22,21 +22,6 @@ func newHealthyInstanceDelegate(count *atomic.Uint32, heartbeatTimeout time.Dura
 	return &healthyInstanceDelegate{count: count, heartbeatTimeout: heartbeatTimeout, next: next}
 }
 
-// // OnRingInstanceRegister implements the ring.BasicLifecyclerDelegate interface
-// func (d *healthyInstanceDelegate) OnRingInstanceRegister(lifecycler *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
-// 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
-// }
-
-// // OnRingInstanceTokens implements the ring.BasicLifecyclerDelegate interface
-// func (d *healthyInstanceDelegate) OnRingInstanceTokens(lifecycler *ring.BasicLifecycler, tokens ring.Tokens) {
-// 	d.next.OnRingInstanceTokens(lifecycler, tokens)
-// }
-
-// // OnRingInstanceStopping implements the ring.BasicLifecyclerDelegate interface
-// func (d *healthyInstanceDelegate) OnRingInstanceStopping(lifecycler *ring.BasicLifecycler) {
-// 	d.next.OnRingInstanceStopping(lifecycler)
-// }
-
 // OnRingInstanceHeartbeat implements the ring.BasicLifecyclerDelegate interface
 func (d *healthyInstanceDelegate) OnRingInstanceHeartbeat(lifecycler *ring.BasicLifecycler, ringDesc *ring.Desc, instanceDesc *ring.InstanceDesc) {
 	activeMembers := uint32(0)
