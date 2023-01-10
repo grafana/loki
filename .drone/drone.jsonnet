@@ -758,6 +758,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           }) { when: { event: ['tag'] } },
     ],
   },
+  pipeline('docker-driver') {
+    trigger+: onPRs,
+    steps: [
+      make('docker-driver', container=false) {
+        depends_on: ['clone'],
+      },
+    ],
+  },
 ]
 + [
   lambda_promtail(arch)

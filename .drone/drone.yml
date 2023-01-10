@@ -1416,6 +1416,25 @@ volumes:
     path: /var/run/docker.sock
   name: docker
 ---
+kind: pipeline
+name: docker-driver
+steps:
+- commands:
+  - make BUILD_IN_CONTAINER=false docker-driver
+  depends_on:
+  - clone
+  environment: {}
+  image: grafana/loki-build-image:0.26.0
+  name: docker-driver
+trigger:
+  event:
+  - pull_request
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
 depends_on:
 - check
 kind: pipeline
@@ -1633,6 +1652,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 62f0aea10366a3c443c26cdc0b088eae7825d731a8651165148b2c102c1ffc93
+hmac: cf9befd8184779d58aafb1c27ff1a6154752298b959173ccb7051877788c1d5a
 
 ...
