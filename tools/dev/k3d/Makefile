@@ -93,3 +93,9 @@ build-latest-image:
 HELM_DIR := $(shell cd $(CURDIR)/../../../production/helm/loki && pwd)
 helm-install-enterprise-logs:
 	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+
+helm-upgrade-enterprise-logs:
+	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+
+helm-uninstall-enterprise-logs:
+	helm uninstall enterprise-logs-test-fixture -n loki
