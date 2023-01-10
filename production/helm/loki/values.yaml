@@ -852,6 +852,8 @@ read:
   # -- Tolerations for read pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
