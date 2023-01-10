@@ -618,7 +618,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
