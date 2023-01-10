@@ -2,7 +2,6 @@ package retention
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
@@ -22,7 +21,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
 	remainingFilesAfterDelete := totalFiles * (sizeBasedRetentionPercentage) / 100
 
 	// Verify whether all files are created
-	files, _ := ioutil.ReadDir(".")
+	files, _ := os.ReadDir(".")
 	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
 
 	// Check remainingFilesAfterDelete
@@ -31,7 +30,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
 	diskUsage.All = bytesFullDisk
 
 	require.NoError(t, DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
-	files, _ = ioutil.ReadDir(".")
+	files, _ = os.ReadDir(".")
 	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
 }
 
@@ -45,7 +44,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
 	remainingFilesAfterDelete := totalFiles
 
 	// Verify whether all files are created
-	files, _ := ioutil.ReadDir(".")
+	files, _ := os.ReadDir(".")
 	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
 
 	// Check remainingFilesAfterDelete
@@ -53,7 +52,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
 	diskUsage.UsedPercent = float64(sizeBasedRetentionPercentage - 10) // 70 < 80 No need to delete
 	diskUsage.All = bytesFullDisk
 	require.NoError(t, DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
-	files, _ = ioutil.ReadDir(".")
+	files, _ = os.ReadDir(".")
 	require.Equal(t, remainingFilesAfterDelete, len(files), "Number of files should be "+strconv.Itoa(remainingFilesAfterDelete))
 }
 
