@@ -1426,6 +1426,10 @@ steps:
   environment: {}
   image: grafana/loki-build-image:0.26.0
   name: docker-driver
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
 trigger:
   event:
   - pull_request
@@ -1434,6 +1438,10 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+volumes:
+- host:
+    path: /var/run/docker.sock
+  name: docker
 ---
 depends_on:
 - check
@@ -1652,6 +1660,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: cf9befd8184779d58aafb1c27ff1a6154752298b959173ccb7051877788c1d5a
+hmac: 7799ee9b0080648d97b138da28648e4a2c5b4eb17346086c884f15f1cee7fe07
 
 ...

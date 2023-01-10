@@ -763,6 +763,21 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     steps: [
       make('docker-driver', container=false) {
         depends_on: ['clone'],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    volumes: [
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
       },
     ],
   },
