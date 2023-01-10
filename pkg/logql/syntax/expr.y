@@ -59,7 +59,9 @@ import (
   UnwrapExpr              *UnwrapExpr
   DecolorizeExpr          *DecolorizeExpr
   OffsetExpr              *OffsetExpr
-  IgnoreErrorsExpr        *IgnoreErrorsExpr 
+  DropLabel               log.DropLabel
+  DropLabels              []log.DropLabel
+  DropLabelsExpr          *DropLabelsExpr 
 }
 
 %start root
@@ -99,7 +101,9 @@ import (
 %type <LineFilter>            lineFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
-%type <IgnoreErrorsExpr>      ignoreErrorsExpr
+%type <DropLabelsExpr>        dropLabelsExpr
+%type <DropLabels>            dropLabels
+%type <DropLabel>             dropLabel
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
@@ -119,7 +123,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE IGNORE_ERRORS LABEL_FMT_RENAME_ERRORS
+                  DECOLORIZE DROP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -256,7 +260,7 @@ pipelineStage:
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE decolorizeExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
-  | PIPE ignoreErrorsExpr        { $$ = $2 }
+  | PIPE dropLabelsExpr          { $$ = $2 }
   ;
 
 filterOp:
@@ -301,7 +305,6 @@ labelsFormat:
 
 labelFormatExpr:
       LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2, false) };
-    | LABEL_FMT_RENAME_ERRORS labelsFormat { $$ = newLabelFmtExpr($2, true) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }
@@ -363,9 +366,16 @@ numberFilter:
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
 
-ignoreErrorsExpr:
-     IGNORE_ERRORS matcher { $$ = newIgnoreErrorsExpr(log.NewFilter($2)) }
+dropLabel: 
+      IDENTIFIER { $$ = log.NewDropLabel(nil, $1) }
+    | matcher { $$ = log.NewDropLabel($1, "") }
+
+dropLabels:
+      dropLabel                  { $$ = []log.DropLabel{$1}}
+    | dropLabels COMMA dropLabel { $$ = append($1, $3) }
     ;
+
+dropLabelsExpr: DROP dropLabels { $$ = newDropLabelsExpr($2) }
 
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:

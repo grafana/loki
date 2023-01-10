@@ -446,24 +446,43 @@ func (e *DecolorizeExpr) String() string {
 }
 func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
 
-type IgnoreErrorsExpr struct {
-	filter *log.StringLabelFilter
+type DropLabelsExpr struct {
+	dropLabels []log.DropLabel
 	implicit
 }
 
-func newIgnoreErrorsExpr(filter *log.StringLabelFilter) *IgnoreErrorsExpr {
-	return &IgnoreErrorsExpr{filter: filter}
+func newDropLabelsExpr(dropLabels []log.DropLabel) *DropLabelsExpr {
+	return &DropLabelsExpr{dropLabels: dropLabels}
 }
 
-func (e *IgnoreErrorsExpr) Shardable() bool { return true }
+func (e *DropLabelsExpr) Shardable() bool { return true }
 
-func (e *IgnoreErrorsExpr) Stage() (log.Stage, error) {
-	return log.NewIgnoreErrors(e.filter), nil
+func (e *DropLabelsExpr) Stage() (log.Stage, error) {
+	return log.NewDropLabels(e.dropLabels), nil
 }
-func (e *IgnoreErrorsExpr) String() string {
-	return fmt.Sprintf("%s %s %s", OpPipe, OpIgnoreErrors, e.filter.String())
+func (e *DropLabelsExpr) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpDrop))
+
+	for i, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			sb.WriteString(dropLabel.Matcher.String())
+			if i+1 != len(e.dropLabels) {
+				sb.WriteString(",")
+			}
+		}
+		if dropLabel.Name != "" {
+			sb.WriteString(dropLabel.Name)
+			if i+1 != len(e.dropLabels) {
+				sb.WriteString(",")
+			}
+		}
+	}
+	str := sb.String()
+	return str
 }
-func (e *IgnoreErrorsExpr) Walk(f WalkFn) { f(e) }
+func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
 
 func (e *LineFmtExpr) Shardable() bool { return true }
 
@@ -501,12 +520,7 @@ func (e *LabelFmtExpr) Stage() (log.Stage, error) {
 func (e *LabelFmtExpr) String() string {
 	var sb strings.Builder
 
-	opFmtString := OpFmtLabel
-	if e.FormatRenameErrors {
-		opFmtString = OpFmtLabelRenameErrors
-	}
-
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, opFmtString))
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
 
 	for i, f := range e.Formats {
 		sb.WriteString(f.Name)
@@ -729,10 +743,9 @@ const (
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"
 
-	OpFmtLine              = "line_format"
-	OpFmtLabel             = "label_format"
-	OpFmtLabelRenameErrors = "label_format_rename_errors"
-	OpDecolorize           = "decolorize"
+	OpFmtLine    = "line_format"
+	OpFmtLabel   = "label_format"
+	OpDecolorize = "decolorize"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
@@ -754,7 +767,8 @@ const (
 	// function filters
 	OpFilterIP = "ip"
 
-	OpIgnoreErrors = "ignore_errors"
+	// drop labels
+	OpDrop = "drop"
 )
 
 func IsComparisonOperator(op string) bool {

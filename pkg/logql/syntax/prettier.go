@@ -110,7 +110,7 @@ func (e *LabelParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-func (e *IgnoreErrorsExpr) Pretty(level int) string {
+func (e *DropLabelsExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
