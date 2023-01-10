@@ -36,7 +36,7 @@ spec:
     - replacement: "{{ include "loki.fullname" $ }}"
       targetLabel: cluster
     {{- with .relabelings }}
-    {{- toYaml . | nindent 8 }}
+    {{- toYaml . | nindent 4 }}
     {{- end }}
   namespaceSelector:
     matchNames:
