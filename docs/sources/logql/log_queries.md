@@ -557,49 +557,40 @@ The renaming form `dst=src` will _drop_ the `src` label after remapping it to th
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
 
-### Labels format rename errors expression
+### Drop Labels expression
 
-The `| label_format_rename_errors` expressions can rename `__error__` and `__error_details__` labels. For example, `error=__error__` will rename `__error__` to `error`. Both `__error__` and `__error_details__` can be renamed at once using following expression `error=__error__,error_details=__error__details__` 
+**Syntax**:  `|drop name, other_name, some_name="some_value"`
 
-For example, `{job="varlogs"}|json|label_format_rename_errors error=__error__,error_details=__error__details__` for the following line
+The `=` operator after the label name is a **label matching operator**.
+The following label matching operators are supported:
 
-```
-{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
-```
+- `=`: exactly equal
+- `!=`: not equal
+- `=~`: regex matches
+- `!~`: regex does not match
 
-will give the result as 
-
-```
-{error="JSONParserErr", error_details="readStringSlowPath: unexpected end of input, error found in #10 byte of ...|us\": \"200}|..., bigger context ...|path\": \"/\", \"host\": \"grafana.net\", \"status\": \"200}|..."} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
-```
-
-### Ignore errors expression
-
-**Syntax**: 
-
-`|ignore_errors` -- Without filter
-
-`|ignore_errors __error__="JSONParserErr"` -- With filter. Only supports filtering on `__error__` field
-
-The `| ignore_errors` expression will remove any previously added `__error__` and `__error_details__` labels in the pipeline. The default behaviour is to ignore the lines which has errors. However, using `ignore_errors` expression overrides this behaviour. This expression can be used in scenarios where you want to query for multiple log formats in a single query. Although, the current implementation supports this, it adds  `__error__` and `__error_details__` labels.
-
-For example, for the query `{job="varlogs"}|json` with below two log lines
+The `| drop` expression will drop the given labels in the pipeline. For example, for the query `{job="varlogs"}|json|drop level, method="GET"`, with below log line
 
 ```
 {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+```
+
+the result will be
+
+```
+{host="grafana.net", path="status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
+
+```
 INFO GET / loki.net 200
 ```
 
-the result is
+the result will be
 
 ```
-{host="grafana.net", level="info", method="GET", path="status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
-{__error__="JSONParserErr", __error_details__="expecting json object(6), but it is not"}  INFO GET / loki.net 200
+{} INFO GET / loki.net 200
 ```
 
-for the same lines, with `ignore_errors`, for the query `{job="varlogs"}|json|ignore_errors __error__="JSONParserErr"` the result will be
-
-```
-{host="grafana.net", level="info", method="GET", path="status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
-{}  INFO GET / loki.net 200
-```
+**Note**: `|drop __error__` and `|drop __error__="somevalue"` will remove `__error_details__` label as well.
