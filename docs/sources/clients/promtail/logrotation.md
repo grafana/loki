@@ -110,7 +110,7 @@ Out of all these logging drivers only `local` (default) and `json-file` supports
 1. `max-size` - The maximum size of the log before it is rolled. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to 20m.
 2. `max-file` - The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. A positive integer. Defaults to 5.
 
-Example `/etc/docker/daemon.json`
+Example `/etc/docker/daemon.json`:
 ```bash
 {
   "log-driver": "local",
