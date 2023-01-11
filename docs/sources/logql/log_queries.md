@@ -572,7 +572,7 @@ The following label matching operators are supported:
 The `| drop` expression will drop the given labels in the pipeline. For example, for the query `{job="varlogs"}|json|drop level, method="GET"`, with below log line
 
 ```
-{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
 the result will be
@@ -593,4 +593,18 @@ the result will be
 {} INFO GET / loki.net 200
 ```
 
-**Note**: `|drop __error__` and `|drop __error__="somevalue"` will remove `__error_details__` label as well.
+Example with regex and multiple names
+
+For the query `{job="varlogs"}|json|drop level, path, app=~"some-api.*"`, with below log lines
+
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+{"app: "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+```
+
+the result will be
+
+```
+{host="grafana.net", job="varlogs", method="GET", status="200"} {""app": "some-api-service",", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service",, "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
