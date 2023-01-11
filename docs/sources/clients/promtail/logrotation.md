@@ -105,7 +105,7 @@ Two of the common used CRI are `containerd` and `docker`.
 
 When using `docker` as runtime(EKS before 1.24 uses it by default), it's logrotate is managed by it's logging driver. Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers)
 
-Out of all these logging drivers only `local` (default) and `json-file` supports log rotation. You configure following `log-opts` under `/etc/docker/daemon.json`
+Out of all these logging drivers only the `local` (default) and the `json-file` drivers support log rotation. You can configure the following `log-opts` under `/etc/docker/daemon.json`
 
 1. `max-size` - The maximum size of the log file before it is rotated. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to `20m` (20 megabytes).
 2. `max-file` - The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. A positive integer. Defaults to 5.
