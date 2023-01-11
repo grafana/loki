@@ -18,7 +18,7 @@ In general, a log can be rotated in two ways.
 Given a log file `error.log`
 
 1. Copy the log file with a different name e.g `error.log.1` and truncate the original log file `error.log`.
-2. Rename the log file with different name e.g: `error.log.1` and create new log file with original name `error.log`.
+2. Rename the log file with a different name e.g: `error.log.1` and create a new log file with the original name `error.log`.
 
 In both the cases, after log rotation, all the new log lines goes to original `error.log`
 
