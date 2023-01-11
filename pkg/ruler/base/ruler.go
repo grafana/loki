@@ -425,12 +425,8 @@ func tokenForRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) uint32 {
 	_, _ = ringHasher.Write([]byte(getRuleIdentifier(r)))
 	_, _ = ringHasher.Write(sep)
 	_, _ = ringHasher.Write([]byte(r.Expr))
-
-	// TODO: determine if we need this level of specificity
-	// it's _possible_ that two rules can have the same expression with different labels, but this is quite unlikely
-	// and would it be so bad if they both executed on the same ruler? probably not...?
-	//_, _ = ringHasher.Write(sep)
-	//_, _ = ringHasher.Write([]byte(logproto.FromLabelAdaptersToLabels(r.Labels).String()))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(logproto.FromLabelAdaptersToLabels(r.Labels).String()))
 
 	return ringHasher.Sum32()
 }
@@ -708,14 +704,14 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 	return result
 }
 
-// filterRules returns a map of rule groups ONLY with rules that the given instance "owns" based on supplied ring.
+// filterRules returns a list of rule groups, each with a single rule, ONLY for rules that are "owned" by the given ring instance.
 func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, logger log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
-	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
+	// Return one rule group per rule that is owned by this ring instance.
+	// One rule group is returned per rule because Prometheus executed rule groups concurrently but rules within a group sequentially;
+	// we are sharding by rule here to explicitly *avoid* sequential execution since Loki does not need this.
 	var result = make([]*rulespb.RuleGroupDesc, 0, len(ruleGroups))
 
 	for _, g := range ruleGroups {
-		var filteredRules = make([]*rulespb.RuleDesc, 0, len(g.Rules))
-
 		logger = log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
 
 		for _, r := range g.Rules {
@@ -728,15 +724,12 @@ func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.R
 				continue
 			}
 
-			if owned {
-				level.Debug(logger).Log("msg", "rule owned")
-				filteredRules = append(filteredRules, r)
-			} else {
+			if !owned {
 				level.Debug(logger).Log("msg", "rule not owned, ignoring")
+				continue
 			}
-		}
 
-		if len(filteredRules) > 0 {
+			level.Debug(logger).Log("msg", "rule owned")
 			// clone the group and replace the rules
 			clone, ok := proto.Clone(g).(*rulespb.RuleGroupDesc)
 			if !ok {
@@ -744,12 +737,31 @@ func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.R
 				continue
 			}
 
-			clone.Rules = filteredRules
+			// Prometheus relies on group names being unique, and this assumption is very deeply baked in
+			// so we append the rule token to make each group name unique.
+			// TODO(dannyk) this is all quite hacky, and we shoud look at forking Prometheus' rule evaluation engine at some point.
+			clone.Name = AddRuleTokenToGroupName(g, r)
+			clone.Rules = []*rulespb.RuleDesc{r}
 			result = append(result, clone)
 		}
 	}
 
 	return result
+}
+
+// the delimiter is prefixed with ";" since that is what Prometheus uses for its group key
+const ruleTokenDelimiter = ";rule-shard-token"
+
+// AddRuleTokenToGroupName adds a rule shard token to a given group's name to make it unique.
+// Only relevant when using "by-rule" sharding strategy.
+func AddRuleTokenToGroupName(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) string {
+	return fmt.Sprintf("%s"+ruleTokenDelimiter+"%d", g.Name, tokenForRule(g, r))
+}
+
+// RemoveRuleTokenFromGroupName removes the rule shard token from the group name.
+// Only relevant when using "by-rule" sharding strategy.
+func RemoveRuleTokenFromGroupName(name string) string {
+	return strings.Split(name, ruleTokenDelimiter)[0]
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if

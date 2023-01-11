@@ -599,6 +599,21 @@ func TestSharding(t *testing.T) {
 		user2: {user2Group1},
 		user3: {user3Group1},
 	}
+	allRulesSharded := map[string]rulespb.RuleGroupList{
+		user1: {
+			cloneGroupWithRule(user1Group1, user1Group1Rule1),
+			cloneGroupWithRule(user1Group1, user1Group1Rule2),
+			cloneGroupWithRule(user1Group2, user1Group2Rule1),
+		},
+		user2: {
+			cloneGroupWithRule(user2Group1, user2Group1Rule1),
+			cloneGroupWithRule(user2Group1, user2Group1Rule2),
+		},
+		user3: {
+			cloneGroupWithRule(user3Group1, user3Group1Rule1),
+			cloneGroupWithRule(user3Group1, user3Group1Rule2),
+		},
+	}
 
 	// ruler ID -> (user ID -> list of groups).
 	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
@@ -970,7 +985,7 @@ func TestSharding(t *testing.T) {
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
 			},
-			expectedRules: expectedRulesMap{ruler1: allRules},
+			expectedRules: expectedRulesMap{ruler1: allRulesSharded},
 		},
 
 		"sharding by rule, single ruler, single enabled user": {
@@ -981,7 +996,11 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
 			},
 			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
-				user1: {user1Group1, user1Group2},
+				user1: {
+					cloneGroupWithRule(user1Group1, user1Group1Rule1),
+					cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					cloneGroupWithRule(user1Group2, user1Group2Rule1),
+				},
 			}},
 		},
 
@@ -993,8 +1012,14 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
 			},
 			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
-				user2: {user2Group1},
-				user3: {user3Group1},
+				user2: {
+					cloneGroupWithRule(user2Group1, user2Group1Rule1),
+					cloneGroupWithRule(user2Group1, user2Group1Rule2),
+				},
+				user3: {
+					cloneGroupWithRule(user3Group1, user3Group1Rule1),
+					cloneGroupWithRule(user3Group1, user3Group1Rule2),
+				},
 			}},
 		},
 
@@ -1008,14 +1033,20 @@ func TestSharding(t *testing.T) {
 
 			expectedRules: expectedRulesMap{
 				ruler1: map[string]rulespb.RuleGroupList{
-					user1: {cloneGroupWithRules(user1Group1, []*rulespb.RuleDesc{user1Group1Rule1, user1Group1Rule2})},
-					user2: {cloneGroupWithRules(user2Group1, []*rulespb.RuleDesc{user2Group1Rule2})},
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					},
+					user2: {cloneGroupWithRule(user2Group1, user2Group1Rule2)},
 				},
 
 				ruler2: map[string]rulespb.RuleGroupList{
-					user1: {cloneGroupWithRules(user1Group2, []*rulespb.RuleDesc{user1Group2Rule1})},
-					user2: {cloneGroupWithRules(user2Group1, []*rulespb.RuleDesc{user2Group1Rule1})},
-					user3: {cloneGroupWithRules(user3Group1, []*rulespb.RuleDesc{user3Group1Rule1, user3Group1Rule2})},
+					user1: {cloneGroupWithRule(user1Group2, user1Group2Rule1)},
+					user2: {cloneGroupWithRule(user2Group1, user2Group1Rule1)},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
 				},
 			},
 		},
@@ -1032,13 +1063,14 @@ func TestSharding(t *testing.T) {
 			expectedRules: expectedRulesMap{
 				ruler1: map[string]rulespb.RuleGroupList{
 					user1: {
-						cloneGroupWithRules(user1Group1, []*rulespb.RuleDesc{user1Group1Rule1, user1Group1Rule2}),
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
 					},
 				},
 
 				ruler2: map[string]rulespb.RuleGroupList{
 					user1: {
-						cloneGroupWithRules(user1Group2, []*rulespb.RuleDesc{user1Group2Rule1}),
+						cloneGroupWithRule(user1Group2, user1Group2Rule1),
 					},
 				},
 			},
@@ -1056,16 +1088,17 @@ func TestSharding(t *testing.T) {
 			expectedRules: expectedRulesMap{
 				ruler1: map[string]rulespb.RuleGroupList{
 					user2: {
-						cloneGroupWithRules(user2Group1, []*rulespb.RuleDesc{user2Group1Rule2}),
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
 					},
 				},
 
 				ruler2: map[string]rulespb.RuleGroupList{
 					user2: {
-						cloneGroupWithRules(user2Group1, []*rulespb.RuleDesc{user2Group1Rule1}),
+						cloneGroupWithRule(user2Group1, user2Group1Rule1),
 					},
 					user3: {
-						cloneGroupWithRules(user3Group1, []*rulespb.RuleDesc{user3Group1Rule1, user3Group1Rule2}),
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
 					},
 				},
 			},
@@ -1088,10 +1121,11 @@ func TestSharding(t *testing.T) {
 			expectedRules: expectedRulesMap{
 				ruler1: map[string]rulespb.RuleGroupList{
 					user1: {
-						cloneGroupWithRules(user1Group1, []*rulespb.RuleDesc{user1Group1Rule1, user1Group1Rule2}),
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
 					},
 					user2: {
-						cloneGroupWithRules(user2Group1, []*rulespb.RuleDesc{user2Group1Rule2}),
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
 					},
 				},
 				// This ruler doesn't get rules from unhealthy ruler (RF=1).
@@ -1111,7 +1145,7 @@ func TestSharding(t *testing.T) {
 			expectedRules: expectedRulesMap{
 				// LEAVING ruler doesn't get any rules.
 				ruler1: noRules,
-				ruler2: allRules,
+				ruler2: allRulesSharded,
 			},
 		},
 
@@ -1127,7 +1161,7 @@ func TestSharding(t *testing.T) {
 			expectedRules: expectedRulesMap{
 				// JOINING ruler has no rules yet.
 				ruler1: noRules,
-				ruler2: allRules,
+				ruler2: allRulesSharded,
 			},
 		},
 	}
@@ -1575,9 +1609,12 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
 }
 
-func cloneGroupWithRules(g *rulespb.RuleGroupDesc, rs []*rulespb.RuleDesc) *rulespb.RuleGroupDesc {
+func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.RuleGroupDesc {
 	clone := proto.Clone(g).(*rulespb.RuleGroupDesc)
-	clone.Rules = rs
+
+	// all rule group names need to be unique, so we add the rule's ring token
+	clone.Name = AddRuleTokenToGroupName(g, r)
+	clone.Rules = []*rulespb.RuleDesc{r}
 
 	return clone
 }

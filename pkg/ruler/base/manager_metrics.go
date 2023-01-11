@@ -25,11 +25,14 @@ type ManagerMetrics struct {
 	GroupLastEvalSamples *prometheus.Desc
 }
 
+// this label is added by Prometheus, the value of which comes from the GroupKey function
+const ruleGroupLabel = "rule_group"
+
 // NewManagerMetrics returns a ManagerMetrics struct
 func NewManagerMetrics(disableRuleGroupLabel bool) *ManagerMetrics {
 	commonLabels := []string{"user"}
 	if !disableRuleGroupLabel {
-		commonLabels = append(commonLabels, "rule_group")
+		commonLabels = append(commonLabels, ruleGroupLabel)
 	}
 	return &ManagerMetrics{
 		regs:                  util.NewUserRegistries(),
@@ -134,7 +137,7 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data := m.regs.BuildMetricFamiliesPerUser()
 	labels := []string{}
 	if !m.disableRuleGroupLabel {
-		labels = append(labels, "rule_group")
+		labels = append(labels, ruleGroupLabel)
 	}
 	// WARNING: It is important that all metrics generated in this method are "Per User".
 	// Thanks to that we can actually *remove* metrics for given user (see RemoveUserRegistry).
