@@ -411,130 +411,11 @@ enterprise:
     # -- Volume mounts to add to the provisioner pods
     extraVolumeMounts: []
 
+  # DEPRECATED: will be removed in version 4 of chart
+  # please use gateway.nginxConfig.file for both OSS and
+  # enterprise gateways.
   nginxConfig:
-    file: |
-      worker_processes  5;  ## Default: 1
-      error_log  /dev/stderr;
-      pid        /tmp/nginx.pid;
-      worker_rlimit_nofile 8192;
-
-      events {
-        worker_connections  4096;  ## Default: 1024
-      }
-
-      http {
-        client_body_temp_path /tmp/client_temp;
-        proxy_temp_path       /tmp/proxy_temp_path;
-        fastcgi_temp_path     /tmp/fastcgi_temp;
-        uwsgi_temp_path       /tmp/uwsgi_temp;
-        scgi_temp_path        /tmp/scgi_temp;
-
-        proxy_http_version    1.1;
-
-        default_type application/octet-stream;
-        log_format   {{ .Values.gateway.nginxConfig.logFormat }}
-
-        {{- if .Values.gateway.verboseLogging }}
-        access_log   /dev/stderr  main;
-        {{- else }}
-
-        map $status $loggable {
-          ~^[23]  0;
-          default 1;
-        }
-        access_log   /dev/stderr  main  if=$loggable;
-        {{- end }}
-
-        sendfile     on;
-        tcp_nopush   on;
-        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
-
-        {{- with .Values.gateway.nginxConfig.httpSnippet }}
-        {{ . | nindent 2 }}
-        {{- end }}
-
-        server {
-          listen             8080;
-
-          {{- if .Values.gateway.basicAuth.enabled }}
-          auth_basic           "Loki";
-          auth_basic_user_file /etc/nginx/secrets/.htpasswd;
-          {{- end }}
-
-          location = / {
-            return 200 'OK';
-            auth_basic off;
-          }
-
-          location = /api/prom/push {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location = /api/prom/tail {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-          }
-
-          location ~ /api/prom/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /prometheus/api/v1/alerts.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /prometheus/api/v1/rules.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location = /loki/api/v1/push {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location = /loki/api/v1/tail {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-          }
-
-          location ~ /loki/api/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /admin/api/.* {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /compactor/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /distributor/.* {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /ring {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /ingester/.* {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /ruler/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /scheduler/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          {{- with .Values.gateway.nginxConfig.serverSnippet }}
-          {{ . | nindent 4 }}
-          {{- end }}
-        }
-      }
+    file: null
 
 # -- Options that may be necessary when performing a migration from another helm chart
 migrate:
@@ -738,7 +619,7 @@ monitoring:
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
 
-# Configuration for the write
+# Configuration for the write pod(s)
 write:
   # -- Number of replicas for the write
   replicas: 3
@@ -804,7 +685,7 @@ write:
     # -- Selector for persistent disk
     selector: null
 
-# Configuration for the read node(s)
+# Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
   replicas: 3
@@ -838,6 +719,9 @@ read:
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
+  # -- Set to false to enable the new 3-target mode (read, write, backend) that will be the default
+  # in future version of Loki
+  legacyReadTarget: true
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -866,6 +750,70 @@ read:
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Tolerations for read pods
+  tolerations: []
+  persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
+    # -- Size of persistent disk
+    size: 10Gi
+    # -- Storage class to be used.
+    # If defined, storageClassName: <storageClass>.
+    # If set to "-", storageClassName: "", which disables dynamic provisioning.
+    # If empty or set to null, no storageClassName spec is
+    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+    storageClass: null
+    # -- Selector for persistent disk
+    selector: null
+
+# Configuration for the backend pod(s)
+backend:
+  # -- Number of replicas for the backend
+  replicas: 3
+  image:
+    # -- The Docker registry for the backend image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the backend image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the backend image. Overrides `loki.image.tag`
+    tag: null
+  # -- The name of the PriorityClass for backend pods
+  priorityClassName: null
+  # -- Annotations for backend pods
+  podAnnotations: {}
+  # -- Additional selector labels for each `backend` pod
+  selectorLabels: {}
+  # -- Labels for ingestor service
+  serviceLabels: {}
+  # -- Comma-separated list of Loki modules to load for the read
+  targetModule: "backend"
+  # -- Additional CLI args for the backend
+  extraArgs: []
+  # -- Environment variables to add to the backend pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the backend pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the backend pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the backend pods
+  extraVolumes: []
+  # -- Resource requests and limits for the backend
+  resources: {}
+  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor,
+  # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
+  # all data and to successfully leave the member ring on shutdown.
+  terminationGracePeriodSeconds: 300
+  # -- Affinity for backend pods. Passed through `tpl` and, thus, to be configured as string
+  # @default -- Hard node and soft zone anti-affinity
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.backendSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+  # -- Node selector for backend pods
+  nodeSelector: {}
+  # -- Tolerations for backend pods
   tolerations: []
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -1147,101 +1095,7 @@ gateway:
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
-      worker_processes  5;  ## Default: 1
-      error_log  /dev/stderr;
-      pid        /tmp/nginx.pid;
-      worker_rlimit_nofile 8192;
-
-      events {
-        worker_connections  4096;  ## Default: 1024
-      }
-
-      http {
-        client_body_temp_path /tmp/client_temp;
-        proxy_temp_path       /tmp/proxy_temp_path;
-        fastcgi_temp_path     /tmp/fastcgi_temp;
-        uwsgi_temp_path       /tmp/uwsgi_temp;
-        scgi_temp_path        /tmp/scgi_temp;
-
-        proxy_http_version    1.1;
-
-        default_type application/octet-stream;
-        log_format   {{ .Values.gateway.nginxConfig.logFormat }}
-
-        {{- if .Values.gateway.verboseLogging }}
-        access_log   /dev/stderr  main;
-        {{- else }}
-
-        map $status $loggable {
-          ~^[23]  0;
-          default 1;
-        }
-        access_log   /dev/stderr  main  if=$loggable;
-        {{- end }}
-
-        sendfile     on;
-        tcp_nopush   on;
-        resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
-
-        {{- with .Values.gateway.nginxConfig.httpSnippet }}
-        {{ . | nindent 2 }}
-        {{- end }}
-
-        server {
-          listen             8080;
-
-          {{- if .Values.gateway.basicAuth.enabled }}
-          auth_basic           "Loki";
-          auth_basic_user_file /etc/nginx/secrets/.htpasswd;
-          {{- end }}
-
-          location = / {
-            return 200 'OK';
-            auth_basic off;
-          }
-
-          location = /api/prom/push {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location = /api/prom/tail {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-          }
-
-          location ~ /api/prom/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /prometheus/api/v1/alerts.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location ~ /prometheus/api/v1/rules.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location = /loki/api/v1/push {
-            proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          location = /loki/api/v1/tail {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-          }
-
-          location ~ /loki/api/.* {
-            proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
-          }
-
-          {{- with .Values.gateway.nginxConfig.serverSnippet }}
-          {{ . | nindent 4 }}
-          {{- end }}
-        }
-      }
-
+      {{- include "loki.nginxFile" . | indent 2 -}}
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false

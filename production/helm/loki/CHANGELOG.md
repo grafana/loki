@@ -11,12 +11,18 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-## 3.8.2
+## 3.10.0
 
-- [FEATURE] Added `extraObjects` helm values to extra manifests.
+- [CHANGE] Deprecate `enterprise.nginxConfig.file`. Both enterprise and gateway configurations now share the same nginx config. Admin routes will 404 on OSS deployments. Will be removed in version 4 of the chart, please use `gateway.nginxConfig.file` for both OSS and Enterprise gateways.
+- [FEATURE] Added new simple deployment target `backend`. Running 3 targets for simple deployment will soon be the default in Loki. This new target allows the `read` target to be run as a deployment and auto-scaled.
+
 ## 3.9.0
 
 - [BUGFIX] Fix race condition between minio create bucket job and enterprise tokengen job
+
+## 3.8.2
+
+- [FEATURE] Added `extraObjects` helm values to extra manifests.
 
 ## 3.8.1
 

@@ -1,30 +1,22 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable (.Values.read.legacyReadTarget ) }}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: {{ include "loki.readFullname" . }}
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
 spec:
+  {{- if not .Values.read.autoscaling.enabled }}
   replicas: {{ .Values.read.replicas }}
-  podManagementPolicy: Parallel
-  updateStrategy:
-    rollingUpdate:
-      partition: 0
-  serviceName: {{ printf "%s-headless" (include "loki.readFullname" .) }}
-  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
-  {{/*
-    Data on the read nodes is easy to replace, so we want to always delete PVCs to make
-    operation easier, and will rely on re-fetching data when needed.
-  */}}
-  persistentVolumeClaimRetentionPolicy:
-    whenDeleted: Delete
-    whenScaled: Delete
   {{- end }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
       {{- include "loki.readSelectorLabels" . | nindent 6 }}
@@ -68,6 +60,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.read.targetModule }}
+            - -legacy-read-mode=false
+            - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:9095
             {{- with .Values.read.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -93,10 +87,6 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
-          {{- with .Values.read.lifecycle }}
-          lifecycle:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
@@ -128,6 +118,8 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: data
+          emptyDir: {}
         - name: config
           {{- if .Values.loki.existingSecretForConfig }}
           secret:
@@ -147,21 +139,5 @@ spec:
         {{- end }}
         {{- with .Values.read.extraVolumes }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        {{- with .Values.read.persistence.storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
-        {{- end }}
-        resources:
-          requests:
-            storage: {{ .Values.read.persistence.size | quote }}
-        {{- with .Values.read.persistence.selector }}
-        selector:
-          {{- toYaml . | nindent 10 }}
         {{- end }}
 {{- end }}
