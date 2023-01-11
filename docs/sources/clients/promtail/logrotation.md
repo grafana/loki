@@ -9,7 +9,7 @@ At any point in time, there can be three processes working on a log file as show
 2. Tailer - A reader that read log lines as it is being appended e.g agents like Promtail.
 3. Log Rotater - A process that rotates the log either based on time (say scheduled every day) or size (say a log file reached its max size)
 
-NOTE: Here `fd` defines a file descriptor. Once a file is open for read or write, OS gives back unique file descriptor (an ingeter) per process and all the operations like read and write are done over that file descriptor. In other words, once file is opened successfully, file descriptor matters more than the file name.
+NOTE: Here `fd` defines a file descriptor. Once a file is open for read or write, OS gives back a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
 
 One of the critical component here is log rotater. Let's understand how it impacts other components like appender and tailer.
 
