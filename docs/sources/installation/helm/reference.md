@@ -2730,6 +2730,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.selector</td>
 			<td>string</td>
 			<td>Selector for persistent disk</td>
