@@ -48,9 +48,9 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/grafana/dskit v0.0.0-20221212120341-3e308a49441b
+	github.com/grafana/dskit v0.0.0-20230111182235-1705ab9b1a72
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20221213170046-b5da8a745d41
+	github.com/grafana/gomemcache v0.0.0-20230105173749-11f792309e1f
 	github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 	github.com/grafana/tail v0.0.0-20221214082743-3a1c242a4d7b
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -252,7 +252,6 @@ require (
 	github.com/prometheus/exporter-toolkit v0.8.2 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/rs/xid v1.4.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect

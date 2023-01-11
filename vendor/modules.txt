@@ -678,7 +678,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.0
 ## explicit; go 1.12
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20221212120341-3e308a49441b
+# github.com/grafana/dskit v0.0.0-20230111182235-1705ab9b1a72
 ## explicit; go 1.18
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency
@@ -688,6 +688,7 @@ github.com/grafana/dskit/grpcclient
 github.com/grafana/dskit/grpcencoding/snappy
 github.com/grafana/dskit/grpcutil
 github.com/grafana/dskit/internal/math
+github.com/grafana/dskit/internal/slices
 github.com/grafana/dskit/kv
 github.com/grafana/dskit/kv/codec
 github.com/grafana/dskit/kv/consul
@@ -700,7 +701,6 @@ github.com/grafana/dskit/netutil
 github.com/grafana/dskit/ring
 github.com/grafana/dskit/ring/client
 github.com/grafana/dskit/ring/shard
-github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
@@ -708,8 +708,8 @@ github.com/grafana/dskit/tenant
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20221213170046-b5da8a745d41
-## explicit; go 1.12
+# github.com/grafana/gomemcache v0.0.0-20230105173749-11f792309e1f
+## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 ## explicit; go 1.17
@@ -1098,8 +1098,6 @@ github.com/prometheus/prometheus/web/api/v1
 # github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 ## explicit
 github.com/rcrowley/go-metrics
-# github.com/rogpeppe/go-internal v1.9.0
-## explicit; go 1.17
 # github.com/rs/xid v1.4.0
 ## explicit; go 1.12
 github.com/rs/xid

@@ -104,7 +104,7 @@ func WaitRingStability(ctx context.Context, r ReadRing, op Operation, minStabili
 // allowed states (e.g. JOINING->ACTIVE if allowed by op).
 // This can be used to avoid wasting resources on moving data around
 // due to multiple changes in the Ring.
-func WaitRingTokensStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+func WaitRingTokensStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration) error {
 	return waitStability(ctx, r, op, minStability, maxWaiting, HasReplicationSetChangedWithoutState)
 }
 

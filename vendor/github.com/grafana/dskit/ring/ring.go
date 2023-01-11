@@ -6,10 +6,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"math"
 	"math/rand"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,13 +20,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/dskit/kv"
-	shardUtil "github.com/grafana/dskit/ring/shard"
-	"github.com/grafana/dskit/ring/util"
-	"github.com/grafana/dskit/services"
-
 	"github.com/grafana/dskit/flagext"
 	dsmath "github.com/grafana/dskit/internal/math"
+	"github.com/grafana/dskit/internal/slices"
+	"github.com/grafana/dskit/kv"
+	shardUtil "github.com/grafana/dskit/ring/shard"
+	"github.com/grafana/dskit/services"
 )
 
 const (
@@ -78,6 +77,9 @@ type ReadRing interface {
 
 	// CleanupShuffleShardCache should delete cached shuffle-shard subrings for given identifier.
 	CleanupShuffleShardCache(identifier string)
+
+	// GetTokens returns ring instance tokens.
+	GetTokens(ctx context.Context) Tokens
 }
 
 var (
@@ -292,7 +294,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	// Filter out all instances belonging to excluded zones.
 	if len(r.cfg.ExcludedZones) > 0 {
 		for instanceID, instance := range ringDesc.Ingesters {
-			if util.StringsContain(r.cfg.ExcludedZones, instance.Zone) {
+			if slices.Contains(r.cfg.ExcludedZones, instance.Zone) {
 				delete(ringDesc.Ingesters, instanceID)
 			}
 		}
@@ -337,18 +339,8 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if r.ringDesc == nil {
-		return ReplicationSet{}, errors.Wrap(ErrEmptyRing, "r.RingDesc == nil")
-	}
-
-	if len(r.ringTokens) == 0 {
-		var ingesterKeys []string
-		for i := range r.ringDesc.GetIngesters() {
-			ingesterKeys = append(ingesterKeys, i)
-		}
-		ing := strings.Join(ingesterKeys, ",")
-		level.Warn(r.logger).Log("msg", "[xyz] ring tokens == 0 here", "ringDesc:", "get_tokens_len", len(r.ringDesc.GetTokens()), "ingesters", ing)
-		return ReplicationSet{}, errors.Wrap(ErrEmptyRing, "ring tokens == 0")
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
+		return ReplicationSet{}, ErrEmptyRing
 	}
 
 	var (
@@ -375,13 +367,13 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		}
 
 		// We want n *distinct* instances && distinct zones.
-		if util.StringsContain(distinctHosts, info.InstanceID) {
+		if slices.Contains(distinctHosts, info.InstanceID) {
 			continue
 		}
 
 		// Ignore if the instances don't have a zone set.
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
-			if util.StringsContain(distinctZones, info.Zone) {
+			if slices.Contains(distinctZones, info.Zone) {
 				continue
 			}
 		}
@@ -411,6 +403,14 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		Instances: healthyInstances,
 		MaxErrors: maxFailure,
 	}, nil
+}
+
+// GetTokens implement ReadRing.
+func (r *Ring) GetTokens(ctx context.Context) Tokens {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	return r.ringTokens
 }
 
 // GetAllHealthy implements ReadRing.
