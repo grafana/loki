@@ -116,6 +116,7 @@ resource "aws_lambda_function" "lambda_promtail" {
       TENANT_ID       = var.tenant_id
       SKIP_TLS_VERIFY = var.skip_tls_verify
       PRINT_LOG_LINE = var.print_log_line
+      SKIP_TLS_VERIFY = var.skip_tls_verify
     }
   }
 
