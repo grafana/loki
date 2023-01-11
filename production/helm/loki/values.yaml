@@ -411,6 +411,12 @@ enterprise:
     # -- Volume mounts to add to the provisioner pods
     extraVolumeMounts: []
 
+  # DEPRECATED: will be removed in version 4 of chart
+  # please use gateway.nginxConfig.file for both OSS and
+  # enterprise gateways.
+  nginxConfig:
+    file: null
+
 # -- Options that may be necessary when performing a migration from another helm chart
 migrate:
   # -- When migrating from a distributed chart like loki-distributed or enterprise-logs
