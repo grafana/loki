@@ -477,7 +477,7 @@ func (c *client) runSendSide(
 				batch = new
 			}
 
-			// We know now one of the conditions is true:
+			// We now know one of the following conditions is true:
 			// - the retrieved batch exists, and it's max size of the batch isn't reached
 			// - the batch didn't exist, so a new one was created
 			// - the permitted max size for the batch was reached, so it was dispatched a new one created
