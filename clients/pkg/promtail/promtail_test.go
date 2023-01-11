@@ -48,7 +48,6 @@ import (
 var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
 
 func TestPromtail(t *testing.T) {
-	t.FailNow()
 	// Setup.
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
