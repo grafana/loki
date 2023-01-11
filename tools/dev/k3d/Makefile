@@ -24,26 +24,16 @@ helm-cluster: prepare
 	sleep 5
 	$(MAKE) -C $(CURDIR) apply-helm-cluster
 
-loki: prepare
-	$(CURDIR)/scripts/create_cluster.sh loki $(REGISTRY_PORT)
-	# wait 5s for the cluster to be ready
-	sleep 5
-	$(MAKE) -C $(CURDIR) apply-loki
-	
 apply-enterprise-logs:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/enterprise-logs
 
 apply-helm-cluster:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/helm-cluster
 
-apply-loki:
-	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/loki
-
 down:
 	k3d cluster delete loki-distributed
 	k3d cluster delete enterprise-logs
 	k3d cluster delete helm-cluster
-	k3d cluster delete loki
 
 add-repos:
 	helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
