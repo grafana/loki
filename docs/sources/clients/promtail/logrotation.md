@@ -90,7 +90,7 @@ NOTE: Log rotation managed by `kubelet` supports only rename + create (for a goo
 
 If `kubelet` is not configured to manage the log rotation, then it's upto CRI (Container Runtime Interface) the cluster is using or can be managed by `logrotate` utility in the kubernetes node itself.
 
-Check your container runtime on your nodes via
+Check your container runtime (CRI) on your nodes by running:
 ```bash
 $ kubectl get nodes -o wide
 ```
