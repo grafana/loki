@@ -88,7 +88,7 @@ Both should be part of `kubelet` config. Check cloud provider docs for tweaking 
 
 NOTE: Log rotation managed by `kubelet` supports only rename + create (for a good reason) and doesn't support copy + truncate.
 
-If `kubelet` is not configured to manage the log rotation, then it's upto CRI (Container Runtime Interface) the cluster is using or can be managed by `logrotate` utility in the kubernetes node itself.
+If `kubelet` is not configured to manage the log rotation, then it's up to the CRI (Container Runtime Interface) the cluster uses. Alternatively, log rotation can be managed by the `logrotate` utility in the Kubernetes node itself.
 
 Check your container runtime (CRI) on your nodes by running:
 ```bash
