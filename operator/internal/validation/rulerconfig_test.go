@@ -144,22 +144,22 @@ var rctt = []struct {
 			"testing-ruler",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("Credentials"),
+					field.NewPath("spec", "alertmanager", "client", "headerAuth", "credentials"),
 					"creds",
 					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 				field.Invalid(
-					field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
+					field.NewPath("spec", "alertmanager", "client", "headerAuth", "credentialsFile"),
 					"creds-file",
 					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 				field.Invalid(
-					field.NewPath("Spec").Child("Overrides").Child("tenant").Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("Credentials"),
+					field.NewPath("spec", "overrides", "tenant", "alertmanager", "client", "headerAuth", "credentials"),
 					"creds1",
 					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 				field.Invalid(
-					field.NewPath("Spec").Child("Overrides").Child("tenant").Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
+					field.NewPath("spec", "overrides", "tenant", "alertmanager", "client", "headerAuth", "credentialsFile"),
 					"creds-file1",
 					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),

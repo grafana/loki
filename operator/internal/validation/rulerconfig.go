@@ -17,9 +17,7 @@ import (
 var _ admission.CustomValidator = &RulerConfigValidator{}
 
 // RulerConfigValidator implements a custom validator for RulerConfig resources.
-type RulerConfigValidator struct {
-	ExtendedValidator func(context.Context, *lokiv1beta1.RulerConfig) field.ErrorList
-}
+type RulerConfigValidator struct{}
 
 // SetupWebhookWithManager registers the RulerConfigValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
@@ -61,12 +59,12 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 		// Credentials and CredentialsFile are mutually exclusive
 		if ha.Credentials != nil && ha.CredentialsFile != nil {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("Credentials"),
+				field.NewPath("spec", "alertmanager", "client", "headerAuth", "credentials"),
 				ha.Credentials,
 				lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 			))
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
+				field.NewPath("spec", "alertmanager", "client", "headerAuth", "credentialsFile"),
 				ha.CredentialsFile,
 				lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 			))
@@ -81,21 +79,17 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 			// Credentials and CredentialsFile are mutually exclusive
 			if oha.Credentials != nil && oha.CredentialsFile != nil {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Overrides").Child(tenant).Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("Credentials"),
+					field.NewPath("spec", "overrides", tenant, "alertmanager", "client", "headerAuth", "credentials"),
 					oha.Credentials,
 					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				))
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Overrides").Child(tenant).Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
+					field.NewPath("spec", "overrides", tenant, "alertmanager", "client", "headerAuth", "credentialsFile"),
 					oha.CredentialsFile,
 					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				))
 			}
 		}
-	}
-
-	if v.ExtendedValidator != nil {
-		allErrs = append(allErrs, v.ExtendedValidator(ctx, rulerConfig)...)
 	}
 
 	if len(allErrs) == 0 {
