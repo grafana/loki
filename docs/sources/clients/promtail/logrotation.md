@@ -5,7 +5,7 @@
 At any point in time, there may be three processes working on a log file as shown in the image below.
 ![block_diagram](./logrotation-components.png)
 
-1. Appender - A writer that keep appending to a log file. This can be your application or some system daemons like syslog, docker log driver or kubelet etc.
+1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like syslog, docker log driver or kubelet, etc.
 2. Tailer - A reader that read log lines as it is being appended e.g agents like Promtail.
 3. Log Rotater - A process that rotates the log either based on time (say scheduled every day) or size (say a log file reached its max size)
 
