@@ -15,7 +15,7 @@ One of the critical components here is the log rotater. Let's understand how it 
 
 In general, a log can be rotated in two ways.
 
-Given a log file say `error.log`
+Given a log file `error.log`
 
 1. Copy the log file with different name e.g `error.log.1` and truncate the original log file `error.log`.
 2. Rename the log file with different name e.g: `error.log.1` and create new log file with original name `error.log`.
