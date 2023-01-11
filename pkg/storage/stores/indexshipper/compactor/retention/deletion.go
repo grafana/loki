@@ -34,7 +34,9 @@ func purgeOldFiles(diskUsage util_storage.DiskStatus, directory string, cleanupT
 
 	// Sorting by the last modified time
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].ModTime().Before(files[j].ModTime())
+		infoI, _ := files[i].Info()
+		infoJ, _ := files[j].Info()
+		return infoI.ModTime().Before(infoJ.ModTime())
 	})
 
 	for _, file := range files {
@@ -42,11 +44,12 @@ func purgeOldFiles(diskUsage util_storage.DiskStatus, directory string, cleanupT
 			continue
 		}
 
-		if bytesToDelete < (bytesDeleted + float64(file.Size())) {
+		info, _ := file.Info()
+		if bytesToDelete < (bytesDeleted + float64(info.Size())) {
 			break
 		}
 
-		bytesDeleted = bytesDeleted + float64(file.Size())
+		bytesDeleted = bytesDeleted + float64(info.Size())
 		level.Info(util_log.Logger).Log("msg", "block size retention exceded, removing file", "filepath", file.Name())
 
 		if error := os.Remove(directory + "/" + file.Name()); error != nil {
