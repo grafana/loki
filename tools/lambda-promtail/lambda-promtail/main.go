@@ -35,7 +35,6 @@ var (
 	extraLabels                                               model.LabelSet
 	skipTlsVerify                                             bool
 	printLogLine                                              bool
-	skipTlsVerify                                             bool
 )
 
 func setupArguments() {
