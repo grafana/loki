@@ -289,7 +289,7 @@ lint:
 ########
 
 test: all
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s/$$/ ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}/" | tee test_results.txt
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
