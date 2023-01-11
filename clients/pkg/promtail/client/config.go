@@ -62,6 +62,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2) (deprecated).")
 
 	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki (deprecated).")
+	f.BoolVar(&c.DropRateLimitedBatches, prefix+"client.drop-rate-limited-batches", false, "Do not retry batches that have been rate limited by Loki (deprecated).")
 }
 
 // RegisterFlags registers flags.
