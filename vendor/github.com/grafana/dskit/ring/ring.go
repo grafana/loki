@@ -284,6 +284,7 @@ func (r *Ring) loop(ctx context.Context) error {
 }
 
 func (r *Ring) updateRingState(ringDesc *Desc) {
+	level.Info(r.logger).Log("msg", "[ABC] update ring state")
 	r.mtx.RLock()
 	prevRing := r.ringDesc
 	r.mtx.RUnlock()
@@ -299,6 +300,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 
 	rc := prevRing.RingCompare(ringDesc)
 	if rc == Equal || rc == EqualButStatesAndTimestamps {
+		level.Info(r.logger).Log("msg", "[ABC] rc == equal or equal timestamps")
 		// No need to update tokens or zones. Only states and timestamps
 		// have changed. (If Equal, nothing has changed, but that doesn't happen
 		// when watching the ring for updates).
@@ -320,6 +322,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	defer r.mtx.Unlock()
 	r.ringDesc = ringDesc
 	r.ringTokens = ringTokens
+	level.Info(r.logger).Log("msg", "[ABC] updating tokens", "tokens_len", len(ringTokens))
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
 	r.ringZones = ringZones
