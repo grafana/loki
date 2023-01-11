@@ -3,7 +3,7 @@
 ## Why log rotation matters?
 
 At any point in time, there can be three processes working on a log file as shown in the image below.
-![block_diagram](../logrotation-components.png)
+![block_diagram](./logrotation-components.png)
 
 1. Appender - A writer that keep appending to a log file. This can be your application or some system daemons like syslog, docker log driver or kubelet etc.
 2. Tailer - A reader that read log lines as it is being appended e.g agents like Promtail.
@@ -25,10 +25,10 @@ In both the cases, after log rotation, all the new log lines goes to original `e
 These types are shown in images below.
 
 ### Copy and Truncate
-![block_diagram](../logrotation1.png)
+![block_diagram](./logrotation1.png)
 
 ### Rename and Create
-![block_diagram](../logroation2.png)
+![block_diagram](./logrotation2.png)
 
 Both types of log rotation seems to give same end result. However there are some subtle differences.
 
@@ -50,7 +50,7 @@ Usually in Linux bare metal or VM log rotation is handled by [`logrotate`](https
 
 The two different types of log rotation as explained before are supported in `logrotate` as well.
 
-### Copy and Truncate
+#### Copy and Truncate
 ```
 /var/log/apache2/*.log {
         weekly
@@ -61,7 +61,7 @@ The two different types of log rotation as explained before are supported in `lo
 
 Here `copytruncate` mode works exactly like (1) explained above.
 
-### Rename and Create
+#### Rename and Create
 ```
 /var/log/apache2/*.log {
         weekly
