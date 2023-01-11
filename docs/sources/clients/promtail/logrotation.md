@@ -79,7 +79,7 @@ It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate
 
 ### Kubernetes
 
-We can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) `kubelet` running on each node to manage log rotation via two configs
+We can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) the `kubelet` process running on each node to manage log rotation via two configs.
 
 1. `containerLogMaxSize` - It is a quantity defining the maximum size of the container log file before it is rotated. For example: "5Mi" or "256Ki". Default: "10Mi"
 2. `containerLogMaxFiles` - It specifies the maximum number of container log files that can be present for a container. Default: 5
