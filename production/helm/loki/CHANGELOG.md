@@ -14,6 +14,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.8.2
 
 - [FEATURE] Added `extraObjects` helm values to extra manifests.
+## 3.9.0
+
+- [BUGFIX] Fix race condition between minio create bucket job and enterprise tokengen job
 
 ## 3.8.1
 
