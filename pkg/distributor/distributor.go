@@ -245,6 +245,12 @@ func (d *Distributor) starting(ctx context.Context) error {
 		}
 	}
 
+	if d.ingestersRing != nil {
+		if err := ring.WaitRingStability(ctx, d.ingestersRing, ring.Read, time.Second*5, time.Minute); err != nil {
+			return errors.Wrap(err, "distributor's waiting for ingester ring stability")
+		}
+	}
+
 	return nil
 }
 
