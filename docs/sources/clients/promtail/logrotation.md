@@ -84,7 +84,7 @@ We can [configure](https://kubernetes.io/docs/concepts/cluster-administration/lo
 1. `containerLogMaxSize` - It defines the maximum size of the container log file before it is rotated. For example: "5Mi" or "256Ki". Default: "10Mi".
 2. `containerLogMaxFiles` - It specifies the maximum number of container log files that can be present per container. Default: 5
 
-Both should be part of `kubelet` config. Check cloud provider docs for tweaking this configs in managed version of Kubernetes cluster. Examples [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/node-system-config#create), [AKS](https://learn.microsoft.com/en-us/azure/aks/custom-node-configuration#use-custom-node-configuration) and [EKS](https://eksctl.io/usage/customizing-the-kubelet/#customizing-kubelet-configuration)
+Both should be part of the `kubelet` config. If you run a managed version of Kubernetes in Cloud, refer to your cloud provider documentation for configuring `kubelet`. Examples [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/node-system-config#create), [AKS](https://learn.microsoft.com/en-us/azure/aks/custom-node-configuration#use-custom-node-configuration) and [EKS](https://eksctl.io/usage/customizing-the-kubelet/#customizing-kubelet-configuration).
 
 NOTE: Log rotation managed by `kubelet` supports only rename + create (for a good reason) and doesn't support copy + truncate.
 
