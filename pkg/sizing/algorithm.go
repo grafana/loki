@@ -63,7 +63,7 @@ func calculateClusterSize(nt NodeType, tbDayIngest int, qperf QueryPerf) Cluster
 
 	totalNodesNeeded := nodesNeededForWrites + actualNodesAddedForReads
 
-	totalCoresLimit := numWriteReplicasNeeded*nt.writePod.cpuLimit + totalReadReplicas*nt.readPod.cpuLimit
+	totalCoresLimit := numWriteReplicasNeeded*nt.writePod.cpuRequest + totalReadReplicas*nt.readPod.cpuRequest
 
 	return ClusterSize{
 		TotalNodes:         int(totalNodesNeeded),
