@@ -36,7 +36,7 @@ Both types of log rotation seem to give the same end result. However, there are 
 
 However (1) has a serious problem if we bring the `tailer` into account. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
 
-This is where (2) can help. Here when log file `error.log` is renamed to `error.log.1`, the `tailer` still holding file descriptor of `error.log.1` and it can continue reading the log file until it's completed. But that comes with the tradeoff, with (2) you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it), else it would be keep writing to `error.log.1` (because of same file descriptor). Almost all of the `appender` in real life (e.g: syslog, kubelet, docker log driver) supports reopening log file when it is renamed.
+This is where (2) can help. Here, when the log file `error.log` is renamed to `error.log.1`, the `tailer` still holds the file descriptor of `error.log.1`. Therefore, it can continue reading the log file until it's completed. But that comes with the tradeoff: with (2), you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it). Otherwise, it would keep writing to `error.log.1` as the file descriptor won't change. The good news is that most of the popular `appender` solutions (e.g: syslog, kubelet, docker log driver) support reopening log files when these are renamed.
 
 We recommend (2) as that is the one which works well with Promtail (or any agent) without any dataloss. Now let's understand how do we exactly configure log rotation in different platforms.
 
