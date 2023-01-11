@@ -268,6 +268,7 @@ func (d *Distributor) starting(ctx context.Context) error {
 				continue
 			}
 
+			// ring.
 			return nil
 		}
 
@@ -413,9 +414,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
-		if err != nil {
-			return nil, errors.Wrap(err, "push get ingester ring")
+		var replicationSet ring.ReplicationSet
+		for i := 0; i < 5; i++ {
+			rs, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
+			replicationSet = rs
+			if err != nil && err == ring.ErrEmptyRing {
+				level.Warn(util_log.Logger).Log("msg", "push get ingester ring empty ring, waiting 1 second more before retrying")
+				time.Sleep(time.Second)
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors

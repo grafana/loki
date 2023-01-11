@@ -198,6 +198,7 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
+
 	if err != nil {
 		return
 	}
