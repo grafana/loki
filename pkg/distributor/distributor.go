@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
@@ -246,9 +247,25 @@ func (d *Distributor) starting(ctx context.Context) error {
 	}
 
 	if d.ingestersRing != nil {
-		if err := ring.WaitRingStability(ctx, d.ingestersRing, ring.Read, time.Second*5, time.Minute); err != nil {
-			return errors.Wrap(err, "distributor's waiting for ingester ring stability")
+		ingesterRingBackoff := backoff.New(ctx, backoff.Config{MinBackoff: time.Second, MaxBackoff: time.Second * 30, MaxRetries: 5})
+		for ingesterRingBackoff.Ongoing() {
+			rs, err := d.ingestersRing.GetReplicationSetForOperation(ring.Read)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "read replication set not ready", "err", err)
+				ingesterRingBackoff.Wait()
+				continue
+			}
+
+			if len(rs.Instances) <= 1 {
+				level.Error(util_log.Logger).Log("msg", "less than 1 instance available", "err", err)
+				ingesterRingBackoff.Wait()
+				continue
+			}
+
+			return nil
 		}
+
+		return ingesterRingBackoff.Err()
 	}
 
 	return nil
