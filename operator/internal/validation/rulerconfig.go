@@ -63,12 +63,12 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("Credentials"),
 				ha.Credentials,
-				lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+				lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 			))
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
 				ha.CredentialsFile,
-				lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+				lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 			))
 		}
 	}
@@ -83,12 +83,12 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 				allErrs = append(allErrs, field.Invalid(
 					field.NewPath("Spec").Child("Overrides").Child(tenant).Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("Credentials"),
 					oha.Credentials,
-					lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				))
 				allErrs = append(allErrs, field.Invalid(
 					field.NewPath("Spec").Child("Overrides").Child(tenant).Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
 					oha.CredentialsFile,
-					lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				))
 			}
 		}

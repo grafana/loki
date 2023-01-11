@@ -146,22 +146,22 @@ var rctt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("Credentials"),
 					"creds",
-					lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 				field.Invalid(
 					field.NewPath("Spec").Child("AlertManagerSpec").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
 					"creds-file",
-					lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 				field.Invalid(
 					field.NewPath("Spec").Child("Overrides").Child("tenant").Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("Credentials"),
 					"creds1",
-					lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 				field.Invalid(
 					field.NewPath("Spec").Child("Overrides").Child("tenant").Child("AlertManagerOverrides").Child("Client").Child("HeaderAuth").Child("CredentialsFile"),
 					"creds-file1",
-					lokiv1beta1.ErrHeaderAuthCredentials.Error(),
+					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
 				),
 			},
 		),
