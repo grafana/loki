@@ -11,7 +11,7 @@ At any point in time, there may be three processes working on a log file as show
 
 NOTE: Here `fd` defines a file descriptor. Once a file is open for read or write, OS gives back a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
 
-One of the critical component here is log rotater. Let's understand how it impacts other components like appender and tailer.
+One of the critical components here is the log rotater. Let's understand how it impacts other components like the appender and tailer.
 
 In general, a log can be rotated in two ways.
 
