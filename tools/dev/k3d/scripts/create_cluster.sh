@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
 k3d_dir="$(cd "${current_dir}/.." && pwd)"

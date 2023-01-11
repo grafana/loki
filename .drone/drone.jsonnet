@@ -446,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.25.0',
+    local build_image_tag = '0.26.0',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -618,7 +618,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
@@ -756,6 +756,38 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
           }) { when: { event: ['tag'] } },
+    ],
+  },
+  pipeline('docker-driver') {
+    trigger+: onTagOrMain,
+    steps: [
+      {
+        name: 'build and push',
+        image: 'grafana/loki-build-image:%s' % build_image_version,
+        depends_on: ['clone'],
+        environment: {
+          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
+          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
+        },
+        commands: [
+          'make docker-driver-push',
+        ],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    volumes: [
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
     ],
   },
 ]

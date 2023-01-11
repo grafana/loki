@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_AlgorithTest_Algorith(t *testing.T) {
-	f := func(ingest int) bool {
+func Test_AlgorithmTest_Algorithm(t *testing.T) {
+	f := func(ingest float64) bool {
 		if ingest < 0 {
 			ingest = -ingest
 		}

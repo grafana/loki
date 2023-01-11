@@ -15,7 +15,7 @@ keywords: []
 <!-- The reference title is required. Use a noun-based title. -->
 <!-- vale Grafana.Quotes = YES -->
 
-This is the generade reference for the Loki Helm Chart values.
+This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
@@ -473,6 +473,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>extraObjects</td>
+			<td>list</td>
+			<td></td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>fullnameOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's computed fullname</td>
@@ -817,6 +826,15 @@ See values.yaml
 			<td>gateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for gateway pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1439,6 +1457,15 @@ null
 			<td>loki.podAnnotations</td>
 			<td>object</td>
 			<td>Common annotations for all pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.podLabels</td>
+			<td>object</td>
+			<td>Common labels for all pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2487,6 +2514,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.selector</td>
 			<td>string</td>
 			<td>Selector for persistent disk</td>
@@ -2523,6 +2559,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `read` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for read pods</td>
@@ -2552,7 +2597,7 @@ null
 		<tr>
 			<td>read.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selecto labels for each `read` pod</td>
+			<td>Additional selector labels for each `read` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2820,6 +2865,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `single binary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for single binary pods</td>
@@ -2849,7 +2903,7 @@ null
 		<tr>
 			<td>singleBinary.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selecto labels for each `single binary` pod</td>
+			<td>Additional selector labels for each `single binary` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3128,6 +3182,15 @@ null
 			<td>write.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `write` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
