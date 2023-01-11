@@ -73,7 +73,7 @@ Here `create` mode works like (2) explained above. `create` mode is optional bec
 
 `logroate` configs are usually located in `/etc/logrotate/`
 
-It has wide range [different options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, scripts to run pre and post rotation, etc.
+It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, running scripts pre and post rotation, etc.
 
 **Recommended: Rename and Create**
 
