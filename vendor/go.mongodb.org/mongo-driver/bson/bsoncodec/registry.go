@@ -254,6 +254,7 @@ func (rb *RegistryBuilder) RegisterDefaultDecoder(kind reflect.Kind, dec ValueDe
 // By default, BSON documents will decode into interface{} values as bson.D. To change the default type for BSON
 // documents, a type map entry for bsontype.EmbeddedDocument should be registered. For example, to force BSON documents
 // to decode to bson.Raw, use the following code:
+//
 //	rb.RegisterTypeMapEntry(bsontype.EmbeddedDocument, reflect.TypeOf(bson.Raw{}))
 func (rb *RegistryBuilder) RegisterTypeMapEntry(bt bsontype.Type, rt reflect.Type) *RegistryBuilder {
 	rb.typeMap[bt] = rt
