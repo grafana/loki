@@ -123,7 +123,7 @@ Example `/etc/docker/daemon.json`
 
 If neither of `kubelet` or `CRI` is configured for log rotate, then we can still use `logrotate` utility on kubernetes nodes for the logration as explained previously.
 
-**Recommended: Use kubelet for log rotation**
+**We recommend using kubelet for log rotation**
 
 ## Configure Promtail
 
