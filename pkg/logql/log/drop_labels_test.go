@@ -20,7 +20,7 @@ func Test_DropLabels(t *testing.T) {
 		want       labels.Labels
 	}{
 		{
-			"filter by name",
+			"drop by name",
 			[]DropLabel{
 				{
 					nil,
@@ -43,15 +43,15 @@ func Test_DropLabels(t *testing.T) {
 			},
 		},
 		{
-			"filter by __error__",
+			"drop by __error__",
 			[]DropLabel{
 				{
-					&labels.Matcher{
-						Type:  labels.MatchEqual,
-						Name:  logqlmodel.ErrorLabel,
-						Value: errJSON,
-					},
+					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
 					"",
+				},
+				{
+					nil,
+					"__error_details__",
 				},
 			},
 			errJSON,
@@ -68,15 +68,10 @@ func Test_DropLabels(t *testing.T) {
 			},
 		},
 		{
-			// we don't support dropping labels by __error_details__
-			"filter by __error_details__",
+			"drop with wrong __error__ value",
 			[]DropLabel{
 				{
-					&labels.Matcher{
-						Type:  labels.MatchEqual,
-						Name:  logqlmodel.ErrorDetailsLabel,
-						Value: "json error",
-					},
+					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
 					"",
 				},
 			},
@@ -96,15 +91,40 @@ func Test_DropLabels(t *testing.T) {
 			},
 		},
 		{
+			"drop by __error_details__",
+			[]DropLabel{
+				{
+					labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, "expecting json.*"),
+					"",
+				},
+				{
+					nil,
+					"__error__",
+				},
+			},
+			errJSON,
+			"expecting json object but it is not",
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+				{Name: "pod_uuid", Value: "foo"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+				{Name: "pod_uuid", Value: "foo"},
+			},
+		},
+		{
 			"drop labels with names and matcher",
 			[]DropLabel{
 				{
-					&labels.Matcher{
-						Type:  labels.MatchEqual,
-						Name:  logqlmodel.ErrorLabel,
-						Value: errJSON,
-					},
+					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
 					"",
+				},
+				{
+					nil,
+					"__error_details__",
 				},
 				{
 					nil,

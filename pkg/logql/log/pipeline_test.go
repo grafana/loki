@@ -185,11 +185,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
-						&labels.Matcher{
-							Name:  logqlmodel.ErrorLabel,
-							Type:  labels.MatchEqual,
-							Value: errLogfmt,
-						},
+						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
 						"",
 					},
 					{

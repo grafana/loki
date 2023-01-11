@@ -43,10 +43,18 @@ func isErrorLabel(name string) bool {
 	return name == logqlmodel.ErrorLabel
 }
 
+func isErrorDetailsLabel(name string) bool {
+	return name == logqlmodel.ErrorDetailsLabel
+}
+
 func dropLabelNames(name string, lbls *LabelsBuilder) {
 	if isErrorLabel(name) {
 		lbls.ResetError()
+		return
+	}
+	if isErrorDetailsLabel(name) {
 		lbls.ResetErrorDetails()
+		return
 	}
 	if _, ok := lbls.Get(name); ok {
 		lbls.Del(name)
@@ -60,6 +68,12 @@ func dropLabelMatches(matcher *labels.Matcher, lbls *LabelsBuilder) {
 		value = lbls.GetErr()
 		if matcher.Matches(value) {
 			lbls.ResetError()
+		}
+		return
+	}
+	if isErrorDetailsLabel(name) {
+		value = lbls.GetErrorDetails()
+		if matcher.Matches(value) {
 			lbls.ResetErrorDetails()
 		}
 		return
