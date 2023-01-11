@@ -34,7 +34,7 @@ Both types of log rotation seem to give the same end result. However, there are 
 
 (1) favours the appender in a sense, that file descriptor it is holding for original log file `error.log` doesn't change. So it can keep writing to same file descriptor, re-opening of the file is not needed.
 
-However (1) has a serious problem if we bring `tailer` into the picture. There is a race between truncating the file and `tailer` finish reading that log file. Meaning, there is a high chance log rotate can truncate the file `error.log` before `tailer` read everything from it.
+However (1) has a serious problem if we bring the `tailer` into account. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
 
 This is where (2) can help. Here when log file `error.log` is renamed to `error.log.1`, the `tailer` still holding file descriptor of `error.log.1` and it can continue reading the log file until it's completed. But that comes with the tradeoff, with (2) you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it), else it would be keep writing to `error.log.1` (because of same file descriptor). Almost all of the `appender` in real life (e.g: syslog, kubelet, docker log driver) supports reopening log file when it is renamed.
 
