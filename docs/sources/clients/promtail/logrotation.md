@@ -22,7 +22,7 @@ Given a log file `error.log`
 
 In both cases, after log rotation, all the new log lines go to the original `error.log` file.
 
-These types are shown in images below.
+These types are shown in the images below.
 
 ### Copy and Truncate
 ![block_diagram](./logrotation1.png)
