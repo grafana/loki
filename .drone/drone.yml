@@ -125,7 +125,6 @@ steps:
   name: test
 - commands:
   - cd ../loki-target-branch
-  - set | grep DRONE
   - BUILD_IN_CONTAINER=false make test
   depends_on:
   - clone-target-branch
@@ -1666,6 +1665,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 3d06eee25db2d08b9f4c1549d0da1c6620259548cc77f515cdd6ad9b37ff49a2
+hmac: 199921967d959534bbc5df76733d2175979aa04da4494dd8938aebc75a874d4e
 
 ...
