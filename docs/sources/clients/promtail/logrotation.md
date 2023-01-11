@@ -116,7 +116,7 @@ Example `/etc/docker/daemon.json`
   "log-driver": "local",
   "log-opts": {
     "max-size": "10m",
-	"max-file": "10"
+    "max-file": "10"
   }
 }
 ```
