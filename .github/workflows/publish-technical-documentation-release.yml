@@ -70,4 +70,4 @@ jobs:
           host: "github.com"
           github_pat: "${{ secrets.GH_BOT_ACCESS_TOKEN }}"
           source_folder: "docs/sources"
-          target_folder: "content/docs/loki/${{ steps.target.outputs.target }}"
+          target_folder: "content/docs/loki/${{ steps.target.outputs.target }}.x"
