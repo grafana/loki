@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -284,7 +285,6 @@ func (r *Ring) loop(ctx context.Context) error {
 }
 
 func (r *Ring) updateRingState(ringDesc *Desc) {
-	level.Info(r.logger).Log("msg", "[ABC] update ring state")
 	r.mtx.RLock()
 	prevRing := r.ringDesc
 	r.mtx.RUnlock()
@@ -300,7 +300,6 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 
 	rc := prevRing.RingCompare(ringDesc)
 	if rc == Equal || rc == EqualButStatesAndTimestamps {
-		level.Info(r.logger).Log("msg", "[ABC] rc == equal or equal timestamps")
 		// No need to update tokens or zones. Only states and timestamps
 		// have changed. (If Equal, nothing has changed, but that doesn't happen
 		// when watching the ring for updates).
@@ -322,7 +321,6 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	defer r.mtx.Unlock()
 	r.ringDesc = ringDesc
 	r.ringTokens = ringTokens
-	level.Info(r.logger).Log("msg", "[ABC] updating tokens", "tokens_len", len(ringTokens))
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
 	r.ringZones = ringZones
@@ -344,6 +342,12 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 	}
 
 	if len(r.ringTokens) == 0 {
+		var ingesterKeys []string
+		for i := range r.ringDesc.GetIngesters() {
+			ingesterKeys = append(ingesterKeys, i)
+		}
+		ing := strings.Join(ingesterKeys, ",")
+		level.Warn(r.logger).Log("msg", "[xyz] ring tokens == 0 here", "ringDesc:", "get_tokens_len", len(r.ringDesc.GetTokens()), "ingesters", ing)
 		return ReplicationSet{}, errors.Wrap(ErrEmptyRing, "ring tokens == 0")
 	}
 
