@@ -473,6 +473,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>extraObjects</td>
+			<td>list</td>
+			<td></td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>fullnameOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's computed fullname</td>

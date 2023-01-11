@@ -1304,3 +1304,24 @@ minio:
     requests:
       cpu: 100m
       memory: 128Mi
+
+# Create extra manifests via values. Would be passed through `tpl` for templating
+extraObjects: []
+# - apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     name: loki-alerting-rules
+#   data:
+#     loki-alerting-rules.yaml: |-
+#       groups:
+#         - name: example
+#           rules:
+#           - alert: example
+#             expr: |
+#               sum(count_over_time({app="loki"} |~ "error")) > 0
+#             for: 3m
+#             labels:
+#               severity: warning
+#               category: logs
+#             annotations:
+#               message: "loki has encountered errors"
