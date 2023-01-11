@@ -84,6 +84,12 @@ variable "kms_key_arn" {
   default     = ""
 }
 
+variable "skip_tls_verify" {
+  type        = string
+  description = "Determines whether to verify the TLS certificate"
+  default     = "false"
+}
+
 variable "kinesis_stream_name" {
   type        = list(string)
   description = "Enter kinesis name if kinesis stream is configured as event source in lambda."

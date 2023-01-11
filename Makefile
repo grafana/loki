@@ -421,6 +421,13 @@ clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
+ifndef DOCKER_PASSWORD
+	$(error env var DOCKER_PASSWORD is undefined)
+endif
+ifndef DOCKER_USERNAME
+	$(error env var DOCKER_USERNAME is undefined)
+endif
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	docker plugin push $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 

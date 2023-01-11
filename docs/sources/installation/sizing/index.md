@@ -26,7 +26,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   </select>
 
   <label class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null">Ingest</label>
-  <input v-model="ingest" name="ingest" placeholder="Desired ingest in TB/day" type="number" max="1000" min="0"/>
+  <input v-model="ingest" name="ingest" placeholder="Desired ingest in GiB/day" type="number" max="1048576" min="0"/>
 
   <label class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null">Log retention period</label>
   <input v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
@@ -103,7 +103,8 @@ createApp({
 
   computed: {
     helmURL() {
-      return `${API_URL}/helm?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.ingest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+      const bytesDayIngest = this.ingest * 1024 * 1024 * 1024
+      return `${API_URL}/helm?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
     }
   },
 
