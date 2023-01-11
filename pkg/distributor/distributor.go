@@ -249,15 +249,21 @@ func (d *Distributor) starting(ctx context.Context) error {
 	if d.ingestersRing != nil {
 		ingesterRingBackoff := backoff.New(ctx, backoff.Config{MinBackoff: time.Second, MaxBackoff: time.Second * 30, MaxRetries: 5})
 		for ingesterRingBackoff.Ongoing() {
-			rs, err := d.ingestersRing.GetReplicationSetForOperation(ring.Read)
+			rs, err := d.ingestersRing.GetReplicationSetForOperation(ring.WriteNoExtend)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "read replication set not ready", "err", err)
 				ingesterRingBackoff.Wait()
 				continue
 			}
 
-			if len(rs.Instances) <= 1 {
-				level.Error(util_log.Logger).Log("msg", "less than 1 instance available", "err", err)
+			if len(rs.Instances) < 1 {
+				level.Error(util_log.Logger).Log("msg", "less than 1 instance available")
+				ingesterRingBackoff.Wait()
+				continue
+			}
+
+			if d.ingestersRing.InstancesCount() < 1 {
+				level.Error(util_log.Logger).Log("msg", "less than 1 instance count")
 				ingesterRingBackoff.Wait()
 				continue
 			}
@@ -266,6 +272,8 @@ func (d *Distributor) starting(ctx context.Context) error {
 		}
 
 		return ingesterRingBackoff.Err()
+	} else {
+		level.Warn(util_log.Logger).Log("msg", "no ingesters ring")
 	}
 
 	return nil
