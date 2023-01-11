@@ -95,7 +95,7 @@ Check your container runtime on your nodes via
 $ kubectl get nodes -o wide
 ```
 
-Two of the common used CRI are `containerd` and `docker`.
+Two of the commonly used CRI implementations are `containerd` and `docker`.
 
 #### containerd CRI
 
