@@ -347,6 +347,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.nginxConfig.file</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
 			<td>Configuration for `provisioner` target</td>
