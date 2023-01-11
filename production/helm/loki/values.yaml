@@ -103,14 +103,19 @@ loki:
     {{- end }}
 
     {{- with .Values.loki.memcached.chunk_cache }}
-    {{- if and .enabled .host }}
+    {{- if and .enabled (or .host .addresses) }}
     chunk_store_config:
       chunk_cache_config:
         memcached:
           batch_size: {{ .batch_size }}
           parallelism: {{ .parallelism }}
         memcached_client:
+          {{- if .host }}
           host: {{ .host }}
+          {{- end }}
+          {{- if .addresses }}
+          addresses: {{ .addresses }}
+          {{- end }}
           service: {{ .service }}
     {{- end }}
     {{- end }}
@@ -135,13 +140,18 @@ loki:
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
       align_queries_with_step: true
-      {{- if and .enabled .host }}
+      {{- if and .enabled (or .host .addresses) }}
       cache_results: {{ .enabled }}
       results_cache:
         cache:
           default_validity: {{ .default_validity }}
           memcached_client:
+            {{- if .host }}
             host: {{ .host }}
+            {{- end }}
+            {{- if .addresses }}
+            addresses: {{ .addresses }}
+            {{- end }}
             service: {{ .service }}
             timeout: {{ .timeout }}
       {{- end }}
@@ -753,6 +763,8 @@ write:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the write pods
   extraEnvFrom: []
+  # -- Lifecycle for the write container
+  lifecycle: {}
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
@@ -826,6 +838,8 @@ read:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the read pods
   extraEnvFrom: []
+  # -- Lifecycle for the read container
+  lifecycle: {}
   # -- Volume mounts to add to the read pods
   extraVolumeMounts: []
   # -- Volumes to add to the read pods
@@ -848,6 +862,8 @@ read:
   # -- Tolerations for read pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1012,6 +1028,8 @@ gateway:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the gateway pods
   extraEnvFrom: []
+  # -- Lifecycle for the gateway container
+  lifecycle: {}
   # -- Volumes to add to the gateway pods
   extraVolumes: []
   # -- Volume mounts to add to the gateway pods

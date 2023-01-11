@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.8.1
 
 - [FEATURE] Added `extraObjects` helm values to extra manifests.
+- [ENHANCEMENT] Add the ability to specify container lifecycle
 
 ## 3.8.0
 

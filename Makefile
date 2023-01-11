@@ -28,7 +28,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.25.0
+BUILD_IMAGE_VERSION := 0.26.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -421,6 +421,13 @@ clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
+ifndef DOCKER_PASSWORD
+	$(error env var DOCKER_PASSWORD is undefined)
+endif
+ifndef DOCKER_USERNAME
+	$(error env var DOCKER_USERNAME is undefined)
+endif
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	docker plugin push $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 

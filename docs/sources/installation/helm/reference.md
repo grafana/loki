@@ -769,6 +769,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the gateway container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
@@ -2469,11 +2478,29 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the read container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -3067,6 +3094,15 @@ null
 			<td>Docker image tag for the write image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the write container</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

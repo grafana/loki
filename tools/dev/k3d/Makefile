@@ -1,7 +1,8 @@
 .PHONY: loki-distributed down add-repos update-repos prepare build-latest-image
 
 IMAGE_TAG := $(shell ../../../tools/image-tag)
-REGISTRY_PORT ?= $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
+EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
+REGISTRY_PORT ?= $(or $(EXISTING_REGISTRY_PORT),46453)
 
 loki-distributed: prepare build-latest-image
 	$(CURDIR)/scripts/create_cluster.sh loki-distributed $(REGISTRY_PORT)
@@ -14,18 +15,30 @@ enterprise-logs: prepare
 	# wait 5s for the cluster to be ready
 	sleep 5
 	$(MAKE) -C $(CURDIR) apply-enterprise-logs
+
+helm-cluster: prepare
+	ls -la $(CURDIR)
+	ls -la $(CURDIR)/scripts
+	$(CURDIR)/scripts/create_cluster.sh helm-cluster $(REGISTRY_PORT)
+	# wait 5s for the cluster to be ready
+	sleep 5
+	$(MAKE) -C $(CURDIR) apply-helm-cluster
 	
 apply-enterprise-logs:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/enterprise-logs
 
+apply-helm-cluster:
+	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/helm-cluster
+
 down:
 	k3d cluster delete loki-distributed
 	k3d cluster delete enterprise-logs
+	k3d cluster delete helm-cluster
 
 add-repos:
 	helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
 	helm repo add --force-update grafana https://grafana.github.io/helm-charts
-	helm repo add --force-update minio https://helm.min.io
+	helm repo add --force-update minio https://charts.min.io/
 
 update-repos: add-repos
 	helm repo update
@@ -65,3 +78,7 @@ build-latest-image:
 	make -C $(CURDIR)/../../.. loki-image
 	docker tag grafana/loki:$(IMAGE_TAG) grafana.k3d.localhost:$(REGISTRY_PORT)/loki:latest
 	docker push grafana.k3d.localhost:$(REGISTRY_PORT)/loki:latest
+
+HELM_DIR := $(shell cd $(CURDIR)/../../../production/helm/loki && pwd)
+helm-install-enterprise-logs:
+	helm install loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"

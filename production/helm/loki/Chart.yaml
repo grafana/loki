@@ -24,3 +24,4 @@ dependencies:
     condition: monitoring.selfMonitoring.grafanaAgent.installOperator
 maintainers:
   - name: trevorwhitney
+  - name: jeschkies

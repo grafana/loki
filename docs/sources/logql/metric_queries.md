@@ -106,6 +106,8 @@ Like [PromQL](https://prometheus.io/docs/prometheus/latest/querying/operators/#a
 - `count`: Count number of elements in the vector
 - `topk`: Select largest k elements by sample value
 - `bottomk`: Select smallest k elements by sample value
+- `sort`: returns vector elements sorted by their sample values, in ascending order.
+- `sort_desc`: Same as sort, but sorts in descending order.
 
 The aggregation operators can either be used to aggregate over all label values or a set of distinct label values by including a `without` or a `by` clause:
 

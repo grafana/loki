@@ -65,7 +65,7 @@ Where default_value is the value to use if the environment variable is undefined
 slashes with single slashes. Because of this every use of a slash `\` needs to
 be replaced with a double slash `\\`
 
-### Generic placeholders:
+### Generic placeholders
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
 - `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
@@ -1965,7 +1965,7 @@ sync_period: "10s"
 The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
 
 ```yaml
-# When true, 
+# When true,
 [enabled: <boolean> | default = false]
 ```
 
