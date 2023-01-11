@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -110,7 +111,7 @@ func (w *ringWatcher) getAddresses() ([]string, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 	rs, err := w.ring.Get(RingKeyOfLeader, op, bufDescs, bufHosts, bufZones)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "ring watcher get addresses")
 	}
 
 	return rs.GetAddresses(), nil

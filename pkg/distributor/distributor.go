@@ -384,7 +384,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	for i, key := range keys {
 		replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "push get ingester ring")
 		}
 
 		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors

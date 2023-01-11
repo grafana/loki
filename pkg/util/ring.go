@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
+	"github.com/pkg/errors"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -23,7 +24,7 @@ func IsInReplicationSet(r ring.ReadRing, ringKey uint32, address string) (bool, 
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 	rs, err := r.Get(ringKey, ring.Write, bufDescs, bufHosts, bufZones)
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, "is in replication set get")
 	}
 
 	addrs := rs.GetAddresses()

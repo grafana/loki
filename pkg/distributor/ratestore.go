@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/util"
+	"github.com/pkg/errors"
 
 	"github.com/weaveworks/common/instrument"
 
@@ -272,7 +273,7 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 func (s *rateStore) getClients() ([]ingesterClient, error) {
 	ingesters, err := s.ring.GetAllHealthy(ring.Read)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "distributor get all healthy")
 	}
 
 	clients := make([]ingesterClient, 0, len(ingesters.Instances))
