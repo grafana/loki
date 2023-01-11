@@ -99,7 +99,7 @@ Two of the common used CRI are `containerd` and `docker`.
 
 #### containerd CRI
 
-`containerd` [doesn't support any way of log rotation](https://github.com/containerd/containerd/issues/4830#issuecomment-744744375), and it's often should be handled by `kubelet` itself. Managed clusters like GKE and AKS uses `containerd` as runtime and log rotation is handled by `kubelet`. [EKS after version 1.24](https://docs.aws.amazon.com/eks/latest/userguide/dockershim-deprecation.html) also uses `containerd` as default container runtime.
+At the time of writing this guide, `containerd` [doesn't support any way of log rotation](https://github.com/containerd/containerd/issues/4830#issuecomment-744744375). In this case, rotation is often handled by `kubelet` itself. Managed Kubernetes clusters like GKE and AKS use `containerd` as runtime and log rotation is handled by `kubelet`. [EKS after version 1.24](https://docs.aws.amazon.com/eks/latest/userguide/dockershim-deprecation.html) also uses `containerd` as its default container runtime.
 
 #### docker CRI
 
