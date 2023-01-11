@@ -30,7 +30,7 @@ These types are shown in the images below.
 ### Rename and Create
 ![block_diagram](./logrotation2.png)
 
-Both types of log rotation seems to give same end result. However there are some subtle differences.
+Both types of log rotation seem to give the same end result. However, there are some subtle differences.
 
 (1) favours the appender in a sense, that file descriptor it is holding for original log file `error.log` doesn't change. So it can keep writing to same file descriptor, re-opening of the file is not needed.
 
