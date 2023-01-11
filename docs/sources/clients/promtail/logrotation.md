@@ -2,7 +2,7 @@
 
 ## Why log rotation matters?
 
-At any point in time, there can be three processes working on a log file as shown in the image below.
+At any point in time, there may be three processes working on a log file as shown in the image below.
 ![block_diagram](./logrotation-components.png)
 
 1. Appender - A writer that keep appending to a log file. This can be your application or some system daemons like syslog, docker log driver or kubelet etc.
