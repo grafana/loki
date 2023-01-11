@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/atomic"
-	"gopkg.in/fsnotify.v1"
 
 	"github.com/go-kit/log"
 

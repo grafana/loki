@@ -1661,9 +1661,6 @@ google.golang.org/protobuf/types/known/wrapperspb
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
 ## explicit
 gopkg.in/alecthomas/kingpin.v2
-# gopkg.in/fsnotify.v1 v1.4.7
-## explicit
-gopkg.in/fsnotify.v1
 # gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify/fsnotify.v1
