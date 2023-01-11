@@ -52,7 +52,7 @@ resource "aws_iam_role_policy" "logs" {
         "Resource" : "arn:aws:kms:*:*:*",
       },
       {
-        "Action": [
+        "Action" : [
           "ec2:DescribeNetworkInterfaces",
           "ec2:CreateNetworkInterface",
           "ec2:DeleteNetworkInterface",
@@ -60,7 +60,7 @@ resource "aws_iam_role_policy" "logs" {
           "ec2:AttachNetworkInterface"
         ],
         "Effect" : "Allow",
-        "Resource": "*",
+        "Resource" : "*",
       },
       {
         "Action" : [
@@ -115,6 +115,8 @@ resource "aws_lambda_function" "lambda_promtail" {
       EXTRA_LABELS    = var.extra_labels
       TENANT_ID       = var.tenant_id
       SKIP_TLS_VERIFY = var.skip_tls_verify
+      PRINT_LOG_LINE = var.print_log_line
+      SKIP_TLS_VERIFY = var.skip_tls_verify
     }
   }
 
@@ -158,7 +160,7 @@ resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
 }
 
 resource "aws_kinesis_stream" "kinesis_stream" {
-  for_each          = toset(var.kinesis_stream_name)
+  for_each         = toset(var.kinesis_stream_name)
   name             = each.value
   shard_count      = 1
   retention_period = 48

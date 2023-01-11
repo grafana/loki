@@ -94,6 +94,12 @@ For those using Cloudwatch and wishing to test out Loki in a low-risk way, this 
 
 Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
 
+### VPC Flow logs
+
+This workflow allows ingesting AWS VPC Flow logs from s3.
+
+One thing to be aware of with this is that the default flow log format doesn't have a timestamp, so the log timestamp will be set to the time the lambda starts processing the log file.
+
 ### Loadbalancer logs
 
 This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
