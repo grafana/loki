@@ -32,6 +32,12 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.writeSelectorLabels" . | nindent 8 }}
+        {{- with .Values.loki.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.write.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.write.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}

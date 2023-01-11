@@ -832,6 +832,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for gateway containers</td>
@@ -1448,6 +1457,15 @@ null
 			<td>loki.podAnnotations</td>
 			<td>object</td>
 			<td>Common annotations for all pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.podLabels</td>
+			<td>object</td>
+			<td>Common labels for all pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2541,6 +2559,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `read` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for read pods</td>
@@ -2570,7 +2597,7 @@ null
 		<tr>
 			<td>read.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selecto labels for each `read` pod</td>
+			<td>Additional selector labels for each `read` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2838,6 +2865,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `single binary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for single binary pods</td>
@@ -2867,7 +2903,7 @@ null
 		<tr>
 			<td>singleBinary.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selecto labels for each `single binary` pod</td>
+			<td>Additional selector labels for each `single binary` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3146,6 +3182,15 @@ null
 			<td>write.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `write` pod</td>
 			<td><pre lang="json">
 {}
 </pre>

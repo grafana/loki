@@ -50,6 +50,8 @@ loki:
     pullPolicy: IfNotPresent
   # -- Common annotations for all pods
   podAnnotations: {}
+  # -- Common labels for all pods
+  podLabels: {}
   # -- The number of old ReplicaSets to retain to allow rollback
   revisionHistoryLimit: 10
   # -- The SecurityContext for Loki pods
@@ -751,6 +753,8 @@ write:
   priorityClassName: null
   # -- Annotations for write pods
   podAnnotations: {}
+  # -- Additional labels for each `write` pod
+  podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
   # -- Labels for ingestor service
@@ -826,7 +830,9 @@ read:
   priorityClassName: null
   # -- Annotations for read pods
   podAnnotations: {}
-  # -- Additional selecto labels for each `read` pod
+  # -- Additional labels for each `read` pod
+  podLabels: {}
+  # -- Additional selector labels for each `read` pod
   selectorLabels: {}
   # -- Labels for read service
   serviceLabels: {}
@@ -901,7 +907,9 @@ singleBinary:
   priorityClassName: null
   # -- Annotations for single binary pods
   podAnnotations: {}
-  # -- Additional selecto labels for each `single binary` pod
+  # -- Additional labels for each `single binary` pod
+  podLabels: {}
+  # -- Additional selector labels for each `single binary` pod
   selectorLabels: {}
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
@@ -1022,6 +1030,8 @@ gateway:
   priorityClassName: null
   # -- Annotations for gateway pods
   podAnnotations: {}
+  # -- Additional labels for gateway pods
+  podLabels: {}
   # -- Additional CLI args for the gateway
   extraArgs: []
   # -- Environment variables to add to the gateway pods
