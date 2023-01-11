@@ -4,14 +4,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: "actions/checkout@v2"
-      - id: changes
-        uses: "dorny/paths-filter@v2"
-        with:
-          filters: |
-            filechange:
-              - 'tools/lambda-promtail/**'
-      - if: "steps.changes.outputs.filechange == 'true'"
-        name: Push lambda-promtail
+      - name: Push lambda-promtail
         uses: "kciter/aws-ecr-action@master"
         with:
           access_key_id: "${{ secrets.BS_RESOURCES_AWS_ACCESS_KEY_ID }}"
