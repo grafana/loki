@@ -20,7 +20,7 @@ Given a log file `error.log`
 1. Copy the log file with a different name e.g `error.log.1` and truncate the original log file `error.log`.
 2. Rename the log file with a different name e.g: `error.log.1` and create a new log file with the original name `error.log`.
 
-In both the cases, after log rotation, all the new log lines goes to original `error.log`
+In both cases, after log rotation, all the new log lines go to the original `error.log` file.
 
 These types are shown in images below.
 
