@@ -75,7 +75,7 @@ Here `create` mode works like (2) explained above. `create` mode is optional bec
 
 It has wide range [different options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, scripts to run pre and post rotation, etc.
 
-Rename and Create is the recommend.
+**Recommended: Rename and Create**
 
 ### Kubernetes
 
@@ -122,6 +122,8 @@ Example `/etc/docker/daemon.json`
 ```
 
 If neither of `kubelet` or `CRI` is configured for log rotate, then we can still use `logrotate` utility on kubernetes nodes for the logration as explained previously.
+
+**Recommended: Use kubelet for log rotation**
 
 ## Configure Promtail
 
