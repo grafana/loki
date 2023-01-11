@@ -54,7 +54,7 @@ var (
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentials when both Credentials and CredentialsFile are used in a header authentication client.
-	ErrHeaderAuthCredentials = errors.New("Credentials and CredentialsFile are mutually exclusive")
+	ErrHeaderAuthCredentials = errors.New("Both Credentials and CredentialsFile cannot be defined")
 
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.

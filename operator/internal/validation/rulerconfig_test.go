@@ -93,6 +93,29 @@ var rctt = []struct {
 		},
 	},
 	{
+		desc: "valid spec with CredentialsFile override",
+		spec: v1beta1.RulerConfigSpec{
+			AlertManagerSpec: &lokiv1beta1.AlertManagerSpec{
+				Client: &lokiv1beta1.AlertManagerClientConfig{
+					HeaderAuth: &lokiv1beta1.AlertManagerClientHeaderAuth{
+						Credentials: pointer.String("creds"),
+					},
+				},
+			},
+			Overrides: map[string]lokiv1beta1.RulerOverrides{
+				"tenant": {
+					AlertManagerOverrides: &lokiv1beta1.AlertManagerSpec{
+						Client: &lokiv1beta1.AlertManagerClientConfig{
+							HeaderAuth: &lokiv1beta1.AlertManagerClientHeaderAuth{
+								CredentialsFile: pointer.String("creds-file1"),
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
 		desc: "both Credentials and CredentialsFile defined",
 		spec: v1beta1.RulerConfigSpec{
 			AlertManagerSpec: &lokiv1beta1.AlertManagerSpec{
