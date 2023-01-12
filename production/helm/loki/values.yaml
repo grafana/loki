@@ -420,12 +420,6 @@ enterprise:
     # -- Volume mounts to add to the provisioner pods
     extraVolumeMounts: []
 
-  # DEPRECATED: will be removed in version 4 of chart
-  # please use gateway.nginxConfig.file for both OSS and
-  # enterprise gateways.
-  nginxConfig:
-    file: null
-
 # -- Options that may be necessary when performing a migration from another helm chart
 migrate:
   # -- When migrating from a distributed chart like loki-distributed or enterprise-logs
@@ -729,9 +723,10 @@ read:
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
-  # -- Set to false to enable the new 3-target mode (read, write, backend) that will be the default
-  # in future version of Loki
-  legacyReadTarget: true
+  # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
+  # 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will
+  # run two targets, false will run 3 targets.
+  legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods

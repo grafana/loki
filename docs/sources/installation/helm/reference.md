@@ -356,15 +356,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.nginxConfig.file</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
 			<td>Configuration for `provisioner` target</td>
@@ -2718,9 +2709,9 @@ null
 		<tr>
 			<td>read.legacyReadTarget</td>
 			<td>bool</td>
-			<td>Set to false to enable the new 3-target mode (read, write, backend) that will be the default in future version of Loki</td>
+			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
