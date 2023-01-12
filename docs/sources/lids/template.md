@@ -16,7 +16,7 @@ Once accepted, it will be assigned a LID number and the file will be renamed by 
 
 **Related issues/PRs:**
 
-**Thread from [`#loki-dev` channel on Slack](https://slack.grafana.com):**
+**Thread from [mailing list](https://groups.google.com/forum/#!forum/lokiproject):**
 
 ---
 
@@ -31,6 +31,10 @@ _Describe why the above is a problem we have now or will have in the future. Jus
 ## Goals
 
 _Describe the goals that we wish to achieve when considering the options available. Be clear about what is important and what could be left to the future. Non-goals are also useful to list here to clarify intent._
+
+## Non-Goals (optional)
+
+_What is out of scope for this proposal? Listing non-goals helps to focus discussion and make progress. Highlight anything that is being deferred to a later phase of implementation that may call for its own enhancement._
 
 ## Proposals
 

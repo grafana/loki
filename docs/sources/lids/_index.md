@@ -19,9 +19,9 @@ LIDs are **not** required for:
 
 Start by opening a PR against this repository, using [this template](./template.md).
 
-All LIDs require a "sponsor". A sponsor is a Grafana Loki maintainer who is willing to shepherd the improvement proposal through its lifecycle from draft through to completion. A sponsor can be found by starting a thread in our [`#loki-dev` channel on Slack](https://slack.grafana.com), which one or more maintainers will respond to and volunteer. If a LID is generated internally by a Grafana Labs employee who is also a maintainer, no sponsor is required.
+All LIDs require a "sponsor". A sponsor is a Grafana Loki maintainer who is willing to shepherd the improvement proposal through its lifecycle from draft through to completion. A sponsor can be found by starting a thread in our [mailing list](https://groups.google.com/forum/#!forum/lokiproject), which one or more maintainers will respond to and volunteer. If a LID is generated internally by a Grafana Labs employee who is also a maintainer, the sponsor will be the author. Thread topics should be prefixed with "LID: ".
 
-LIDs should contain a high-level overview of the problem, the proposed solution, and other details specified in the template. LIDs can optionally have a _rough_ implementation PR associated with it, but it is advised to not spend too much time on it because the proposal may be rejected.
+LIDs should contain a high-level overview of the problem, the proposed solution, and other details specified in the template. LIDs can optionally have a _rough prototype_ implementation PR associated with it, but it is advised to not spend too much time on it because the proposal may be rejected.
 
 LIDs will be viewable in perpetuity, and serve to document our decisions plus all the inputs and reasoning that went into those decisions.
 

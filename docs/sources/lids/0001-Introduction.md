@@ -12,7 +12,7 @@
 
 **Related issues/PRs:** N/A
 
-**Thread from [`#loki-dev` channel on Slack](https://slack.grafana.com):** N/A
+**Thread from [mailing list](https://groups.google.com/forum/#!forum/lokiproject):** N/A
 
 ---
 
