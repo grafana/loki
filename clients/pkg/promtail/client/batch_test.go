@@ -173,7 +173,7 @@ func BenchmarkLabelsMapToString(b *testing.B) {
 	labelSet := make(model.LabelSet)
 	labelSet["label"] = "value"
 	labelSet["label1"] = "value"
-	labelSet["label2"] = "value"
+	labelSet["label2"] = "value3"
 	labelSet["__tenant_id__"] = "another_value"
 
 	b.ResetTimer()
