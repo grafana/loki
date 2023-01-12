@@ -5,7 +5,7 @@
 At any point in time, there may be three processes working on a log file as shown in the image below.
 ![block_diagram](./logrotation-components.png)
 
-1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, docker log driver or Kubelet, etc.
+1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, Docker log driver or Kubelet, etc.
 2. Tailer - A reader that read log lines as it is being appended e.g agents like Promtail.
 3. Log Rotater - A process that rotates the log either based on time (say scheduled every day) or size (say a log file reached its max size)
 
@@ -44,7 +44,7 @@ We recommend (2) as that is the one which works well with Promtail (or any simil
 
 Your logs can be rotated by different components depending on where you are running your application or services. If you are running on Linux bare metal or Linux VMs, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However, if you are running in Kubernetes, it's not that obvious who rotates the logs and interestingly it may depend on what container runtime your Kubernetes cluster is using.
 
-### Non Kubernetes
+### Non-Kubernetes
 
 As mentioned above, in Linux bare metal or Linux VMs, log rotation is often handled by [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility.
 
