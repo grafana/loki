@@ -31,6 +31,7 @@ COMMUNITY_VERSION ?= main-39f2856
 COMMUNITY_RELEASE_VERSION=0.1.0
 CHANNELS ?= "stable"
 DEFAULT_CHANNEL ?= "stable"
+SUPPORTED_OCP_VERSIONS="v4.10"
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -348,7 +349,7 @@ web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.d
 
 .PHONY: operatorhub
 operatorhub: check-operatorhub-pr-template
-	./hack/operatorhub.sh
+	SUPPORTED_OCP_VERSIONS="$(SUPPORTED_OCP_VERSIONS)" ./hack/operatorhub.sh
 
 .PHONY: check-operatorhub-pr-template
 check-operatorhub-pr-template:
