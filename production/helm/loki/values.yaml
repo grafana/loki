@@ -493,8 +493,6 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
-    # -- Alternative namespace to create recording rules PrometheusRule resource in
-    namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
@@ -514,8 +512,6 @@ monitoring:
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
     enabled: true
-    # -- Alternative namespace for ServiceMonitor resources
-    namespace: null
     # -- Namespace selector for ServiceMonitor resources
     namespaceSelector: {}
     # -- ServiceMonitor annotations
@@ -566,8 +562,6 @@ monitoring:
       # Note that helm will not install CRDs if this flag is enabled during an upgrade.
       # In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds
       installOperator: true
-      # -- Alternative namespace for Grafana Agent resources
-      namespace: null
       # -- Grafana Agent annotations
       annotations: {}
       # -- Additional Grafana Agent labels
