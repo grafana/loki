@@ -730,23 +730,34 @@ func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.R
 			}
 
 			level.Debug(logger).Log("msg", "rule owned")
+
 			// clone the group and replace the rules
-			clone, ok := proto.Clone(g).(*rulespb.RuleGroupDesc)
-			if !ok {
+			clone := cloneGroupWithRule(g, r)
+			if clone == nil {
 				level.Error(logger).Log("msg", "failed to filter rules", "err", "failed to clone rule group; type coercion failed")
 				continue
 			}
 
-			// Prometheus relies on group names being unique, and this assumption is very deeply baked in
-			// so we append the rule token to make each group name unique.
-			// TODO(dannyk) this is all quite hacky, and we shoud look at forking Prometheus' rule evaluation engine at some point.
-			clone.Name = AddRuleTokenToGroupName(g, r)
-			clone.Rules = []*rulespb.RuleDesc{r}
 			result = append(result, clone)
 		}
 	}
 
 	return result
+}
+
+func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.RuleGroupDesc {
+	clone, ok := proto.Clone(g).(*rulespb.RuleGroupDesc)
+	if !ok {
+		return nil
+	}
+
+	// Prometheus relies on group names being unique, and this assumption is very deeply baked in
+	// so we append the rule token to make each group name unique.
+	// TODO(dannyk) this is all quite hacky, and we shoud look at forking Prometheus' rule evaluation engine at some point.
+	clone.Name = AddRuleTokenToGroupName(g, r)
+	clone.Rules = []*rulespb.RuleDesc{r}
+
+	return clone
 }
 
 // the delimiter is prefixed with ";" since that is what Prometheus uses for its group key

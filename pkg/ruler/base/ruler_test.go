@@ -18,7 +18,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -1607,14 +1606,4 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, firedAtTime, currentTime)
 
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
-}
-
-func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.RuleGroupDesc {
-	clone := proto.Clone(g).(*rulespb.RuleGroupDesc)
-
-	// all rule group names need to be unique, so we add the rule's ring token
-	clone.Name = AddRuleTokenToGroupName(g, r)
-	clone.Rules = []*rulespb.RuleDesc{r}
-
-	return clone
 }
