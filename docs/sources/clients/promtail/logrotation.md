@@ -13,7 +13,7 @@ NOTE: Here `fd` defines a file descriptor. Once a file is open for read or write
 
 One of the critical components here is the log rotater. Let's understand how it impacts other components like the appender and tailer.
 
-In general, a log can be rotated in two ways.
+In general, when a log is rotated, it can be done in two ways.
 
 Given a log file `error.log`
 
@@ -32,23 +32,23 @@ These types are shown in the images below.
 
 Both types of log rotation seem to give the same end result. However, there are some subtle differences.
 
-(1) favors the appender as its descriptor for the original log file `error.log` doesn't change. Therefore, it can keep writing to the same file descriptor. In other words, re-opening the file is not needed.
+(1) favors the `appender` as its descriptor for the original log file `error.log` doesn't change. Therefore, it can keep writing to the same file descriptor. In other words, re-opening the file is not needed.
 
 However (1) has a serious problem if we bring the `tailer` into account. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
 
-This is where (2) can help. Here, when the log file `error.log` is renamed to `error.log.1`, the `tailer` still holds the file descriptor of `error.log.1`. Therefore, it can continue reading the log file until it's completed. But that comes with the tradeoff: with (2), you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it). Otherwise, it would keep writing to `error.log.1` as the file descriptor won't change. The good news is that most of the popular `appender` solutions (e.g: syslog, kubelet, docker log driver) support reopening log files when these are renamed.
+This is where (2) can help. Here, when the log file `error.log` is renamed to `error.log.1`, the `tailer` still holds the file descriptor of `error.log.1`. Therefore, it can continue reading the log file until it's completed. But that comes with the tradeoff: with (2), you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it). Otherwise, it would keep writing to `error.log.1` as the file descriptor won't change. The good news is that most of the popular `appender` solutions (e.g: syslog, kubelet, docker log driver) support reopening log files when they are renamed.
 
-We recommend (2) as that is the one which works well with Promtail (or any agent) without any dataloss. Now let's understand how do we exactly configure log rotation in different platforms.
+We recommend (2) as that is the one which works well with Promtail (or any similar log scraping agent) without any data loss. Now let's understand how do we exactly configure log rotation in different platforms.
 
 ## Configure log rotation.
 
-Your logs can be rotated by different components depending on where you are running your application or services. If you are running on Linux bare metal or VM, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However if you are running in kubernetes, it's not that obvious who rotates the logs and interestingly it may dependes on what container runtime your kubernetes cluster is using.
+Your logs can be rotated by different components depending on where you are running your application or services. If you are running on Linux bare metal or Linux VMs, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However if you are running in kubernetes, it's not that obvious who rotates the logs and interestingly it may dependes on what container runtime your kubernetes cluster is using.
 
 ### Non kubernetes
 
-Usually in Linux bare metal or VM log rotation is handled by [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility.
+As mentioned above, in Linux bare metal or Linux VMs, log rotation is often handled by [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility.
 
-The two different types of log rotation as explained before are supported in `logrotate` as well.
+It supports both types of log rotation explained before.
 
 #### Copy and Truncate
 ```
@@ -61,7 +61,7 @@ The two different types of log rotation as explained before are supported in `lo
 
 Here `copytruncate` mode works exactly like (1) explained above.
 
-#### Rename and Create
+#### Rename and Create **(Recommend)**
 ```
 /var/log/apache2/*.log {
         weekly
@@ -69,13 +69,11 @@ Here `copytruncate` mode works exactly like (1) explained above.
         create
 }
 ```
-Here `create` mode works like (2) explained above. `create` mode is optional because it's the default mode in `logroate`.
+Here `create` mode works like (2) explained above. The `create` mode is optional because it's the default mode in `logroate`.
 
-`logroate` configs are usually located in `/etc/logrotate/`
+The configuration for `logroate` is usually located in `/etc/logrotate/`.
 
-It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, running scripts pre and post rotation, etc.
-
-**Recommended: Rename and Create**
+It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, running scripts pre and post-rotation, etc.
 
 ### Kubernetes
 
@@ -103,7 +101,12 @@ At the time of writing this guide, `containerd` [doesn't support any way of log 
 
 #### docker CRI
 
-When using `docker` as runtime(EKS before 1.24 uses it by default), it's logrotate is managed by it's logging driver. Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers)
+When using `docker` as runtime(EKS before 1.24 uses it by default), log rotation is managed by its logging driver(if supported). Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers).
+
+One can find what logging driver `docker` is using by running following command
+```bash
+ docker info --format '{{.LoggingDriver}}'
+```
 
 Out of all these logging drivers only the `local` (default) and the `json-file` drivers support log rotation. You can configure the following `log-opts` under `/etc/docker/daemon.json`
 
