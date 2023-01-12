@@ -67,7 +67,7 @@ func (h *Handler) GenerateHelmValues(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
 
-	cluster := calculateClusterSize(msg.NodeType, msg.Ingest, msg.QueryPerformance)
+	cluster := calculateClusterSize(msg.NodeType, float64(msg.Ingest), msg.QueryPerformance)
 	helm := constructHelmValues(cluster, msg.NodeType)
 
 	enc := yaml.NewEncoder(w)

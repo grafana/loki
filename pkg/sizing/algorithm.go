@@ -20,9 +20,10 @@ const (
 	Super QueryPerf = "super"
 )
 
-func calculateClusterSize(nt NodeType, tbDayIngest int, qperf QueryPerf) ClusterSize {
-	// 1 Petabyte per day is maximum
-	bytesDayIngest := math.Min(float64(tbDayIngest), 1000.0) * 1e12
+func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) ClusterSize {
+
+	// 1 Petabyte per day is maximum. We use decimal prefix https://en.wikipedia.org/wiki/Binary_prefix
+	bytesDayIngest = math.Min(bytesDayIngest, 1e12)
 	bytesSecondIngest := bytesDayIngest / 86400
 	numWriteReplicasNeeded := math.Ceil(bytesSecondIngest / nt.writePod.rateBytesSecond)
 

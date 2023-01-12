@@ -790,7 +790,10 @@ storage:
   [swift: <swift_storage_config>]
 
   # Configures backend rule storage for a local file system directory.
-  [local: <local_storage_config>]
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler.storage.local.directory
+    [directory: <string> | default = ""]
 
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
@@ -1058,7 +1061,7 @@ remote_write:
   [client: <RemoteWriteConfig>]
 
   # Configure remote write clients. A map with remote client id as key.
-  [clients: <map of string to config.RemoteWriteConfig>]
+  [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.
   # CLI flag: -ruler.remote-write.enabled
@@ -1461,174 +1464,9 @@ ring:
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
 
 ```yaml
-# Configures storing chunks in AWS. Required options only required when aws is
-# present.
-aws:
-  dynamodb:
-    # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region
-    # is specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<table-name> to use a mock in-memory implementation.
-    # CLI flag: -dynamodb.url
-    [dynamodb_url: <url>]
-
-    # DynamoDB table management requests per second limit.
-    # CLI flag: -dynamodb.api-limit
-    [api_limit: <float> | default = 2]
-
-    # DynamoDB rate cap to back off when throttled.
-    # CLI flag: -dynamodb.throttle-limit
-    [throttle_limit: <float> | default = 10]
-
-    metrics:
-      # Use metrics-based autoscaling, via this query URL
-      # CLI flag: -metrics.url
-      [url: <string> | default = ""]
-
-      # Queue length above which we will scale up capacity
-      # CLI flag: -metrics.target-queue-length
-      [target_queue_length: <int> | default = 100000]
-
-      # Scale up capacity by this multiple
-      # CLI flag: -metrics.scale-up-factor
-      [scale_up_factor: <float> | default = 1.3]
-
-      # Ignore throttling below this level (rate per second)
-      # CLI flag: -metrics.ignore-throttle-below
-      [ignore_throttle_below: <float> | default = 1]
-
-      # query to fetch ingester queue length
-      # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
-
-      # query to fetch throttle rates per table
-      # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
-
-      # query to fetch write capacity usage per table
-      # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
-
-      # query to fetch read capacity usage per table
-      # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
-
-      # query to fetch read errors per table
-      # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
-
-    # Number of chunks to group together to parallelise fetches (zero to
-    # disable)
-    # CLI flag: -dynamodb.chunk-gang-size
-    [chunk_gang_size: <int> | default = 10]
-
-    # Max number of chunk-get operations to start in parallel
-    # CLI flag: -dynamodb.chunk.get-max-parallelism
-    [chunk_get_max_parallelism: <int> | default = 32]
-
-    backoff_config:
-      # Minimum backoff time
-      # CLI flag: -dynamodb.min-backoff
-      [min_period: <duration> | default = 100ms]
-
-      # Maximum backoff time
-      # CLI flag: -dynamodb.max-backoff
-      [max_period: <duration> | default = 50s]
-
-      # Maximum number of times to retry an operation
-      # CLI flag: -dynamodb.max-retries
-      [max_retries: <int> | default = 20]
-
-  # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-  # specified as a host, proper endpoint will be deduced. Use
-  # inmemory:///<bucket-name> to use a mock in-memory implementation.
-  # CLI flag: -s3.url
-  [s3: <url>]
-
-  # Set this to `true` to force the request to use path-style addressing.
-  # CLI flag: -s3.force-path-style
-  [s3forcepathstyle: <boolean> | default = false]
-
-  # Comma separated list of bucket names to evenly distribute chunks over.
-  # Overrides any buckets specified in s3.url flag
-  # CLI flag: -s3.buckets
-  [bucketnames: <string> | default = ""]
-
-  # S3 Endpoint to connect to.
-  # CLI flag: -s3.endpoint
-  [endpoint: <string> | default = ""]
-
-  # AWS region to use.
-  # CLI flag: -s3.region
-  [region: <string> | default = ""]
-
-  # AWS Access Key ID
-  # CLI flag: -s3.access-key-id
-  [access_key_id: <string> | default = ""]
-
-  # AWS Secret Access Key
-  # CLI flag: -s3.secret-access-key
-  [secret_access_key: <string> | default = ""]
-
-  # Disable https on s3 connection.
-  # CLI flag: -s3.insecure
-  [insecure: <boolean> | default = false]
-
-  # Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-  # s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-  # CLI flag: -s3.sse-encryption
-  [sse_encryption: <boolean> | default = false]
-
-  http_config:
-    # The maximum amount of time an idle connection will be held open.
-    # CLI flag: -s3.http.idle-conn-timeout
-    [idle_conn_timeout: <duration> | default = 1m30s]
-
-    # If non-zero, specifies the amount of time to wait for a server's response
-    # headers after fully writing the request.
-    # CLI flag: -s3.http.response-header-timeout
-    [response_header_timeout: <duration> | default = 0s]
-
-    # Set to true to skip verifying the certificate chain and hostname.
-    # CLI flag: -s3.http.insecure-skip-verify
-    [insecure_skip_verify: <boolean> | default = false]
-
-    # Path to the trusted CA file that signed the SSL certificate of the S3
-    # endpoint.
-    # CLI flag: -s3.http.ca-file
-    [ca_file: <string> | default = ""]
-
-  # The signature version to use for authenticating against S3. Supported values
-  # are: v4, v2.
-  # CLI flag: -s3.signature-version
-  [signature_version: <string> | default = "v4"]
-
-  sse:
-    # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-    # CLI flag: -s3.sse.type
-    [type: <string> | default = ""]
-
-    # KMS Key ID used to encrypt objects in S3
-    # CLI flag: -s3.sse.kms-key-id
-    [kms_key_id: <string> | default = ""]
-
-    # KMS Encryption Context used for object encryption. It expects JSON
-    # formatted string.
-    # CLI flag: -s3.sse.kms-encryption-context
-    [kms_encryption_context: <string> | default = ""]
-
-  # Configures back off when S3 get Object.
-  backoff_config:
-    # Minimum backoff time when s3 get Object
-    # CLI flag: -s3.min-backoff
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum backoff time when s3 get Object
-    # CLI flag: -s3.max-backoff
-    [max_period: <duration> | default = 3s]
-
-    # Maximum number of times to retry when s3 get Object
-    # CLI flag: -s3.max-retries
-    [max_retries: <int> | default = 5]
+# The aws_storage_config block configures the connection to dynamoDB and S3
+# object storage. Either one of them or both can be configured.
+[aws: <aws_storage_config>]
 
 # The azure_storage_config block configures the connection to Azure object
 # storage backend.
@@ -1795,10 +1633,7 @@ boltdb:
 
 # Configures storing the chunks on the local file system. Required fields only
 # required when filesystem is present in the configuration.
-filesystem:
-  # Directory to store chunks in.
-  # CLI flag: -local.chunk-directory
-  [directory: <string> | default = ""]
+[filesystem: <local_storage_config>]
 
 # The swift_storage_config block configures the connection to OpenStack Object
 # Storage (Swift) object storage backend.
@@ -1822,6 +1657,19 @@ hedging:
   # The maximum of hedge requests allowed per seconds.
   # CLI flag: -store.hedge-max-per-second
   [max_per_second: <int> | default = 5]
+
+# Configures additional object stores for a given storage provider.
+# Supported stores: aws, azure, bos, filesystem, gcs, swift.
+# Example:
+# storage_config:
+#   named_stores:
+#     aws:
+#       store-1:
+#         endpoint: s3://foo-bucket
+#         region: us-west1
+# Named store from this example can be used by setting object_store to store-1
+# in period_config.
+[named_stores: <named_stores_config>]
 
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
@@ -2449,7 +2297,7 @@ ruler_remote_write_sigv4_config:
 
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
-[ruler_remote_write_config: <map of string to config.RemoteWriteConfig>]
+[ruler_remote_write_config: <map of string to RemoteWriteConfig>]
 
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
 # 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if
@@ -3632,8 +3480,8 @@ The `period_config` block configures what index schemas should be used for from 
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs,
-# cassandra, swift or filesystem. If omitted, defaults to the same value as
-# store.
+# cassandra, swift, filesystem or a named_store (refer to named_stores_config).
+# If omitted, defaults to the same value as store.
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v11.
@@ -3663,6 +3511,177 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int>]
+```
+
+### aws_storage_config
+
+The `aws_storage_config` block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.
+
+```yaml
+dynamodb:
+  # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region is
+  # specified as a host, proper endpoint will be deduced. Use
+  # inmemory:///<table-name> to use a mock in-memory implementation.
+  # CLI flag: -dynamodb.url
+  [dynamodb_url: <url>]
+
+  # DynamoDB table management requests per second limit.
+  # CLI flag: -dynamodb.api-limit
+  [api_limit: <float> | default = 2]
+
+  # DynamoDB rate cap to back off when throttled.
+  # CLI flag: -dynamodb.throttle-limit
+  [throttle_limit: <float> | default = 10]
+
+  metrics:
+    # Use metrics-based autoscaling, via this query URL
+    # CLI flag: -metrics.url
+    [url: <string> | default = ""]
+
+    # Queue length above which we will scale up capacity
+    # CLI flag: -metrics.target-queue-length
+    [target_queue_length: <int> | default = 100000]
+
+    # Scale up capacity by this multiple
+    # CLI flag: -metrics.scale-up-factor
+    [scale_up_factor: <float> | default = 1.3]
+
+    # Ignore throttling below this level (rate per second)
+    # CLI flag: -metrics.ignore-throttle-below
+    [ignore_throttle_below: <float> | default = 1]
+
+    # query to fetch ingester queue length
+    # CLI flag: -metrics.queue-length-query
+    [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
+
+    # query to fetch throttle rates per table
+    # CLI flag: -metrics.write-throttle-query
+    [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
+
+    # query to fetch write capacity usage per table
+    # CLI flag: -metrics.usage-query
+    [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
+
+    # query to fetch read capacity usage per table
+    # CLI flag: -metrics.read-usage-query
+    [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
+
+    # query to fetch read errors per table
+    # CLI flag: -metrics.read-error-query
+    [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
+
+  # Number of chunks to group together to parallelise fetches (zero to disable)
+  # CLI flag: -dynamodb.chunk-gang-size
+  [chunk_gang_size: <int> | default = 10]
+
+  # Max number of chunk-get operations to start in parallel
+  # CLI flag: -dynamodb.chunk.get-max-parallelism
+  [chunk_get_max_parallelism: <int> | default = 32]
+
+  backoff_config:
+    # Minimum backoff time
+    # CLI flag: -dynamodb.min-backoff
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum backoff time
+    # CLI flag: -dynamodb.max-backoff
+    [max_period: <duration> | default = 50s]
+
+    # Maximum number of times to retry an operation
+    # CLI flag: -dynamodb.max-retries
+    [max_retries: <int> | default = 20]
+
+# S3 endpoint URL with escaped Key and Secret encoded. If only region is
+# specified as a host, proper endpoint will be deduced. Use
+# inmemory:///<bucket-name> to use a mock in-memory implementation.
+# CLI flag: -s3.url
+[s3: <url>]
+
+# Set this to `true` to force the request to use path-style addressing.
+# CLI flag: -s3.force-path-style
+[s3forcepathstyle: <boolean> | default = false]
+
+# Comma separated list of bucket names to evenly distribute chunks over.
+# Overrides any buckets specified in s3.url flag
+# CLI flag: -s3.buckets
+[bucketnames: <string> | default = ""]
+
+# S3 Endpoint to connect to.
+# CLI flag: -s3.endpoint
+[endpoint: <string> | default = ""]
+
+# AWS region to use.
+# CLI flag: -s3.region
+[region: <string> | default = ""]
+
+# AWS Access Key ID
+# CLI flag: -s3.access-key-id
+[access_key_id: <string> | default = ""]
+
+# AWS Secret Access Key
+# CLI flag: -s3.secret-access-key
+[secret_access_key: <string> | default = ""]
+
+# Disable https on s3 connection.
+# CLI flag: -s3.insecure
+[insecure: <boolean> | default = false]
+
+# Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
+# s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
+# CLI flag: -s3.sse-encryption
+[sse_encryption: <boolean> | default = false]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  # CLI flag: -s3.http.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's response
+  # headers after fully writing the request.
+  # CLI flag: -s3.http.response-header-timeout
+  [response_header_timeout: <duration> | default = 0s]
+
+  # Set to true to skip verifying the certificate chain and hostname.
+  # CLI flag: -s3.http.insecure-skip-verify
+  [insecure_skip_verify: <boolean> | default = false]
+
+  # Path to the trusted CA file that signed the SSL certificate of the S3
+  # endpoint.
+  # CLI flag: -s3.http.ca-file
+  [ca_file: <string> | default = ""]
+
+# The signature version to use for authenticating against S3. Supported values
+# are: v4, v2.
+# CLI flag: -s3.signature-version
+[signature_version: <string> | default = "v4"]
+
+sse:
+  # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+  # CLI flag: -s3.sse.type
+  [type: <string> | default = ""]
+
+  # KMS Key ID used to encrypt objects in S3
+  # CLI flag: -s3.sse.kms-key-id
+  [kms_key_id: <string> | default = ""]
+
+  # KMS Encryption Context used for object encryption. It expects JSON formatted
+  # string.
+  # CLI flag: -s3.sse.kms-encryption-context
+  [kms_encryption_context: <string> | default = ""]
+
+# Configures back off when S3 get Object.
+backoff_config:
+  # Minimum backoff time when s3 get Object
+  # CLI flag: -s3.min-backoff
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum backoff time when s3 get Object
+  # CLI flag: -s3.max-backoff
+  [max_period: <duration> | default = 3s]
+
+  # Maximum number of times to retry when s3 get Object
+  # CLI flag: -s3.max-retries
+  [max_retries: <int> | default = 5]
 ```
 
 ### azure_storage_config
@@ -4017,7 +4036,34 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 The `local_storage_config` block configures the usage of local file system as object storage backend.
 
 ```yaml
-# Directory to scan for rules
-# CLI flag: -ruler.storage.local.directory
+# Directory to store chunks in.
+# CLI flag: -local.chunk-directory
 [directory: <string> | default = ""]
+```
+
+### named_stores_config
+
+Configures additional object stores for a given storage provider.
+Supported stores: aws, azure, bos, filesystem, gcs, swift.
+Example:
+storage_config:
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
+Named store from this example can be used by setting object_store to store-1 in period_config.
+
+```yaml
+[aws: <map of string to aws_storage_config>]
+
+[azure: <map of string to azure_storage_config>]
+
+[bos: <map of string to bos_storage_config>]
+
+[filesystem: <map of string to local_storage_config>]
+
+[gcs: <map of string to gcs_storage_config>]
+
+[swift: <map of string to swift_storage_config>]
 ```

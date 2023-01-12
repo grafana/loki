@@ -93,7 +93,7 @@ type PeriodConfig struct {
 	// type of index client to use.
 	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used.\nWhich store to use for the index. Either aws, aws-dynamo, gcp, bigtable, bigtable-hashed, cassandra, boltdb or boltdb-shipper. "`
 	// type of object client to use; if omitted, defaults to store.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs, cassandra, swift or filesystem. If omitted, defaults to the same value as store."`
+	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs, cassandra, swift, filesystem or a named_store (refer to named_stores_config). If omitted, defaults to the same value as store."`
 	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v11."`
 	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`

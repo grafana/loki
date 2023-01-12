@@ -8,7 +8,7 @@
           "subdir": "consul"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "Po3c1Ic96ngrJCtOazic/7OsLkoILOKZWXWyZWl+od8="
     },
     {
@@ -18,7 +18,7 @@
           "subdir": "enterprise-metrics"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "hi2ZpHKl7qWXmSZ46sAycjWEQK6oGsoECuDKQT1dA+k="
     },
     {
@@ -28,7 +28,7 @@
           "subdir": "etcd-operator"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "duHm6wmUju5KHQurOe6dnXoKgl5gTUsfGplgbmAOsHw="
     },
     {
@@ -38,7 +38,7 @@
           "subdir": "grafana"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "Y5nheroSOIwmE+djEVPq4OvvTxKenzdHhpEwaR3Ebjs="
     },
     {
@@ -48,7 +48,7 @@
           "subdir": "jaeger-agent-mixin"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "nsukyr2SS8h97I2mxvBazXZp2fxu1i6eg+rKq3/NRwY="
     },
     {
@@ -58,7 +58,7 @@
           "subdir": "ksonnet-util"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "/pkNOLhRqvQoPA0yYdUuJvpPHqhkCLauAUMD2ZHMIkE="
     },
     {
@@ -78,7 +78,7 @@
           "subdir": "memcached"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "SWywAq4U0MRPMbASU0Ez8O9ArRNeoZzb75sEuReueow="
     },
     {
@@ -88,7 +88,7 @@
           "subdir": "tanka-util"
         }
       },
-      "version": "d68f9a6e0b1af7c4c4056dc2b43fb8f3bac01f43",
+      "version": "3219da57b18acbade37caaa42895c68f477cef95",
       "sum": "ShSIissXdvCy1izTCDZX6tY7qxCoepE5L+WJ52Hw7ZQ="
     },
     {
