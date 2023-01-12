@@ -49,7 +49,17 @@ type DefaultMultiTenantManager struct {
 }
 
 func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits) (*DefaultMultiTenantManager, error) {
-	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel)
+	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel, func(k, v string) string {
+		// this is a hack to remove the rule shard token which, if included, would explode metric cardinality if a
+		// large number of alerting/recording rules are in place. this is only relevant if the "by-rule" sharding
+		// strategy is in use
+		if k == RuleGroupLabel {
+			return RemoveRuleTokenFromGroupName(v)
+		}
+
+		return v
+
+	})
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}

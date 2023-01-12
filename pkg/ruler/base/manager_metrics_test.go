@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,7 +16,7 @@ import (
 func TestManagerMetricsWithRuleGroupLabel(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics(false)
+	managerMetrics := NewManagerMetrics(false, nil)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -137,7 +138,7 @@ cortex_prometheus_rule_group_rules{rule_group="group_two",user="user3"} 100000
 func TestManagerMetricsWithoutRuleGroupLabel(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics(true)
+	managerMetrics := NewManagerMetrics(true, nil)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -363,7 +364,7 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 func TestMetricsArePerUser(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics(true)
+	managerMetrics := NewManagerMetrics(true, nil)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -400,5 +401,47 @@ func TestMetricsArePerUser(t *testing.T) {
 		}
 
 		assert.True(t, foundUserLabel, "user label not found for metric %s", desc.String())
+	}
+}
+
+func TestMetricLabelTransformer(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+
+	managerMetrics := NewManagerMetrics(false, func(k, v string) string {
+		if k == RuleGroupLabel {
+			return strings.ToUpper(v)
+		}
+
+		return v
+	})
+	mainReg.MustRegister(managerMetrics)
+	managerMetrics.AddUserRegistry("user1", populateManager(1))
+
+	ch := make(chan prometheus.Metric)
+
+	defer func() {
+		// drain the channel, so that collecting gouroutine can stop.
+		// This is useful if test fails.
+		for range ch {
+		}
+	}()
+
+	go func() {
+		managerMetrics.Collect(ch)
+		close(ch)
+	}()
+
+	for m := range ch {
+		dtoM := &dto.Metric{}
+		err := m.Write(dtoM)
+
+		require.NoError(t, err)
+
+		for _, l := range dtoM.Label {
+			if l.GetName() == RuleGroupLabel {
+				// if the value has been capitalised, we know it was processed by the label transformer
+				assert.Equal(t, l.GetValue(), strings.ToUpper(l.GetValue()))
+			}
+		}
 	}
 }
