@@ -889,6 +889,8 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- Enable persistent disk
+    enabled: true
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.

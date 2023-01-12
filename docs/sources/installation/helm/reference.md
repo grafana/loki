@@ -3045,6 +3045,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable persistent disk</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.selector</td>
 			<td>string</td>
 			<td>Selector for persistent disk</td>

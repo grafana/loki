@@ -53,6 +53,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.4.3
 
 - [ENHANCEMENT] Allow to change Loki `-target` argument
+- [ENHANCEMENT] Add toggle for persistence disk in single-binary mode
 
 ## 3.4.2
 
