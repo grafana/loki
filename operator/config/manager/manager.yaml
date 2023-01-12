@@ -20,7 +20,7 @@ spec:
       - command:
         - /manager
         image: controller:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: manager
         ports:
         - containerPort: 8080

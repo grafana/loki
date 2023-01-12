@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	gossipAddr       = "['::']"
 	gossipPort       = 7946
 	httpPort         = 3100
 	internalHTTPPort = 3101
@@ -536,3 +537,7 @@ func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
 
 	return &context
 }
+
+//func ipFamilyPolicy() *corev1.IPFamilyPolicy {
+//	return &corev1.IPFamilyPolicyPreferDualStack
+//}

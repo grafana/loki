@@ -175,7 +175,6 @@ func (om *Manager) loadConfig() error {
 
 	if sameHashes {
 		// No need to rebuild runtime config.
-		om.configLoadSuccess.Set(1)
 		return nil
 	}
 

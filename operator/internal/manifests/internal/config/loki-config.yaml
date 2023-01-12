@@ -112,6 +112,7 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    enable_inet6: true
     ring:
       replication_factor: {{ .Stack.ReplicationFactor }}
   max_transfer_retries: 0
@@ -187,6 +188,7 @@ memberlist:
   advertise_addr: {{ . }}
   {{- end }}
   advertise_port: {{ .BindPort }}
+  bind_addr: {{ .BindAddr }}
   bind_port: {{ .BindPort }}
   join_members:
     - {{ .MembersDiscoveryAddr }}:{{ .BindPort }}

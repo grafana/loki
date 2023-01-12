@@ -79,7 +79,13 @@ func ConfigureGatewayDeployment(
 // ConfigureGatewayService merges the OpenPolicyAgent sidecar metrics port into
 // the service spec. With this the metrics are exposed through the same service.
 func ConfigureGatewayService(s *corev1.ServiceSpec) error {
+	preferDual := corev1.IPFamilyPolicyPreferDualStack
 	spec := corev1.ServiceSpec{
+		IPFamilies: []corev1.IPFamily{
+			corev1.IPv6Protocol,
+			corev1.IPv4Protocol,
+		},
+		IPFamilyPolicy: &preferDual,
 		Ports: []corev1.ServicePort{
 			{
 				Name: opaMetricsPortName,

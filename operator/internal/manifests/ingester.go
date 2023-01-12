@@ -214,6 +214,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 // NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
 func NewIngesterGRPCService(opts Options) *corev1.Service {
 	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
+	preferDual := corev1.IPFamilyPolicyPreferDualStack
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -226,6 +227,11 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
+			IPFamilies: []corev1.IPFamily{
+				corev1.IPv6Protocol,
+				corev1.IPv4Protocol,
+			},
+			IPFamilyPolicy: &preferDual,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       lokiGRPCPortName,
@@ -243,6 +249,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 func NewIngesterHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameIngesterHTTP(opts.Name)
 	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
+	preferDual := corev1.IPFamilyPolicyPreferDualStack
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -254,6 +261,11 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
+			IPFamilies: []corev1.IPFamily{
+				corev1.IPv6Protocol,
+				corev1.IPv4Protocol,
+			},
+			IPFamilyPolicy: &preferDual,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       lokiHTTPPortName,

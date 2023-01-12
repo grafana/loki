@@ -12,7 +12,7 @@ spec:
     secret:
       name: test
       type: s3
-  storageClassName: gp2
+  storageClassName: nfs
   tenants:
     mode: openshift-logging
   rules:

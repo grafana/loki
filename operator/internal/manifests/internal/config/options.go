@@ -61,6 +61,8 @@ type GossipRing struct {
 	InstanceAddr string
 	// InstancePort is required
 	InstancePort int
+	// BindAddr is the addr for listening to gossip messages
+	BindAddr string
 	// BindPort is the port for listening to gossip messages
 	BindPort int
 	// MembersDiscoveryAddr is required
