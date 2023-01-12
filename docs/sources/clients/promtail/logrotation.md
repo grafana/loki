@@ -32,7 +32,7 @@ These types are shown in the images below.
 
 Both types of log rotation seem to give the same end result. However, there are some subtle differences.
 
-(1) favours the appender in a sense, that file descriptor it is holding for original log file `error.log` doesn't change. So it can keep writing to same file descriptor, re-opening of the file is not needed.
+(1) favors the appender as its descriptor for the original log file `error.log` doesn't change. Therefore, it can keep writing to the same file descriptor. In other words, re-opening the file is not needed.
 
 However (1) has a serious problem if we bring the `tailer` into account. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
 
