@@ -931,7 +931,8 @@ alertmanager_client:
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]
 
-# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# The sharding strategy to use. Supported values are: default, shuffle-sharding,
+# by-rule.
 # CLI flag: -ruler.sharding-strategy
 [sharding_strategy: <string> | default = "default"]
 

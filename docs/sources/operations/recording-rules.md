@@ -78,6 +78,13 @@ Remote-write can be tuned if the default configuration is insufficient (see [Fai
 
 There is a [guide](https://prometheus.io/docs/practices/remote_write/) on the Prometheus website, all of which applies to Loki, too.
 
+Rules can be evenly distributed across available rulers by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy="by-rule"`.
+Rule groups execute in order; this is a feature inherited from Prometheus' rule engine (which Loki uses), but Loki has no
+need for this constraint because rules cannot depend on each other. The default sharding strategy will shard by rule groups,
+but this may be undesirable as some rule groups could contain more expensive rules, which can lead to subsequent rules missing evaluations.
+The `by-rule` sharding strategy creates one rule group for each rule the ruler instance "owns" (based on its hash ring), and these rings
+are all executed concurrently.
+
 ## Observability
 
 Since Loki reuses the Prometheus code for recording rules and WALs, it also gains all of Prometheus' observability.
