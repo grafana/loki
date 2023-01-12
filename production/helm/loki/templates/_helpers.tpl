@@ -292,7 +292,7 @@ azure:
 
 {{/* Predicate function to determin if custom ruler config should be included */}}
 {{- define "loki.shouldIncludeRulerConfig" }}
-{{- or (not (empty .Values.loki.rulerConfig)) (.Values.minio.enabled) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
+{{- or (not (empty .Values.loki.rulerConfig)) (.Values.minio.enabled) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
 {{- end }}
 
 {{/* Loki ruler config */}}
