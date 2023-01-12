@@ -174,7 +174,7 @@ func BenchmarkLabelsMapToString(b *testing.B) {
 	labelSet["label"] = "value"
 	labelSet["label1"] = "value"
 	labelSet["label2"] = "value"
-	labelSet["__tenant_id__"] = "value"
+	labelSet["__tenant_id__"] = "another_value"
 
 	b.ResetTimer()
 	var r string
