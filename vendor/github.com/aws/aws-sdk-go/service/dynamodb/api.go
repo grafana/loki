@@ -413,7 +413,10 @@ func (c *DynamoDB) BatchWriteItemRequest(input *BatchWriteItemInput) (req *reque
 // in DynamoDB's JSON format for the API call. For more details on this distinction,
 // see Naming Rules and Data Types (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.NamingRulesDataTypes.html).
 //
-// BatchWriteItem cannot update items. To update items, use the UpdateItem action.
+// BatchWriteItem cannot update items. If you perform a BatchWriteItem operation
+// on an existing item, that item's values will be overwritten by the operation
+// and it will appear like it was updated. To update items, we recommend you
+// use the UpdateItem action.
 //
 // The individual PutItem and DeleteItem operations specified in BatchWriteItem
 // are atomic; however BatchWriteItem as a whole is not. If any requested operations
@@ -659,14 +662,17 @@ func (c *DynamoDB) CreateBackupRequest(input *CreateBackupInput) (req *request.R
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -820,14 +826,17 @@ func (c *DynamoDB) CreateGlobalTableRequest(input *CreateGlobalTableInput) (req 
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -966,14 +975,17 @@ func (c *DynamoDB) CreateTableRequest(input *CreateTableInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -1093,14 +1105,17 @@ func (c *DynamoDB) DeleteBackupRequest(input *DeleteBackupInput) (req *request.R
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -1381,14 +1396,17 @@ func (c *DynamoDB) DeleteTableRequest(input *DeleteTableInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -1936,14 +1954,17 @@ func (c *DynamoDB) DescribeExportRequest(input *DescribeExportInput) (req *reque
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -2938,14 +2959,17 @@ func (c *DynamoDB) DisableKinesisStreamingDestinationRequest(input *DisableKines
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -3068,14 +3092,17 @@ func (c *DynamoDB) EnableKinesisStreamingDestinationRequest(input *EnableKinesis
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -3496,14 +3523,17 @@ func (c *DynamoDB) ExportTableToPointInTimeRequest(input *ExportTableToPointInTi
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -3728,14 +3758,17 @@ func (c *DynamoDB) ImportTableRequest(input *ImportTableInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -4081,14 +4114,17 @@ func (c *DynamoDB) ListExportsRequest(input *ListExportsInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -4337,14 +4373,17 @@ func (c *DynamoDB) ListImportsRequest(input *ListImportsInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -4772,7 +4811,6 @@ func (c *DynamoDB) PutItemRequest(input *PutItemInput) (req *request.Request, ou
 // using the ReturnValues parameter.
 //
 // When you add an item, the primary key attributes are the only required attributes.
-// Attribute values cannot be null.
 //
 // Empty String and Binary attribute values are allowed. Attribute values of
 // type String and Binary must have a length greater than zero if the attribute
@@ -5190,14 +5228,17 @@ func (c *DynamoDB) RestoreTableFromBackupRequest(input *RestoreTableFromBackupIn
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -5354,14 +5395,17 @@ func (c *DynamoDB) RestoreTableToPointInTimeRequest(input *RestoreTableToPointIn
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -5691,14 +5735,17 @@ func (c *DynamoDB) TagResourceRequest(input *TagResourceInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -6319,14 +6366,17 @@ func (c *DynamoDB) UntagResourceRequest(input *UntagResourceInput) (req *request
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -6804,14 +6854,17 @@ func (c *DynamoDB) UpdateGlobalTableSettingsRequest(input *UpdateGlobalTableSett
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -7089,14 +7142,17 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -7194,14 +7250,17 @@ func (c *DynamoDB) UpdateTableReplicaAutoScalingRequest(input *UpdateTableReplic
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -7348,14 +7407,17 @@ func (c *DynamoDB) UpdateTimeToLiveRequest(input *UpdateTimeToLiveInput) (req *r
 //   - LimitExceededException
 //     There is no limit to the number of daily on-demand backups that can be taken.
 //
-//     Up to 500 simultaneous table operations are allowed per account. These operations
-//     include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-//     and RestoreTableToPointInTime.
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-//     The only exception is when you are creating a table with one or more secondary
-//     indexes. You can have up to 250 such requests running at a time; however,
-//     if the table or index specifications are complex, DynamoDB might temporarily
-//     reduce the number of concurrent operations.
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
 //
 //     There is a soft account quota of 2,500 tables.
 //
@@ -9240,8 +9302,8 @@ type BatchWriteItemOutput struct {
 
 	// A map of tables and requests against those tables that were not processed.
 	// The UnprocessedItems value is in the same form as RequestItems, so you can
-	// provide this value directly to a subsequent BatchGetItem operation. For more
-	// information, see RequestItems in the Request Parameters section.
+	// provide this value directly to a subsequent BatchWriteItem operation. For
+	// more information, see RequestItems in the Request Parameters section.
 	//
 	// Each UnprocessedItems entry consists of a table name and, for that table,
 	// a list of operations to perform (DeleteRequest or PutRequest).
@@ -9302,7 +9364,12 @@ func (s *BatchWriteItemOutput) SetUnprocessedItems(v map[string][]*WriteRequest)
 	return s
 }
 
-// Contains the details for the read/write capacity mode.
+// Contains the details for the read/write capacity mode. This page talks about
+// PROVISIONED and PAY_PER_REQUEST billing modes. For more information about
+// these modes, see Read/write capacity mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html).
+//
+// You may need to switch to on-demand mode at least once in order to return
+// a BillingModeSummary response.
 type BillingModeSummary struct {
 	_ struct{} `type:"structure"`
 
@@ -16855,14 +16922,17 @@ func (s *KinesisDataStreamDestination) SetStreamArn(v string) *KinesisDataStream
 
 // There is no limit to the number of daily on-demand backups that can be taken.
 //
-// Up to 500 simultaneous table operations are allowed per account. These operations
-// include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-// and RestoreTableToPointInTime.
+// For most purposes, up to 500 simultaneous table operations are allowed per
+// account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+// RestoreTableFromBackup, and RestoreTableToPointInTime.
 //
-// The only exception is when you are creating a table with one or more secondary
-// indexes. You can have up to 250 such requests running at a time; however,
-// if the table or index specifications are complex, DynamoDB might temporarily
-// reduce the number of concurrent operations.
+// When you are creating a table with one or more secondary indexes, you can
+// have up to 250 such requests running at a time. However, if the table or
+// index specifications are complex, then DynamoDB might temporarily reduce
+// the number of concurrent operations.
+//
+// When importing into DynamoDB, up to 50 simultaneous import table operations
+// are allowed per account.
 //
 // There is a soft account quota of 2,500 tables.
 type LimitExceededException struct {
@@ -20065,7 +20135,8 @@ type ReplicaGlobalSecondaryIndexAutoScalingDescription struct {
 	//
 	//    * CREATING - The index is being created.
 	//
-	//    * UPDATING - The index is being updated.
+	//    * UPDATING - The table/index configuration is being updated. The table/index
+	//    remains available for data operations when UPDATING
 	//
 	//    * DELETING - The index is being deleted.
 	//
@@ -22945,7 +23016,8 @@ type TableDescription struct {
 	//
 	//    * CREATING - The table is being created.
 	//
-	//    * UPDATING - The table is being updated.
+	//    * UPDATING - The table/index configuration is being updated. The table/index
+	//    remains available for data operations when UPDATING.
 	//
 	//    * DELETING - The table is being deleted.
 	//
