@@ -77,6 +77,8 @@ It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate
 
 ### Kubernetes
 
+[Kubernetes Service Discovery in Promtail](https://grafana.com/docs/loki/latest/clients/promtail/scraping/#kubernetes-discovery) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes them from those files.
+
 We can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) the `kubelet` process running on each node to manage log rotation via two configs.
 
 1. `containerLogMaxSize` - It defines the maximum size of the container log file before it is rotated. For example: "5Mi" or "256Ki". Default: "10Mi".
