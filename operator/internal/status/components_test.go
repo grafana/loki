@@ -1,4 +1,4 @@
-package status_test
+package status
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/status"
 	"github.com/stretchr/testify/require"
 
 	v1 "k8s.io/api/core/v1"
@@ -32,7 +31,7 @@ func TestSetComponentsStatus_WhenGetLokiStackReturnsError_ReturnError(t *testing
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := status.SetComponentsStatus(context.TODO(), k, r)
+	err := setComponentsStatus(context.TODO(), k, r)
 	require.Error(t, err)
 }
 
@@ -50,7 +49,7 @@ func TestSetComponentsStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *testin
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := status.SetComponentsStatus(context.TODO(), k, r)
+	err := setComponentsStatus(context.TODO(), k, r)
 	require.NoError(t, err)
 }
 
@@ -86,7 +85,7 @@ func TestSetComponentsStatus_WhenListReturnError_ReturnError(t *testing.T) {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := status.SetComponentsStatus(context.TODO(), k, r)
+	err := setComponentsStatus(context.TODO(), k, r)
 	require.Error(t, err)
 }
 
@@ -154,7 +153,7 @@ func TestSetComponentsStatus_WhenPodListExisting_SetPodStatusMap(t *testing.T) {
 		return nil
 	}
 
-	err := status.SetComponentsStatus(context.TODO(), k, r)
+	err := setComponentsStatus(context.TODO(), k, r)
 	require.NoError(t, err)
 	require.NotZero(t, k.ListCallCount())
 	require.NotZero(t, k.StatusCallCount())
@@ -230,7 +229,7 @@ func TestSetComponentsStatus_WhenRulerEnabled_SetPodStatusMap(t *testing.T) {
 		return nil
 	}
 
-	err := status.SetComponentsStatus(context.TODO(), k, r)
+	err := setComponentsStatus(context.TODO(), k, r)
 	require.NoError(t, err)
 	require.NotZero(t, k.ListCallCount())
 	require.NotZero(t, k.StatusCallCount())
@@ -308,7 +307,7 @@ func TestSetComponentsStatus_WhenRulerNotEnabled_DoNothing(t *testing.T) {
 		return nil
 	}
 
-	err := status.SetComponentsStatus(context.TODO(), k, r)
+	err := setComponentsStatus(context.TODO(), k, r)
 	require.NoError(t, err)
 	require.NotZero(t, k.ListCallCount())
 	require.NotZero(t, k.StatusCallCount())

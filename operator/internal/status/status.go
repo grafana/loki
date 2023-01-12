@@ -16,7 +16,7 @@ import (
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
 func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	if err := SetComponentsStatus(ctx, k, req); err != nil {
+	if err := setComponentsStatus(ctx, k, req); err != nil {
 		return err
 	}
 
@@ -50,7 +50,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		len(cs.Ruler[corev1.PodUnknown])
 
 	if failed != 0 || unknown != 0 {
-		return SetFailedCondition(ctx, k, req)
+		return setFailedCondition(ctx, k, req)
 	}
 
 	// Check for pending pods
@@ -64,7 +64,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		len(cs.Ruler[corev1.PodPending])
 
 	if pending != 0 {
-		return SetPendingCondition(ctx, k, req)
+		return setPendingCondition(ctx, k, req)
 	}
-	return SetReadyCondition(ctx, k, req)
+	return setReadyCondition(ctx, k, req)
 }

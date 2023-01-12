@@ -52,7 +52,7 @@ func TestSetReadyCondition_WhenGetLokiStackReturnsError_ReturnError(t *testing.T
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := SetReadyCondition(context.Background(), k, r)
+	err := setReadyCondition(context.Background(), k, r)
 	require.Error(t, err)
 }
 
@@ -69,7 +69,7 @@ func TestSetReadyCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testing.
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := SetReadyCondition(context.Background(), k, r)
+	err := setReadyCondition(context.Background(), k, r)
 	require.NoError(t, err)
 }
 
@@ -100,7 +100,7 @@ func TestSetReadyCondition_WhenExisting_DoNothing(t *testing.T) {
 
 	k, _ := setupFakesNoError(t, &s)
 
-	err := SetReadyCondition(context.Background(), k, r)
+	err := setReadyCondition(context.Background(), k, r)
 	require.NoError(t, err)
 	require.Zero(t, k.StatusCallCount())
 }
@@ -130,7 +130,7 @@ func TestSetReadyCondition_WhenExisting_SetReadyConditionTrue(t *testing.T) {
 
 	k, sw := setupFakesNoError(t, &s)
 
-	err := SetReadyCondition(context.Background(), k, r)
+	err := setReadyCondition(context.Background(), k, r)
 	require.NoError(t, err)
 
 	require.NotZero(t, k.StatusCallCount())
@@ -154,7 +154,7 @@ func TestSetReadyCondition_WhenNoneExisting_AppendReadyCondition(t *testing.T) {
 
 	k, sw := setupFakesNoError(t, &s)
 
-	err := SetReadyCondition(context.Background(), k, r)
+	err := setReadyCondition(context.Background(), k, r)
 	require.NoError(t, err)
 
 	require.NotZero(t, k.StatusCallCount())
@@ -174,7 +174,7 @@ func TestSetFailedCondition_WhenGetLokiStackReturnsError_ReturnError(t *testing.
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := SetFailedCondition(context.Background(), k, r)
+	err := setFailedCondition(context.Background(), k, r)
 	require.Error(t, err)
 }
 
@@ -191,7 +191,7 @@ func TestSetFailedCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testing
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := SetFailedCondition(context.Background(), k, r)
+	err := setFailedCondition(context.Background(), k, r)
 	require.NoError(t, err)
 }
 
@@ -222,7 +222,7 @@ func TestSetFailedCondition_WhenExisting_DoNothing(t *testing.T) {
 
 	k, _ := setupFakesNoError(t, &s)
 
-	err := SetFailedCondition(context.Background(), k, r)
+	err := setFailedCondition(context.Background(), k, r)
 	require.NoError(t, err)
 	require.Zero(t, k.StatusCallCount())
 }
@@ -252,7 +252,7 @@ func TestSetFailedCondition_WhenExisting_SetFailedConditionTrue(t *testing.T) {
 
 	k, sw := setupFakesNoError(t, &s)
 
-	err := SetFailedCondition(context.Background(), k, r)
+	err := setFailedCondition(context.Background(), k, r)
 	require.NoError(t, err)
 
 	require.NotZero(t, k.StatusCallCount())
@@ -276,7 +276,7 @@ func TestSetFailedCondition_WhenNoneExisting_AppendFailedCondition(t *testing.T)
 
 	k, sw := setupFakesNoError(t, &s)
 
-	err := SetFailedCondition(context.Background(), k, r)
+	err := setFailedCondition(context.Background(), k, r)
 	require.NoError(t, err)
 
 	require.NotZero(t, k.StatusCallCount())
@@ -316,7 +316,7 @@ func TestSetPendingCondition_WhenGetLokiStackReturnsError_ReturnError(t *testing
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := SetPendingCondition(context.Background(), k, r)
+	err := setPendingCondition(context.Background(), k, r)
 	require.Error(t, err)
 }
 
@@ -333,7 +333,7 @@ func TestSetPendingCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testin
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := SetPendingCondition(context.Background(), k, r)
+	err := setPendingCondition(context.Background(), k, r)
 	require.NoError(t, err)
 }
 
@@ -364,7 +364,7 @@ func TestSetPendingCondition_WhenExisting_DoNothing(t *testing.T) {
 
 	k, _ := setupFakesNoError(t, &s)
 
-	err := SetPendingCondition(context.Background(), k, r)
+	err := setPendingCondition(context.Background(), k, r)
 	require.NoError(t, err)
 	require.Zero(t, k.StatusCallCount())
 }
@@ -394,7 +394,7 @@ func TestSetPendingCondition_WhenExisting_SetPendingConditionTrue(t *testing.T) 
 
 	k, sw := setupFakesNoError(t, &s)
 
-	err := SetPendingCondition(context.Background(), k, r)
+	err := setPendingCondition(context.Background(), k, r)
 	require.NoError(t, err)
 	require.NotZero(t, k.StatusCallCount())
 	require.NotZero(t, sw.UpdateCallCount())
@@ -417,7 +417,7 @@ func TestSetPendingCondition_WhenNoneExisting_AppendPendingCondition(t *testing.
 
 	k, sw := setupFakesNoError(t, &s)
 
-	err := SetPendingCondition(context.Background(), k, r)
+	err := setPendingCondition(context.Background(), k, r)
 	require.NoError(t, err)
 
 	require.NotZero(t, k.StatusCallCount())

@@ -31,9 +31,9 @@ func (e *DegradedError) Error() string {
 	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
-// SetReadyCondition updates or appends the condition Ready to the lokistack status conditions.
+// setReadyCondition updates or appends the condition Ready to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
-func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
+func setReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 	ready := metav1.Condition{
 		Type:    string(lokiv1.ConditionReady),
 		Message: messageReady,
@@ -43,9 +43,9 @@ func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) erro
 	return updateCondition(ctx, k, req, ready)
 }
 
-// SetFailedCondition updates or appends the condition Failed to the lokistack status conditions.
+// setFailedCondition updates or appends the condition Failed to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
-func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
+func setFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 	failed := metav1.Condition{
 		Type:    string(lokiv1.ConditionFailed),
 		Message: messageFailed,
@@ -55,9 +55,9 @@ func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) err
 	return updateCondition(ctx, k, req, failed)
 }
 
-// SetPendingCondition updates or appends the condition Pending to the lokistack status conditions.
+// setPendingCondition updates or appends the condition Pending to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
-func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
+func setPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 	pending := metav1.Condition{
 		Type:    string(lokiv1.ConditionPending),
 		Message: messagePending,

@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// SetComponentsStatus updates the pod status map component
-func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) error {
+// setComponentsStatus updates the pod status map component
+func setComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
