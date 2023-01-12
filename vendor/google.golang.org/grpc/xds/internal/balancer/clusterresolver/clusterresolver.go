@@ -23,10 +23,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
+	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/grpclog"
@@ -35,6 +37,7 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 	"google.golang.org/grpc/xds/internal/balancer/priority"
+	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
@@ -98,6 +101,9 @@ func (bb) ParseConfig(c json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 	var cfg LBConfig
 	if err := json.Unmarshal(c, &cfg); err != nil {
 		return nil, fmt.Errorf("unable to unmarshal balancer config %s into cluster-resolver config, error: %v", string(c), err)
+	}
+	if lbp := cfg.XDSLBPolicy; lbp != nil && !strings.EqualFold(lbp.Name, roundrobin.Name) && !strings.EqualFold(lbp.Name, ringhash.Name) {
+		return nil, fmt.Errorf("unsupported child policy with name %q, not one of {%q,%q}", lbp.Name, roundrobin.Name, ringhash.Name)
 	}
 	return &cfg, nil
 }

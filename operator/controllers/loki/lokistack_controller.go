@@ -76,6 +76,22 @@ var (
 		},
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
+	updateOrDeleteWithStatusPred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() || statusDifferent(e)
+		},
+		CreateFunc: func(_ event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// DeleteStateUnknown evaluates to false only if the object
+			// has been confirmed as deleted by the api server.
+			return !e.DeleteStateUnknown
+		},
+		GenericFunc: func(_ event.GenericEvent) bool {
+			return false
+		},
+	})
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -173,8 +189,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&corev1.Secret{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.ServiceAccount{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Service{}, updateOrDeleteOnlyPred).
-		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
-		Owns(&appsv1.StatefulSet{}, updateOrDeleteOnlyPred).
+		Owns(&appsv1.Deployment{}, updateOrDeleteWithStatusPred).
+		Owns(&appsv1.StatefulSet{}, updateOrDeleteWithStatusPred).
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
@@ -223,4 +239,17 @@ func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler
 		r.Log.Info("Enqueued requests for all LokiStacks because of global resource change", "count", len(requests), "kind", obj.GetObjectKind())
 		return requests
 	})
+}
+
+func statusDifferent(e event.UpdateEvent) bool {
+	switch old := e.ObjectOld.(type) {
+	case *appsv1.Deployment:
+		newObject := e.ObjectNew.(*appsv1.Deployment)
+		return cmp.Diff(old.Status, newObject.Status) != ""
+	case *appsv1.StatefulSet:
+		newObject := e.ObjectNew.(*appsv1.StatefulSet)
+		return cmp.Diff(old.Status, newObject.Status) != ""
+	default:
+		return false
+	}
 }

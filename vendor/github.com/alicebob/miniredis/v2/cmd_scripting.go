@@ -23,7 +23,7 @@ func commandsScripting(m *Miniredis) {
 
 // Execute lua. Needs to run m.Lock()ed, from within withTx().
 // Returns true if the lua was OK (and hence should be cached).
-func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) bool {
+func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, args []string) bool {
 	l := lua.NewState(lua.Options{SkipOpenLibs: true})
 	defer l.Close()
 
@@ -80,7 +80,7 @@ func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) b
 	}
 	l.SetGlobal("ARGV", argvTable)
 
-	redisFuncs, redisConstants := mkLua(m.srv, c)
+	redisFuncs, redisConstants := mkLua(m.srv, c, sha)
 	// Register command handlers
 	l.Push(l.NewFunction(func(l *lua.LState) int {
 		mod := l.RegisterModule("redis", redisFuncs).(*lua.LTable)
@@ -117,18 +117,18 @@ func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
 	if m.checkPubsub(c, cmd) {
 		return
 	}
-
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
 	script, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		ok := m.runLuaScript(c, script, args)
+		sha := sha1Hex(script)
+		ok := m.runLuaScript(c, sha, script, args)
 		if ok {
-			sha := sha1Hex(script)
 			m.scripts[sha] = script
 		}
 	})
@@ -146,8 +146,9 @@ func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
 	if m.checkPubsub(c, cmd) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
@@ -160,7 +161,7 @@ func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		m.runLuaScript(c, script, args)
+		m.runLuaScript(c, sha, script, args)
 	})
 }
 
@@ -177,28 +178,62 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
-	subcmd, args := args[0], args[1:]
+	var opts struct {
+		subcmd string
+		script string
+	}
+
+	opts.subcmd, args = args[0], args[1:]
+
+	switch strings.ToLower(opts.subcmd) {
+	case "load":
+		if len(args) != 1 {
+			setDirty(c)
+			c.WriteError(fmt.Sprintf(msgFScriptUsage, "LOAD"))
+			return
+		}
+		opts.script = args[0]
+	case "exists":
+		if len(args) == 0 {
+			setDirty(c)
+			c.WriteError(errWrongNumber("script|exists"))
+			return
+		}
+	case "flush":
+		if len(args) == 1 {
+			switch strings.ToUpper(args[0]) {
+			case "SYNC", "ASYNC":
+				args = args[1:]
+			default:
+			}
+		}
+		if len(args) != 0 {
+			setDirty(c)
+			c.WriteError(msgScriptFlush)
+			return
+		}
+
+	default:
+		setDirty(c)
+		c.WriteError(fmt.Sprintf(msgFScriptUsageSimple, strings.ToUpper(opts.subcmd)))
+		return
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		switch strings.ToLower(subcmd) {
+		switch strings.ToLower(opts.subcmd) {
 		case "load":
-			if len(args) != 1 {
-				c.WriteError(fmt.Sprintf(msgFScriptUsage, "LOAD"))
-				return
-			}
-			script := args[0]
-
-			if _, err := parse.Parse(strings.NewReader(script), "user_script"); err != nil {
+			if _, err := parse.Parse(strings.NewReader(opts.script), "user_script"); err != nil {
 				c.WriteError(errLuaParseError(err))
 				return
 			}
-			sha := sha1Hex(script)
-			m.scripts[sha] = script
+			sha := sha1Hex(opts.script)
+			m.scripts[sha] = opts.script
 			c.WriteBulk(sha)
 
 		case "exists":
@@ -212,23 +247,9 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 			}
 
 		case "flush":
-			if len(args) == 1 {
-				switch strings.ToUpper(args[0]) {
-				case "SYNC", "ASYNC":
-					args = args[1:]
-				default:
-				}
-			}
-			if len(args) != 0 {
-				c.WriteError(msgScriptFlush)
-				return
-			}
-
 			m.scripts = map[string]string{}
 			c.WriteOK()
 
-		default:
-			c.WriteError(fmt.Sprintf(msgFScriptUsage, strings.ToUpper(subcmd)))
 		}
 	})
 }

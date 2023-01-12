@@ -41,6 +41,7 @@ type Pubsub struct {
 	done               *grpcsync.Event
 	logger             *grpclog.PrefixLogger
 	watchExpiryTimeout time.Duration
+	nodeID             string
 
 	updateCh *buffer.Unbounded // chan *watcherInfoWithUpdate
 	// All the following maps are to keep the updates/metadata in a cache.
@@ -60,11 +61,14 @@ type Pubsub struct {
 }
 
 // New creates a new Pubsub.
-func New(watchExpiryTimeout time.Duration, logger *grpclog.PrefixLogger) *Pubsub {
+//
+// The passed in nodeID will be attached to all errors sent to the watchers.
+func New(watchExpiryTimeout time.Duration, nodeID string, logger *grpclog.PrefixLogger) *Pubsub {
 	pb := &Pubsub{
 		done:               grpcsync.NewEvent(),
 		logger:             logger,
 		watchExpiryTimeout: watchExpiryTimeout,
+		nodeID:             nodeID,
 
 		updateCh:    buffer.NewUnbounded(),
 		ldsWatchers: make(map[string]map[*watchInfo]bool),

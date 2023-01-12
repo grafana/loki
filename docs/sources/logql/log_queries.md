@@ -556,3 +556,55 @@ In both cases, if the destination label doesn't exist, then a new one is created
 The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
+
+### Drop Labels expression
+
+**Syntax**:  `|drop name, other_name, some_name="some_value"`
+
+The `=` operator after the label name is a **label matching operator**.
+The following label matching operators are supported:
+
+- `=`: exactly equal
+- `!=`: not equal
+- `=~`: regex matches
+- `!~`: regex does not match
+
+The `| drop` expression will drop the given labels in the pipeline. For example, for the query `{job="varlogs"}|json|drop level, method="GET"`, with below log line
+
+```
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{host="grafana.net", path="status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
+
+```
+INFO GET / loki.net 200
+```
+
+the result will be
+
+```
+{} INFO GET / loki.net 200
+```
+
+Example with regex and multiple names
+
+For the query `{job="varlogs"}|json|drop level, path, app=~"some-api.*"`, with below log lines
+
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+{"app: "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+```
+
+the result will be
+
+```
+{host="grafana.net", job="varlogs", method="GET", status="200"} {""app": "some-api-service",", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service",, "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```

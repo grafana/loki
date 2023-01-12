@@ -58,6 +58,10 @@ type ldsConfig struct {
 // Note that during race (e.g. an xDS response is received while the user is
 // calling cancel()), there's a small window where the callback can be called
 // after the watcher is canceled. The caller needs to handle this case.
+//
+// TODO(easwars): Make this function a method on the xdsResolver type.
+// Currently, there is a single call site for this function, and all arguments
+// passed to it are fields of the xdsResolver type.
 func watchService(c xdsclient.XDSClient, serviceName string, cb func(serviceUpdate, error), logger *grpclog.PrefixLogger) (cancel func()) {
 	w := &serviceUpdateWatcher{
 		logger:      logger,
@@ -139,7 +143,7 @@ func (w *serviceUpdateWatcher) handleLDSResp(update xdsresource.ListenerUpdate, 
 		// update before reporting this LDS config.
 		if w.lastUpdate.virtualHost != nil {
 			// We want to send an update with the new fields from the new LDS
-			// (e.g. max stream duration), and old fields from the the previous
+			// (e.g. max stream duration), and old fields from the previous
 			// RDS.
 			//
 			// But note that this should only happen when virtual host is set,

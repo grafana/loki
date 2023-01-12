@@ -1,8 +1,6 @@
 ---
 kind: pipeline
 name: loki-build-image
-node:
-  type: no-parallel
 steps:
 - image: plugins/docker
   name: test-image
@@ -12,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.25.0
+    - 0.27.0
   when:
     event:
     - pull_request
@@ -28,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.25.0
+    - 0.27.0
     username:
       from_secret: docker_username
   when:
@@ -1194,6 +1192,19 @@ steps:
     target: loki-canary
     username:
       from_secret: docker_username
+- depends_on:
+  - clone
+  - manifest-loki-canary
+  image: plugins/manifest
+  name: manifest-loki-operator
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki-operator
+    username:
+      from_secret: docker_username
 trigger:
   event:
   - push
@@ -1401,6 +1412,38 @@ volumes:
 - host:
     path: /sys/fs/cgroup
   name: cgroup
+- host:
+    path: /var/run/docker.sock
+  name: docker
+---
+kind: pipeline
+name: docker-driver
+steps:
+- commands:
+  - make docker-driver-push
+  depends_on:
+  - clone
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+  image: grafana/loki-build-image:0.26.0
+  name: build and push
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+trigger:
+  event:
+  - push
+  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+volumes:
 - host:
     path: /var/run/docker.sock
   name: docker
@@ -1622,6 +1665,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: fe9a2585353898836876a160d6817e1a954d79b72953fc89f25cb16d87c50432
+hmac: ed3348c4c33a2b5463ba942f1aad31e36d8e37d8c95075e85883f30de6886367
 
 ...
