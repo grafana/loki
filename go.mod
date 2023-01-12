@@ -321,9 +321,6 @@ replace github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare
 
 exclude k8s.io/client-go v8.0.0+incompatible
 
-// grpc v1.46.0 removed "WithBalancerName()" API, still in use by weaveworks/commons.
-replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
-
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
