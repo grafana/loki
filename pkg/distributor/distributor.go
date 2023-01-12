@@ -248,10 +248,20 @@ func (d *Distributor) starting(ctx context.Context) error {
 
 	if d.ingestersRing != nil {
 		ingesterRingBackoff := backoff.New(ctx, backoff.Config{MinBackoff: time.Second, MaxBackoff: time.Second * 30, MaxRetries: 5})
+
 		for ingesterRingBackoff.Ongoing() {
-			if len(d.ingestersRing.GetTokens(ctx)) < 1 {
+			if d.ingestersRing.InstancesCount() < 1 {
+				level.Info(util_log.Logger).Log("msg", "[qwe] instances count < 1")
 				ingesterRingBackoff.Wait()
+				continue
 			}
+
+			if len(d.ingestersRing.GetTokens(ctx)) < 1 {
+				level.Info(util_log.Logger).Log("msg", "[qwe] get tokens < 1")
+				ingesterRingBackoff.Wait()
+				continue
+			}
+
 			return nil
 		}
 
