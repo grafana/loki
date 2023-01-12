@@ -273,6 +273,7 @@ gcs:
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "azure" -}}
 {{- with .Values.loki.storage.azure }}
+type: "azure"
 azure:
   account_name: {{ .accountName }}
   {{- with .accountKey }}
@@ -287,24 +288,18 @@ azure:
   request_timeout: {{ . }}
   {{- end }}
 {{- end -}}
+{{- else }}
+type: "local"
 {{- end -}}
 {{- end -}}
-
-{{/* Predicate function to determin if custom ruler config should be included */}}
-{{- define "loki.shouldIncludeRulerConfig" }}
-{{- or (not (empty .Values.loki.rulerConfig)) (.Values.minio.enabled) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
-{{- end }}
 
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
-{{- if eq (include "loki.shouldIncludeRulerConfig" .) "true" }}
 ruler:
+  storage:
+    {{- include "loki.rulerStorageConfig" . | nindent 4}}
 {{- if (not (empty .Values.loki.rulerConfig)) }}
 {{- toYaml .Values.loki.rulerConfig | nindent 2}}
-{{- else }}
-  storage:
-  {{- include "loki.rulerStorageConfig" . | nindent 4}}
-{{- end }}
 {{- end }}
 {{- end }}
 
