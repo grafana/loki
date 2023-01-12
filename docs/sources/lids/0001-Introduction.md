@@ -1,10 +1,14 @@
+---
+title: 0001: Introducing LIDs
+---
+
 # Introduction of LIDs
 
 **Author:** Danny Kopping (danny.kopping@grafana.com)
 
 **Date:** 01/2023
 
-**Sponsor(s):** @dannykoppping
+**Sponsor(s):** @dannykopping
 
 **Type:** Process
 

@@ -1,3 +1,7 @@
+---
+title: XXXX: Title
+---
+
 # Title
 
 > _NOTE: the file should be named `_<your-title>.md` and be placed in the `docs/sources/lids` directory. 
