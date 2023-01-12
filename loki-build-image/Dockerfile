@@ -85,7 +85,7 @@ RUN apt-get update && \
 RUN dpkg --add-architecture armhf && \
     dpkg --add-architecture arm64 && \
     apt-get update && \
-    apt-get install-y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
     pkg-config \
     gcc-aarch64-linux-gnu libc6-dev-arm64-cross libsystemd-dev:arm64 \
     gcc-arm-linux-gnueabihf libc6-dev-armhf-cross libsystemd-dev:armhf && \
