@@ -1,11 +1,11 @@
-# Promtail and Log rotation
+# Promtail and Log Rotation
 
-## Why log rotation matters?
+## Why does log rotation matters?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.
 ![block_diagram](./logrotation-components.png)
 
-1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like syslog, docker log driver or kubelet, etc.
+1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, docker log driver or Kubelet, etc.
 2. Tailer - A reader that read log lines as it is being appended e.g agents like Promtail.
 3. Log Rotater - A process that rotates the log either based on time (say scheduled every day) or size (say a log file reached its max size)
 
@@ -30,21 +30,21 @@ These types are shown in the images below.
 ### Rename and Create
 ![block_diagram](./logrotation2.png)
 
-Both types of log rotation seem to give the same end result. However, there are some subtle differences.
+Both types of log rotation seem to give the same result. However, there are some subtle differences.
 
 (1) favors the `appender` as its descriptor for the original log file `error.log` doesn't change. Therefore, it can keep writing to the same file descriptor. In other words, re-opening the file is not needed.
 
 However (1) has a serious problem if we bring the `tailer` into account. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
 
-This is where (2) can help. Here, when the log file `error.log` is renamed to `error.log.1`, the `tailer` still holds the file descriptor of `error.log.1`. Therefore, it can continue reading the log file until it's completed. But that comes with the tradeoff: with (2), you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it). Otherwise, it would keep writing to `error.log.1` as the file descriptor won't change. The good news is that most of the popular `appender` solutions (e.g: syslog, kubelet, docker log driver) support reopening log files when they are renamed.
+This is where (2) can help. Here, when the log file `error.log` is renamed to `error.log.1`, the `tailer` still holds the file descriptor of `error.log.1`. Therefore, it can continue reading the log file until it's completed. But that comes with the tradeoff: with (2), you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it). Otherwise, it would keep writing to `error.log.1` as the file descriptor won't change. The good news is that most of the popular `appender` solutions (e.g: Syslog, Kubelet, Docker log driver) support reopening log files when they are renamed.
 
-We recommend (2) as that is the one which works well with Promtail (or any similar log scraping agent) without any data loss. Now let's understand how do we exactly configure log rotation in different platforms.
+We recommend (2) as that is the one which works well with Promtail (or any similar log scraping agent) without any data loss. Now let's understand how we exactly configure log rotation in different platforms.
 
 ## Configure log rotation.
 
-Your logs can be rotated by different components depending on where you are running your application or services. If you are running on Linux bare metal or Linux VMs, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However if you are running in kubernetes, it's not that obvious who rotates the logs and interestingly it may dependes on what container runtime your kubernetes cluster is using.
+Your logs can be rotated by different components depending on where you are running your application or services. If you are running on Linux bare metal or Linux VMs, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However, if you are running in Kubernetes, it's not that obvious who rotates the logs and interestingly it may depend on what container runtime your Kubernetes cluster is using.
 
-### Non kubernetes
+### Non Kubernetes
 
 As mentioned above, in Linux bare metal or Linux VMs, log rotation is often handled by [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility.
 
@@ -69,9 +69,9 @@ Here `copytruncate` mode works exactly like (1) explained above.
         create
 }
 ```
-Here `create` mode works like (2) explained above. The `create` mode is optional because it's the default mode in `logroate`.
+Here `create` mode works like (2) explained above. The `create` mode is optional because it's the default mode in `logrotate`.
 
-The configuration for `logroate` is usually located in `/etc/logrotate/`.
+The configuration for `logrotate` is usually located in `/etc/logrotate/`.
 
 It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, running scripts pre and post-rotation, etc.
 
@@ -103,7 +103,7 @@ At the time of writing this guide, `containerd` [doesn't support any way of log 
 
 When using `docker` as runtime(EKS before 1.24 uses it by default), log rotation is managed by its logging driver(if supported). Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers).
 
-One can find what logging driver `docker` is using by running following command
+One can find what logging driver `docker` is using by running the following command
 ```bash
  docker info --format '{{.LoggingDriver}}'
 ```
@@ -130,6 +130,6 @@ If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrot
 
 ## Configure Promtail
 
-Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this guide, this happens when the file is truncated before promtail reads all the log lines from such file.
+Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this guide, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
-Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push response from the Loki server.
+Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
