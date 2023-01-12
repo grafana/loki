@@ -2141,15 +2141,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.rules.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace to create recording rules PrometheusRule resource in</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -2191,15 +2182,6 @@ true
 			<td>Additional Grafana Agent labels</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.selfMonitoring.grafanaAgent.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for Grafana Agent resources</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -2368,15 +2350,6 @@ true
 			<td>monitoring.serviceMonitor.metricsInstance.remoteWrite</td>
 			<td>string</td>
 			<td>If defined a MetricsInstance will be created to remote write metrics.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.serviceMonitor.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for ServiceMonitor resources</td>
 			<td><pre lang="json">
 null
 </pre>
