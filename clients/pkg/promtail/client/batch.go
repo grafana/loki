@@ -84,6 +84,7 @@ func labelsMapToString(ls model.LabelSet, without model.LabelName) string {
 		}
 
 		lstrs = append(lstrs, l)
+		// guess size increase: 2 for `, ` between labels and 3 for the `=` and quotes around label value
 		totalSize += len(l) + 2 + len(v) + 3
 	}
 
