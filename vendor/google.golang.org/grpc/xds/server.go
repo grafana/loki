@@ -105,10 +105,10 @@ func NewGRPCServer(opts ...grpc.ServerOption) *GRPCServer {
 	s := &GRPCServer{
 		gs:   newGRPCServer(newOpts...),
 		quit: grpcsync.NewEvent(),
-		opts: handleServerOptions(opts),
 	}
 	s.logger = prefixLogger(s)
 	s.logger.Infof("Created xds.GRPCServer")
+	s.handleServerOptions(opts)
 
 	// We type assert our underlying gRPC server to the real grpc.Server here
 	// before trying to retrieve the configured credentials. This approach
@@ -128,14 +128,35 @@ func NewGRPCServer(opts ...grpc.ServerOption) *GRPCServer {
 
 // handleServerOptions iterates through the list of server options passed in by
 // the user, and handles the xDS server specific options.
-func handleServerOptions(opts []grpc.ServerOption) *serverOptions {
-	so := &serverOptions{}
+func (s *GRPCServer) handleServerOptions(opts []grpc.ServerOption) {
+	so := s.defaultServerOptions()
 	for _, opt := range opts {
 		if o, ok := opt.(*serverOption); ok {
 			o.apply(so)
 		}
 	}
-	return so
+	s.opts = so
+}
+
+func (s *GRPCServer) defaultServerOptions() *serverOptions {
+	return &serverOptions{
+		// A default serving mode change callback which simply logs at the
+		// default-visible log level. This will be used if the application does not
+		// register a mode change callback.
+		//
+		// Note that this means that `s.opts.modeCallback` will never be nil and can
+		// safely be invoked directly from `handleServingModeChanges`.
+		modeCallback: s.loggingServerModeChangeCallback,
+	}
+}
+
+func (s *GRPCServer) loggingServerModeChangeCallback(addr net.Addr, args ServingModeChangeArgs) {
+	switch args.Mode {
+	case connectivity.ServingModeServing:
+		s.logger.Errorf("Listener %q entering mode: %q", addr.String(), args.Mode)
+	case connectivity.ServingModeNotServing:
+		s.logger.Errorf("Listener %q entering mode: %q due to error: %v", addr.String(), args.Mode, args.Err)
+	}
 }
 
 // RegisterService registers a service and its implementation to the underlying
@@ -291,12 +312,16 @@ func (s *GRPCServer) handleServingModeChanges(updateCh *buffer.Unbounded) {
 					drainServerTransports(gs, args.addr.String())
 				}
 			}
-			if s.opts.modeCallback != nil {
-				s.opts.modeCallback(args.addr, ServingModeChangeArgs{
-					Mode: args.mode,
-					Err:  args.err,
-				})
-			}
+
+			// The XdsServer API will allow applications to register a "serving state"
+			// callback to be invoked when the server begins serving and when the
+			// server encounters errors that force it to be "not serving". If "not
+			// serving", the callback must be provided error information, for
+			// debugging use by developers - A36.
+			s.opts.modeCallback(args.addr, ServingModeChangeArgs{
+				Mode: args.mode,
+				Err:  args.err,
+			})
 		}
 	}
 }

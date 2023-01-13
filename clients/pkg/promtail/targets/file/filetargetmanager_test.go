@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"

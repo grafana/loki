@@ -666,6 +666,12 @@ The `frontend` block configures the Loki query-frontend.
 # frontend.grpc-client-config
 [grpc_client_config: <grpc_client>]
 
+# Time to wait for inflight requests to finish before forcefully shutting down.
+# This needs to be aligned with the query timeout and the graceful termination
+# period of the process orchestrator.
+# CLI flag: -frontend.graceful-shutdown-timeout
+[graceful_shutdown_timeout: <duration> | default = 5m]
+
 # Name of network interface to read address from. This address is sent to
 # query-scheduler and querier, which uses it to send the query response back to
 # query-frontend.
@@ -1661,8 +1667,8 @@ hedging:
 #       store-1:
 #         endpoint: s3://foo-bucket
 #         region: us-west1
-# Named store from this example can be used by setting object_store to
-# aws.store-1 in period_config.
+# Named store from this example can be used by setting object_store to store-1
+# in period_config.
 [named_stores: <named_stores_config>]
 
 # Cache validity for active index entries. Should be no higher than
@@ -3474,8 +3480,8 @@ The `period_config` block configures what index schemas should be used for from 
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs,
-# cassandra, swift or filesystem. If omitted, defaults to the same value as
-# store.
+# cassandra, swift, filesystem or a named_store (refer to named_stores_config).
+# If omitted, defaults to the same value as store.
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v11.
@@ -4046,7 +4052,7 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be used by setting object_store to aws.store-1 in period_config.
+Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
 [aws: <map of string to aws_storage_config>]

@@ -8,5 +8,11 @@ metadata:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
 data:
   nginx.conf: |
-    {{- tpl (ternary .Values.enterprise.nginxConfig.file .Values.gateway.nginxConfig.file .Values.enterprise.enabled) . | nindent 4 }}
+    {{- if .Values.enterprise.enabled }}
+    {{- $file := ( .Values.enterprise.nginxConfig.file | default .Values.gateway.nginxConfig.file) }}
+    {{- $indent := ternary 2 4 (empty .Values.enterprise.nginxConfig.file) }}
+    {{- tpl $file  . | nindent $indent }}
+    {{- else }}
+    {{- tpl .Values.gateway.nginxConfig.file . | indent 2 }}
+    {{- end }}
 {{- end }}

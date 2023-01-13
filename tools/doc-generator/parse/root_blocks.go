@@ -237,6 +237,6 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be used by setting object_store to aws.store-1 in period_config.`},
+Named store from this example can be used by setting object_store to store-1 in period_config.`},
 	}
 )

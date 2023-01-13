@@ -297,10 +297,10 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 		switch msg.GetType() {
 		case schedulerpb.ENQUEUE:
 			err = s.enqueueRequest(frontendCtx, frontendAddress, msg)
-			switch {
-			case err == nil:
+			switch err {
+			case nil:
 				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
-			case err == queue.ErrTooManyRequests:
+			case queue.ErrTooManyRequests:
 				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.TOO_MANY_REQUESTS_PER_TENANT}
 			default:
 				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR, Error: err.Error()}
@@ -762,5 +762,9 @@ func (s *Scheduler) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Des
 }
 
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	s.ring.ServeHTTP(w, req)
+	if s.cfg.UseSchedulerRing {
+		s.ring.ServeHTTP(w, req)
+	} else {
+		_, _ = w.Write([]byte("QueryScheduler running with '-query-scheduler.use-scheduler-ring' set to false."))
+	}
 }

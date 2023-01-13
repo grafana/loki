@@ -48,6 +48,95 @@ type NamedStores struct {
 	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
 	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
 	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
+
+	// contains mapping from named store reference name to store type
+	storeType map[string]string `yaml:"-"`
+}
+
+func (ns *NamedStores) populateStoreType() error {
+	ns.storeType = make(map[string]string)
+
+	checkForDuplicates := func(name string) error {
+		switch name {
+		case config.StorageTypeAWS, config.StorageTypeAWSDynamo, config.StorageTypeS3,
+			config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGCS,
+			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift, config.StorageTypeCassandra,
+			config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
+			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
+		}
+
+		if st, ok := ns.storeType[name]; ok {
+			return fmt.Errorf("named store %q is already defined under %s", name, st)
+		}
+
+		return nil
+	}
+
+	for name := range ns.AWS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeAWS
+	}
+
+	for name := range ns.Azure {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeAzure
+	}
+
+	for name := range ns.BOS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeBOS
+	}
+
+	for name := range ns.Filesystem {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeFileSystem
+	}
+
+	for name := range ns.GCS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeGCS
+	}
+
+	for name := range ns.Swift {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeSwift
+	}
+
+	return nil
+}
+
+func (ns *NamedStores) validate() error {
+	for name, awsCfg := range ns.AWS {
+		if err := awsCfg.Validate(); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("invalid AWS Storage config with name %s", name))
+		}
+	}
+
+	for name, azureCfg := range ns.Azure {
+		if err := azureCfg.Validate(); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("invalid Azure Storage config with name %s", name))
+		}
+	}
+
+	for name, swiftCfg := range ns.Swift {
+		if err := swiftCfg.Validate(); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("invalid Swift Storage config with name %s", name))
+		}
+	}
+
+	return ns.populateStoreType()
 }
 
 // Config chooses which storage client to use.
@@ -131,29 +220,7 @@ func (cfg *Config) Validate() error {
 		return errors.Wrap(err, "invalid tsdb config")
 	}
 
-	return cfg.validateNamedStores()
-}
-
-func (cfg *Config) validateNamedStores() error {
-	for name, awsCfg := range cfg.NamedStores.AWS {
-		if err := awsCfg.Validate(); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("invalid AWS Storage config with name %s", name))
-		}
-	}
-
-	for name, azureCfg := range cfg.NamedStores.Azure {
-		if err := azureCfg.Validate(); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("invalid Azure Storage config with name %s", name))
-		}
-	}
-
-	for name, swiftCfg := range cfg.NamedStores.Swift {
-		if err := swiftCfg.Validate(); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("invalid Swift Storage config with name %s", name))
-		}
-	}
-
-	return nil
+	return cfg.NamedStores.validate()
 }
 
 // NewIndexClient makes a new index client of the desired type.
@@ -214,9 +281,9 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		storeType = name
 	)
 
-	// extact storeType for named stores
-	if words := strings.SplitN(name, ".", 2); len(words) == 2 {
-		storeType = words[0]
+	// lookup storeType for named stores
+	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
+		storeType = nsType
 	}
 
 	switch storeType {
@@ -357,9 +424,10 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		storeType  = name
 	)
 
-	// extact storeType and lookup key for named stores
-	if words := strings.SplitN(name, ".", 2); len(words) == 2 {
-		storeType, namedStore = words[0], words[1]
+	// lookup storeType for named stores
+	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
+		storeType = nsType
+		namedStore = name
 	}
 
 	switch storeType {

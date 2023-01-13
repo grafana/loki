@@ -44,7 +44,7 @@ func New2Q(size int) (*TwoQueueCache, error) {
 
 // New2QParams creates a new TwoQueueCache using the provided
 // parameter values.
-func New2QParams(size int, recentRatio float64, ghostRatio float64) (*TwoQueueCache, error) {
+func New2QParams(size int, recentRatio, ghostRatio float64) (*TwoQueueCache, error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("invalid size")
 	}
@@ -138,7 +138,6 @@ func (c *TwoQueueCache) Add(key, value interface{}) {
 	// Add to the recently seen list
 	c.ensureSpace(false)
 	c.recent.Add(key, value)
-	return
 }
 
 // ensureSpace is used to ensure we have space in the cache

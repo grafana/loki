@@ -110,13 +110,13 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			obj:           &appsv1.Deployment{},
 			index:         4,
 			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			pred:          updateOrDeleteWithStatusPred,
 		},
 		{
 			obj:           &appsv1.StatefulSet{},
 			index:         5,
 			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			pred:          updateOrDeleteWithStatusPred,
 		},
 		{
 			obj:           &rbacv1.ClusterRole{},
