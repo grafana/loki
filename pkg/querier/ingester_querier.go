@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -71,7 +72,7 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 	if err != nil {
 		return nil, err
 	}
-
+	level.Info(util_log.Logger).Log("method", "for_all_ingesters", "count", len(replicationSet.Instances))
 	return q.forGivenIngesters(ctx, replicationSet, f)
 }
 

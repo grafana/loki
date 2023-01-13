@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -173,6 +174,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	fmt.Println("Debug!!", "in push handler on instance.go")
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
@@ -202,6 +204,20 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream)
 		s.chunkMtx.Unlock()
+
+		if appendErr == nil {
+			f, err := os.OpenFile("/tmp/streams.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+			if err != nil {
+				fmt.Println("error in writing to /tmp/streams", err)
+				continue
+			}
+			f.Write([]byte(fmt.Sprintf("instance: %s, stream-hash: %d, stream-labels: %s\n", i.instanceID, reqStream.Hash, reqStream.Labels)))
+			if err := f.Sync(); err != nil {
+				fmt.Println("failed to sync", err)
+				continue
+			}
+			f.Close()
+		}
 	}
 
 	if !record.IsEmpty() {
