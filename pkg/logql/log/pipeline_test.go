@@ -216,7 +216,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
 					{Name: "caller", Value: "metrics.go:81"},
 					{Name: logqlmodel.ErrorLabel, Value: errJSON},
-					{Name: logqlmodel.ErrorDetailsLabel, Value: "expecting json object(6), but it is not"},
+					{Name: logqlmodel.ErrorDetailsLabel, Value: "Value looks like object, but can't find closing '}' symbol"},
 				},
 				{
 					{Name: "namespace", Value: "prod"},
