@@ -31,6 +31,8 @@ var (
 	BuildUser string
 	BuildDate string
 	GoVersion = runtime.Version()
+	GoOS      = runtime.GOOS
+	GoArch    = runtime.GOARCH
 )
 
 // NewCollector returns a collector that exports metrics about current version
@@ -41,7 +43,7 @@ func NewCollector(program string) prometheus.Collector {
 			Namespace: program,
 			Name:      "build_info",
 			Help: fmt.Sprintf(
-				"A metric with a constant '1' value labeled by version, revision, branch, and goversion from which %s was built.",
+				"A metric with a constant '1' value labeled by version, revision, branch, goversion from which %s was built, and the goos and goarch for the build.",
 				program,
 			),
 			ConstLabels: prometheus.Labels{
@@ -49,6 +51,8 @@ func NewCollector(program string) prometheus.Collector {
 				"revision":  getRevision(),
 				"branch":    Branch,
 				"goversion": GoVersion,
+				"goos":      GoOS,
+				"goarch":    GoArch,
 			},
 		},
 		func() float64 { return 1 },
@@ -74,7 +78,7 @@ func Print(program string) string {
 		"buildUser": BuildUser,
 		"buildDate": BuildDate,
 		"goVersion": GoVersion,
-		"platform":  runtime.GOOS + "/" + runtime.GOARCH,
+		"platform":  GoOS + "/" + GoArch,
 	}
 	t := template.Must(template.New("version").Parse(versionInfoTmpl))
 
@@ -90,7 +94,7 @@ func Info() string {
 	return fmt.Sprintf("(version=%s, branch=%s, revision=%s)", Version, Branch, getRevision())
 }
 
-// BuildContext returns goVersion, buildUser and buildDate information.
+// BuildContext returns goVersion, platform, buildUser and buildDate information.
 func BuildContext() string {
-	return fmt.Sprintf("(go=%s, user=%s, date=%s)", GoVersion, BuildUser, BuildDate)
+	return fmt.Sprintf("(go=%s, platform=%s, user=%s, date=%s)", GoVersion, GoOS+"/"+GoArch, BuildUser, BuildDate)
 }

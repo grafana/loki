@@ -1014,7 +1014,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.3.0
 ## explicit; go 1.9
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.38.0
+# github.com/prometheus/common v0.39.0
 ## explicit; go 1.17
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
