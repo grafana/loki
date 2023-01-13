@@ -6,10 +6,10 @@ At any point in time, there may be three processes working on a log file as show
 ![block_diagram](./logrotation-components.png)
 
 1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, Docker log driver or Kubelet, etc.
-2. Tailer - A reader that read log lines as it is being appended e.g agents like Promtail.
-3. Log Rotater - A process that rotates the log either based on time (say scheduled every day) or size (say a log file reached its max size)
+2. Tailer - A reader that reads log lines as they are appended e.g agents like Promtail.
+3. Log Rotater - A process that rotates the log file either based on time (say scheduled every day) or size (say a log file reached its max size).
 
-NOTE: Here `fd` defines a file descriptor. Once a file is open for read or write, OS gives back a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
+> **NOTE:** Here `fd` defines a file descriptor. Once a file is open for read or write, OS gives back a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
 
 One of the critical components here is the log rotater. Let's understand how it impacts other components like the appender and tailer.
 
@@ -20,15 +20,15 @@ Given a log file `error.log`
 1. Copy the log file with a different name e.g `error.log.1` and truncate the original log file `error.log`.
 2. Rename the log file with a different name e.g: `error.log.1` and create a new log file with the original name `error.log`.
 
-In both cases, after log rotation, all the new log lines go to the original `error.log` file.
+In both cases, after log rotation, all new log lines go to the original `error.log` file.
 
 These types are shown in the images below.
 
 ### Copy and Truncate
-![block_diagram](./logrotation1.png)
+![block_diagram](./logrotation-copy-and-truncate.png)
 
 ### Rename and Create
-![block_diagram](./logrotation2.png)
+![block_diagram](./logrotation-rename-and-create.png)
 
 Both types of log rotation seem to give the same result. However, there are some subtle differences.
 
@@ -40,13 +40,13 @@ This is where (2) can help. Here, when the log file `error.log` is renamed to `e
 
 We recommend (2) as that is the one which works well with Promtail (or any similar log scraping agent) without any data loss. Now let's understand how we exactly configure log rotation in different platforms.
 
-## Configure log rotation.
+## Configure log rotation
 
-Your logs can be rotated by different components depending on where you are running your application or services. If you are running on Linux bare metal or Linux VMs, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However, if you are running in Kubernetes, it's not that obvious who rotates the logs and interestingly it may depend on what container runtime your Kubernetes cluster is using.
+Your logs can be rotated by different components depending on where you are running your applications or services. If you are running them on Linux machines, high chance you will be using [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility. However, if you are running in Kubernetes, it's not that obvious who rotates the logs and interestingly it may depend on what container runtime your Kubernetes cluster is using.
 
 ### Non-Kubernetes
 
-As mentioned above, in Linux bare metal or Linux VMs, log rotation is often handled by [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility.
+As mentioned above, in Linux machines, log rotation is often handled by [`logrotate`](https://man7.org/linux/man-pages/man8/logrotate.8.html) utility.
 
 It supports both types of log rotation explained before.
 
@@ -73,11 +73,11 @@ Here `create` mode works like (2) explained above. The `create` mode is optional
 
 The configuration for `logrotate` is usually located in `/etc/logrotate/`.
 
-It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, running scripts pre and post-rotation, etc.
+It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate.8.html) for compression, mailing, running scripts pre- and post-rotation, etc.
 
 ### Kubernetes
 
-[Kubernetes Service Discovery in Promtail](https://grafana.com/docs/loki/latest/clients/promtail/scraping/#kubernetes-discovery) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes them from those files.
+[Kubernetes Service Discovery in Promtail]({{<relref "./scraping.md">}}#kubernetes-discovery) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes them from those files.
 
 We can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) the `kubelet` process running on each node to manage log rotation via two configs.
 
@@ -103,7 +103,7 @@ At the time of writing this guide, `containerd` [doesn't support any way of log 
 
 #### docker CRI
 
-When using `docker` as runtime(EKS before 1.24 uses it by default), log rotation is managed by its logging driver(if supported). Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers).
+When using `docker` as runtime (EKS before 1.24 uses it by default), log rotation is managed by its logging driver (if supported). Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers).
 
 One can find what logging driver `docker` is using by running the following command
 ```bash
@@ -116,7 +116,7 @@ Out of all these logging drivers only the `local` (default) and the `json-file` 
 2. `max-file` - The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. A positive integer. Defaults to 5.
 
 Example `/etc/docker/daemon.json`:
-```bash
+```json
 {
   "log-driver": "local",
   "log-opts": {
@@ -128,10 +128,10 @@ Example `/etc/docker/daemon.json`:
 
 If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrotate` utility can be used on the Kubernetes nodes as explained previously.
 
-**We recommend using kubelet for log rotation**
+**We recommend using kubelet for log rotation.**
 
 ## Configure Promtail
 
 Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this guide, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
-Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
+Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{<relref "./configuration.md">}}/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
