@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -280,6 +281,18 @@ func (d *Distributor) running(ctx context.Context) error {
 	case err := <-d.subservicesWatcher.Chan():
 		return errors.Wrap(err, "distributor subservice failed")
 	}
+}
+
+func (d *Distributor) CheckReady() error {
+	if s := d.State(); s != services.Running {
+		return fmt.Errorf("distributor not ready: %v", s)
+	}
+
+	if d.ingestersRing.InstancesCount() < 1 {
+		return fmt.Errorf("number of ingesters available is lesser than 1")
+	}
+
+	return nil
 }
 
 func (d *Distributor) stopping(_ error) error {

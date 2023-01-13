@@ -547,6 +547,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 	log2Ran := false
 	log3Ran := false
 	log4Ran := false
+	log5Ran := false
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !sm.IsHealthy() {
@@ -581,6 +582,16 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 			if !log3Ran {
 				log3Ran = true
 				level.Info(util_log.Logger).Log("msg", "[qwe] distributor running")
+			}
+
+			if err := t.distributor.CheckReady(); err != nil {
+				http.Error(w, "Distributor not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			} else {
+				if !log5Ran {
+					log5Ran = true
+					level.Info(util_log.Logger).Log("msg", "[qwe] passed distributor check ready")
+				}
 			}
 		} else {
 			if !log4Ran {
