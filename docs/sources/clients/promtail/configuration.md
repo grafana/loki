@@ -65,7 +65,7 @@ Where default_value is the value to use if the environment variable is undefined
 slashes with single slashes. Because of this every use of a slash `\` needs to
 be replaced with a double slash `\\`
 
-### Generic placeholders:
+### Generic placeholders
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
 - `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
@@ -276,6 +276,10 @@ backoff_config:
 
   # Maximum number of retries to do
   [max_retries: <int> | default = 10]
+
+# Disable retries of batches that Loki responds to with a 429 status code (TooManyRequests). This reduces
+# impacts on batches from other tenants, which could end up being delayed or dropped due to exponential backoff.
+[drop_rate_limited_batches: <boolean> | default = false]
 
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
@@ -1311,6 +1315,11 @@ The Heroku Drain target exposes for each log entry the received syslog fields wi
 - `__heroku_drain_proc`: The [PROCID](https://tools.ietf.org/html/rfc5424#section-6.2.6) field parsed from the message.
 - `__heroku_drain_log_id`: The [MSGID](https://tools.ietf.org/html/rfc5424#section-6.2.7) field parsed from the message.
 
+Additionally, the Heroku drain target will read all url query parameters from the
+configured drain target url and make them available as
+`__heroku_drain_param_<name>` labels, multiple instances of the same parameter
+will appear as comma separated strings
+
 ### relabel_configs
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target
@@ -1960,7 +1969,7 @@ sync_period: "10s"
 The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
 
 ```yaml
-# When true, 
+# When true,
 [enabled: <boolean> | default = false]
 ```
 
@@ -2079,7 +2088,7 @@ scrape_configs:
 
 ## Example Push Config
 
-The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Dirver:
+The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Driver:
 
 ```yaml
 server:

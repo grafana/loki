@@ -11,7 +11,7 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 
 **Prerequisites**
 
-* Go 1.16+
+* Go 1.17+
 * gcc (for cgo)
 
 To [build](https://docs.fluentbit.io/manual/development/golang-output-plugins#build-a-go-plugin) the output plugin library file `out_grafana_loki.so`, in the root directory of Loki source code, you can use:

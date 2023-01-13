@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const testUserID = "test-user"
@@ -21,10 +21,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		isExpired           bool
 		nonDeletedIntervals []retention.IntervalFilter
 	}
+	var dummyFilterFunc filter.Func = func(s string) bool {
+		return false
+	}
 
 	now := model.Now()
 	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
 	require.NoError(t, err)
+	streamSelectorWithLineFilters := lblFoo.String() + `|="fizz"`
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -90,6 +94,37 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           true,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "whole chunk deleted by single request with line filters",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: chunkEntry.ChunkRef.From,
+							End:   chunkEntry.ChunkRef.Through,
+						},
+						Filter: dummyFilterFunc,
+					},
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -175,6 +210,43 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           true,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-48 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "multiple delete requests with line filters and one deleting the whole chunk",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-48 * time.Hour),
+					EndTime:   now.Add(-24 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: chunkEntry.ChunkRef.From,
+							End:   chunkEntry.ChunkRef.Through,
+						},
+						Filter: dummyFilterFunc,
+					},
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -273,6 +345,50 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
+			name:         "multiple overlapping requests with line filters deleting the whole chunk",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-13 * time.Hour),
+					EndTime:   now.Add(-6 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-8 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: chunkEntry.ChunkRef.From,
+							End:   now.Add(-6 * time.Hour),
+						},
+						Filter: dummyFilterFunc,
+					},
+					{
+						Interval: model.Interval{
+							Start: now.Add(-6*time.Hour) + 1,
+							End:   chunkEntry.ChunkRef.Through,
+						},
+						Filter: dummyFilterFunc,
+					},
+				},
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
 			name:         "multiple non-overlapping requests deleting the whole chunk",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
@@ -299,6 +415,63 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired:           true,
 				nonDeletedIntervals: nil,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-12 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "multiple non-overlapping requests with line filter deleting the whole chunk",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-6*time.Hour) - 1,
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-6 * time.Hour),
+					EndTime:   now.Add(-4*time.Hour) - 1,
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-4 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: chunkEntry.ChunkRef.From,
+							End:   now.Add(-6*time.Hour) - 1,
+						},
+						Filter: dummyFilterFunc,
+					},
+					{
+						Interval: model.Interval{
+							Start: now.Add(-6 * time.Hour),
+							End:   now.Add(-4*time.Hour) - 1,
+						},
+						Filter: dummyFilterFunc,
+					},
+					{
+						Interval: model.Interval{
+							Start: now.Add(-4 * time.Hour),
+							End:   chunkEntry.ChunkRef.Through,
+						},
+						Filter: dummyFilterFunc,
+					},
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -444,10 +617,15 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
+			require.Len(t, nonDeletedIntervals, len(tc.expectedResp.nonDeletedIntervals))
 			for idx, interval := range nonDeletedIntervals {
 				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.Start, interval.Interval.Start)
 				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.End, interval.Interval.End)
-				require.NotNil(t, interval.Filter)
+				if tc.expectedResp.nonDeletedIntervals[idx].Filter != nil {
+					require.NotNil(t, interval.Filter)
+				} else {
+					require.Nil(t, interval.Filter)
+				}
 			}
 
 			require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.deleteRequestsToProcess))
@@ -501,6 +679,8 @@ type mockDeleteRequestsStore struct {
 	getAllUser   string
 	getAllResult []DeleteRequest
 	getAllErr    error
+
+	genNumber string
 }
 
 func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
@@ -529,4 +709,8 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, use
 func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
 	m.getAllUser = userID
 	return m.getAllResult, m.getAllErr
+}
+
+func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+	return m.genNumber, m.getErr
 }

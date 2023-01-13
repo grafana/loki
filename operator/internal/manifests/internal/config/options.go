@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -12,6 +13,8 @@ import (
 // Options is used to render the loki-config.yaml file template
 type Options struct {
 	Stack lokiv1.LokiStackSpec
+	Gates configv1.FeatureGates
+	TLS   TLSOptions
 
 	Namespace             string
 	Name                  string
@@ -29,6 +32,17 @@ type Options struct {
 	ObjectStorage storage.Options
 
 	Retention RetentionOptions
+
+	Overrides map[string]LokiOverrides
+}
+
+type LokiOverrides struct {
+	Limits lokiv1.LimitsTemplateSpec
+	Ruler  RulerOverrides
+}
+
+type RulerOverrides struct {
+	AlertManager *AlertManagerConfig
 }
 
 // Address FQDN and port for a k8s service.
@@ -69,7 +83,36 @@ type AlertManagerConfig struct {
 	ForGracePeriod     string
 	ResendDelay        string
 
+	Notifier *NotifierConfig
+
 	RelabelConfigs []RelabelConfig
+}
+
+type NotifierConfig struct {
+	TLS        TLSConfig
+	BasicAuth  BasicAuth
+	HeaderAuth HeaderAuth
+}
+
+type BasicAuth struct {
+	Username *string
+	Password *string
+}
+
+type HeaderAuth struct {
+	Type            *string
+	Credentials     *string
+	CredentialsFile *string
+}
+
+type TLSConfig struct {
+	CertPath           *string
+	KeyPath            *string
+	CAPath             *string
+	ServerName         *string
+	InsecureSkipVerify *bool
+	CipherSuites       *string
+	MinVersion         *string
 }
 
 // RemoteWriteConfig for ruler remote write config
@@ -165,4 +208,43 @@ func (w WriteAheadLog) ReplayMemoryCeiling() string {
 type RetentionOptions struct {
 	Enabled           bool
 	DeleteWorkerCount uint
+}
+
+type TLSOptions struct {
+	Ciphers       []string
+	MinTLSVersion string
+	Paths         TLSFilePaths
+	ServerNames   TLSServerNames
+}
+
+func (o TLSOptions) CipherSuitesString() string {
+	return strings.Join(o.Ciphers, ",")
+}
+
+type TLSFilePaths struct {
+	CA   string
+	GRPC TLSCertPath
+	HTTP TLSCertPath
+}
+
+type TLSCertPath struct {
+	Certificate string
+	Key         string
+}
+
+type TLSServerNames struct {
+	GRPC GRPCServerNames
+	HTTP HTTPServerNames
+}
+
+type GRPCServerNames struct {
+	Compactor     string
+	IndexGateway  string
+	Ingester      string
+	QueryFrontend string
+	Ruler         string
+}
+
+type HTTPServerNames struct {
+	Querier string
 }

@@ -40,6 +40,7 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 }
 
 // FilterFunction returns a filter function that returns true if the given line matches
+// Note: FilterFunction can be nil when the delete request does not have a line filter.
 func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error) {
 	if d.logSelectorExpr == nil {
 		err := d.SetQuery(d.Query)
@@ -47,6 +48,12 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 			return nil, err
 		}
 	}
+
+	// return a filter func if the delete request has a line filter
+	if !d.logSelectorExpr.HasFilter() {
+		return nil, nil
+	}
+
 	p, err := d.logSelectorExpr.Pipeline()
 	if err != nil {
 		return nil, err
@@ -133,23 +140,47 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 
 	intervals := make([]retention.IntervalFilter, 0, 2)
 
+	// chunk partially deleted from the end
 	if d.StartTime > entry.From {
+		// Add the deleted part with Filter func
+		if ff != nil {
+			intervals = append(intervals, retention.IntervalFilter{
+				Interval: model.Interval{
+					Start: d.StartTime,
+					End:   entry.Through,
+				},
+				Filter: ff,
+			})
+		}
+
+		// Add non-deleted part without Filter func
 		intervals = append(intervals, retention.IntervalFilter{
 			Interval: model.Interval{
 				Start: entry.From,
 				End:   d.StartTime - 1,
 			},
-			Filter: ff,
 		})
 	}
 
+	// chunk partially deleted from the beginning
 	if d.EndTime < entry.Through {
+		// Add the deleted part with Filter func
+		if ff != nil {
+			intervals = append(intervals, retention.IntervalFilter{
+				Interval: model.Interval{
+					Start: entry.From,
+					End:   d.EndTime,
+				},
+				Filter: ff,
+			})
+		}
+
+		// Add non-deleted part without Filter func
 		intervals = append(intervals, retention.IntervalFilter{
 			Interval: model.Interval{
 				Start: d.EndTime + 1,
 				End:   entry.Through,
 			},
-			Filter: ff,
 		})
 	}
 

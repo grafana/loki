@@ -159,7 +159,14 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 					level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
 				}
 			} else {
-				if *m.cfg.Value == v {
+				s, err := getString(v)
+				if err != nil {
+					if Debug {
+						level.Debug(m.logger).Log("msg", "line will not be dropped, failed to convert extracted map value to string", "err", err, "type", reflect.TypeOf(v))
+					}
+					return false
+				}
+				if *m.cfg.Value == s {
 					// Found in map with value set for drop
 					if Debug {
 						level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map with value matching desired drop value")
@@ -167,7 +174,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 				} else {
 					// Value doesn't match, don't drop
 					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
+						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", s, *m.cfg.Value))
 					}
 					return false
 				}

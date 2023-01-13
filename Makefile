@@ -7,6 +7,7 @@
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-drone-drift, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
+.PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 
@@ -27,7 +28,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.24.2
+BUILD_IMAGE_VERSION := 0.27.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -70,6 +71,13 @@ RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
 # Promtail UI files
 PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
 PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
+
+# Documentation source path
+DOC_SOURCES_PATH := docs/sources
+
+# Configuration flags documentation
+DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configuration/index.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/configuration/_index.md
 
 ##########
 # Docker #
@@ -253,7 +261,9 @@ dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
+	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -281,7 +291,7 @@ lint:
 ########
 
 test: all
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -370,7 +380,7 @@ else
 	@# to configure all such relative paths. `gogo/protobuf` is used by it.
 	case "$@" in	\
 		vendor*)			\
-			protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
+			protoc -I ./vendor/github.com/gogo/protobuf:./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
 			;;					\
 		*)						\
 			protoc -I .:./vendor/github.com/gogo/protobuf:./vendor/github.com/thanos-io/thanos/pkg:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
@@ -413,6 +423,13 @@ clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
+ifndef DOCKER_PASSWORD
+	$(error env var DOCKER_PASSWORD is undefined)
+endif
+ifndef DOCKER_USERNAME
+	$(error env var DOCKER_USERNAME is undefined)
+endif
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	docker plugin push $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 
@@ -711,13 +728,23 @@ endif
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
 test-fuzz:
 	$(GOTEST) -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
-	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql/syntax -v -count=1 -timeout=0s
+		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql/syntax -v -count=1 -timeout=0s
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+# Documentation related commands
+
+doc: ## Generates the config file documentation
+	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+
+check-doc: ## Check the documentation files are up to date
+check-doc: doc
+	@find . -name "*.md" | xargs git diff --exit-code -- \
+	|| (echo "Please update generated documentation by running 'make doc' and committing the changes" && false)
 
 ###################
 # Example Configs #

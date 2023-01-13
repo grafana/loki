@@ -10,7 +10,6 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -95,7 +94,8 @@ var queryTests = []struct {
 							"entriesStored": 0,
 							"bytesReceived": 0,
 							"bytesSent": 0,
-							"requests": 0
+							"requests": 0,
+							"downloadTime": 0
 						},
 						"index": {
 							"entriesFound": 0,
@@ -103,7 +103,8 @@ var queryTests = []struct {
 							"entriesStored": 0,
 							"bytesReceived": 0,
 							"bytesSent": 0,
-							"requests": 0
+							"requests": 0,
+							"downloadTime": 0
 						},
 						"result": {
 							"entriesFound": 0,
@@ -111,7 +112,8 @@ var queryTests = []struct {
 							"entriesStored": 0,
 							"bytesReceived": 0,
 							"bytesSent": 0,
-							"requests": 0
+							"requests": 0,
+							"downloadTime": 0
 						}
 					},
 					"summary": {
@@ -231,7 +233,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"index": {
 						"entriesFound": 0,
@@ -239,7 +242,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"result": {
 						"entriesFound": 0,
@@ -247,7 +251,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					}
 				},
 				"summary": {
@@ -384,7 +389,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"index": {
 						"entriesFound": 0,
@@ -392,7 +398,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"result": {
 						"entriesFound": 0,
@@ -400,7 +407,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					}
 				},
 				"summary": {
@@ -503,6 +511,25 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 
 		require.JSONEqf(t, labelTest.expected, b.String(), "Label Test %d failed", i)
 	}
+}
+
+func Test_WriteQueryResponseJSONWithError(t *testing.T) {
+	broken := logqlmodel.Result{
+		Data: logqlmodel.Streams{
+			logproto.Stream{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+					},
+				},
+				Labels: `{testtest"}`,
+			},
+		},
+	}
+	var b bytes.Buffer
+	err := WriteQueryResponseJSON(broken, &b)
+	require.Error(t, err)
 }
 
 func Test_MarshalTailResponse(t *testing.T) {
@@ -722,7 +749,7 @@ func randEntries(rand *rand.Rand) []logproto.Entry {
 func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
-		js := jsoniter.NewStream(jsoniter.ConfigFastest, &buf, 0)
+		js := json.NewStream(json.ConfigFastest, &buf, 0)
 		err := encodeResult(w.Value, js)
 		require.NoError(t, err)
 		js.Flush()

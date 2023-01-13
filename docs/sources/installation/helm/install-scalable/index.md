@@ -3,12 +3,9 @@ title: Install the Helm Chart
 menuTitle: Install Loki
 description: Install Loki in scalable mode.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/scalable
 weight: 100
-keywords:
-  - keyword
-  - key
-  - word
+keywords: []
 ---
 
 # Install the Helm Chart
@@ -53,7 +50,6 @@ It is not possible to run the scalable mode with the `filesystem` storage.
           admin: admin
         type: s3
         s3:
-          s3: <WHAT SHOULD GO HERE?>
           endpoint: <endpoint>
           region: <AWS region>
           secretAccessKey: <AWS secret access key>

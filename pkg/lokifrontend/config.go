@@ -30,6 +30,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.TLS.RegisterFlagsWithPrefix("frontend.tail-tls-config", f)
 
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
-	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
+	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Loki.")
 	f.StringVar(&cfg.TailProxyURL, "frontend.tail-proxy-url", "", "URL of querier for tail proxy.")
 }

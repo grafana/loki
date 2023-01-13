@@ -41,9 +41,7 @@ type CertRotationReconciler struct {
 func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	managed, err := state.IsManaged(ctx, req, r.Client)
 	if err != nil {
-		return ctrl.Result{
-			Requeue: true,
-		}, err
+		return ctrl.Result{}, err
 	}
 	if !managed {
 		r.Log.Info("Skipping reconciliation for unmanaged LokiStack resource", "name", req.String())
@@ -53,7 +51,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	rt, err := certrotation.ParseRotation(r.FeatureGates.BuiltInCertManagement)
 	if err != nil {
-		return ctrl.Result{Requeue: false}, err
+		return ctrl.Result{}, err
 	}
 
 	checkExpiryAfter := expiryRetryAfter(rt.TargetCertRefresh)
@@ -66,9 +64,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	case errors.As(err, &expired):
 		r.Log.Info("Certificate expired", "msg", expired.Error())
 	case err != nil:
-		return ctrl.Result{
-			Requeue: true,
-		}, err
+		return ctrl.Result{}, err
 	default:
 		r.Log.Info("Skipping cert rotation, all LokiStack certificates still valid", "name", req.String())
 		return ctrl.Result{
@@ -80,9 +76,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err = lokistack.AnnotateForRequiredCertRotation(ctx, r.Client, req.Name, req.Namespace)
 	if err != nil {
 		r.Log.Error(err, "failed to annotate required cert rotation", "name", req.String())
-		return ctrl.Result{
-			Requeue: true,
-		}, err
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{

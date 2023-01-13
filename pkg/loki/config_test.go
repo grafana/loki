@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/storage/config"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/ingester"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func TestCrossComponentValidation(t *testing.T) {

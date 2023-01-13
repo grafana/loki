@@ -51,6 +51,7 @@ Signature:
 "{{ __timestamp__ }}"
 `{{ __timestamp__ | date "2006-01-02T15:04:05.00Z-07:00" }}`
 `{{ __timestamp__ | unixEpoch }}`
+```
 
 See the blog: [Parsing and formatting date/time in Go](https://www.pauladamsmith.com/blog/2011/05/go_time.html) for more information.
 
@@ -695,4 +696,22 @@ Examples:
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
 ```logql
 {job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
+```
+
+## count
+
+`count` counts occurrences of the regex (`regex`) in (`src`).
+
+Signature: `count(regex string, src string) int`
+
+Examples:
+
+```template
+{{ count "a|b" "abab" }} // output: 4
+{{ count "o" "foo" }}    // output: 2
+```
+
+Example of a query to print how many times XYZ occurs in a line:
+```logql
+{job="xyzlog"} | line_format `{{ __line__ | count "XYZ"}}`
 ```

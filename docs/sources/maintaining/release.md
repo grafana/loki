@@ -69,7 +69,7 @@ export GPG_TTY=$(tty)
 
        ```bash
        RELEASE=v1.2.3 # UPDATE ME to reference new release
-       git checkout master # If not already on master
+       git checkout release-1.2.x # checkout release branch
        git pull
        git tag -s $RELEASE -m "tagging release $RELEASE"
        git push origin $RELEASE

@@ -224,9 +224,13 @@ func (t *Target) Ready() bool {
 
 func (t *Target) Details() interface{} {
 	fields, _ := Fields(FieldsType(t.config.FieldsType))
+	var errMsg string
+	if t.err != nil {
+		errMsg = t.err.Error()
+	}
 	return map[string]string{
 		"zone_id":        t.config.ZoneID,
-		"error":          t.err.Error(),
+		"error":          errMsg,
 		"position":       t.positions.GetString(positions.CursorKey(t.config.ZoneID)),
 		"last_timestamp": t.to.String(),
 		"fields":         strings.Join(fields, ","),

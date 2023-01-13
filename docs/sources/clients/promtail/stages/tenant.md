@@ -91,16 +91,16 @@ The pipeline would:
 ```yaml
 scrape_configs:
   - job_name: kubernetes-pods-name
-    
+
     kubernetes_sd_configs:
       - role: pod
-    
+
     relabel_configs:
       - action: replace
         source_labels:
           - __meta_kubernetes_namespace
         target_label: namespace
-    
+
     pipeline_stages:
     - match:
         selector: '{namespace=".+"}'
