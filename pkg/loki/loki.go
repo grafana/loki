@@ -548,6 +548,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 	log3Ran := false
 	log4Ran := false
 	log5Ran := false
+	log6Ran := false
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !sm.IsHealthy() {
@@ -619,6 +620,10 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 		}
 
+		if !log6Ran {
+			log6Ran = true
+			level.Info(util_log.Logger).Log("msg", "[qwe] readiness passed")
+		}
 		http.Error(w, "ready", http.StatusOK)
 	}
 }
