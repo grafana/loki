@@ -297,7 +297,7 @@ func (api *API) DeleteWorker(ctx context.Context, requestParams *WorkerRequestPa
 }
 
 // DeleteWorkerWithName deletes worker for a zone.
-// Sccount must be specified as api option https://godoc.org/github.com/cloudflare/cloudflare-go#UsingAccount
+// Sccount must be specified as api option https://godoc.org/github.com/grafana/cloudflare-go#UsingAccount
 //
 // API reference: https://developers.cloudflare.com/workers/tooling/api/scripts/
 func (api *API) deleteWorkerWithName(ctx context.Context, scriptName string) (WorkerScriptResponse, error) {

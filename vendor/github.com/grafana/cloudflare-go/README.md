@@ -51,7 +51,7 @@ issue) to discuss any non-trivial changes before submitting code.
 
 ## Installation
 
-You need a working Go environment.
+You need a working Go environment. We officially support only currently supported Go versions according to [Go project's release policy](https://go.dev/doc/devel/release#policy).
 
 ```
 go get github.com/cloudflare/cloudflare-go
