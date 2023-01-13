@@ -345,6 +345,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td><pre lang="json">
+"main-96f32b9f"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
 			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
@@ -1615,9 +1624,9 @@ See values.yaml
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
+			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
-null
+"main-5e53303"
 </pre>
 </td>
 		</tr>
