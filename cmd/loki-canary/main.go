@@ -153,7 +153,7 @@ func main() {
 				*sName, *sValue,
 				*useTLS,
 				tlsConfig,
-				*caFile,
+				*caFile, *certFile, *keyFile,
 				*user, *pass,
 				&backoffCfg,
 				log.NewLogfmtLogger(os.Stdout),
@@ -167,7 +167,7 @@ func main() {
 		}
 
 		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)

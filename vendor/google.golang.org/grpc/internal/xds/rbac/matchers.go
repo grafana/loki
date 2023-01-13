@@ -122,8 +122,11 @@ func matchersFromPermissions(permissions []*v3rbacpb.Permission) ([]matcher, err
 			}
 			matchers = append(matchers, &notMatcher{matcherToNot: mList[0]})
 		case *v3rbacpb.Permission_Metadata:
-			// Not supported in gRPC RBAC currently - a permission typed as
-			// Metadata in the initial config will be a no-op.
+			// Never matches - so no-op if not inverted, always match if
+			// inverted.
+			if permission.GetMetadata().GetInvert() { // Test metadata being no-op and also metadata with invert always matching
+				matchers = append(matchers, &alwaysMatcher{})
+			}
 		case *v3rbacpb.Permission_RequestedServerName:
 			// Not supported in gRPC RBAC currently - a permission typed as
 			// requested server name in the initial config will be a no-op.

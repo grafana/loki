@@ -100,9 +100,7 @@ func (wi *watchInfo) timeout() {
 
 // Caller must hold wi.mu.
 func (wi *watchInfo) sendErrorLocked(err error) {
-	var (
-		u interface{}
-	)
+	var u interface{}
 	switch wi.rType {
 	case xdsresource.ListenerResource:
 		u = xdsresource.ListenerUpdate{}
@@ -113,6 +111,15 @@ func (wi *watchInfo) sendErrorLocked(err error) {
 	case xdsresource.EndpointsResource:
 		u = xdsresource.EndpointsUpdate{}
 	}
+
+	errMsg := err.Error()
+	errTyp := xdsresource.ErrType(err)
+	if errTyp == xdsresource.ErrorTypeUnknown {
+		err = fmt.Errorf("%v, xDS client nodeID: %s", errMsg, wi.c.nodeID)
+	} else {
+		err = xdsresource.NewErrorf(errTyp, "%v, xDS client nodeID: %s", errMsg, wi.c.nodeID)
+	}
+
 	wi.c.scheduleCallback(wi, u, err)
 }
 
