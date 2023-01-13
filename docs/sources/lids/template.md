@@ -1,5 +1,5 @@
 ---
-title: XXXX: Title
+title: "XXXX: Title"
 ---
 
 # Title
