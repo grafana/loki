@@ -23,11 +23,14 @@ graph LR
     Grafana --> |Query logs| nginx["nginx (port: 8080)"]
     Promtail -->|Send logs| nginx
 
-    nginx -.-> |read path| Querier
+    nginx -.-> |read path| QueryFrontend
     nginx -.-> |write path| Distributor
 
     subgraph LokiRead["loki -target=read"]
+        QueryFrontend["query-frontend"]
         Querier["querier"]
+
+        QueryFrontend -.-> Querier
     end
 
     subgraph Minio["Minio Storage"]
