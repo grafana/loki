@@ -324,11 +324,11 @@ type pushTracker struct {
 // The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	if s := d.State(); s != services.Running {
-		return nil, fmt.Errorf("distributor not ready, state: %s", s.String())
+		return nil, fmt.Errorf("[qwe] distributor not ready, state: %s", s.String())
 	}
 
 	if err := d.CheckReady(); err != nil {
-		return nil, errors.Wrap(err, "distributor failed check ready")
+		return nil, errors.Wrap(err, "[qwe] distributor failed check ready")
 	}
 
 	tenantID, err := tenant.TenantID(ctx)
