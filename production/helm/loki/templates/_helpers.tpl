@@ -79,8 +79,8 @@ Common labels
 {{- define "loki.labels" -}}
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
+app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
