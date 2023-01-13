@@ -85,20 +85,21 @@ func TeamsRulesActionValues() []string {
 
 // TeamsRule represents an Teams wirefilter rule.
 type TeamsRule struct {
-	ID           string             `json:"id,omitempty"`
-	CreatedAt    *time.Time         `json:"created_at,omitempty"`
-	UpdatedAt    *time.Time         `json:"updated_at,omitempty"`
-	DeletedAt    *time.Time         `json:"deleted_at,omitempty"`
-	Name         string             `json:"name"`
-	Description  string             `json:"description"`
-	Precedence   uint64             `json:"precedence"`
-	Enabled      bool               `json:"enabled"`
-	Action       TeamsGatewayAction `json:"action"`
-	Filters      []TeamsFilterType  `json:"filters"`
-	Traffic      string             `json:"traffic"`
-	Identity     string             `json:"identity"`
-	Version      uint64             `json:"version"`
-	RuleSettings TeamsRuleSettings  `json:"rule_settings,omitempty"`
+	ID            string             `json:"id,omitempty"`
+	CreatedAt     *time.Time         `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time         `json:"updated_at,omitempty"`
+	DeletedAt     *time.Time         `json:"deleted_at,omitempty"`
+	Name          string             `json:"name"`
+	Description   string             `json:"description"`
+	Precedence    uint64             `json:"precedence"`
+	Enabled       bool               `json:"enabled"`
+	Action        TeamsGatewayAction `json:"action"`
+	Filters       []TeamsFilterType  `json:"filters"`
+	Traffic       string             `json:"traffic"`
+	Identity      string             `json:"identity"`
+	DevicePosture string             `json:"device_posture"`
+	Version       uint64             `json:"version"`
+	RuleSettings  TeamsRuleSettings  `json:"rule_settings,omitempty"`
 }
 
 // TeamsRuleResponse is the API response, containing a single rule.

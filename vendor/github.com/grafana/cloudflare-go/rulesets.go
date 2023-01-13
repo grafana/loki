@@ -17,17 +17,18 @@ const (
 	RulesetKindSchema  RulesetKind = "schema"
 	RulesetKindZone    RulesetKind = "zone"
 
-	RulesetPhaseDDoSL4                      RulesetPhase = "ddos_l4"
-	RulesetPhaseDDoSL7                      RulesetPhase = "ddos_l7"
-	RulesetPhaseHTTPRequestFirewallCustom   RulesetPhase = "http_request_firewall_custom"
-	RulesetPhaseHTTPRequestFirewallManaged  RulesetPhase = "http_request_firewall_managed"
-	RulesetPhaseHTTPRequestLateTransform    RulesetPhase = "http_request_late_transform"
-	RulesetPhaseHTTPRequestMain             RulesetPhase = "http_request_main"
-	RulesetPhaseHTTPRequestSanitize         RulesetPhase = "http_request_sanitize"
-	RulesetPhaseHTTPRequestTransform        RulesetPhase = "http_request_transform"
-	RulesetPhaseHTTPResponseFirewallManaged RulesetPhase = "http_response_firewall_managed"
-	RulesetPhaseMagicTransit                RulesetPhase = "magic_transit"
-	RulesetPhaseRateLimit                   RulesetPhase = "http_ratelimit"
+	RulesetPhaseDDoSL4                       RulesetPhase = "ddos_l4"
+	RulesetPhaseDDoSL7                       RulesetPhase = "ddos_l7"
+	RulesetPhaseHTTPRequestFirewallCustom    RulesetPhase = "http_request_firewall_custom"
+	RulesetPhaseHTTPRequestFirewallManaged   RulesetPhase = "http_request_firewall_managed"
+	RulesetPhaseHTTPRequestLateTransform     RulesetPhase = "http_request_late_transform"
+	RulesetPhaseHTTPRequestMain              RulesetPhase = "http_request_main"
+	RulesetPhaseHTTPRequestSanitize          RulesetPhase = "http_request_sanitize"
+	RulesetPhaseHTTPRequestTransform         RulesetPhase = "http_request_transform"
+	RulesetPhaseHTTPResponseHeadersTransform RulesetPhase = "http_response_headers_transform"
+	RulesetPhaseHTTPResponseFirewallManaged  RulesetPhase = "http_response_firewall_managed"
+	RulesetPhaseMagicTransit                 RulesetPhase = "magic_transit"
+	RulesetPhaseRateLimit                    RulesetPhase = "http_ratelimit"
 
 	RulesetRuleActionBlock                RulesetRuleAction = "block"
 	RulesetRuleActionChallenge            RulesetRuleAction = "challenge"
@@ -76,6 +77,7 @@ func RulesetPhaseValues() []string {
 		string(RulesetPhaseHTTPRequestMain),
 		string(RulesetPhaseHTTPRequestSanitize),
 		string(RulesetPhaseHTTPRequestTransform),
+		string(RulesetPhaseHTTPResponseHeadersTransform),
 		string(RulesetPhaseHTTPResponseFirewallManaged),
 		string(RulesetPhaseMagicTransit),
 		string(RulesetPhaseRateLimit),

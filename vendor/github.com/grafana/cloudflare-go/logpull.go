@@ -103,7 +103,7 @@ type (
 //
 // API reference: https://developers.cloudflare.com/logs/logpull/requesting-logs
 func (api *API) LogpullReceived(ctx context.Context, zoneID string, start, end time.Time, opts LogpullReceivedOption) (LogpullReceivedIterator, error) {
-	uri := fmt.Sprintf("/zones/%s/logs/received", zoneID)
+	uri := "/zones/" + zoneID + "/logs/received"
 	v := url.Values{}
 
 	v.Set("start", strconv.FormatInt(start.UnixNano(), 10))
@@ -134,18 +134,22 @@ func (api *API) LogpullReceived(ctx context.Context, zoneID string, start, end t
 	}, nil
 }
 
+// Next Advances the iterator to the next log line, returns true if there is a line to be read.
 func (r *logpullReceivedResponse) Next() bool {
 	return r.scanner.Scan()
 }
 
+// Err returns the last error encountered while iterating.
 func (r *logpullReceivedResponse) Err() error {
 	return r.scanner.Err()
 }
 
+// Line returns the current raw log line as a slice of bytes, you must copy the line as each call to `Next()` will change its value.
 func (r *logpullReceivedResponse) Line() []byte {
 	return r.scanner.Bytes()
 }
 
+// Fields returns the parsed log fields as a map of string.
 func (r *logpullReceivedResponse) Fields() (map[string]string, error) {
 	var fields map[string]string
 	data := r.Line()
@@ -153,6 +157,7 @@ func (r *logpullReceivedResponse) Fields() (map[string]string, error) {
 	return fields, err
 }
 
+// Close closes the iterator.
 func (r *logpullReceivedResponse) Close() error {
 	return r.reader.Close()
 }
@@ -161,7 +166,7 @@ func (r *logpullReceivedResponse) Close() error {
 //
 // API reference: https://developers.cloudflare.com/logs/logpull/requesting-logs
 func (api *API) LogpullFields(ctx context.Context, zoneID string) (map[string]string, error) {
-	uri := fmt.Sprintf("/zones/%s/logs/received/fields", zoneID)
+	uri := "/zones/" + zoneID + "/logs/received/fields"
 	res, err := api.makeRequestContext(ctx, http.MethodGet, uri, nil)
 	if err != nil {
 		return nil, err
