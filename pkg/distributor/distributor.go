@@ -263,7 +263,7 @@ func (d *Distributor) starting(ctx context.Context) error {
 				continue
 			}
 
-			level.Info(util_log.Logger).Log("msg", "[qwe] instances count >= 1 and get tokens >= 1")
+			level.Info(util_log.Logger).Log("msg", "[qwe] instances count >= 1 and get tokens >= 1", "instances_count", d.ingestersRing.InstancesCount(), "tokens_count", len(d.ingestersRing.GetTokens(ctx)))
 
 			return nil
 		}

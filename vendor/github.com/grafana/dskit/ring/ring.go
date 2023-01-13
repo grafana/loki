@@ -344,7 +344,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 	}
 
 	if len(r.ringTokens) == 0 {
-		return ReplicationSet{}, errors.Wrap(ErrEmptyRing, fmt.Sprintf("[qwe] ring tokens is zero, inspect rindesc: %s", r.ringDesc.GoString()))
+		return ReplicationSet{}, errors.Wrap(ErrEmptyRing, fmt.Sprintf("[qwe] ring tokens is zero, inspect ring desc: %s, ring ingesters size: %v", r.ringDesc.GoString(), r.ringDesc.Size()))
 	}
 
 	var (
@@ -414,7 +414,9 @@ func (r *Ring) GetTokens(ctx context.Context) Tokens {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	return r.ringTokens
+	tokensCopy := r.ringTokens
+
+	return tokensCopy
 }
 
 // GetAllHealthy implements ReadRing.

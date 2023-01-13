@@ -585,6 +585,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 
 			if err := t.distributor.CheckReady(); err != nil {
+				level.Info(util_log.Logger).Log("msg", "[qwe] distributor not ready", "err", err)
 				http.Error(w, "Distributor not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			} else {
