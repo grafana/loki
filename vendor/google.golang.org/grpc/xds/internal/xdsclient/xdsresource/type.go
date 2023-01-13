@@ -20,6 +20,8 @@ package xdsresource
 import (
 	"time"
 
+	v3discoverypb "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -74,6 +76,21 @@ func IsClusterResource(url string) bool {
 // Endpoints resource.
 func IsEndpointsResource(url string) bool {
 	return url == version.V2EndpointsURL || url == version.V3EndpointsURL
+}
+
+// unwrapResource unwraps and returns the inner resource if it's in a resource
+// wrapper. The original resource is returned if it's not wrapped.
+func unwrapResource(r *anypb.Any) (*anypb.Any, error) {
+	url := r.GetTypeUrl()
+	if url != version.V2ResourceWrapperURL && url != version.V3ResourceWrapperURL {
+		// Not wrapped.
+		return r, nil
+	}
+	inner := &v3discoverypb.Resource{}
+	if err := proto.Unmarshal(r.GetValue(), inner); err != nil {
+		return nil, err
+	}
+	return inner.Resource, nil
 }
 
 // ServiceStatus is the status of the update.

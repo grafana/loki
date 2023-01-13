@@ -22,6 +22,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 3.8.2
 
+- [BUGFIX] Fix autoscaling/v2 template
 - [FEATURE] Added `extraObjects` helm values to extra manifests.
 
 ## 3.8.1

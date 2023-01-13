@@ -522,6 +522,7 @@ type RulerConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-rulerconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=rulerconfigs,verbs=create;update,versions=v1beta1,name=vrulerconfig.loki.grafana.com,admissionReviewVersions=v1
 
 // RulerConfig is the Schema for the rulerconfigs API
 //

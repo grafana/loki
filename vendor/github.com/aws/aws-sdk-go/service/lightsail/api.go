@@ -8015,7 +8015,7 @@ func (c *Lightsail) GetContainerLogRequest(input *GetContainerLogInput) (req *re
 //
 // Container logs are retained for a certain amount of time. For more information,
 // see Amazon Lightsail endpoints and quotas (https://docs.aws.amazon.com/general/latest/gr/lightsail.html)
-// in the AWS General Reference.
+// in the Amazon Web Services General Reference.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -8123,7 +8123,7 @@ func (c *Lightsail) GetContainerServiceDeploymentsRequest(input *GetContainerSer
 // A set number of deployments are kept before the oldest one is replaced with
 // the newest one. For more information, see Amazon Lightsail endpoints and
 // quotas (https://docs.aws.amazon.com/general/latest/gr/lightsail.html) in
-// the AWS General Reference.
+// the Amazon Web Services General Reference.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -15632,8 +15632,8 @@ func (c *Lightsail) UpdateBucketBundleRequest(input *UpdateBucketBundleInput) (r
 //
 // A bucket bundle specifies the monthly cost, storage space, and data transfer
 // quota for a bucket. You can update a bucket's bundle only one time within
-// a monthly AWS billing cycle. To determine if you can update a bucket's bundle,
-// use the GetBuckets (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBuckets.html)
+// a monthly Amazon Web Services billing cycle. To determine if you can update
+// a bucket's bundle, use the GetBuckets (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBuckets.html)
 // action. The ableToUpdateBundle parameter in the response will indicate whether
 // you can currently update a bucket's bundle.
 //
@@ -15951,9 +15951,9 @@ func (c *Lightsail) UpdateDistributionBundleRequest(input *UpdateDistributionBun
 // monthly network transfer quota and is incurring an overage fee.
 //
 // You can update your distribution's bundle only one time within your monthly
-// AWS billing cycle. To determine if you can update your distribution's bundle,
-// use the GetDistributions action. The ableToUpdateBundle parameter in the
-// result will indicate whether you can currently update your distribution's
+// Amazon Web Services billing cycle. To determine if you can update your distribution's
+// bundle, use the GetDistributions action. The ableToUpdateBundle parameter
+// in the result will indicate whether you can currently update your distribution's
 // bundle.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
@@ -16744,13 +16744,13 @@ type AccessKeyLastUsed struct {
 	// This value is null if the access key has not been used.
 	LastUsedDate *time.Time `locationName:"lastUsedDate" type:"timestamp"`
 
-	// The AWS Region where this access key was most recently used.
+	// The Amazon Web Services Region where this access key was most recently used.
 	//
 	// This value is N/A if the access key has not been used.
 	Region *string `locationName:"region" type:"string"`
 
-	// The name of the AWS service with which this access key was most recently
-	// used.
+	// The name of the Amazon Web Services service with which this access key was
+	// most recently used.
 	//
 	// This value is N/A if the access key has not been used.
 	ServiceName *string `locationName:"serviceName" type:"string"`
@@ -19244,8 +19244,9 @@ type Certificate struct {
 	//    * ADDITIONAL_VERIFICATION_REQUIRED - Lightsail requires additional information
 	//    to process this certificate request. This can happen as a fraud-protection
 	//    measure, such as when the domain ranks within the Alexa top 1000 websites.
-	//    To provide the required information, use the AWS Support Center (https://console.aws.amazon.com/support/home)
-	//    to contact AWS Support. You cannot request a certificate for Amazon-owned
+	//    To provide the required information, use the Amazon Web Services Support
+	//    Center (https://console.aws.amazon.com/support/home) to contact Amazon
+	//    Web Services Support. You cannot request a certificate for Amazon-owned
 	//    domain names such as those ending in amazonaws.com, cloudfront.net, or
 	//    elasticbeanstalk.com.
 	//
@@ -19260,7 +19261,7 @@ type Certificate struct {
 	//    domain from a block list itself. After you correct the problem and the
 	//    VirusTotal registry has been updated, request a new certificate. If you
 	//    see this error and your domain is not included in the VirusTotal list,
-	//    visit the AWS Support Center (https://console.aws.amazon.com/support/home)
+	//    visit the Amazon Web Services Support Center (https://console.aws.amazon.com/support/home)
 	//    and create a case.
 	//
 	//    * INVALID_PUBLIC_DOMAIN - One or more of the domain names in the certificate
@@ -21880,8 +21881,8 @@ type CreateContainerServiceInput struct {
 	// its default domain. The default domain of a container service is typically
 	// https://<ServiceName>.<RandomGUID>.<AWSRegion>.cs.amazonlightsail.com. If
 	// the name of your container service is container-service-1, and it's located
-	// in the US East (Ohio) AWS region (us-east-2), then the domain for your container
-	// service will be like the following example: https://container-service-1.ur4EXAMPLE2uq.us-east-2.cs.amazonlightsail.com
+	// in the US East (Ohio) Amazon Web Services Region (us-east-2), then the domain
+	// for your container service will be like the following example: https://container-service-1.ur4EXAMPLE2uq.us-east-2.cs.amazonlightsail.com
 	//
 	// The following are the requirements for container service names:
 	//
@@ -24263,7 +24264,7 @@ type CreateRelationalDatabaseInput struct {
 	// The default is a 30-minute window selected at random from an 8-hour block
 	// of time for each AWS Region. For more information about the preferred backup
 	// window time blocks for each region, see the Working With Backups (https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html#USER_WorkingWithAutomatedBackups.BackupWindow)
-	// guide in the Amazon Relational Database Service (Amazon RDS) documentation.
+	// guide in the Amazon Relational Database Service documentation.
 	//
 	// Constraints:
 	//
@@ -27452,6 +27453,67 @@ func (s *DistributionBundle) SetTransferPerMonthInGb(v int64) *DistributionBundl
 	return s
 }
 
+// Describes the creation state of the canonical name (CNAME) records that are
+// automatically added by Amazon Lightsail to the DNS of a domain to validate
+// domain ownership for an SSL/TLS certificate.
+//
+// When you create an SSL/TLS certificate for a Lightsail resource, you must
+// add a set of CNAME records to the DNS of the domains for the certificate
+// to validate that you own the domains. Lightsail can automatically add the
+// CNAME records to the DNS of the domain if the DNS zone for the domain exists
+// within your Lightsail account. If automatic record addition fails, or if
+// you manage the DNS of your domain using a third-party service, then you must
+// manually add the CNAME records to the DNS of your domain. For more information,
+// see Verify an SSL/TLS certificate in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/verify-tls-ssl-certificate-using-dns-cname-https)
+// in the Amazon Lightsail Developer Guide.
+type DnsRecordCreationState struct {
+	_ struct{} `type:"structure"`
+
+	// The status code for the automated DNS record creation.
+	//
+	// Following are the possible values:
+	//
+	//    * SUCCEEDED - The validation records were successfully added to the domain.
+	//
+	//    * STARTED - The automatic DNS record creation has started.
+	//
+	//    * FAILED - The validation records failed to be added to the domain.
+	Code *string `locationName:"code" type:"string" enum:"DnsRecordCreationStateCode"`
+
+	// The message that describes the reason for the status code.
+	Message *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DnsRecordCreationState) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DnsRecordCreationState) GoString() string {
+	return s.String()
+}
+
+// SetCode sets the Code field's value.
+func (s *DnsRecordCreationState) SetCode(v string) *DnsRecordCreationState {
+	s.Code = &v
+	return s
+}
+
+// SetMessage sets the Message field's value.
+func (s *DnsRecordCreationState) SetMessage(v string) *DnsRecordCreationState {
+	s.Message = &v
+	return s
+}
+
 // Describes a domain where you are storing recordsets.
 type Domain struct {
 	_ struct{} `type:"structure"`
@@ -27470,6 +27532,10 @@ type Domain struct {
 
 	// The name of the domain.
 	Name *string `locationName:"name" type:"string"`
+
+	// An object that describes the state of the Route 53 domain delegation to a
+	// Lightsail DNS zone.
+	RegisteredDomainDelegationInfo *RegisteredDomainDelegationInfo `locationName:"registeredDomainDelegationInfo" type:"structure"`
 
 	// The resource type.
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
@@ -27529,6 +27595,12 @@ func (s *Domain) SetLocation(v *ResourceLocation) *Domain {
 // SetName sets the Name field's value.
 func (s *Domain) SetName(v string) *Domain {
 	s.Name = &v
+	return s
+}
+
+// SetRegisteredDomainDelegationInfo sets the RegisteredDomainDelegationInfo field's value.
+func (s *Domain) SetRegisteredDomainDelegationInfo(v *RegisteredDomainDelegationInfo) *Domain {
+	s.RegisteredDomainDelegationInfo = v
 	return s
 }
 
@@ -27661,9 +27733,16 @@ func (s *DomainEntry) SetType(v string) *DomainEntry {
 	return s
 }
 
-// Describes the domain validation records of an Amazon Lightsail SSL/TLS certificate.
+// Describes the domain name system (DNS) records that you must add to the DNS
+// of your registered domain to validate ownership for an Amazon Lightsail SSL/TLS
+// certificate.
 type DomainValidationRecord struct {
 	_ struct{} `type:"structure"`
+
+	// An object that describes the state of the canonical name (CNAME) records
+	// that are automatically added by Lightsail to the DNS of the domain to validate
+	// domain ownership.
+	DnsRecordCreationState *DnsRecordCreationState `locationName:"dnsRecordCreationState" type:"structure"`
 
 	// The domain name of the certificate validation record. For example, example.com
 	// or www.example.com.
@@ -27672,6 +27751,9 @@ type DomainValidationRecord struct {
 	// An object that describes the DNS records to add to your domain's DNS to validate
 	// it for the certificate.
 	ResourceRecord *ResourceRecord `locationName:"resourceRecord" type:"structure"`
+
+	// The validation status of the record.
+	ValidationStatus *string `locationName:"validationStatus" type:"string" enum:"CertificateDomainValidationStatus"`
 }
 
 // String returns the string representation.
@@ -27692,6 +27774,12 @@ func (s DomainValidationRecord) GoString() string {
 	return s.String()
 }
 
+// SetDnsRecordCreationState sets the DnsRecordCreationState field's value.
+func (s *DomainValidationRecord) SetDnsRecordCreationState(v *DnsRecordCreationState) *DomainValidationRecord {
+	s.DnsRecordCreationState = v
+	return s
+}
+
 // SetDomainName sets the DomainName field's value.
 func (s *DomainValidationRecord) SetDomainName(v string) *DomainValidationRecord {
 	s.DomainName = &v
@@ -27701,6 +27789,12 @@ func (s *DomainValidationRecord) SetDomainName(v string) *DomainValidationRecord
 // SetResourceRecord sets the ResourceRecord field's value.
 func (s *DomainValidationRecord) SetResourceRecord(v *ResourceRecord) *DomainValidationRecord {
 	s.ResourceRecord = v
+	return s
+}
+
+// SetValidationStatus sets the ValidationStatus field's value.
+func (s *DomainValidationRecord) SetValidationStatus(v string) *DomainValidationRecord {
+	s.ValidationStatus = &v
 	return s
 }
 
@@ -37021,7 +37115,8 @@ type LoadBalancerTlsCertificate struct {
 	// The load balancer name where your SSL/TLS certificate is attached.
 	LoadBalancerName *string `locationName:"loadBalancerName" type:"string"`
 
-	// The AWS Region and Availability Zone where you created your certificate.
+	// The Amazon Web Services Region and Availability Zone where you created your
+	// certificate.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
 	// The name of the SSL/TLS certificate (e.g., my-certificate).
@@ -37265,6 +37360,57 @@ func (s *LoadBalancerTlsCertificate) SetTags(v []*Tag) *LoadBalancerTlsCertifica
 	return s
 }
 
+// An object that describes the state of the canonical name (CNAME) records
+// that are automatically added by Lightsail to the DNS of the domain to validate
+// domain ownership.
+type LoadBalancerTlsCertificateDnsRecordCreationState struct {
+	_ struct{} `type:"structure"`
+
+	// The status code for the automated DNS record creation.
+	//
+	// Following are the possible values:
+	//
+	//    * SUCCEEDED - The validation records were successfully added.
+	//
+	//    * STARTED - The automatic DNS record creation has started.
+	//
+	//    * FAILED - The validation record addition failed.
+	Code *string `locationName:"code" type:"string" enum:"LoadBalancerTlsCertificateDnsRecordCreationStateCode"`
+
+	// The message that describes the reason for the status code.
+	Message *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s LoadBalancerTlsCertificateDnsRecordCreationState) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s LoadBalancerTlsCertificateDnsRecordCreationState) GoString() string {
+	return s.String()
+}
+
+// SetCode sets the Code field's value.
+func (s *LoadBalancerTlsCertificateDnsRecordCreationState) SetCode(v string) *LoadBalancerTlsCertificateDnsRecordCreationState {
+	s.Code = &v
+	return s
+}
+
+// SetMessage sets the Message field's value.
+func (s *LoadBalancerTlsCertificateDnsRecordCreationState) SetMessage(v string) *LoadBalancerTlsCertificateDnsRecordCreationState {
+	s.Message = &v
+	return s
+}
+
 // Contains information about the domain names on an SSL/TLS certificate that
 // you will use to validate domain ownership.
 type LoadBalancerTlsCertificateDomainValidationOption struct {
@@ -37311,6 +37457,11 @@ func (s *LoadBalancerTlsCertificateDomainValidationOption) SetValidationStatus(v
 type LoadBalancerTlsCertificateDomainValidationRecord struct {
 	_ struct{} `type:"structure"`
 
+	// An object that describes the state of the canonical name (CNAME) records
+	// that are automatically added by Lightsail to the DNS of a domain to validate
+	// domain ownership.
+	DnsRecordCreationState *LoadBalancerTlsCertificateDnsRecordCreationState `locationName:"dnsRecordCreationState" type:"structure"`
+
 	// The domain name against which your SSL/TLS certificate was validated.
 	DomainName *string `locationName:"domainName" type:"string"`
 
@@ -37343,6 +37494,12 @@ func (s LoadBalancerTlsCertificateDomainValidationRecord) String() string {
 // value will be replaced with "sensitive".
 func (s LoadBalancerTlsCertificateDomainValidationRecord) GoString() string {
 	return s.String()
+}
+
+// SetDnsRecordCreationState sets the DnsRecordCreationState field's value.
+func (s *LoadBalancerTlsCertificateDomainValidationRecord) SetDnsRecordCreationState(v *LoadBalancerTlsCertificateDnsRecordCreationState) *LoadBalancerTlsCertificateDomainValidationRecord {
+	s.DnsRecordCreationState = v
+	return s
 }
 
 // SetDomainName sets the DomainName field's value.
@@ -37786,6 +37943,61 @@ func (s MonthlyTransfer) GoString() string {
 // SetGbPerMonthAllocated sets the GbPerMonthAllocated field's value.
 func (s *MonthlyTransfer) SetGbPerMonthAllocated(v int64) *MonthlyTransfer {
 	s.GbPerMonthAllocated = &v
+	return s
+}
+
+// Describes the state of the name server records update made by Amazon Lightsail
+// to an Amazon Route 53 registered domain.
+//
+// For more information, see DNS in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/understanding-dns-in-amazon-lightsail)
+// in the Amazon Lightsail Developer Guide.
+type NameServersUpdateState struct {
+	_ struct{} `type:"structure"`
+
+	// The status code for the name servers update.
+	//
+	// Following are the possible values:
+	//
+	//    * SUCCEEDED - The name server records were successfully updated.
+	//
+	//    * PENDING - The name server record update is in progress.
+	//
+	//    * FAILED - The name server record update failed.
+	//
+	//    * STARTED - The automatic name server record update started.
+	Code *string `locationName:"code" type:"string" enum:"NameServersUpdateStateCode"`
+
+	// The message that describes the reason for the status code.
+	Message *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s NameServersUpdateState) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s NameServersUpdateState) GoString() string {
+	return s.String()
+}
+
+// SetCode sets the Code field's value.
+func (s *NameServersUpdateState) SetCode(v string) *NameServersUpdateState {
+	s.Code = &v
+	return s
+}
+
+// SetMessage sets the Message field's value.
+func (s *NameServersUpdateState) SetMessage(v string) *NameServersUpdateState {
+	s.Message = &v
 	return s
 }
 
@@ -39133,6 +39345,58 @@ func (s *QueryStringObject) SetQueryStringsAllowList(v []*string) *QueryStringOb
 	return s
 }
 
+// Describes the deletion state of an Amazon Route 53 hosted zone for a domain
+// that is being automatically delegated to an Amazon Lightsail DNS zone.
+type R53HostedZoneDeletionState struct {
+	_ struct{} `type:"structure"`
+
+	// The status code for the deletion state.
+	//
+	// Following are the possible values:
+	//
+	//    * SUCCEEDED - The hosted zone was successfully deleted.
+	//
+	//    * PENDING - The hosted zone deletion is in progress.
+	//
+	//    * FAILED - The hosted zone deletion failed.
+	//
+	//    * STARTED - The hosted zone deletion started.
+	Code *string `locationName:"code" type:"string" enum:"R53HostedZoneDeletionStateCode"`
+
+	// The message that describes the reason for the status code.
+	Message *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s R53HostedZoneDeletionState) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s R53HostedZoneDeletionState) GoString() string {
+	return s.String()
+}
+
+// SetCode sets the Code field's value.
+func (s *R53HostedZoneDeletionState) SetCode(v string) *R53HostedZoneDeletionState {
+	s.Code = &v
+	return s
+}
+
+// SetMessage sets the Message field's value.
+func (s *R53HostedZoneDeletionState) SetMessage(v string) *R53HostedZoneDeletionState {
+	s.Message = &v
+	return s
+}
+
 type RebootInstanceInput struct {
 	_ struct{} `type:"structure"`
 
@@ -39291,7 +39555,7 @@ func (s *RebootRelationalDatabaseOutput) SetOperations(v []*Operation) *RebootRe
 	return s
 }
 
-// Describes the AWS Region.
+// Describes the Amazon Web Services Region.
 type Region struct {
 	_ struct{} `type:"structure"`
 
@@ -39301,8 +39565,8 @@ type Region struct {
 	// The continent code (e.g., NA, meaning North America).
 	ContinentCode *string `locationName:"continentCode" type:"string"`
 
-	// The description of the AWS Region (e.g., This region is recommended to serve
-	// users in the eastern United States and eastern Canada).
+	// The description of the Amazon Web Services Region (e.g., This region is recommended
+	// to serve users in the eastern United States and eastern Canada).
 	Description *string `locationName:"description" type:"string"`
 
 	// The display name (e.g., Ohio).
@@ -39498,6 +39762,76 @@ func (s RegisterContainerImageOutput) GoString() string {
 // SetContainerImage sets the ContainerImage field's value.
 func (s *RegisterContainerImageOutput) SetContainerImage(v *ContainerImage) *RegisterContainerImageOutput {
 	s.ContainerImage = v
+	return s
+}
+
+// Describes the delegation state of an Amazon Route 53 registered domain to
+// Amazon Lightsail.
+//
+// When you delegate an Amazon Route 53 registered domain to Lightsail, you
+// can manage the DNS of the domain using a Lightsail DNS zone. You no longer
+// use the Route 53 hosted zone to manage the DNS of the domain. To delegate
+// the domain, Lightsail automatically updates the domain's name servers in
+// Route 53 to the name servers of the Lightsail DNS zone. Then, Lightsail automatically
+// deletes the Route 53 hosted zone for the domain.
+//
+// All of the following conditions must be true for automatic domain delegation
+// to be successful:
+//
+//   - The registered domain must be in the same Amazon Web Services account
+//     as the Lightsail account making the request.
+//
+//   - The user or entity making the request must have permission to manage
+//     domains in Route 53.
+//
+//   - The Route 53 hosted zone for the domain must be empty. It cannot contain
+//     DNS records other than start of authority (SOA) and name server records.
+//
+// If automatic domain delegation fails, or if you manage the DNS of your domain
+// using a service other than Route 53, then you must manually add the Lightsail
+// DNS zone name servers to your domain in order to delegate management of its
+// DNS to Lightsail. For more information, see Creating a DNS zone to manage
+// your domain’s records in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/lightsail-how-to-create-dns-entry)
+// in the Amazon Lightsail Developer Guide.
+type RegisteredDomainDelegationInfo struct {
+	_ struct{} `type:"structure"`
+
+	// An object that describes the state of the name server records that are automatically
+	// added to the Route 53 domain by Lightsail.
+	NameServersUpdateState *NameServersUpdateState `locationName:"nameServersUpdateState" type:"structure"`
+
+	// Describes the deletion state of an Amazon Route 53 hosted zone for a domain
+	// that is being automatically delegated to an Amazon Lightsail DNS zone.
+	R53HostedZoneDeletionState *R53HostedZoneDeletionState `locationName:"r53HostedZoneDeletionState" type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s RegisteredDomainDelegationInfo) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s RegisteredDomainDelegationInfo) GoString() string {
+	return s.String()
+}
+
+// SetNameServersUpdateState sets the NameServersUpdateState field's value.
+func (s *RegisteredDomainDelegationInfo) SetNameServersUpdateState(v *NameServersUpdateState) *RegisteredDomainDelegationInfo {
+	s.NameServersUpdateState = v
+	return s
+}
+
+// SetR53HostedZoneDeletionState sets the R53HostedZoneDeletionState field's value.
+func (s *RegisteredDomainDelegationInfo) SetR53HostedZoneDeletionState(v *R53HostedZoneDeletionState) *RegisteredDomainDelegationInfo {
+	s.R53HostedZoneDeletionState = v
 	return s
 }
 
@@ -40616,7 +40950,7 @@ type ResourceLocation struct {
 	// The Availability Zone. Follows the format us-east-2a (case-sensitive).
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string"`
 
-	// The AWS Region name.
+	// The Amazon Web Services Region name.
 	RegionName *string `locationName:"regionName" type:"string" enum:"RegionName"`
 }
 
@@ -43094,7 +43428,8 @@ type UpdateRelationalDatabaseInput struct {
 	// The weekly time range during which system maintenance can occur on your database.
 	//
 	// The default is a 30-minute window selected at random from an 8-hour block
-	// of time for each AWS Region, occurring on a random day of the week.
+	// of time for each Amazon Web Services Region, occurring on a random day of
+	// the week.
 	//
 	// Constraints:
 	//
@@ -43530,6 +43865,26 @@ func BucketMetricName_Values() []string {
 }
 
 const (
+	// CertificateDomainValidationStatusPendingValidation is a CertificateDomainValidationStatus enum value
+	CertificateDomainValidationStatusPendingValidation = "PENDING_VALIDATION"
+
+	// CertificateDomainValidationStatusFailed is a CertificateDomainValidationStatus enum value
+	CertificateDomainValidationStatusFailed = "FAILED"
+
+	// CertificateDomainValidationStatusSuccess is a CertificateDomainValidationStatus enum value
+	CertificateDomainValidationStatusSuccess = "SUCCESS"
+)
+
+// CertificateDomainValidationStatus_Values returns all elements of the CertificateDomainValidationStatus enum
+func CertificateDomainValidationStatus_Values() []string {
+	return []string{
+		CertificateDomainValidationStatusPendingValidation,
+		CertificateDomainValidationStatusFailed,
+		CertificateDomainValidationStatusSuccess,
+	}
+}
+
+const (
 	// CertificateStatusPendingValidation is a CertificateStatus enum value
 	CertificateStatusPendingValidation = "PENDING_VALIDATION"
 
@@ -43906,6 +44261,26 @@ func DistributionMetricName_Values() []string {
 		DistributionMetricNameTotalErrorRate,
 		DistributionMetricNameHttp4xxErrorRate,
 		DistributionMetricNameHttp5xxErrorRate,
+	}
+}
+
+const (
+	// DnsRecordCreationStateCodeSucceeded is a DnsRecordCreationStateCode enum value
+	DnsRecordCreationStateCodeSucceeded = "SUCCEEDED"
+
+	// DnsRecordCreationStateCodeStarted is a DnsRecordCreationStateCode enum value
+	DnsRecordCreationStateCodeStarted = "STARTED"
+
+	// DnsRecordCreationStateCodeFailed is a DnsRecordCreationStateCode enum value
+	DnsRecordCreationStateCodeFailed = "FAILED"
+)
+
+// DnsRecordCreationStateCode_Values returns all elements of the DnsRecordCreationStateCode enum
+func DnsRecordCreationStateCode_Values() []string {
+	return []string{
+		DnsRecordCreationStateCodeSucceeded,
+		DnsRecordCreationStateCodeStarted,
+		DnsRecordCreationStateCodeFailed,
 	}
 }
 
@@ -44402,6 +44777,26 @@ func LoadBalancerState_Values() []string {
 }
 
 const (
+	// LoadBalancerTlsCertificateDnsRecordCreationStateCodeSucceeded is a LoadBalancerTlsCertificateDnsRecordCreationStateCode enum value
+	LoadBalancerTlsCertificateDnsRecordCreationStateCodeSucceeded = "SUCCEEDED"
+
+	// LoadBalancerTlsCertificateDnsRecordCreationStateCodeStarted is a LoadBalancerTlsCertificateDnsRecordCreationStateCode enum value
+	LoadBalancerTlsCertificateDnsRecordCreationStateCodeStarted = "STARTED"
+
+	// LoadBalancerTlsCertificateDnsRecordCreationStateCodeFailed is a LoadBalancerTlsCertificateDnsRecordCreationStateCode enum value
+	LoadBalancerTlsCertificateDnsRecordCreationStateCodeFailed = "FAILED"
+)
+
+// LoadBalancerTlsCertificateDnsRecordCreationStateCode_Values returns all elements of the LoadBalancerTlsCertificateDnsRecordCreationStateCode enum
+func LoadBalancerTlsCertificateDnsRecordCreationStateCode_Values() []string {
+	return []string{
+		LoadBalancerTlsCertificateDnsRecordCreationStateCodeSucceeded,
+		LoadBalancerTlsCertificateDnsRecordCreationStateCodeStarted,
+		LoadBalancerTlsCertificateDnsRecordCreationStateCodeFailed,
+	}
+}
+
+const (
 	// LoadBalancerTlsCertificateDomainStatusPendingValidation is a LoadBalancerTlsCertificateDomainStatus enum value
 	LoadBalancerTlsCertificateDomainStatusPendingValidation = "PENDING_VALIDATION"
 
@@ -44810,6 +45205,30 @@ func MetricUnit_Values() []string {
 		MetricUnitTerabitsSecond,
 		MetricUnitCountSecond,
 		MetricUnitNone,
+	}
+}
+
+const (
+	// NameServersUpdateStateCodeSucceeded is a NameServersUpdateStateCode enum value
+	NameServersUpdateStateCodeSucceeded = "SUCCEEDED"
+
+	// NameServersUpdateStateCodePending is a NameServersUpdateStateCode enum value
+	NameServersUpdateStateCodePending = "PENDING"
+
+	// NameServersUpdateStateCodeFailed is a NameServersUpdateStateCode enum value
+	NameServersUpdateStateCodeFailed = "FAILED"
+
+	// NameServersUpdateStateCodeStarted is a NameServersUpdateStateCode enum value
+	NameServersUpdateStateCodeStarted = "STARTED"
+)
+
+// NameServersUpdateStateCode_Values returns all elements of the NameServersUpdateStateCode enum
+func NameServersUpdateStateCode_Values() []string {
+	return []string{
+		NameServersUpdateStateCodeSucceeded,
+		NameServersUpdateStateCodePending,
+		NameServersUpdateStateCodeFailed,
+		NameServersUpdateStateCodeStarted,
 	}
 }
 
@@ -45262,6 +45681,30 @@ func PortState_Values() []string {
 	return []string{
 		PortStateOpen,
 		PortStateClosed,
+	}
+}
+
+const (
+	// R53HostedZoneDeletionStateCodeSucceeded is a R53HostedZoneDeletionStateCode enum value
+	R53HostedZoneDeletionStateCodeSucceeded = "SUCCEEDED"
+
+	// R53HostedZoneDeletionStateCodePending is a R53HostedZoneDeletionStateCode enum value
+	R53HostedZoneDeletionStateCodePending = "PENDING"
+
+	// R53HostedZoneDeletionStateCodeFailed is a R53HostedZoneDeletionStateCode enum value
+	R53HostedZoneDeletionStateCodeFailed = "FAILED"
+
+	// R53HostedZoneDeletionStateCodeStarted is a R53HostedZoneDeletionStateCode enum value
+	R53HostedZoneDeletionStateCodeStarted = "STARTED"
+)
+
+// R53HostedZoneDeletionStateCode_Values returns all elements of the R53HostedZoneDeletionStateCode enum
+func R53HostedZoneDeletionStateCode_Values() []string {
+	return []string{
+		R53HostedZoneDeletionStateCodeSucceeded,
+		R53HostedZoneDeletionStateCodePending,
+		R53HostedZoneDeletionStateCodeFailed,
+		R53HostedZoneDeletionStateCodeStarted,
 	}
 }
 
