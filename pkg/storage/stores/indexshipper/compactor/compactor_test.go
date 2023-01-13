@@ -104,9 +104,12 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 	c, err := NewCompactor(cfg, objectClient, config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:        config.DayTime{Time: model.Time(0)},
-				IndexType:   indexType,
-				IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+				From:      config.DayTime{Time: model.Time(0)},
+				IndexType: indexType,
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				},
 			},
 		},
 	}, nil, nil)
@@ -212,8 +215,8 @@ func Test_schemaPeriodForTable(t *testing.T) {
 		{"second schema", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start.Add(28*time.Hour)).Time.Time()), schemaCfg.Configs[1], true},
 		{"third schema", schemaCfg, tsdbIndexTablePrefix + indexFromTime(dayFromTime(start.Add(75*time.Hour)).Time.Time()), schemaCfg.Configs[2], true},
 		{"unexpected table prefix", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start.Add(75*time.Hour)).Time.Time()), config.PeriodConfig{}, false},
-		{"now", schemaCfg, indexTablePrefix + indexFromTime(time.Now()), schemaCfg.Configs[3], true},
 		{"unexpected table number", schemaCfg, tsdbIndexTablePrefix + indexFromTime(time.Now()), config.PeriodConfig{}, false},
+		{"now", schemaCfg, indexTablePrefix + indexFromTime(time.Now()), schemaCfg.Configs[3], true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
