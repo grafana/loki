@@ -1039,6 +1039,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		},
 	}
 
+	ResetBoltDBIndexClientWithShipper()
 	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
 

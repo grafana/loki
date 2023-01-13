@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -86,20 +84,20 @@ type Config struct {
 	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	UploadParallelism         int             `yaml:"upload_parallelism"`
-	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
-	RunOnce                   bool            `yaml:"_"`
+	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring"`
+	RunOnce                   bool            `yaml:"_" doc:"hidden"`
 	TablesToCompact           int             `yaml:"tables_to_compact"`
 	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
 
 	// Deprecated
-	DeletionMode string `yaml:"deletion_mode"`
+	DeletionMode string `yaml:"deletion_mode" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
-	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos.")
+	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
@@ -110,15 +108,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DeleteMaxInterval, "boltdb.shipper.compactor.delete-max-interval", 0, "Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
 	f.DurationVar(&cfg.RetentionTableTimeout, "boltdb.shipper.compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	f.IntVar(&cfg.UploadParallelism, "boltdb.shipper.compactor.upload-parallelism", 10, "Number of upload/remove operations to execute in parallel when finalizing a compaction. ")
+	f.IntVar(&cfg.UploadParallelism, "boltdb.shipper.compactor.upload-parallelism", 10, "Number of upload/remove operations to execute in parallel when finalizing a compaction. NOTE: This setting is per compaction operation, which can be executed in parallel. The upper bound on the number of concurrent uploads is upload_parallelism * max_compaction_parallelism.")
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
 
 	// Deprecated
 	flagext.DeprecatedFlag(f, "boltdb.shipper.compactor.deletion-mode", "Deprecated. This has been moved to the deletion_mode per tenant configuration.", util_log.Logger)
 
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
-	f.IntVar(&cfg.TablesToCompact, "boltdb.shipper.compactor.tables-to-compact", 0, "The number of most recent tables to compact in a single run. Default: all")
-	f.IntVar(&cfg.SkipLatestNTables, "boltdb.shipper.compactor.skip-latest-n-tables", 0, "Skip compacting latest N tables")
+	f.IntVar(&cfg.TablesToCompact, "boltdb.shipper.compactor.tables-to-compact", 0, "Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
+	f.IntVar(&cfg.SkipLatestNTables, "boltdb.shipper.compactor.skip-latest-n-tables", 0, "Do not compact N latest tables. Together with -boltdb.shipper.compactor.run-once and -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
 
 }
 
@@ -731,30 +729,11 @@ func sortTablesByRange(tables []string) {
 }
 
 func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
-	// first round removes configs that does not have the prefix.
-	candidates := []config.PeriodConfig{}
-	for _, schema := range cfg.Configs {
-		if strings.HasPrefix(tableName, schema.IndexTables.Prefix) {
-			candidates = append(candidates, schema)
-		}
-	}
-	// WARN we  assume period is always daily. This is only true for boltdb-shipper.
-	var (
-		matched config.PeriodConfig
-		found   bool
-	)
-	for _, schema := range candidates {
-		periodIndex, err := strconv.ParseInt(strings.TrimPrefix(tableName, schema.IndexTables.Prefix), 10, 64)
-		if err != nil {
-			continue
-		}
-		periodSec := int64(schema.IndexTables.Period / time.Second)
-		tableTs := model.TimeFromUnix(periodIndex * periodSec)
-		if tableTs.After(schema.From.Time) || tableTs == schema.From.Time {
-			matched = schema
-			found = true
-		}
+	tableInterval := retention.ExtractIntervalFromTableName(tableName)
+	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
+	if err != nil || schemaCfg.IndexTables.TableFor(tableInterval.Start) != tableName {
+		return config.PeriodConfig{}, false
 	}
 
-	return matched, found
+	return schemaCfg, true
 }

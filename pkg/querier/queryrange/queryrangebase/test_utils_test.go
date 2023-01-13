@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -123,7 +124,7 @@ func TestNewMockShardedqueryable(t *testing.T) {
 				seriesCt++
 				iter := set.At().Iterator()
 				samples := 0
-				for iter.Next() {
+				for iter.Next() != chunkenc.ValNone {
 					samples++
 				}
 				require.Equal(t, tc.nSamples, samples)

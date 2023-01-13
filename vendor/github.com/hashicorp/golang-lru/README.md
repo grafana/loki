@@ -7,7 +7,7 @@ thread safe LRU cache. It is based on the cache in Groupcache.
 Documentation
 =============
 
-Full docs are available on [Godoc](http://godoc.org/github.com/hashicorp/golang-lru)
+Full docs are available on [Godoc](https://pkg.go.dev/github.com/hashicorp/golang-lru)
 
 Example
 =======

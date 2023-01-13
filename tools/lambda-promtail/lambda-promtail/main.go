@@ -33,6 +33,8 @@ var (
 	batchSize                                                 int
 	s3Clients                                                 map[string]*s3.Client
 	extraLabels                                               model.LabelSet
+	skipTlsVerify                                             bool
+	printLogLine                                              bool
 )
 
 func setupArguments() {
@@ -68,6 +70,12 @@ func setupArguments() {
 		panic("both username and bearerToken are not allowed")
 	}
 
+	skipTls := os.Getenv("SKIP_TLS_VERIFY")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(skipTls, "true") {
+		skipTlsVerify = true
+	}
+
 	tenantID = os.Getenv("TENANT_ID")
 
 	keep := os.Getenv("KEEP_STREAM")
@@ -81,6 +89,12 @@ func setupArguments() {
 	batchSize = 131072
 	if batch != "" {
 		batchSize, _ = strconv.Atoi(batch)
+	}
+
+	print := os.Getenv("PRINT_LOG_LINE")
+	printLogLine = true
+	if strings.EqualFold(print, "false") {
+		printLogLine = false
 	}
 
 	s3Clients = make(map[string]*s3.Client)

@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -307,7 +307,7 @@ type walLogger interface {
 
 type WALCheckpointWriter struct {
 	metrics    *ingesterMetrics
-	segmentWAL *wal.WAL
+	segmentWAL *wlog.WL
 
 	checkpointWAL walLogger
 	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
@@ -317,7 +317,7 @@ type WALCheckpointWriter struct {
 }
 
 func (w *WALCheckpointWriter) Advance() (bool, error) {
-	_, lastSegment, err := wal.Segments(w.segmentWAL.Dir())
+	_, lastSegment, err := wlog.Segments(w.segmentWAL.Dir())
 	if err != nil {
 		return false, err
 	}
@@ -351,7 +351,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 		return false, errors.Wrap(err, "create checkpoint dir")
 	}
 
-	checkpoint, err := wal.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
+	checkpoint, err := wlog.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
 	if err != nil {
 		return false, errors.Wrap(err, "open checkpoint")
 	}

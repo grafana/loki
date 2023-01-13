@@ -49,6 +49,7 @@ data:
       lokiStackWebhook: true
       alertingRuleWebhook: true
       recordingRuleWebhook: true
+      rulerConfigWebhook: true
       #
       # OpenShift feature gates
       #

@@ -23,6 +23,7 @@ These endpoints are exposed by all components:
 - [`GET /config`](#list-current-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#list-build-information)
+- [`GET /loki/api/v1/format_query`](#format-query)
 
 These endpoints are exposed by the querier and the query frontend:
 
@@ -220,7 +221,7 @@ gave this response:
 }
 ```
 
-If your cluster has 
+If your cluster has
 [Grafana Loki Multi-Tenancy](../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
@@ -268,6 +269,7 @@ accepts the following query parameters in the URL:
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
 - `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
@@ -438,6 +440,7 @@ It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -479,6 +482,7 @@ It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -637,7 +641,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 * `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 * `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false.
 * `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 
@@ -703,6 +707,18 @@ GET /loki/api/v1/status/buildinfo
 
 `/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
 
+## Format query
+
+```
+GET /loki/api/v1/format_query
+POST /loki/api/v1/format_query
+```
+
+Params:
+- `query`: A LogQL query string. Can be passed as URL param (`?query=<query>`) in case of both `GET` and `POST`. Or as form value in case of `POST`.
+
+The `/loki/api/v1/format_query` endpoint allows to format LogQL queries. It returns an error if the passed LogQL is invalid. It is exposed by all Loki components and helps to improve readability and the debugging experience of LogQL queries.
+
 ## List series
 
 The Series API is available under the following:
@@ -718,6 +734,7 @@ URL query parameters:
 - `match[]=<series_selector>`: Repeated log stream selector argument that selects the streams to return. At least one `match[]` argument must be provided.
 - `start=<nanosecond Unix epoch>`: Start timestamp.
 - `end=<nanosecond Unix epoch>`: End timestamp.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
 
@@ -1204,6 +1221,7 @@ support the following values:
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 - `regexp`: a regex to filter the returned results
 
@@ -1271,6 +1289,7 @@ the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
 
@@ -1307,6 +1326,7 @@ accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now.  Any value specified for `start` supersedes this parameter.
 
 In microservices mode, `/api/prom/label` is exposed by the querier.
 
@@ -1385,4 +1405,3 @@ This is helpful for scaling down WAL-enabled ingesters where we want to ensure o
 but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
-
