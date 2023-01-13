@@ -299,6 +299,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
+	level.Info(util_log.Logger).Log("msg", "[qwe] push handler registered")
 	pushHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
