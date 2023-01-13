@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -731,30 +729,11 @@ func sortTablesByRange(tables []string) {
 }
 
 func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
-	// first round removes configs that does not have the prefix.
-	candidates := []config.PeriodConfig{}
-	for _, schema := range cfg.Configs {
-		if strings.HasPrefix(tableName, schema.IndexTables.Prefix) {
-			candidates = append(candidates, schema)
-		}
-	}
-	// WARN we  assume period is always daily. This is only true for boltdb-shipper.
-	var (
-		matched config.PeriodConfig
-		found   bool
-	)
-	for _, schema := range candidates {
-		periodIndex, err := strconv.ParseInt(strings.TrimPrefix(tableName, schema.IndexTables.Prefix), 10, 64)
-		if err != nil {
-			continue
-		}
-		periodSec := int64(schema.IndexTables.Period / time.Second)
-		tableTs := model.TimeFromUnix(periodIndex * periodSec)
-		if tableTs.After(schema.From.Time) || tableTs == schema.From.Time {
-			matched = schema
-			found = true
-		}
+	tableInterval := retention.ExtractIntervalFromTableName(tableName)
+	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
+	if err != nil || schemaCfg.IndexTables.TableFor(tableInterval.Start) != tableName {
+		return config.PeriodConfig{}, false
 	}
 
-	return matched, found
+	return schemaCfg, true
 }
