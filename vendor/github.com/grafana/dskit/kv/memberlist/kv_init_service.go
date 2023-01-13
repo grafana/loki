@@ -2,7 +2,6 @@ package memberlist
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -48,15 +47,9 @@ func NewKVInitService(cfg *KVConfig, logger log.Logger, dnsProvider DNSProvider,
 // GetMemberlistKV will initialize Memberlist.KV on first call, and add it to service failure watcher.
 func (kvs *KVInitService) GetMemberlistKV() (*KV, error) {
 	kvs.init.Do(func() {
-		kvs.err = fmt.Errorf("initializing kv")
-
 		kv := NewKV(*kvs.cfg, kvs.logger, kvs.dnsProvider, kvs.registerer)
 		kvs.watcher.WatchService(kv)
-		if err := services.StartAndAwaitRunning(context.Background(), kvs); err != nil {
-			kvs.err = err
-			return
-		}
-		kvs.err = nil
+		kvs.err = kv.StartAsync(context.Background())
 		kvs.kv.Store(kv)
 	})
 
