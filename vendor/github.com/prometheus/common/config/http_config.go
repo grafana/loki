@@ -289,6 +289,11 @@ type HTTPClientConfig struct {
 	BearerTokenFile string `yaml:"bearer_token_file,omitempty" json:"bearer_token_file,omitempty"`
 	// HTTP proxy server to use to connect to the targets.
 	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
+	// ProxyConnectHeader optionally specifies headers to send to
+	// proxies during CONNECT requests. Assume that at least _some_ of
+	// these headers are going to contain secrets and use Secret as the
+	// value type instead of string.
+	ProxyConnectHeader Header `yaml:"proxy_connect_header,omitempty" json:"proxy_connect_header,omitempty"`
 	// TLSConfig to use to connect to the targets.
 	TLSConfig TLSConfig `yaml:"tls_config,omitempty" json:"tls_config,omitempty"`
 	// FollowRedirects specifies whether the client should follow HTTP 3xx redirects.
@@ -314,7 +319,8 @@ func (c *HTTPClientConfig) SetDirectory(dir string) {
 }
 
 // Validate validates the HTTPClientConfig to check only one of BearerToken,
-// BasicAuth and BearerTokenFile is configured.
+// BasicAuth and BearerTokenFile is configured. It also validates that ProxyURL
+// is set if ProxyConnectHeader is set.
 func (c *HTTPClientConfig) Validate() error {
 	// Backwards compatibility with the bearer_token field.
 	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
@@ -371,6 +377,9 @@ func (c *HTTPClientConfig) Validate() error {
 		if len(c.OAuth2.ClientSecret) > 0 && len(c.OAuth2.ClientSecretFile) > 0 {
 			return fmt.Errorf("at most one of oauth2 client_secret & client_secret_file must be configured")
 		}
+	}
+	if len(c.ProxyConnectHeader) > 0 && (c.ProxyURL.URL == nil || c.ProxyURL.String() == "") {
+		return fmt.Errorf("if proxy_connect_header is configured proxy_url must also be configured")
 	}
 	return nil
 }
@@ -500,6 +509,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		// It is applied on request. So we leave out any timings here.
 		var rt http.RoundTripper = &http.Transport{
 			Proxy:                 http.ProxyURL(cfg.ProxyURL.URL),
+			ProxyConnectHeader:    cfg.ProxyConnectHeader.HTTPHeader(),
 			MaxIdleConns:          20000,
 			MaxIdleConnsPerHost:   1000, // see https://github.com/golang/go/issues/13801
 			DisableKeepAlives:     !opts.keepAlivesEnabled,
