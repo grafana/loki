@@ -292,6 +292,10 @@ func (d *Distributor) CheckReady() error {
 		return fmt.Errorf("number of ingesters available is lesser than 1")
 	}
 
+	if len(d.ingestersRing.GetTokens(context.Background())) < 1 {
+		return fmt.Errorf("number of tokens available is lesser than 1")
+	}
+
 	return nil
 }
 
