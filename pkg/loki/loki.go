@@ -549,8 +549,13 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 	log4Ran := false
 	log5Ran := false
 	log6Ran := false
+	log7Ran := false
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !log7Ran {
+			log7Ran = true
+			level.Info(util_log.Logger).Log("msg", "[qwe] primeiro readiness")
+		}
 		if !sm.IsHealthy() {
 			msg := bytes.Buffer{}
 			msg.WriteString("Some services are not Running:\n")
