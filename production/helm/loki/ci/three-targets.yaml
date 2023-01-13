@@ -2,9 +2,6 @@
 loki:
   commonConfig:
     replication_factor: 1
-  image:
-    repository: "grafana/loki"
-    tag: "main-f5fbfab-amd64"
 read:
   replicas: 1
   legacyReadTarget: false
