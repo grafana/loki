@@ -557,6 +557,13 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 			return
 		}
 
+		if t.distributor != nil {
+			if t.distributor.Service.State() != services.Running {
+				http.Error(w, "Distributor not ready", http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		// Ingester has a special check that makes sure that it was able to register into the ring,
 		// and that all other ring entries are OK too.
 		if t.Ingester != nil {
