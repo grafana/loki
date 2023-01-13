@@ -3721,10 +3721,7 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # CLI flag: -<prefix>.azure.use-managed-identity
 [use_managed_identity: <boolean> | default = false]
 
-# Use a Federated Token to authenticate to the Azure storage account.
-# Enable if you want to use Azure Workload Identity. Expects AZURE_CLIENT_ID,
-# AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE envs to be present (set automatically
-# when using Azure Workload Identity).
+# Use Federated Token to authenticate to the Azure storage account.
 # CLI flag: -<prefix>.azure.use-federated-token
 [use_federated_token: <boolean> | default = false]
 
