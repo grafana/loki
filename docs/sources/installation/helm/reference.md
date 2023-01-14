@@ -3136,6 +3136,87 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for the single binary service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.clusterIP</td>
+			<td>string</td>
+			<td>ClusterIP of the single binary service</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.grpcNodePort</td>
+			<td>int</td>
+			<td>GRPC node port if service type is NodePort</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.grpcPort</td>
+			<td>int</td>
+			<td>GRPC port of the single binary service</td>
+			<td><pre lang="json">
+9095
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.labels</td>
+			<td>object</td>
+			<td>Labels for single binary service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.loadBalancerIP</td>
+			<td>string</td>
+			<td>Load balancer IPO address if service type is LoadBalancer</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.nodePort</td>
+			<td>int</td>
+			<td>Node port if service type is NodePort</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.port</td>
+			<td>int</td>
+			<td>Port of the single binary service</td>
+			<td><pre lang="json">
+3100
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.type</td>
+			<td>string</td>
+			<td>Type of the single binary service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
