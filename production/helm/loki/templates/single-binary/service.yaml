@@ -7,16 +7,35 @@ metadata:
   name: {{ include "loki.name" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
+    {{- with .Values.singleBinary.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.singleBinary.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.singleBinary.service.type }}
+  {{- with .Values.singleBinary.service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- if and (eq "LoadBalancer" .Values.singleBinary.service.type) .Values.singleBinary.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.singleBinary.service.loadBalancerIP }}
+  {{- end }}
   ports:
     - name: http-metrics
-      port: 3100
+      port: {{ .Values.singleBinary.service.port }}
       targetPort: http-metrics
+      {{- if and (eq "NodePort" .Values.singleBinary.service.type) .Values.singleBinary.service.nodePort }}
+      nodePort: {{ .Values.singleBinary.service.nodePort }}
+      {{- end }}
       protocol: TCP
     - name: grpc
-      port: 9095
+      port: {{ .Values.singleBinary.service.grpcPort }}
       targetPort: grpc
+      {{- if and (eq "NodePort" .Values.singleBinary.service.type) .Values.singleBinary.service.grpcNodePort }}
+      nodePort: {{ .Values.singleBinary.service.grpcNodePort }}
+      {{- end }}
       protocol: TCP
   selector:
     {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
