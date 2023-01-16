@@ -6,7 +6,7 @@ Fixes #<issue number>
 **Special notes for your reviewer**:
 
 **Checklist**
-- [ ] Reviewed the [`CONTRIBUTING.md`](../CONTRIBUTING.md) guide (**required**)
+- [ ] Reviewed the [`CONTRIBUTING.md`](https://github.com/grafana/loki/blob/main/CONTRIBUTING.md) guide (**required**)
 - [ ] Documentation added
 - [ ] Tests updated
 - [ ] `CHANGELOG.md` updated
