@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"io"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 )
 
 // LineBufferedLogger buffers log lines to be flushed periodically. Without a line buffer, Log() will call the write
 // syscall for every log line which is expensive if logging thousands of lines per second.
 type LineBufferedLogger struct {
 	buf     *threadsafeBuffer
-	entries uint32
+	entries atomic.Uint32
 	cap     uint32
 	w       io.Writer
 
@@ -21,7 +22,7 @@ type LineBufferedLogger struct {
 
 // Size returns the number of entries in the buffer.
 func (l *LineBufferedLogger) Size() uint32 {
-	return atomic.LoadUint32(&l.entries)
+	return l.entries.Load()
 }
 
 // Write writes the given bytes to the line buffer, and increments the entries counter.
@@ -36,7 +37,7 @@ func (l *LineBufferedLogger) Write(p []byte) (n int, err error) {
 		}
 	}
 
-	atomic.AddUint32(&l.entries, 1)
+	l.entries.Inc()
 
 	return l.buf.Write(p)
 }
@@ -49,7 +50,7 @@ func (l *LineBufferedLogger) Flush() error {
 	}
 
 	// reset the counter
-	atomic.StoreUint32(&l.entries, 0)
+	l.entries.Store(0)
 
 	// WriteTo() calls Reset() on the underlying buffer, so it's not needed here
 	_, err := l.buf.WriteTo(l.w)
