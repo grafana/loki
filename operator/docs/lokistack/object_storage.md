@@ -130,7 +130,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
     ```console
     kubectl create secret generic lokistack-dev-minio \
-      --from-literal=bucketname="<BUCKET_NAME>" \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
       --from-literal=endpoint="<MINIO_BUCKET_ENDPOINT>" \
       --from-literal=access_key_id="<MINIO_ACCESS_KEY_ID>" \
       --from-literal=access_key_secret="<MINIO_ACCESS_KEY_SECRET>"
@@ -165,7 +165,7 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
     ```console
     kubectl create secret generic lokistack-dev-odf \
-      --from-literal=bucketname="<BUCKET_NAME>" \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
       --from-literal=endpoint="https://s3.openshift-storage.svc" \
       --from-literal=access_key_id="<ACCESS_KEY_ID>" \
       --from-literal=access_key_secret="<ACCESS_KEY_SECRET>"

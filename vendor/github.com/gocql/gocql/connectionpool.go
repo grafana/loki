@@ -15,6 +15,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // interface to implement to receive the host information
@@ -28,31 +33,14 @@ type SetPartitioner interface {
 }
 
 func setupTLSConfig(sslOpts *SslOptions) (*tls.Config, error) {
-	//  Config.InsecureSkipVerify | EnableHostVerification | Result
-	//  Config is nil             | true                   | verify host
-	//  Config is nil             | false                  | do not verify host
-	//  false                     | false                  | verify host
-	//  true                      | false                  | do not verify host
-	//  false                     | true                   | verify host
-	//  true                      | true                   | verify host
-	var tlsConfig *tls.Config
 	if sslOpts.Config == nil {
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: !sslOpts.EnableHostVerification,
-		}
-	} else {
-		// use clone to avoid race.
-		tlsConfig = sslOpts.Config.Clone()
-	}
-
-	if tlsConfig.InsecureSkipVerify && sslOpts.EnableHostVerification {
-		tlsConfig.InsecureSkipVerify = false
+		sslOpts.Config = &tls.Config{}
 	}
 
 	// ca cert is optional
 	if sslOpts.CaPath != "" {
-		if tlsConfig.RootCAs == nil {
-			tlsConfig.RootCAs = x509.NewCertPool()
+		if sslOpts.RootCAs == nil {
+			sslOpts.RootCAs = x509.NewCertPool()
 		}
 
 		pem, err := ioutil.ReadFile(sslOpts.CaPath)
@@ -60,7 +48,7 @@ func setupTLSConfig(sslOpts *SslOptions) (*tls.Config, error) {
 			return nil, fmt.Errorf("connectionpool: unable to open CA certs: %v", err)
 		}
 
-		if !tlsConfig.RootCAs.AppendCertsFromPEM(pem) {
+		if !sslOpts.RootCAs.AppendCertsFromPEM(pem) {
 			return nil, errors.New("connectionpool: failed parsing or CA certs")
 		}
 	}
@@ -70,13 +58,19 @@ func setupTLSConfig(sslOpts *SslOptions) (*tls.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("connectionpool: unable to load X509 key pair: %v", err)
 		}
-		tlsConfig.Certificates = append(tlsConfig.Certificates, mycert)
+		sslOpts.Certificates = append(sslOpts.Certificates, mycert)
 	}
 
-	return tlsConfig, nil
+	sslOpts.InsecureSkipVerify = !sslOpts.EnableHostVerification
+
+	// return clone to avoid race
+	return sslOpts.Config.Clone(), nil
 }
 
 type policyConnPool struct {
+	logger     log.Logger
+	registerer prometheus.Registerer
+
 	session *Session
 
 	port     int
@@ -85,68 +79,64 @@ type policyConnPool struct {
 
 	mu            sync.RWMutex
 	hostConnPools map[string]*hostConnPool
+
+	endpoints []string
+
+	numHosts prometheus.GaugeFunc
 }
 
 func connConfig(cfg *ClusterConfig) (*ConnConfig, error) {
 	var (
-		err        error
-		hostDialer HostDialer
+		err       error
+		tlsConfig *tls.Config
 	)
 
-	hostDialer = cfg.HostDialer
-	if hostDialer == nil {
-		var tlsConfig *tls.Config
-
-		// TODO(zariel): move tls config setup into session init.
-		if cfg.SslOpts != nil {
-			tlsConfig, err = setupTLSConfig(cfg.SslOpts)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		dialer := cfg.Dialer
-		if dialer == nil {
-			d := &net.Dialer{
-				Timeout: cfg.ConnectTimeout,
-			}
-			if cfg.SocketKeepalive > 0 {
-				d.KeepAlive = cfg.SocketKeepalive
-			}
-			dialer = d
-		}
-
-		hostDialer = &defaultHostDialer{
-			dialer:    dialer,
-			tlsConfig: tlsConfig,
+	// TODO(zariel): move tls config setup into session init.
+	if cfg.SslOpts != nil {
+		tlsConfig, err = setupTLSConfig(cfg.SslOpts)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	return &ConnConfig{
-		ProtoVersion:   cfg.ProtoVersion,
-		CQLVersion:     cfg.CQLVersion,
-		Timeout:        cfg.Timeout,
-		WriteTimeout:   cfg.WriteTimeout,
-		ConnectTimeout: cfg.ConnectTimeout,
-		Dialer:         cfg.Dialer,
-		HostDialer:     hostDialer,
-		Compressor:     cfg.Compressor,
-		Authenticator:  cfg.Authenticator,
-		AuthProvider:   cfg.AuthProvider,
-		Keepalive:      cfg.SocketKeepalive,
-		Logger:         cfg.logger(),
+		ProtoVersion:    cfg.ProtoVersion,
+		CQLVersion:      cfg.CQLVersion,
+		Timeout:         cfg.Timeout,
+		ConnectTimeout:  cfg.ConnectTimeout,
+		Dialer:          cfg.Dialer,
+		Compressor:      cfg.Compressor,
+		Authenticator:   cfg.Authenticator,
+		AuthProvider:    cfg.AuthProvider,
+		Keepalive:       cfg.SocketKeepalive,
+		tlsConfig:       tlsConfig,
+		disableCoalesce: tlsConfig != nil, // write coalescing doesn't work with framing on top of TCP like in TLS.
 	}, nil
 }
 
-func newPolicyConnPool(session *Session) *policyConnPool {
+func newPolicyConnPool(logger log.Logger, registerer prometheus.Registerer, session *Session) *policyConnPool {
 	// create the pool
 	pool := &policyConnPool{
+		logger:        logger,
+		registerer:    registerer,
 		session:       session,
 		port:          session.cfg.Port,
 		numConns:      session.cfg.NumConns,
 		keyspace:      session.cfg.Keyspace,
 		hostConnPools: map[string]*hostConnPool{},
 	}
+
+	pool.endpoints = make([]string, len(session.cfg.Hosts))
+	copy(pool.endpoints, session.cfg.Hosts)
+
+	pool.numHosts = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "gocql_connection_pool_hosts",
+		Help: "Current number of hosts in the connection pool.",
+	}, func() float64 {
+		pool.mu.RLock()
+		defer pool.mu.RUnlock()
+		return float64(len(pool.hostConnPools))
+	})
 
 	return pool
 }
@@ -156,8 +146,8 @@ func (p *policyConnPool) SetHosts(hosts []*HostInfo) {
 	defer p.mu.Unlock()
 
 	toRemove := make(map[string]struct{})
-	for hostID := range p.hostConnPools {
-		toRemove[hostID] = struct{}{}
+	for addr := range p.hostConnPools {
+		toRemove[addr] = struct{}{}
 	}
 
 	pools := make(chan *hostConnPool)
@@ -167,10 +157,10 @@ func (p *policyConnPool) SetHosts(hosts []*HostInfo) {
 			// don't create a connection pool for a down host
 			continue
 		}
-		hostID := host.HostID()
-		if _, exists := p.hostConnPools[hostID]; exists {
+		ip := host.ConnectAddress().String()
+		if _, exists := p.hostConnPools[ip]; exists {
 			// still have this host, so don't remove it
-			delete(toRemove, hostID)
+			delete(toRemove, ip)
 			continue
 		}
 
@@ -178,6 +168,8 @@ func (p *policyConnPool) SetHosts(hosts []*HostInfo) {
 		go func(host *HostInfo) {
 			// create a connection pool for the host
 			pools <- newHostConnPool(
+				p.logger,
+				p.registerer,
 				p.session,
 				host,
 				p.port,
@@ -193,12 +185,13 @@ func (p *policyConnPool) SetHosts(hosts []*HostInfo) {
 		createCount--
 		if pool.Size() > 0 {
 			// add pool only if there a connections available
-			p.hostConnPools[pool.host.HostID()] = pool
+			p.hostConnPools[string(pool.host.ConnectAddress())] = pool
 		}
 	}
 
 	for addr := range toRemove {
 		pool := p.hostConnPools[addr]
+		pool.deregisterMetrics()
 		delete(p.hostConnPools, addr)
 		go pool.Close()
 	}
@@ -216,30 +209,37 @@ func (p *policyConnPool) Size() int {
 }
 
 func (p *policyConnPool) getPool(host *HostInfo) (pool *hostConnPool, ok bool) {
-	hostID := host.HostID()
+	ip := host.ConnectAddress().String()
 	p.mu.RLock()
-	pool, ok = p.hostConnPools[hostID]
+	pool, ok = p.hostConnPools[ip]
 	p.mu.RUnlock()
 	return
 }
 
 func (p *policyConnPool) Close() {
+	if p.registerer != nil {
+		p.registerer.Unregister(p.numHosts)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// close the pools
 	for addr, pool := range p.hostConnPools {
 		delete(p.hostConnPools, addr)
+		pool.deregisterMetrics()
 		pool.Close()
 	}
 }
 
 func (p *policyConnPool) addHost(host *HostInfo) {
-	hostID := host.HostID()
+	ip := host.ConnectAddress().String()
 	p.mu.Lock()
-	pool, ok := p.hostConnPools[hostID]
+	pool, ok := p.hostConnPools[ip]
 	if !ok {
 		pool = newHostConnPool(
+			p.logger,
+			p.registerer,
 			p.session,
 			host,
 			host.Port(), // TODO: if port == 0 use pool.port?
@@ -247,33 +247,51 @@ func (p *policyConnPool) addHost(host *HostInfo) {
 			p.keyspace,
 		)
 
-		p.hostConnPools[hostID] = pool
+		p.hostConnPools[ip] = pool
 	}
 	p.mu.Unlock()
 
 	pool.fill()
 }
 
-func (p *policyConnPool) removeHost(hostID string) {
+func (p *policyConnPool) removeHost(ip net.IP) {
+	k := ip.String()
 	p.mu.Lock()
-	pool, ok := p.hostConnPools[hostID]
+	pool, ok := p.hostConnPools[k]
 	if !ok {
 		p.mu.Unlock()
 		return
 	}
 
-	delete(p.hostConnPools, hostID)
+	pool.deregisterMetrics()
+	delete(p.hostConnPools, k)
 	p.mu.Unlock()
 
 	go pool.Close()
 }
 
+func (p *policyConnPool) hostUp(host *HostInfo) {
+	// TODO(zariel): have a set of up hosts and down hosts, we can internally
+	// detect down hosts, then try to reconnect to them.
+	p.addHost(host)
+}
+
+func (p *policyConnPool) hostDown(ip net.IP) {
+	// TODO(zariel): mark host as down so we can try to connect to it later, for
+	// now just treat it has removed.
+	p.removeHost(ip)
+}
+
 // hostConnPool is a connection pool for a single host.
 // Connection selection is based on a provided ConnSelectionPolicy
 type hostConnPool struct {
+	logger     log.Logger
+	registerer prometheus.Registerer
+
 	session  *Session
 	host     *HostInfo
 	port     int
+	addr     string
 	size     int
 	keyspace string
 	// protection for conns, closed, filling
@@ -282,8 +300,12 @@ type hostConnPool struct {
 	closed  bool
 	filling bool
 
-	pos    uint32
-	logger StdLogger
+	pos uint32
+
+	connections        prometheus.GaugeFunc
+	connectionAttempts prometheus.Counter
+	connectionFailures prometheus.Counter
+	connectionDrops    prometheus.Counter
 }
 
 func (h *hostConnPool) String() string {
@@ -293,23 +315,51 @@ func (h *hostConnPool) String() string {
 		h.filling, h.closed, len(h.conns), h.size, h.host)
 }
 
-func newHostConnPool(session *Session, host *HostInfo, port, size int,
+func newHostConnPool(logger log.Logger, registerer prometheus.Registerer, session *Session, host *HostInfo, port, size int,
 	keyspace string) *hostConnPool {
 
 	pool := &hostConnPool{
-		session:  session,
-		host:     host,
-		port:     port,
-		size:     size,
-		keyspace: keyspace,
-		conns:    make([]*Conn, 0, size),
-		filling:  false,
-		closed:   false,
-		logger:   session.logger,
+		logger:     logger,
+		registerer: prometheus.WrapRegistererWith(prometheus.Labels{"host": host.ConnectAddress().String()}, registerer),
+		session:    session,
+		host:       host,
+		port:       port,
+		addr:       (&net.TCPAddr{IP: host.ConnectAddress(), Port: host.Port()}).String(),
+		size:       size,
+		keyspace:   keyspace,
+		conns:      make([]*Conn, 0, size),
+		filling:    false,
+		closed:     false,
 	}
+
+	pool.connections = promauto.With(pool.registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "gocql_connection_pool_connections",
+		Help: "Number of TCP connections in the pool for given host",
+	}, func() float64 {
+		return float64(pool.Size())
+	})
+	pool.connectionAttempts = promauto.With(pool.registerer).NewCounter(prometheus.CounterOpts{
+		Name: "gocql_connection_pool_connection_attempts_total",
+		Help: "Number of TCP connection attempts for given host",
+	})
+	pool.connectionFailures = promauto.With(pool.registerer).NewCounter(prometheus.CounterOpts{
+		Name: "gocql_connection_pool_connection_failures_total",
+		Help: "Number of TCP connection failures for given host",
+	})
+	pool.connectionDrops = promauto.With(pool.registerer).NewCounter(prometheus.CounterOpts{
+		Name: "gocql_connection_pool_connection_drops_total",
+		Help: "Number of TCP connection drops for given host",
+	})
 
 	// the pool is not filled or connected
 	return pool
+}
+
+func (pool *hostConnPool) deregisterMetrics() {
+	pool.registerer.Unregister(pool.connections)
+	pool.registerer.Unregister(pool.connectionAttempts)
+	pool.registerer.Unregister(pool.connectionFailures)
+	pool.registerer.Unregister(pool.connectionDrops)
 }
 
 // Pick a connection from this connection pool for the given query.
@@ -438,11 +488,15 @@ func (pool *hostConnPool) fill() {
 
 		if err != nil {
 			// probably unreachable host
-			pool.fillingStopped(err)
+			pool.fillingStopped(true)
+
+			// this is call with the connection pool mutex held, this call will
+			// then recursively try to lock it again. FIXME
+			if pool.session.cfg.ConvictionPolicy.AddFailure(err, pool.host) {
+				go pool.session.handleNodeDown(pool.host.ConnectAddress(), pool.port)
+			}
 			return
 		}
-		// notify the session that this node is connected
-		go pool.session.handleNodeConnected(pool.host)
 
 		// filled one
 		fillCount--
@@ -453,12 +507,7 @@ func (pool *hostConnPool) fill() {
 		err := pool.connectMany(fillCount)
 
 		// mark the end of filling
-		pool.fillingStopped(err)
-
-		if err == nil && startCount > 0 {
-			// notify the session that this node is connected again
-			go pool.session.handleNodeConnected(pool.host)
-		}
+		pool.fillingStopped(err != nil)
 	}()
 }
 
@@ -467,20 +516,17 @@ func (pool *hostConnPool) logConnectErr(err error) {
 		// connection refused
 		// these are typical during a node outage so avoid log spam.
 		if gocqlDebug {
-			pool.logger.Printf("gocql: unable to dial %q: %v\n", pool.host, err)
+			level.Debug(pool.logger).Log("msg", "unable to dial", "address", pool.host.ConnectAddress(), "error", err)
 		}
 	} else if err != nil {
 		// unexpected error
-		pool.logger.Printf("error: failed to connect to %q due to error: %v", pool.host, err)
+		level.Error(pool.logger).Log("msg", "failed to connect", "address", pool.addr, "error", err)
 	}
 }
 
 // transition back to a not-filling state.
-func (pool *hostConnPool) fillingStopped(err error) {
-	if err != nil {
-		if gocqlDebug {
-			pool.logger.Printf("gocql: filling stopped %q: %v\n", pool.host.ConnectAddress(), err)
-		}
+func (pool *hostConnPool) fillingStopped(hadError bool) {
+	if hadError {
 		// wait for some time to avoid back-to-back filling
 		// this provides some time between failed attempts
 		// to fill the pool for the host to recover
@@ -489,21 +535,7 @@ func (pool *hostConnPool) fillingStopped(err error) {
 
 	pool.mu.Lock()
 	pool.filling = false
-	count := len(pool.conns)
-	host := pool.host
-	port := pool.port
 	pool.mu.Unlock()
-
-	// if we errored and the size is now zero, make sure the host is marked as down
-	// see https://github.com/gocql/gocql/issues/1614
-	if gocqlDebug {
-		pool.logger.Printf("gocql: conns of pool after stopped %q: %v\n", host.ConnectAddress(), count)
-	}
-	if err != nil && count == 0 {
-		if pool.session.cfg.ConvictionPolicy.AddFailure(err, host) {
-			pool.session.handleNodeDown(host.ConnectAddress(), port)
-		}
-	}
 }
 
 // connectMany creates new connections concurrent.
@@ -537,13 +569,20 @@ func (pool *hostConnPool) connectMany(count int) error {
 
 // create a new connection to the host and add it to the pool
 func (pool *hostConnPool) connect() (err error) {
+	pool.connectionAttempts.Inc()
+	defer func() {
+		if err != nil {
+			pool.connectionFailures.Inc()
+		}
+	}()
+
 	// TODO: provide a more robust connection retry mechanism, we should also
 	// be able to detect hosts that come up by trying to connect to downed ones.
 	// try to connect
 	var conn *Conn
 	reconnectionPolicy := pool.session.cfg.ReconnectionPolicy
 	for i := 0; i < reconnectionPolicy.GetMaxRetries(); i++ {
-		conn, err = pool.session.connect(pool.session.ctx, pool.host, pool)
+		conn, err = pool.session.connect(pool.session.ctx, pool.logger, pool.host, pool)
 		if err == nil {
 			break
 		}
@@ -555,8 +594,8 @@ func (pool *hostConnPool) connect() (err error) {
 			}
 		}
 		if gocqlDebug {
-			pool.logger.Printf("gocql: connection failed %q: %v, reconnecting with %T\n",
-				pool.host.ConnectAddress(), err, reconnectionPolicy)
+			level.Debug(pool.logger).Log("msg", "connection failed", "address", pool.host.ConnectAddress(),
+				"policy", reconnectionPolicy)
 		}
 		time.Sleep(reconnectionPolicy.GetInterval(i))
 	}
@@ -589,10 +628,14 @@ func (pool *hostConnPool) connect() (err error) {
 
 // handle any error from a Conn
 func (pool *hostConnPool) HandleError(conn *Conn, err error, closed bool) {
+	level.Error(pool.logger).Log("msg", "hostConnPool.HandleError", "err", err, "closed", closed)
+
 	if !closed {
 		// still an open connection, so continue using it
 		return
 	}
+
+	pool.connectionDrops.Inc()
 
 	// TODO: track the number of errors per host and detect when a host is dead,
 	// then also have something which can detect when a host comes back.
@@ -602,10 +645,6 @@ func (pool *hostConnPool) HandleError(conn *Conn, err error, closed bool) {
 	if pool.closed {
 		// pool closed
 		return
-	}
-
-	if gocqlDebug {
-		pool.logger.Printf("gocql: pool connection error %q: %v\n", conn.addr, err)
 	}
 
 	// find the connection index

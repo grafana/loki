@@ -19,12 +19,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/gocql/gocql/internal/lru"
 	"github.com/gocql/gocql/internal/streams"
 )
 
 var (
-	defaultApprovedAuthenticators = []string{
+	approvedAuthenticators = [...]string{
 		"org.apache.cassandra.auth.PasswordAuthenticator",
 		"com.instaclustr.cassandra.auth.SharedSecretAuthenticator",
 		"com.datastax.bdp.cassandra.auth.DseAuthenticator",
@@ -35,11 +38,7 @@ var (
 	}
 )
 
-// approve the authenticator with the list of allowed authenticators or default list if approvedAuthenticators is empty.
-func approve(authenticator string, approvedAuthenticators []string) bool {
-	if len(approvedAuthenticators) == 0 {
-		approvedAuthenticators = defaultApprovedAuthenticators
-	}
+func approve(authenticator string) bool {
 	for _, s := range approvedAuthenticators {
 		if authenticator == s {
 			return true
@@ -48,8 +47,8 @@ func approve(authenticator string, approvedAuthenticators []string) bool {
 	return false
 }
 
-// JoinHostPort is a utility to return an address string that can be used
-// by `gocql.Conn` to form a connection with a host.
+//JoinHostPort is a utility to return a address string that can be used
+//gocql.Conn to form a connection with a host.
 func JoinHostPort(addr string, port int) string {
 	addr = strings.TrimSpace(addr)
 	if _, _, err := net.SplitHostPort(addr); err != nil {
@@ -64,13 +63,12 @@ type Authenticator interface {
 }
 
 type PasswordAuthenticator struct {
-	Username              string
-	Password              string
-	AllowedAuthenticators []string
+	Username string
+	Password string
 }
 
 func (p PasswordAuthenticator) Challenge(req []byte) ([]byte, Authenticator, error) {
-	if !approve(string(req), p.AllowedAuthenticators) {
+	if !approve(string(req)) {
 		return nil, nil, fmt.Errorf("unexpected authenticator %q", req)
 	}
 	resp := make([]byte, 2+len(p.Username)+len(p.Password))
@@ -85,19 +83,6 @@ func (p PasswordAuthenticator) Success(data []byte) error {
 	return nil
 }
 
-// SslOptions configures TLS use.
-//
-// Warning: Due to historical reasons, the SslOptions is insecure by default, so you need to set EnableHostVerification
-// to true if no Config is set. Most users should set SslOptions.Config to a *tls.Config.
-// SslOptions and Config.InsecureSkipVerify interact as follows:
-//
-//  Config.InsecureSkipVerify | EnableHostVerification | Result
-//  Config is nil             | false                  | do not verify host
-//  Config is nil             | true                   | verify host
-//  false                     | false                  | verify host
-//  true                      | false                  | do not verify host
-//  false                     | true                   | verify host
-//  true                      | true                   | verify host
 type SslOptions struct {
 	*tls.Config
 
@@ -107,12 +92,9 @@ type SslOptions struct {
 	CertPath string
 	KeyPath  string
 	CaPath   string //optional depending on server config
-	// If you want to verify the hostname and server cert (like a wildcard for cass cluster) then you should turn this
-	// on.
-	// This option is basically the inverse of tls.Config.InsecureSkipVerify.
-	// See InsecureSkipVerify in http://golang.org/pkg/crypto/tls/ for more info.
-	//
-	// See SslOptions documentation to see how EnableHostVerification interacts with the provided tls.Config.
+	// If you want to verify the hostname and server cert (like a wildcard for cass cluster) then you should turn this on
+	// This option is basically the inverse of InSecureSkipVerify
+	// See InSecureSkipVerify in http://golang.org/pkg/crypto/tls/ for more info
 	EnableHostVerification bool
 }
 
@@ -120,25 +102,15 @@ type ConnConfig struct {
 	ProtoVersion   int
 	CQLVersion     string
 	Timeout        time.Duration
-	WriteTimeout   time.Duration
 	ConnectTimeout time.Duration
 	Dialer         Dialer
-	HostDialer     HostDialer
 	Compressor     Compressor
 	Authenticator  Authenticator
 	AuthProvider   func(h *HostInfo) (Authenticator, error)
 	Keepalive      time.Duration
-	Logger         StdLogger
 
 	tlsConfig       *tls.Config
 	disableCoalesce bool
-}
-
-func (c *ConnConfig) logger() StdLogger {
-	if c.Logger == nil {
-		return Logger
-	}
-	return c.Logger
 }
 
 type ConnErrorHandler interface {
@@ -156,31 +128,28 @@ func (fn connErrorHandlerFn) HandleError(conn *Conn, err error, closed bool) {
 // which may be serving more queries just fine.
 // Default is 0, should not be changed concurrently with queries.
 //
-// Deprecated.
+// depreciated
 var TimeoutLimit int64 = 0
 
 // Conn is a single connection to a Cassandra node. It can be used to execute
 // queries, but users are usually advised to use a more reliable, higher
 // level API.
 type Conn struct {
+	logger log.Logger
+
 	conn net.Conn
 	r    *bufio.Reader
-	w    contextWriter
+	w    io.Writer
 
-	timeout        time.Duration
-	writeTimeout   time.Duration
-	cfg            *ConnConfig
-	frameObserver  FrameHeaderObserver
-	streamObserver StreamObserver
+	timeout       time.Duration
+	cfg           *ConnConfig
+	frameObserver FrameHeaderObserver
 
 	headerBuf [maxFrameHeaderSize]byte
 
 	streams *streams.IDGenerator
 	mu      sync.Mutex
-	// calls stores a map from stream ID to callReq.
-	// This map is protected by mu.
-	// calls should not be used when closed is true, calls is set to nil when closed=true.
-	calls map[int]*callReq
+	calls   map[int]*callReq
 
 	errorHandler ConnErrorHandler
 	compressor   Compressor
@@ -193,31 +162,27 @@ type Conn struct {
 
 	session *Session
 
-	// true if connection close process for the connection started.
-	// closed is protected by mu.
-	closed bool
+	closed int32
 	ctx    context.Context
 	cancel context.CancelFunc
 
 	timeouts int64
-
-	logger StdLogger
 }
 
 // connect establishes a connection to a Cassandra node using session's connection config.
-func (s *Session) connect(ctx context.Context, host *HostInfo, errorHandler ConnErrorHandler) (*Conn, error) {
-	return s.dial(ctx, host, s.connCfg, errorHandler)
+func (s *Session) connect(ctx context.Context, logger log.Logger, host *HostInfo, errorHandler ConnErrorHandler) (*Conn, error) {
+	return s.dial(ctx, logger, host, s.connCfg, errorHandler)
 }
 
 // dial establishes a connection to a Cassandra node and notifies the session's connectObserver.
-func (s *Session) dial(ctx context.Context, host *HostInfo, connConfig *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
+func (s *Session) dial(ctx context.Context, logger log.Logger, host *HostInfo, connConfig *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
 	var obs ObservedConnect
 	if s.connectObserver != nil {
 		obs.Host = host
 		obs.Start = time.Now()
 	}
 
-	conn, err := s.dialWithoutObserver(ctx, host, connConfig, errorHandler)
+	conn, err := s.dialWithoutObserver(ctx, logger, host, connConfig, errorHandler)
 
 	if s.connectObserver != nil {
 		obs.End = time.Now()
@@ -231,45 +196,67 @@ func (s *Session) dial(ctx context.Context, host *HostInfo, connConfig *ConnConf
 // dialWithoutObserver establishes connection to a Cassandra node.
 //
 // dialWithoutObserver does not notify the connection observer, so you most probably want to call dial() instead.
-func (s *Session) dialWithoutObserver(ctx context.Context, host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
-	dialedHost, err := cfg.HostDialer.DialHost(ctx, host)
+func (s *Session) dialWithoutObserver(ctx context.Context, logger log.Logger, host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
+	ip := host.ConnectAddress()
+	port := host.port
+
+	// TODO(zariel): remove these
+	if !validIpAddr(ip) {
+		panic(fmt.Sprintf("host missing connect ip address: %v", ip))
+	} else if port == 0 {
+		panic(fmt.Sprintf("host missing port: %v", port))
+	}
+
+	dialer := cfg.Dialer
+	if dialer == nil {
+		d := &net.Dialer{
+			Timeout: cfg.ConnectTimeout,
+		}
+		if cfg.Keepalive > 0 {
+			d.KeepAlive = cfg.Keepalive
+		}
+		dialer = d
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", host.HostnameAndPort())
 	if err != nil {
 		return nil, err
 	}
-
-	writeTimeout := cfg.Timeout
-	if cfg.WriteTimeout > 0 {
-		writeTimeout = cfg.WriteTimeout
+	if cfg.tlsConfig != nil {
+		// the TLS config is safe to be reused by connections but it must not
+		// be modified after being used.
+		tconn := tls.Client(conn, cfg.tlsConfig)
+		if err := tconn.Handshake(); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		conn = tconn
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	c := &Conn{
-		conn:          dialedHost.Conn,
-		r:             bufio.NewReader(dialedHost.Conn),
+		logger:        logger,
+		conn:          conn,
+		r:             bufio.NewReader(conn),
 		cfg:           cfg,
 		calls:         make(map[int]*callReq),
 		version:       uint8(cfg.ProtoVersion),
-		addr:          dialedHost.Conn.RemoteAddr().String(),
+		addr:          conn.RemoteAddr().String(),
 		errorHandler:  errorHandler,
 		compressor:    cfg.Compressor,
 		session:       s,
 		streams:       streams.New(cfg.ProtoVersion),
 		host:          host,
 		frameObserver: s.frameObserver,
-		w: &deadlineContextWriter{
-			w:         dialedHost.Conn,
-			timeout:   writeTimeout,
-			semaphore: make(chan struct{}, 1),
-			quit:      make(chan struct{}),
+		w: &deadlineWriter{
+			w:       conn,
+			timeout: cfg.Timeout,
 		},
-		ctx:            ctx,
-		cancel:         cancel,
-		logger:         cfg.logger(),
-		streamObserver: s.streamObserver,
-		writeTimeout:   writeTimeout,
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
-	if err := c.init(ctx, dialedHost); err != nil {
+	if err := c.init(ctx); err != nil {
 		cancel()
 		c.Close()
 		return nil, err
@@ -278,7 +265,7 @@ func (s *Session) dialWithoutObserver(ctx context.Context, host *HostInfo, cfg *
 	return c, nil
 }
 
-func (c *Conn) init(ctx context.Context, dialedHost *DialedHost) error {
+func (c *Conn) init(ctx context.Context) error {
 	if c.session.cfg.AuthProvider != nil {
 		var err error
 		c.auth, err = c.cfg.AuthProvider(c.host)
@@ -302,8 +289,8 @@ func (c *Conn) init(ctx context.Context, dialedHost *DialedHost) error {
 	c.timeout = c.cfg.Timeout
 
 	// dont coalesce startup frames
-	if c.session.cfg.WriteCoalesceWaitTime > 0 && !c.cfg.disableCoalesce && !dialedHost.DisableCoalesce {
-		c.w = newWriteCoalescer(c.conn, c.writeTimeout, c.session.cfg.WriteCoalesceWaitTime, ctx.Done())
+	if c.session.cfg.WriteCoalesceWaitTime > 0 && !c.cfg.disableCoalesce {
+		c.w = newWriteCoalescer(c.conn, c.timeout, c.session.cfg.WriteCoalesceWaitTime, ctx.Done())
 	}
 
 	go c.serve(ctx)
@@ -313,7 +300,7 @@ func (c *Conn) init(ctx context.Context, dialedHost *DialedHost) error {
 }
 
 func (c *Conn) Write(p []byte) (n int, err error) {
-	return c.w.writeContext(context.Background(), p)
+	return c.w.Write(p)
 }
 
 func (c *Conn) Read(p []byte) (n int, err error) {
@@ -389,7 +376,7 @@ func (s *startupCoordinator) setupConn(ctx context.Context) error {
 	return nil
 }
 
-func (s *startupCoordinator) write(ctx context.Context, frame frameBuilder) (frame, error) {
+func (s *startupCoordinator) write(ctx context.Context, frame frameWriter) (frame, error) {
 	select {
 	case s.frameTicker <- struct{}{}:
 	case <-ctx.Done():
@@ -496,42 +483,23 @@ func (s *startupCoordinator) authenticateHandshake(ctx context.Context, authFram
 }
 
 func (c *Conn) closeWithError(err error) {
-	if c == nil {
+	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
 		return
 	}
 
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return
-	}
-	c.closed = true
-
-	var callsToClose map[int]*callReq
-
-	// We should attempt to deliver the error back to the caller if it
-	// exists. However, don't block c.mu while we are delivering the
-	// error to outstanding calls.
+	// we should attempt to deliver the error back to the caller if it
+	// exists
 	if err != nil {
-		callsToClose = c.calls
-		// It is safe to change c.calls to nil. Nobody should use it after c.closed is set to true.
-		c.calls = nil
-	}
-	c.mu.Unlock()
-
-	for _, req := range callsToClose {
-		// we need to send the error to all waiting queries.
-		select {
-		case req.resp <- callResp{err: err}:
-		case <-req.timeout:
+		c.mu.Lock()
+		for _, req := range c.calls {
+			// we need to send the error to all waiting queries, put the state
+			// of this conn into not active so that it can not execute any queries.
+			select {
+			case req.resp <- err:
+			case <-req.timeout:
+			}
 		}
-		if req.streamObserverContext != nil {
-			req.streamObserverEndOnce.Do(func() {
-				req.streamObserverContext.StreamAbandoned(ObservedStream{
-					Host: c.host,
-				})
-			})
-		}
+		c.mu.Unlock()
 	}
 
 	// if error was nil then unblock the quit channel
@@ -590,14 +558,16 @@ func (c *Conn) heartBeat(ctx context.Context) {
 	timer := time.NewTimer(sleepTime)
 	defer timer.Stop()
 
+	var err error
 	var failures int
 
 	for {
 		if failures > 5 {
-			c.closeWithError(fmt.Errorf("gocql: heartbeat failed"))
+			c.closeWithError(fmt.Errorf("gocql: heartbeat failed, err: %v", err))
 			return
 		}
 
+		err = nil
 		timer.Reset(sleepTime)
 
 		select {
@@ -606,15 +576,18 @@ func (c *Conn) heartBeat(ctx context.Context) {
 		case <-timer.C:
 		}
 
-		framer, err := c.exec(context.Background(), &writeOptionsFrame{}, nil)
+		var framer *framer
+		framer, err = c.exec(context.Background(), &writeOptionsFrame{}, nil)
 		if err != nil {
+			level.Debug(c.logger).Log("msg", "error execing heartbeat", "error", err)
 			failures++
 			continue
 		}
 
-		resp, err := framer.parseFrame()
+		var resp frame
+		resp, err = framer.parseFrame()
 		if err != nil {
-			// invalid frame
+			level.Debug(c.logger).Log("msg", "error parsing heartbeat response", "error", err)
 			failures++
 			continue
 		}
@@ -666,8 +639,8 @@ func (c *Conn) recv(ctx context.Context) error {
 		return fmt.Errorf("gocql: frame header stream is beyond call expected bounds: %d", head.stream)
 	} else if head.stream == -1 {
 		// TODO: handle cassandra event frames, we shouldnt get any currently
-		framer := newFramer(c.compressor, c.version)
-		if err := framer.readFrame(c, &head); err != nil {
+		framer := newFramer(c, c, c.compressor, c.version)
+		if err := framer.readFrame(&head); err != nil {
 			return err
 		}
 		go c.session.handleEvent(framer)
@@ -675,8 +648,8 @@ func (c *Conn) recv(ctx context.Context) error {
 	} else if head.stream <= 0 {
 		// reserved stream that we dont use, probably due to a protocol error
 		// or a bug in Cassandra, this should be an error, parse it and return.
-		framer := newFramer(c.compressor, c.version)
-		if err := framer.readFrame(c, &head); err != nil {
+		framer := newFramer(c, c, c.compressor, c.version)
+		if err := framer.readFrame(&head); err != nil {
 			return err
 		}
 
@@ -691,23 +664,17 @@ func (c *Conn) recv(ctx context.Context) error {
 	}
 
 	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return ErrConnectionClosed
-	}
 	call, ok := c.calls[head.stream]
 	delete(c.calls, head.stream)
 	c.mu.Unlock()
-	if call == nil || !ok {
-		c.logger.Printf("gocql: received response for stream which has no handler: header=%v\n", head)
+	if call == nil || call.framer == nil || !ok {
+		level.Error(c.logger).Log("msg", "received response for stream which has no handler", "header", head)
 		return c.discardFrame(head)
 	} else if head.stream != call.streamID {
 		panic(fmt.Sprintf("call has incorrect streamID: got %d expected %d", call.streamID, head.stream))
 	}
 
-	framer := newFramer(c.compressor, c.version)
-
-	err = framer.readFrame(c, &head)
+	err = call.framer.readFrame(&head)
 	if err != nil {
 		// only net errors should cause the connection to be closed. Though
 		// cassandra returning corrupt frames will be returned here as well.
@@ -719,7 +686,7 @@ func (c *Conn) recv(ctx context.Context) error {
 	// we either, return a response to the caller, the caller timedout, or the
 	// connection has closed. Either way we should never block indefinatly here
 	select {
-	case call.resp <- callResp{framer: framer, err: err}:
+	case call.resp <- err:
 	case <-call.timeout:
 		c.releaseStream(call)
 	case <-ctx.Done():
@@ -734,14 +701,6 @@ func (c *Conn) releaseStream(call *callReq) {
 	}
 
 	c.streams.Clear(call.streamID)
-
-	if call.streamObserverContext != nil {
-		call.streamObserverEndOnce.Do(func() {
-			call.streamObserverContext.StreamFinished(ObservedStream{
-				Host: c.host,
-			})
-		})
-	}
 }
 
 func (c *Conn) handleTimeout() {
@@ -751,259 +710,152 @@ func (c *Conn) handleTimeout() {
 }
 
 type callReq struct {
-	// resp will receive the frame that was sent as a response to this stream.
-	resp     chan callResp
-	timeout  chan struct{} // indicates to recv() that a call has timed out
+	// could use a waitgroup but this allows us to do timeouts on the read/send
+	resp     chan error
+	framer   *framer
+	timeout  chan struct{} // indicates to recv() that a call has timedout
 	streamID int           // current stream in use
 
 	timer *time.Timer
-
-	// streamObserverContext is notified about events regarding this stream
-	streamObserverContext StreamObserverContext
-
-	// streamObserverEndOnce ensures that either StreamAbandoned or StreamFinished is called,
-	// but not both.
-	streamObserverEndOnce sync.Once
 }
 
-type callResp struct {
-	// framer is the response frame.
-	// May be nil if err is not nil.
-	framer *framer
-	// err is error encountered, if any.
-	err error
-}
-
-// contextWriter is like io.Writer, but takes context as well.
-type contextWriter interface {
-	// writeContext writes p to the connection.
-	//
-	// If ctx is canceled before we start writing p (e.g. during waiting while another write is currently in progress),
-	// p is not written and ctx.Err() is returned. Context is ignored after we start writing p (i.e. we don't interrupt
-	// blocked writes that are in progress) so that we always either write the full frame or not write it at all.
-	//
-	// It returns the number of bytes written from p (0 <= n <= len(p)) and any error that caused the write to stop
-	// early. writeContext must return a non-nil error if it returns n < len(p). writeContext must not modify the
-	// data in p, even temporarily.
-	writeContext(ctx context.Context, p []byte) (n int, err error)
-}
-
-type deadlineWriter interface {
-	SetWriteDeadline(time.Time) error
-	io.Writer
-}
-
-type deadlineContextWriter struct {
-	w       deadlineWriter
-	timeout time.Duration
-	// semaphore protects critical section for SetWriteDeadline/Write.
-	// It is a channel with capacity 1.
-	semaphore chan struct{}
-
-	// quit closed once the connection is closed.
-	quit chan struct{}
-}
-
-// writeContext implements contextWriter.
-func (c *deadlineContextWriter) writeContext(ctx context.Context, p []byte) (int, error) {
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	case <-c.quit:
-		return 0, ErrConnectionClosed
-	case c.semaphore <- struct{}{}:
-		// acquired
+type deadlineWriter struct {
+	w interface {
+		SetWriteDeadline(time.Time) error
+		io.Writer
 	}
+	timeout time.Duration
+}
 
-	defer func() {
-		// release
-		<-c.semaphore
-	}()
-
+func (c *deadlineWriter) Write(p []byte) (int, error) {
 	if c.timeout > 0 {
-		err := c.w.SetWriteDeadline(time.Now().Add(c.timeout))
-		if err != nil {
-			return 0, err
-		}
+		c.w.SetWriteDeadline(time.Now().Add(c.timeout))
 	}
 	return c.w.Write(p)
 }
 
-func newWriteCoalescer(conn deadlineWriter, writeTimeout, coalesceDuration time.Duration,
-	quit <-chan struct{}) *writeCoalescer {
+func newWriteCoalescer(conn net.Conn, timeout time.Duration, d time.Duration, quit <-chan struct{}) *writeCoalescer {
 	wc := &writeCoalescer{
-		writeCh: make(chan writeRequest),
+		writeCh: make(chan struct{}), // TODO: could this be sync?
+		cond:    sync.NewCond(&sync.Mutex{}),
 		c:       conn,
 		quit:    quit,
-		timeout: writeTimeout,
+		timeout: timeout,
 	}
-	go wc.writeFlusher(coalesceDuration)
+	go wc.writeFlusher(d)
 	return wc
 }
 
 type writeCoalescer struct {
-	c deadlineWriter
-
-	mu sync.Mutex
+	c net.Conn
 
 	quit    <-chan struct{}
-	writeCh chan writeRequest
+	writeCh chan struct{}
+	running bool
 
+	// cond waits for the buffer to be flushed
+	cond    *sync.Cond
+	buffers net.Buffers
 	timeout time.Duration
 
-	testEnqueuedHook func()
-	testFlushedHook  func()
-}
-
-type writeRequest struct {
-	// resultChan is a channel (with buffer size 1) where to send results of the write.
-	resultChan chan<- writeResult
-	// data to write.
-	data []byte
-}
-
-type writeResult struct {
-	n   int
+	// result of the write
 	err error
 }
 
-// writeContext implements contextWriter.
-func (w *writeCoalescer) writeContext(ctx context.Context, p []byte) (int, error) {
-	resultChan := make(chan writeResult, 1)
-	wr := writeRequest{
-		resultChan: resultChan,
-		data:       p,
+func (w *writeCoalescer) flushLocked() {
+	w.running = false
+	if len(w.buffers) == 0 {
+		return
 	}
 
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	case <-w.quit:
-		return 0, io.EOF // TODO: better error here?
-	case w.writeCh <- wr:
-		// enqueued for writing
+	if w.timeout > 0 {
+		w.c.SetWriteDeadline(time.Now().Add(w.timeout))
 	}
 
-	if w.testEnqueuedHook != nil {
-		w.testEnqueuedHook()
+	// Given we are going to do a fanout n is useless and according to
+	// the docs WriteTo should return 0 and err or bytes written and
+	// no error.
+	_, w.err = w.buffers.WriteTo(w.c)
+	if w.err != nil {
+		w.buffers = nil
+	}
+	w.cond.Broadcast()
+}
+
+func (w *writeCoalescer) flush() {
+	w.cond.L.Lock()
+	w.flushLocked()
+	w.cond.L.Unlock()
+}
+
+func (w *writeCoalescer) stop() {
+	w.cond.L.Lock()
+	defer w.cond.L.Unlock()
+
+	w.flushLocked()
+	// nil the channel out sends block forever on it
+	// instead of closing which causes a send on closed channel
+	// panic.
+	w.writeCh = nil
+}
+
+func (w *writeCoalescer) Write(p []byte) (int, error) {
+	w.cond.L.Lock()
+
+	if !w.running {
+		select {
+		case w.writeCh <- struct{}{}:
+			w.running = true
+		case <-w.quit:
+			w.cond.L.Unlock()
+			return 0, io.EOF // TODO: better error here?
+		}
 	}
 
-	result := <-resultChan
-	return result.n, result.err
+	w.buffers = append(w.buffers, p)
+	for len(w.buffers) != 0 {
+		w.cond.Wait()
+	}
+
+	err := w.err
+	w.cond.L.Unlock()
+
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 func (w *writeCoalescer) writeFlusher(interval time.Duration) {
 	timer := time.NewTimer(interval)
 	defer timer.Stop()
+	defer w.stop()
 
 	if !timer.Stop() {
 		<-timer.C
 	}
 
-	w.writeFlusherImpl(timer.C, func() { timer.Reset(interval) })
-}
-
-func (w *writeCoalescer) writeFlusherImpl(timerC <-chan time.Time, resetTimer func()) {
-	running := false
-
-	var buffers net.Buffers
-	var resultChans []chan<- writeResult
-
 	for {
+		// wait for a write to start the flush loop
 		select {
-		case req := <-w.writeCh:
-			buffers = append(buffers, req.data)
-			resultChans = append(resultChans, req.resultChan)
-			if !running {
-				// Start timer on first write.
-				resetTimer()
-				running = true
-			}
+		case <-w.writeCh:
 		case <-w.quit:
-			result := writeResult{
-				n:   0,
-				err: io.EOF, // TODO: better error here?
-			}
-			// Unblock whoever was waiting.
-			for _, resultChan := range resultChans {
-				// resultChan has capacity 1, so it does not block.
-				resultChan <- result
-			}
-			return
-		case <-timerC:
-			running = false
-			w.flush(resultChans, buffers)
-			buffers = nil
-			resultChans = nil
-			if w.testFlushedHook != nil {
-				w.testFlushedHook()
-			}
-		}
-	}
-}
-
-func (w *writeCoalescer) flush(resultChans []chan<- writeResult, buffers net.Buffers) {
-	// Flush everything we have so far.
-	if w.timeout > 0 {
-		err := w.c.SetWriteDeadline(time.Now().Add(w.timeout))
-		if err != nil {
-			for i := range resultChans {
-				resultChans[i] <- writeResult{
-					n:   0,
-					err: err,
-				}
-			}
 			return
 		}
-	}
-	// Copy buffers because WriteTo modifies buffers in-place.
-	buffers2 := make(net.Buffers, len(buffers))
-	copy(buffers2, buffers)
-	n, err := buffers2.WriteTo(w.c)
-	// Writes of bytes before n succeeded, writes of bytes starting from n failed with err.
-	// Use n as remaining byte counter.
-	for i := range buffers {
-		if int64(len(buffers[i])) <= n {
-			// this buffer was fully written.
-			resultChans[i] <- writeResult{
-				n:   len(buffers[i]),
-				err: nil,
-			}
-			n -= int64(len(buffers[i]))
-		} else {
-			// this buffer was not (fully) written.
-			resultChans[i] <- writeResult{
-				n:   int(n),
-				err: err,
-			}
-			n = 0
+
+		timer.Reset(interval)
+
+		select {
+		case <-w.quit:
+			return
+		case <-timer.C:
 		}
+
+		w.flush()
 	}
 }
 
-// addCall attempts to add a call to c.calls.
-// It fails with error if the connection already started closing or if a call for the given stream
-// already exists.
-func (c *Conn) addCall(call *callReq) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return ErrConnectionClosed
-	}
-	existingCall := c.calls[call.streamID]
-	if existingCall != nil {
-		return fmt.Errorf("attempting to use stream already in use: %d -> %d", call.streamID,
-			existingCall.streamID)
-	}
-	c.calls[call.streamID] = call
-	return nil
-}
-
-func (c *Conn) exec(ctx context.Context, req frameBuilder, tracer Tracer) (*framer, error) {
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, ctxErr
-	}
-
+func (c *Conn) exec(ctx context.Context, req frameWriter, tracer Tracer) (*framer, error) {
 	// TODO: move tracer onto conn
 	stream, ok := c.streams.GetStream()
 	if !ok {
@@ -1011,79 +863,42 @@ func (c *Conn) exec(ctx context.Context, req frameBuilder, tracer Tracer) (*fram
 	}
 
 	// resp is basically a waiting semaphore protecting the framer
-	framer := newFramer(c.compressor, c.version)
+	framer := newFramer(c, c, c.compressor, c.version)
 
 	call := &callReq{
+		framer:   framer,
 		timeout:  make(chan struct{}),
 		streamID: stream,
-		resp:     make(chan callResp),
+		resp:     make(chan error),
 	}
 
-	if c.streamObserver != nil {
-		call.streamObserverContext = c.streamObserver.StreamContext(ctx)
+	c.mu.Lock()
+	existingCall := c.calls[stream]
+	if existingCall == nil {
+		c.calls[stream] = call
 	}
+	c.mu.Unlock()
 
-	if err := c.addCall(call); err != nil {
-		return nil, err
+	if existingCall != nil {
+		return nil, fmt.Errorf("attempting to use stream already in use: %d -> %d", stream, existingCall.streamID)
 	}
-
-	// After this point, we need to either read from call.resp or close(call.timeout)
-	// since closeWithError can try to write a connection close error to call.resp.
-	// If we don't close(call.timeout) or read from call.resp, closeWithError can deadlock.
 
 	if tracer != nil {
 		framer.trace()
 	}
 
-	if call.streamObserverContext != nil {
-		call.streamObserverContext.StreamStarted(ObservedStream{
-			Host: c.host,
-		})
-	}
-
-	err := req.buildFrame(framer, stream)
-	if err != nil {
-		// closeWithError will block waiting for this stream to either receive a response
-		// or for us to timeout.
-		close(call.timeout)
-		// We failed to serialize the frame into a buffer.
-		// This should not affect the connection as we didn't write anything. We just free the current call.
-		c.mu.Lock()
-		if !c.closed {
-			delete(c.calls, call.streamID)
-		}
-		c.mu.Unlock()
-		// We need to release the stream after we remove the call from c.calls, otherwise the existingCall != nil
-		// check above could fail.
-		c.releaseStream(call)
-		return nil, err
-	}
-
-	n, err := c.w.writeContext(ctx, framer.buf)
+	err := req.writeFrame(framer, stream)
 	if err != nil {
 		// closeWithError will block waiting for this stream to either receive a response
 		// or for us to timeout, close the timeout chan here. Im not entirely sure
 		// but we should not get a response after an error on the write side.
 		close(call.timeout)
-		if (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) && n == 0 {
-			// We have not started to write this frame.
-			// Release the stream as no response can come from the server on the stream.
-			c.mu.Lock()
-			if !c.closed {
-				delete(c.calls, call.streamID)
-			}
-			c.mu.Unlock()
-			// We need to release the stream after we remove the call from c.calls, otherwise the existingCall != nil
-			// check above could fail.
-			c.releaseStream(call)
-		} else {
-			// I think this is the correct thing to do, im not entirely sure. It is not
-			// ideal as readers might still get some data, but they probably wont.
-			// Here we need to be careful as the stream is not available and if all
-			// writes just timeout or fail then the pool might use this connection to
-			// send a frame on, with all the streams used up and not returned.
-			c.closeWithError(err)
-		}
+		// I think this is the correct thing to do, im not entirely sure. It is not
+		// ideal as readers might still get some data, but they probably wont.
+		// Here we need to be careful as the stream is not available and if all
+		// writes just timeout or fail then the pool might use this connection to
+		// send a frame on, with all the streams used up and not returned.
+		c.closeWithError(err)
 		return nil, err
 	}
 
@@ -1111,9 +926,9 @@ func (c *Conn) exec(ctx context.Context, req frameBuilder, tracer Tracer) (*fram
 	}
 
 	select {
-	case resp := <-call.resp:
+	case err := <-call.resp:
 		close(call.timeout)
-		if resp.err != nil {
+		if err != nil {
 			if !c.Closed() {
 				// if the connection is closed then we cant release the stream,
 				// this is because the request is still outstanding and we have
@@ -1121,21 +936,8 @@ func (c *Conn) exec(ctx context.Context, req frameBuilder, tracer Tracer) (*fram
 				// connection to close.
 				c.releaseStream(call)
 			}
-			return nil, resp.err
+			return nil, err
 		}
-		// dont release the stream if detect a timeout as another request can reuse
-		// that stream and get a response for the old request, which we have no
-		// easy way of detecting.
-		//
-		// Ensure that the stream is not released if there are potentially outstanding
-		// requests on the stream to prevent nil pointer dereferences in recv().
-		defer c.releaseStream(call)
-
-		if v := resp.framer.header.version.version(); v != c.version {
-			return nil, NewErrProtocol("unexpected protocol version in response: got %d expected %d", v, c.version)
-		}
-
-		return resp.framer, nil
 	case <-timeoutCh:
 		close(call.timeout)
 		c.handleTimeout()
@@ -1144,55 +946,22 @@ func (c *Conn) exec(ctx context.Context, req frameBuilder, tracer Tracer) (*fram
 		close(call.timeout)
 		return nil, ctx.Err()
 	case <-c.ctx.Done():
-		close(call.timeout)
 		return nil, ErrConnectionClosed
 	}
-}
 
-// ObservedStream observes a single request/response stream.
-type ObservedStream struct {
-	// Host of the connection used to send the stream.
-	Host *HostInfo
-}
+	// dont release the stream if detect a timeout as another request can reuse
+	// that stream and get a response for the old request, which we have no
+	// easy way of detecting.
+	//
+	// Ensure that the stream is not released if there are potentially outstanding
+	// requests on the stream to prevent nil pointer dereferences in recv().
+	defer c.releaseStream(call)
 
-// StreamObserver is notified about request/response pairs.
-// Streams are created for executing queries/batches or
-// internal requests to the database and might live longer than
-// execution of the query - the stream is still tracked until
-// response arrives so that stream IDs are not reused.
-type StreamObserver interface {
-	// StreamContext is called before creating a new stream.
-	// ctx is context passed to Session.Query / Session.Batch,
-	// but might also be an internal context (for example
-	// for internal requests that use control connection).
-	// StreamContext might return nil if it is not interested
-	// in the details of this stream.
-	// StreamContext is called before the stream is created
-	// and the returned StreamObserverContext might be discarded
-	// without any methods called on the StreamObserverContext if
-	// creation of the stream fails.
-	// Note that if you don't need to track per-stream data,
-	// you can always return the same StreamObserverContext.
-	StreamContext(ctx context.Context) StreamObserverContext
-}
+	if v := framer.header.version.version(); v != c.version {
+		return nil, NewErrProtocol("unexpected protocol version in response: got %d expected %d", v, c.version)
+	}
 
-// StreamObserverContext is notified about state of a stream.
-// A stream is started every time a request is written to the server
-// and is finished when a response is received.
-// It is abandoned when the underlying network connection is closed
-// before receiving a response.
-type StreamObserverContext interface {
-	// StreamStarted is called when the stream is started.
-	// This happens just before a request is written to the wire.
-	StreamStarted(observedStream ObservedStream)
-
-	// StreamAbandoned is called when we stop waiting for response.
-	// This happens when the underlying network connection is closed.
-	// StreamFinished won't be called if StreamAbandoned is.
-	StreamAbandoned(observedStream ObservedStream)
-
-	// StreamFinished is called when we receive a response for the stream.
-	StreamFinished(observedStream ObservedStream)
+	return framer, nil
 }
 
 type preparedStatment struct {
@@ -1209,7 +978,7 @@ type inflightPrepare struct {
 }
 
 func (c *Conn) prepareStatement(ctx context.Context, stmt string, tracer Tracer) (*preparedStatment, error) {
-	stmtCacheKey := c.session.stmtsLRU.keyFor(c.host.HostID(), c.currentKeyspace, stmt)
+	stmtCacheKey := c.session.stmtsLRU.keyFor(c.addr, c.currentKeyspace, stmt)
 	flight, ok := c.session.stmtsLRU.execIfMissing(stmtCacheKey, func(lru *lru.Cache) *inflightPrepare {
 		flight := &inflightPrepare{
 			done: make(chan struct{}),
@@ -1324,7 +1093,7 @@ func (c *Conn) executeQuery(ctx context.Context, qry *Query) *Iter {
 	}
 
 	var (
-		frame frameBuilder
+		frame frameWriter
 		info  *preparedStatment
 	)
 
@@ -1415,16 +1184,12 @@ func (c *Conn) executeQuery(ctx context.Context, qry *Query) *Iter {
 		}
 
 		if x.meta.morePages() && !qry.disableAutoPage {
-			newQry := new(Query)
-			*newQry = *qry
-			newQry.pageState = copyBytes(x.meta.pagingState)
-			newQry.metrics = &queryMetrics{m: make(map[string]*hostMetrics)}
-
 			iter.next = &nextIter{
-				qry: newQry,
+				qry: qry,
 				pos: int((1 - qry.prefetch) * float64(x.numRows)),
 			}
 
+			iter.next.qry.pageState = copyBytes(x.meta.pagingState)
 			if iter.next.pos < 1 {
 				iter.next.pos = 1
 			}
@@ -1436,15 +1201,14 @@ func (c *Conn) executeQuery(ctx context.Context, qry *Query) *Iter {
 	case *schemaChangeKeyspace, *schemaChangeTable, *schemaChangeFunction, *schemaChangeAggregate, *schemaChangeType:
 		iter := &Iter{framer: framer}
 		if err := c.awaitSchemaAgreement(ctx); err != nil {
-			// TODO: should have this behind a flag
-			c.logger.Println(err)
+			level.Warn(c.logger).Log("msg", "failed to reach scheme agreement", "error", err)
 		}
 		// dont return an error from this, might be a good idea to give a warning
 		// though. The impact of this returning an error would be that the cluster
 		// is not consistent with regards to its schema.
 		return iter
 	case *RequestErrUnprepared:
-		stmtCacheKey := c.session.stmtsLRU.keyFor(c.host.HostID(), c.currentKeyspace, qry.stmt)
+		stmtCacheKey := c.session.stmtsLRU.keyFor(c.addr, c.currentKeyspace, qry.stmt)
 		c.session.stmtsLRU.evictPreparedID(stmtCacheKey, x.StatementId)
 		return c.executeQuery(ctx, qry)
 	case error:
@@ -1465,9 +1229,7 @@ func (c *Conn) Pick(qry *Query) *Conn {
 }
 
 func (c *Conn) Closed() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.closed
+	return atomic.LoadInt32(&c.closed) == 1
 }
 
 func (c *Conn) Address() string {
@@ -1528,7 +1290,7 @@ func (c *Conn) executeBatch(ctx context.Context, batch *Batch) *Iter {
 		b := &req.statements[i]
 
 		if len(entry.Args) > 0 || entry.binding != nil {
-			info, err := c.prepareStatement(batch.Context(), entry.Stmt, batch.trace)
+			info, err := c.prepareStatement(batch.Context(), entry.Stmt, nil)
 			if err != nil {
 				return &Iter{err: err}
 			}
@@ -1570,7 +1332,8 @@ func (c *Conn) executeBatch(ctx context.Context, batch *Batch) *Iter {
 		}
 	}
 
-	framer, err := c.exec(batch.Context(), req, batch.trace)
+	// TODO: should batch support tracing?
+	framer, err := c.exec(batch.Context(), req, nil)
 	if err != nil {
 		return &Iter{err: err}
 	}
@@ -1580,17 +1343,13 @@ func (c *Conn) executeBatch(ctx context.Context, batch *Batch) *Iter {
 		return &Iter{err: err, framer: framer}
 	}
 
-	if len(framer.traceID) > 0 && batch.trace != nil {
-		batch.trace.Trace(framer.traceID)
-	}
-
 	switch x := resp.(type) {
 	case *resultVoidFrame:
 		return &Iter{}
 	case *RequestErrUnprepared:
 		stmt, found := stmts[string(x.StatementId)]
 		if found {
-			key := c.session.stmtsLRU.keyFor(c.host.HostID(), c.currentKeyspace, stmt)
+			key := c.session.stmtsLRU.keyFor(c.addr, c.currentKeyspace, stmt)
 			c.session.stmtsLRU.evictPreparedID(key, x.StatementId)
 		}
 		return c.executeBatch(ctx, batch)
@@ -1610,17 +1369,16 @@ func (c *Conn) executeBatch(ctx context.Context, batch *Batch) *Iter {
 }
 
 func (c *Conn) query(ctx context.Context, statement string, values ...interface{}) (iter *Iter) {
-	q := c.session.Query(statement, values...).Consistency(One).Trace(nil)
+	q := c.session.Query(statement, values...).Consistency(One)
+	q.trace = nil
 	q.skipPrepare = true
 	q.disableSkipMetadata = true
-	// we want to keep the query on this connection
-	q.conn = c
 	return c.executeQuery(ctx, q)
 }
 
 func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 	const (
-		peerSchemasTemplate = "SELECT * FROM %s"
+		peerSchemas  = "SELECT * FROM system.peers"
 		localSchemas = "SELECT schema_version FROM system.local WHERE key='local'"
 	)
 
@@ -1628,11 +1386,8 @@ func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 	var schemaVersion string
 
 	endDeadline := time.Now().Add(c.session.cfg.MaxWaitSchemaAgreement)
-
-	queryString := fmt.Sprintf(peerSchemasTemplate, peersTableName(c.host.version))
-
 	for time.Now().Before(endDeadline) {
-		iter := c.query(ctx, queryString)
+		iter := c.query(ctx, peerSchemas)
 
 		versions = make(map[string]struct{})
 
@@ -1647,7 +1402,7 @@ func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 				goto cont
 			}
 			if !isValidPeer(host) || host.schemaVersion == "" {
-				c.logger.Printf("invalid peer or peer with empty schema_version: peer=%q", host)
+				level.Error(c.logger).Log("msg", "invalid peer or peer with empty schema_version", "peer", host)
 				continue
 			}
 

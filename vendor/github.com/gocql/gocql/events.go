@@ -4,9 +4,14 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 type eventDebouncer struct {
+	logger log.Logger
+
 	name   string
 	timer  *time.Timer
 	mu     sync.Mutex
@@ -14,17 +19,15 @@ type eventDebouncer struct {
 
 	callback func([]frame)
 	quit     chan struct{}
-
-	logger StdLogger
 }
 
-func newEventDebouncer(name string, eventHandler func([]frame), logger StdLogger) *eventDebouncer {
+func newEventDebouncer(logger log.Logger, name string, eventHandler func([]frame)) *eventDebouncer {
 	e := &eventDebouncer{
+		logger:   logger,
 		name:     name,
 		quit:     make(chan struct{}),
 		timer:    time.NewTimer(eventDebounceTime),
 		callback: eventHandler,
-		logger:   logger,
 	}
 	e.timer.Stop()
 	go e.flusher()
@@ -76,7 +79,7 @@ func (e *eventDebouncer) debounce(frame frame) {
 	if len(e.events) < eventBufferSize {
 		e.events = append(e.events, frame)
 	} else {
-		e.logger.Printf("%s: buffer full, dropping event frame: %s", e.name, frame)
+		level.Info(e.logger).Log("msg", "buffer full, dropping event frame", "name", e.name, "frame", frame)
 	}
 
 	e.mu.Unlock()
@@ -85,14 +88,11 @@ func (e *eventDebouncer) debounce(frame frame) {
 func (s *Session) handleEvent(framer *framer) {
 	frame, err := framer.parseFrame()
 	if err != nil {
-		s.logger.Printf("gocql: unable to parse event frame: %v\n", err)
+		level.Error(s.logger).Log("msg", "unable to parse event frame", "error", err)
 		return
 	}
 
-	if gocqlDebug {
-		s.logger.Printf("gocql: handling frame: %v\n", frame)
-	}
-
+	level.Debug(s.logger).Log("msg", "handling frame", "frame", frame)
 	switch f := frame.(type) {
 	case *schemaChangeKeyspace, *schemaChangeFunction,
 		*schemaChangeTable, *schemaChangeAggregate, *schemaChangeType:
@@ -101,7 +101,7 @@ func (s *Session) handleEvent(framer *framer) {
 	case *topologyChangeEventFrame, *statusChangeEventFrame:
 		s.nodeEvents.debounce(frame)
 	default:
-		s.logger.Printf("gocql: invalid event frame (%T): %v\n", f, f)
+		level.Error(s.logger).Log("msg", "invalid event frame", "frame", f)
 	}
 }
 
@@ -160,57 +160,57 @@ func (s *Session) handleNodeEvent(frames []frame) {
 	}
 
 	for _, f := range events {
-		if gocqlDebug {
-			s.logger.Printf("gocql: dispatching event: %+v\n", f)
-		}
+		level.Debug(s.logger).Log("msg", "dispatching event", "event", f)
 
-		// ignore events we received if they were disabled
-		// see https://github.com/gocql/gocql/issues/1591
 		switch f.change {
 		case "NEW_NODE":
-			if !s.cfg.Events.DisableTopologyEvents {
-				s.handleNewNode(f.host, f.port)
-			}
+			s.handleNewNode(f.host, f.port, true)
 		case "REMOVED_NODE":
-			if !s.cfg.Events.DisableTopologyEvents {
-				s.handleRemovedNode(f.host, f.port)
-			}
+			s.handleRemovedNode(f.host, f.port)
 		case "MOVED_NODE":
 		// java-driver handles this, not mentioned in the spec
 		// TODO(zariel): refresh token map
 		case "UP":
-			if !s.cfg.Events.DisableNodeStatusEvents {
-				s.handleNodeUp(f.host, f.port)
-			}
+			s.handleNodeUp(f.host, f.port, true)
 		case "DOWN":
-			if !s.cfg.Events.DisableNodeStatusEvents {
-				s.handleNodeDown(f.host, f.port)
-			}
+			s.handleNodeDown(f.host, f.port)
 		}
 	}
 }
 
-func (s *Session) addNewNode(hostID UUID) {
-	// Get host info and apply any filters to the host
-	hostInfo, err := s.hostSource.getHostInfo(hostID)
-	if err != nil {
-		s.logger.Printf("gocql: events: unable to fetch host info for hostID: %q: %v\n", hostID, err)
-		return
-	} else if hostInfo == nil {
-		// ignore if it's null because we couldn't find it
+func (s *Session) addNewNode(host *HostInfo) {
+	if s.cfg.filterHost(host) {
 		return
 	}
 
-	if t := hostInfo.Version().nodeUpDelay(); t > 0 {
+	host.setState(NodeUp)
+	s.pool.addHost(host)
+	s.policy.AddHost(host)
+}
+
+func (s *Session) handleNewNode(ip net.IP, port int, waitForBinary bool) {
+	level.Info(s.logger).Log("msg", "Session.handleNewNode", "ip", ip.String(), "port", port)
+
+	ip, port = s.cfg.translateAddressPort(ip, port)
+
+	// Get host info and apply any filters to the host
+	hostInfo, err := s.hostSource.getHostInfo(ip, port)
+	if err != nil {
+		level.Error(s.logger).Log("msg", "events: unable to fetch host info", "ip", ip.String(), "port", port, "error", err)
+		return
+	} else if hostInfo == nil {
+		// If hostInfo is nil, this host was filtered out by cfg.HostFilter
+		return
+	}
+
+	if t := hostInfo.Version().nodeUpDelay(); t > 0 && waitForBinary {
 		time.Sleep(t)
 	}
 
 	// should this handle token moving?
 	hostInfo = s.ring.addOrUpdate(hostInfo)
 
-	if !s.cfg.filterHost(hostInfo) {
-		s.startPoolFill(hostInfo)
-	}
+	s.addNewNode(hostInfo)
 
 	if s.control != nil && !s.cfg.IgnorePeerAddr {
 		// TODO(zariel): debounce ring refresh
@@ -218,97 +218,68 @@ func (s *Session) addNewNode(hostID UUID) {
 	}
 }
 
-func (s *Session) handleNewNode(ip net.IP, port int) {
-	if gocqlDebug {
-		s.logger.Printf("gocql: Session.handleNewNode: %s:%d\n", ip.String(), port)
-	}
-
-	host, ok := s.ring.getHostByIP(ip.String())
-	if ok && host.IsUp() {
-		return
-	}
-
-	if err := s.hostSource.refreshRing(); err != nil && gocqlDebug {
-		s.logger.Printf("gocql: Session.handleNewNode: failed to refresh ring: %w\n", err.Error())
-	}
-}
-
 func (s *Session) handleRemovedNode(ip net.IP, port int) {
-	if gocqlDebug {
-		s.logger.Printf("gocql: Session.handleRemovedNode: %s:%d\n", ip.String(), port)
-	}
+	level.Debug(s.logger).Log("msg", "Session.handleRemovedNode", "ip", ip.String(), "port", port)
+
+	ip, port = s.cfg.translateAddressPort(ip, port)
 
 	// we remove all nodes but only add ones which pass the filter
-	host, ok := s.ring.getHostByIP(ip.String())
-	hostID := host.HostID()
-	if ok {
-		s.ring.removeHost(hostID)
-
-		host.setState(NodeDown)
-		if !s.cfg.filterHost(host) {
-			s.policy.RemoveHost(host)
-			s.pool.removeHost(hostID)
-		}
-
+	host := s.ring.getHost(ip)
+	if host == nil {
+		host = &HostInfo{connectAddress: ip, port: port}
 	}
 
-	if err := s.hostSource.refreshRing(); err != nil && gocqlDebug {
-		s.logger.Println("failed to refresh ring:", err)
-	}
-}
-
-func (s *Session) handleNodeUp(eventIp net.IP, eventPort int) {
-	if gocqlDebug {
-		s.logger.Printf("gocql: Session.handleNodeUp: %s:%d\n", eventIp.String(), eventPort)
-	}
-
-	host, ok := s.ring.getHostByIP(eventIp.String())
-	if !ok {
+	if s.cfg.HostFilter != nil && !s.cfg.HostFilter.Accept(host) {
 		return
 	}
 
-	if s.cfg.filterHost(host) {
+	host.setState(NodeDown)
+	s.policy.RemoveHost(host)
+	s.pool.removeHost(ip)
+	s.ring.removeHost(ip)
+
+	if !s.cfg.IgnorePeerAddr {
+		s.hostSource.refreshRing()
+	}
+}
+
+func (s *Session) handleNodeUp(eventIp net.IP, eventPort int, waitForBinary bool) {
+	level.Info(s.logger).Log("msg", "Session.handleNodeUp", "ip", eventIp.String(), "port", eventPort)
+
+	ip, _ := s.cfg.translateAddressPort(eventIp, eventPort)
+
+	host := s.ring.getHost(ip)
+	if host == nil {
+		// TODO(zariel): avoid the need to translate twice in this
+		// case
+		s.handleNewNode(eventIp, eventPort, waitForBinary)
 		return
 	}
 
-	if d := host.Version().nodeUpDelay(); d > 0 {
-		time.Sleep(d)
-	}
-	s.startPoolFill(host)
-}
-
-func (s *Session) startPoolFill(host *HostInfo) {
-	// we let the pool call handleNodeConnected to change the host state
-	s.pool.addHost(host)
-	s.policy.AddHost(host)
-}
-
-func (s *Session) handleNodeConnected(host *HostInfo) {
-	if gocqlDebug {
-		s.logger.Printf("gocql: Session.handleNodeConnected: %s:%d\n", host.ConnectAddress(), host.Port())
+	if s.cfg.HostFilter != nil && !s.cfg.HostFilter.Accept(host) {
+		return
 	}
 
-	host.setState(NodeUp)
-
-	if !s.cfg.filterHost(host) {
-		s.policy.HostUp(host)
+	if t := host.Version().nodeUpDelay(); t > 0 && waitForBinary {
+		time.Sleep(t)
 	}
+
+	s.addNewNode(host)
 }
 
 func (s *Session) handleNodeDown(ip net.IP, port int) {
-	if gocqlDebug {
-		s.logger.Printf("gocql: Session.handleNodeDown: %s:%d\n", ip.String(), port)
+	level.Info(s.logger).Log("msg", "Session.handleNodeDown", "ip", ip.String(), "port", port)
+
+	host := s.ring.getHost(ip)
+	if host == nil {
+		host = &HostInfo{connectAddress: ip, port: port}
 	}
 
-	host, ok := s.ring.getHostByIP(ip.String())
-	if ok {
-		host.setState(NodeDown)
-		if s.cfg.filterHost(host) {
-			return
-		}
-
-		s.policy.HostDown(host)
-		hostID := host.HostID()
-		s.pool.removeHost(hostID)
+	if s.cfg.HostFilter != nil && !s.cfg.HostFilter.Accept(host) {
+		return
 	}
+
+	host.setState(NodeDown)
+	s.policy.HostDown(host)
+	s.pool.hostDown(ip)
 }

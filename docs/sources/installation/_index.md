@@ -13,6 +13,10 @@ There are several methods of installing Loki and Promtail:
 - [Install and run locally](local/)
 - [Install from source](install-from-source/)
 
+The [Sizing Tool](sizing/) can be used to determine the proper cluster sizing
+given an expected ingestion rate and query performance.  It targets the Helm
+installation on Kubernetes.
+
 ## General process
 
 In order to run Loki, you must:

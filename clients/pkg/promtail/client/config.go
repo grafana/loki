@@ -25,8 +25,8 @@ const (
 type Config struct {
 	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
-	BatchWait time.Duration
-	BatchSize int
+	BatchWait time.Duration `yaml:"batchwait"`
+	BatchSize int           `yaml:"batchsize"`
 
 	Client config.HTTPClientConfig `yaml:",inline"`
 
@@ -38,6 +38,11 @@ type Config struct {
 	// The tenant ID to use when pushing logs to Loki (empty string means
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
+
+	// When enabled, Promtail will not retry batches that get a
+	// 429 'Too Many Requests' response from the distributor. Helps
+	// prevent HOL blocking in multitenant deployments.
+	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
 
 	// deprecated use StreamLagLabels from config.Config instead
 	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
@@ -57,6 +62,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2) (deprecated).")
 
 	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki (deprecated).")
+	f.BoolVar(&c.DropRateLimitedBatches, prefix+"client.drop-rate-limited-batches", false, "Do not retry batches that have been rate limited by Loki (deprecated).")
 }
 
 // RegisterFlags registers flags.

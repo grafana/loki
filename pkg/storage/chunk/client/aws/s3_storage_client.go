@@ -76,7 +76,7 @@ type S3Config struct {
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
-	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
+	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }

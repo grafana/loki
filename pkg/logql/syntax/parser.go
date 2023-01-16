@@ -120,14 +120,10 @@ func validateExpr(expr Expr) error {
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func validateMatchers(matchers []*labels.Matcher) error {
-	if len(matchers) == 0 {
-		return nil
-	}
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
 		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
-
 	return nil
 }
 
@@ -171,11 +167,27 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 
 		return validateSampleExpr(e.RHS)
-	case *LiteralExpr:
+	case *LiteralExpr, *VectorExpr:
 		return nil
+	case *VectorAggregationExpr:
+		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
+			if err := validateSortGrouping(e.Grouping); err != nil {
+				return err
+			}
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		return validateMatchers(expr.Selector().Matchers())
 	}
+}
+
+// validateSortGrouping prevent by|without groupings on sort operations.
+// This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
+func validateSortGrouping(grouping *Grouping) error {
+	if grouping != nil && len(grouping.Groups) > 0 {
+		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+	}
+	return nil
 }
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
