@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"math"
 	"math/rand"
 	"net/http"
@@ -19,13 +20,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/dskit/kv"
-	shardUtil "github.com/grafana/dskit/ring/shard"
-	"github.com/grafana/dskit/ring/util"
-	"github.com/grafana/dskit/services"
-
 	"github.com/grafana/dskit/flagext"
 	dsmath "github.com/grafana/dskit/internal/math"
+	"github.com/grafana/dskit/internal/slices"
+	"github.com/grafana/dskit/kv"
+	shardUtil "github.com/grafana/dskit/ring/shard"
+	"github.com/grafana/dskit/services"
 )
 
 const (
@@ -291,7 +291,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	// Filter out all instances belonging to excluded zones.
 	if len(r.cfg.ExcludedZones) > 0 {
 		for instanceID, instance := range ringDesc.Ingesters {
-			if util.StringsContain(r.cfg.ExcludedZones, instance.Zone) {
+			if slices.Contains(r.cfg.ExcludedZones, instance.Zone) {
 				delete(ringDesc.Ingesters, instanceID)
 			}
 		}
@@ -364,13 +364,13 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		}
 
 		// We want n *distinct* instances && distinct zones.
-		if util.StringsContain(distinctHosts, info.InstanceID) {
+		if slices.Contains(distinctHosts, info.InstanceID) {
 			continue
 		}
 
 		// Ignore if the instances don't have a zone set.
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
-			if util.StringsContain(distinctZones, info.Zone) {
+			if slices.Contains(distinctZones, info.Zone) {
 				continue
 			}
 		}

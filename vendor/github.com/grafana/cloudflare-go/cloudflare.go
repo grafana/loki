@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -316,7 +317,10 @@ func (b *closeDiscardBody) Read(p []byte) (n int, err error) {
 }
 
 func (b *closeDiscardBody) Close() error {
-	_, _ = io.Copy(ioutil.Discard, b.body)
+	_, err := io.Copy(ioutil.Discard, b.body)
+	if err != nil {
+		return fmt.Errorf("failed to discard response body: %w", err)
+	}
 	return b.body.Close()
 }
 
@@ -325,13 +329,16 @@ func newGzipResponseBody(body io.ReadCloser) (io.ReadCloser, error) {
 	if gz == nil {
 		gzipReader, err := gzip.NewReader(body)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error creating gzip reader: %w", err)
 		}
 		return &gzipResponseBody{body: body, gzip: gzipReader}, nil
 	}
 	res := gz.(*gzipResponseBody)
 	err := res.Reset(body)
-	return res, err
+	if err != nil {
+		return nil, fmt.Errorf("error resetting gzip reader: %w", err)
+	}
+	return res, nil
 }
 
 func (b *gzipResponseBody) Read(p []byte) (int, error) {
@@ -370,6 +377,10 @@ func readBody(resp *http.Response) ([]byte, error) {
 		err  error
 	)
 	if body, err = getBodyReader(resp); err != nil {
+		_, copyErr := io.Copy(ioutil.Discard, resp.Body)
+		if copyErr != nil {
+			err = fmt.Errorf("%v: %w", err, copyErr)
+		}
 		return nil, err
 	}
 	defer body.Close()

@@ -79,8 +79,8 @@ Common labels
 {{- define "loki.labels" -}}
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
+app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -215,6 +215,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -281,6 +282,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}

@@ -1795,6 +1795,7 @@ null
     "accountKey": null,
     "accountName": null,
     "requestTimeout": null,
+    "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
   },

@@ -125,7 +125,7 @@ func newMockMemcacheFailing() *mockMemcacheFailing {
 	}
 }
 
-func (c *mockMemcacheFailing) GetMulti(keys []string) (map[string]*memcache.Item, error) {
+func (c *mockMemcacheFailing) GetMulti(keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	calls := c.calls.Inc()
 	if calls%3 == 0 {
 		return nil, errors.New("fail")

@@ -21,6 +21,7 @@ const (
 	SSH        AccessApplicationType = "ssh"
 	VNC        AccessApplicationType = "vnc"
 	File       AccessApplicationType = "file"
+	Bookmark   AccessApplicationType = "bookmark"
 )
 
 // AccessApplication represents an Access application.
@@ -43,6 +44,7 @@ type AccessApplication struct {
 	SameSiteCookieAttribute string                        `json:"same_site_cookie_attribute,omitempty"`
 	LogoURL                 string                        `json:"logo_url,omitempty"`
 	SkipInterstitial        bool                          `json:"skip_interstitial,omitempty"`
+	AppLauncherVisible    bool                            `json:"app_launcher_visible,omitempty"`
 }
 
 // AccessApplicationCorsHeaders represents the CORS HTTP headers for an Access
