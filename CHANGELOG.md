@@ -26,7 +26,7 @@
 * [8047](https://github.com/grafana/loki/pull/8047) **bboreham**: Dashboards: add k8s resource requests to CPU and memory panels.
 * [8061](https://github.com/grafana/loki/pull/8061) **kavirajk**: Remove circle from Loki OSS
 * [8131](https://github.com/grafana/loki/pull/8131) **jeschkies**: Compile Promtail ARM and ARM64 with journald support.
-
+* [8153](https://github.com/grafana/loki/pull/8061) **kavirajk**: promtail: Add `max-line-size` limit to drop on client side
 ##### Fixes
 
 * [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
