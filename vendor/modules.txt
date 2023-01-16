@@ -507,7 +507,7 @@ github.com/fsouza/fake-gcs-server/internal/backend
 ## explicit; go 1.17
 github.com/go-kit/kit/log
 github.com/go-kit/kit/log/level
-# github.com/go-kit/log v0.2.1 => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b
+# github.com/go-kit/log v0.2.1
 ## explicit; go 1.17
 github.com/go-kit/log
 github.com/go-kit/log/level
@@ -1959,4 +1959,3 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
-# github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b

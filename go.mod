@@ -323,7 +323,3 @@ exclude k8s.io/client-go v8.0.0+incompatible
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
-
-// Fork containing a line-buffered logger which should improve logging performance.
-// TODO: submit PR to upstream and remove this
-replace github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b
