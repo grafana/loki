@@ -237,7 +237,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("wait-until-delete-request-processed", func(t *testing.T) {
 		tenantLimits := tCompactor.GetTenantLimits(tenantID)
 		tenantLimits.DeletionMode = "filter-and-delete"
-		tCompactor.SetTenantLimits(tenantID, tenantLimits)
+		require.NoError(t, tCompactor.SetTenantLimits(tenantID, tenantLimits))
 
 		// all the delete requests should have been processed
 		for i := range expectedDeleteRequests {
@@ -268,7 +268,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// disable deletion for tenant to stop query time filtering of data requested for deletion
 		tenantLimits := tQuerier.GetTenantLimits(tenantID)
 		tenantLimits.DeletionMode = "disabled"
-		tQuerier.SetTenantLimits(tenantID, tenantLimits)
+		require.NoError(t, tQuerier.SetTenantLimits(tenantID, tenantLimits))
 
 		// restart querier to make it sync the index
 		storage.ResetBoltDBIndexClientWithShipper()

@@ -112,10 +112,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string) bool {
-					if strings.Contains(s, "fizz") {
-						return true
-					}
-					return false
+					return strings.Contains(s, "fizz")
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -228,10 +225,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string) bool {
-					if strings.Contains(s, "fizz") {
-						return true
-					}
-					return false
+					return strings.Contains(s, "fizz")
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -343,10 +337,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string) bool {
-					if strings.Contains(s, "fizz") {
-						return true
-					}
-					return false
+					return strings.Contains(s, "fizz")
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{

@@ -172,7 +172,7 @@ func New() *Cluster {
 
 	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
 	if err != nil {
-		panic(fmt.Sprintf("error creating overrides file: %w", err))
+		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
 
 	return &Cluster{

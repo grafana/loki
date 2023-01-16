@@ -755,12 +755,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				{
 					isExpired: true,
 					filterFunc: func(ts time.Time, s string) bool {
-						tsUnixNano := ts.UnixNano()
-						if tsUnixNano < todaysTableInterval.Start.UnixNano() {
-							return true
-						}
-
-						return false
+						return ts.UnixNano() < todaysTableInterval.Start.UnixNano()
 					},
 				},
 			},
@@ -783,12 +778,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				{
 					isExpired: true,
 					filterFunc: func(ts time.Time, s string) bool {
-						tsUnixNano := ts.UnixNano()
-						if tsUnixNano < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano() {
-							return true
-						}
-
-						return false
+						return ts.UnixNano() < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano()
 					},
 				},
 			},
