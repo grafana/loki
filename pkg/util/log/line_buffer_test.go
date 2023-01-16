@@ -36,7 +36,7 @@ func BenchmarkLineBuffered(b *testing.B) {
 			b.ReportAllocs()
 			b.StartTimer()
 
-			f.Truncate(0)
+			require.NoError(b, f.Truncate(0))
 
 			logger := log.With(l, "common_key", "common_value")
 			for j := 0; j < b.N; j++ {
