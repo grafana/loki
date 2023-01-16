@@ -20,18 +20,18 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 
 <div id="app">
 
-  <label class="icon question" v-on:mouseover="help='node'" v-on:mouseleave="help=null">Node Type</label>
+  <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
   <select name="node-type" v-model="node"> 
   <option v-for="node of nodes">{{ node }}</option>
   </select>
 
-  <label class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null">Ingest</label>
+  <label>Ingest<i class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null"></i></label>
   <input v-model="ingest" name="ingest" placeholder="Desired ingest in GiB/day" type="number" max="1048576" min="0"/>
 
-  <label class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null">Log retention period</label>
+  <label>Log retention period<i class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null"></i></label>
   <input v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
 
-  <label class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null">Query performance</label>
+  <label>Query performance<i class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null"></i></label>
   <div id="queryperf" style="display: inline-flex;">
   <label for="basic">
   <input type="radio" id="basic" value="Basic" v-model="queryperf"/>Basic
@@ -43,10 +43,20 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   </div>
 
   <div v-if="clusterSize">
-  Read Replicas: {{ clusterSize.TotalReadReplicas }}
-  Write Replicas: {{ clusterSize.TotalWriteReplicas }}
-  Cores: {{ clusterSize.TotalCoresLimit }}
-  Nodes: {{ clusterSize.TotalNodes }}
+    <table>
+    <tr>
+      <th>Read Replicas</th>
+      <th>Write Replicas</th>
+      <th>Nodes</th>
+      <th>Cores</th>
+    </tr>
+    <tr>
+      <td>{{ clusterSize.TotalReadReplicas }}</td>
+      <td>{{ clusterSize.TotalWriteReplicas }}</td>
+      <td>{{ clusterSize.TotalNodes}}</td>
+      <td>{{ clusterSize.TotalCoresRequest}}</td>
+    </tr>
+    </table>
   </div>
 
   <a v-bind:href="helmURL" class="primary-button">Generate and download values file</a>
@@ -112,8 +122,11 @@ createApp({
 
   computed: {
     helmURL() {
+      return `${API_URL}/helm?${this.queryString}`
+    },
+    queryString() {
       const bytesDayIngest = this.ingest * 1024 * 1024 * 1024
-      return `${API_URL}/helm?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
     }
   },
 
@@ -131,8 +144,7 @@ createApp({
       if (this.node == 'Loading...' || this.ingest == null || this.retention == null) {
         return
       }
-      const url = `${API_URL}/cluster?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.ingest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
-      console.log(url)
+      const url = `${API_URL}/cluster?${this.queryString}`
       this.clusterSize = await (await fetch(url,{mode: 'cors'})).json()
     }
   },

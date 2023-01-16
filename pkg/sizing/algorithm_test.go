@@ -33,9 +33,9 @@ func Test_Algorithm(t *testing.T) {
 		t.Error(err)
 	}
 
-	// Sanity checks
-	size := calculateClusterSize(NodeTypesByProvider["AWS"]["t2.xlarge"], 1000000, Basic)
-	require.Equalf(t, size.TotalNodes, 0, "given ingest=1PB/Day totla nodes must be big")
+	// Sanity check for 1TB/Day
+	size := calculateClusterSize(NodeTypesByProvider["AWS"]["t2.xlarge"], 1e12, Basic)
+	require.Equalf(t, 4, size.TotalNodes, "given ingest=1PB/Day totla nodes must be big")
 }
 
 func Test_CoresNodeInvariant(t *testing.T) {

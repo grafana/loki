@@ -8,7 +8,7 @@ type ClusterSize struct {
 	TotalNodes         int
 	TotalReadReplicas  int
 	TotalWriteReplicas int
-	TotalCoresLimit    float64
+	TotalCoresRequest    float64
 
 	expectedMaxReadThroughputBytesSec float64
 	expectedMaxIngestBytesDay         float64
@@ -24,7 +24,7 @@ const (
 func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) ClusterSize {
 
 	// 1 Petabyte per day is maximum. We use decimal prefix https://en.wikipedia.org/wiki/Binary_prefix
-	bytesDayIngest = math.Min(bytesDayIngest, 1e12)
+	bytesDayIngest = math.Min(bytesDayIngest, 1e15)
 	bytesSecondIngest := bytesDayIngest / 86400
 	numWriteReplicasNeeded := math.Ceil(bytesSecondIngest / nt.writePod.rateBytesSecond)
 
@@ -69,7 +69,7 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 		TotalNodes:         int(totalNodesNeeded),
 		TotalReadReplicas:  int(totalReadReplicas),
 		TotalWriteReplicas: int(numWriteReplicasNeeded),
-		TotalCoresLimit:    totalCoresLimit,
+		TotalCoresRequest:    totalCoresLimit,
 
 		expectedMaxReadThroughputBytesSec: totalReadThroughputBytesSec,
 		expectedMaxIngestBytesDay:         (nt.writePod.rateBytesSecond * numWriteReplicasNeeded) * 86400,
