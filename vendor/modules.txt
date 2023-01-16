@@ -90,10 +90,10 @@ github.com/Azure/go-autorest/tracing
 # github.com/Masterminds/goutils v1.1.1
 ## explicit
 github.com/Masterminds/goutils
-# github.com/Masterminds/semver/v3 v3.1.1
-## explicit; go 1.12
+# github.com/Masterminds/semver/v3 v3.2.0
+## explicit; go 1.18
 github.com/Masterminds/semver/v3
-# github.com/Masterminds/sprig/v3 v3.2.2
+# github.com/Masterminds/sprig/v3 v3.2.3
 ## explicit; go 1.13
 github.com/Masterminds/sprig/v3
 # github.com/Microsoft/go-winio v0.5.1
@@ -777,7 +777,7 @@ github.com/hashicorp/serf/coordinate
 # github.com/heroku/x v0.0.50
 ## explicit; go 1.12
 github.com/heroku/x/logplex/encoding
-# github.com/huandu/xstrings v1.3.1
+# github.com/huandu/xstrings v1.3.3
 ## explicit; go 1.12
 github.com/huandu/xstrings
 # github.com/imdario/mergo v0.3.12

@@ -17,10 +17,9 @@ JavaScript libraries, such as [underscore.js](http://underscorejs.org/).
 ## IMPORTANT NOTES
 
 Sprig leverages [mergo](https://github.com/imdario/mergo) to handle merges. In
-its v0.3.9 release there was a behavior change that impacts merging template
-functions in sprig. It is currently recommended to use v0.3.8 of that package.
-Using v0.3.9 will cause sprig tests to fail. The issue in mergo is tracked at
-https://github.com/imdario/mergo/issues/139.
+its v0.3.9 release, there was a behavior change that impacts merging template
+functions in sprig. It is currently recommended to use v0.3.10 or later of that package.
+Using v0.3.9 will cause sprig tests to fail.
 
 ## Package Versions
 
@@ -51,7 +50,7 @@ To load the Sprig `FuncMap`:
 ```go
 
 import (
-  "github.com/Masterminds/sprig"
+  "github.com/Masterminds/sprig/v3"
   "html/template"
 )
 
