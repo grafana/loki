@@ -7,6 +7,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -59,7 +60,7 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 			return nil, fmt.Errorf("unexpected type %T for matrix", m)
 		}
 
-		value = NewHistogramMatrix(m)
+		value = NewMatrix(m)
 	case loghttp.ResultTypeHistogram:
 		m, ok := v.(promql.Matrix)
 
@@ -168,11 +169,23 @@ func NewHistogramMatrix(m promql.Matrix) loghttp.Histogram {
 // NewSampleStream constructs a model.SampleStream from a promql.Series
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
-		Metric: NewMetric(s.Metric),
-		Values: make([]model.SamplePair, len(s.Points)),
+		Metric:     NewMetric(s.Metric),
+		Values:     make([]model.SamplePair, len(s.Points)),
+		Histograms: make([]model.SampleHistogramPair, len(s.Points)),
 	}
 
 	for i, p := range s.Points {
+		if p.H != nil {
+			ret.Histograms[i].Timestamp = model.Time(p.T)
+			itr := p.H.AllBucketIterator()
+			hist_bucket := make(model.HistogramBuckets, len(p.H.PositiveBuckets)+len(p.H.NegativeBuckets))
+			for itr.Next() {
+				b := itr.At()
+				hist_bucket = append(hist_bucket, &model.HistogramBucket{Lower: model.FloatString(b.Upper), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)})
+			}
+			ret.Histograms[i].Histogram = model.SampleHistogram{Count: model.FloatString(p.H.Count), Sum: model.FloatString(p.H.Sum), Buckets: hist_bucket}
+			continue
+		}
 		ret.Values[i].Timestamp = model.Time(p.T)
 		ret.Values[i].Value = model.SampleValue(p.V)
 	}
@@ -265,6 +278,7 @@ func encodeResult(v parser.Value, s *jsoniter.Stream) error {
 		}
 
 		encodeMatrix(m, s)
+		fmt.Printf("matrix encode %v\n", s)
 
 	default:
 		s.WriteNil()
@@ -369,15 +383,33 @@ func encodeSample(sample promql.Sample, s *jsoniter.Stream) {
 
 	s.WriteMore()
 	s.WriteObjectField("value")
-	encodeValue(sample.T, sample.V, s)
+	encodeValue(sample.T, sample.V, sample.H, s)
 }
 
-func encodeValue(T int64, V float64, s *jsoniter.Stream) {
+func encodeValue(T int64, V float64, H *histogram.FloatHistogram, s *jsoniter.Stream) {
 	s.WriteArrayStart()
 	s.WriteRaw(model.Time(T).String())
 	s.WriteMore()
+	if H != nil {
+		itr := H.AllBucketIterator()
+		hist_bucket := make(model.HistogramBuckets, 0, len(H.PositiveBuckets)+len(H.NegativeBuckets))
+		for itr.Next() {
+			b := itr.At()
+			if b.Count == 0 {
+				continue
+			}
+			fmt.Printf("bucket lower_inclusive=%v, upper_inclusive=%v\n", b.LowerInclusive, b.UpperInclusive)
+			hist_bucket = append(hist_bucket, &model.HistogramBucket{Lower: model.FloatString(b.Lower), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)})
+		}
+		str := model.SampleHistogram{Count: model.FloatString(H.Count), Sum: model.FloatString(H.Sum), Buckets: hist_bucket}
+		fmt.Printf("encoded str=%s\n", str)
+		s.WriteVal(str)
+		s.WriteArrayEnd()
+		return
+	}
 	s.WriteString(model.SampleValue(V).String())
 	s.WriteArrayEnd()
+
 }
 
 func encodeMetric(l labels.Labels, s *jsoniter.Stream) {
@@ -414,13 +446,17 @@ func encodeSampleStream(stream promql.Series, s *jsoniter.Stream) {
 	encodeMetric(stream.Metric, s)
 
 	s.WriteMore()
-	s.WriteObjectField("values")
+	if stream.Points[0].H != nil {
+		s.WriteObjectField("histograms")
+	} else {
+		s.WriteObjectField("values")
+	}
 	s.WriteArrayStart()
 	for i, p := range stream.Points {
 		if i > 0 {
 			s.WriteMore()
 		}
-		encodeValue(p.T, p.V, s)
+		encodeValue(p.T, p.V, p.H, s)
 	}
 	s.WriteArrayEnd()
 }

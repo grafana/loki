@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -98,6 +99,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
+	fmt.Printf("In pkg/querier/http.go %v %v\n", result, w)
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.

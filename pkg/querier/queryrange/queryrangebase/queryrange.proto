@@ -55,6 +55,10 @@ message SampleStream {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "values"
   ];
+  repeated logproto.LegacySample histograms = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "histograms"
+  ];
 }
 
 message CachedResponse {

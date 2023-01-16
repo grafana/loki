@@ -772,17 +772,47 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 	}
 
 	for _, stream := range m {
-		samples := make([]logproto.LegacySample, 0, len(stream.Values))
-		for _, s := range stream.Values {
-			samples = append(samples, logproto.LegacySample{
-				Value:       float64(s.Value),
-				TimestampMs: int64(s.Timestamp),
+		if len(stream.Histograms) > 0 {
+			sampleHistograms := make([]logproto.LegacySample, 0, len(stream.Histograms))
+			for _, sh := range stream.Histograms {
+				var lh logproto.SampleHistogram
+				lh.Count = float64(sh.Histogram.Count)
+				lh.Sum = float64(sh.Histogram.Sum)
+				lhb := make([]logproto.HistogramBucket, len(sh.Histogram.Buckets))
+				fmt.Printf("lhb sum=%v, count=%v\n", lh.Sum, lh.Count)
+				fmt.Printf("lhb is %v\n", lhb)
+				for i, b := range sh.Histogram.Buckets {
+					if b != nil && b.Count != 0 {
+						lhb[i] = logproto.HistogramBucket{Lower: float64(b.Lower), Upper: float64(b.Upper), Count: float64(b.Count)}
+					}
+				}
+				lh.Buckets = lhb
+				sampleHistograms = append(sampleHistograms, logproto.LegacySample{
+					Histogram:   &lh,
+					TimestampMs: int64(sh.Timestamp),
+				})
+			}
+			res = append(res, queryrangebase.SampleStream{
+				Labels:     logproto.FromMetricsToLabelAdapters(stream.Metric),
+				Histograms: sampleHistograms,
+			})
+			continue
+		}
+		//stream.Histograms[0].Histogram.
+		if len(stream.Histograms) == 0 {
+			samples := make([]logproto.LegacySample, 0, len(stream.Values))
+			for _, s := range stream.Values {
+				samples = append(samples, logproto.LegacySample{
+					Value:       float64(s.Value),
+					TimestampMs: int64(s.Timestamp),
+				})
+			}
+			res = append(res, queryrangebase.SampleStream{
+				Labels:  logproto.FromMetricsToLabelAdapters(stream.Metric),
+				Samples: samples,
 			})
 		}
-		res = append(res, queryrangebase.SampleStream{
-			Labels:  logproto.FromMetricsToLabelAdapters(stream.Metric),
-			Samples: samples,
-		})
+
 	}
 	return res
 }

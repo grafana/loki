@@ -134,7 +134,7 @@ func (s LegacySample) MarshalJSON() ([]byte, error) {
 	if isTesting && math.IsNaN(s.Value) {
 		return nil, fmt.Errorf("test sample")
 	}
-
+	fmt.Printf("In compat marshaljson\n")
 	t, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(model.Time(s.TimestampMs))
 	if err != nil {
 		return nil, err
@@ -148,6 +148,7 @@ func (s LegacySample) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *LegacySample) UnmarshalJSON(b []byte) error {
+	fmt.Printf("In compat unmarshaljson\n")
 	var t model.Time
 	var v model.SampleValue
 	vs := [...]stdjson.Unmarshaler{&t, &v}
@@ -170,12 +171,25 @@ func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 		stream.Error = fmt.Errorf("test sample")
 		return
 	}
-
+	fmt.Printf("legacysample is %v\n", legacySample)
 	stream.WriteArrayStart()
 	stream.WriteFloat64(float64(legacySample.TimestampMs) / float64(time.Second/time.Millisecond))
 	stream.WriteMore()
-	stream.WriteString(model.SampleValue(legacySample.Value).String())
-	stream.WriteArrayEnd()
+	if legacySample.Histogram != nil {
+		mb := make(model.HistogramBuckets, len(legacySample.Histogram.Buckets))
+		for i, b := range legacySample.Histogram.Buckets {
+
+			mb[i] = &model.HistogramBucket{Lower: model.FloatString(b.Lower), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)}
+
+		}
+		msh := model.SampleHistogram{Count: model.FloatString(legacySample.Histogram.Count), Sum: model.FloatString(legacySample.Histogram.Sum), Buckets: mb}
+		stream.WriteVal(msh)
+		stream.WriteArrayEnd()
+	} else {
+		stream.WriteString(model.SampleValue(legacySample.Value).String())
+		stream.WriteArrayEnd()
+	}
+
 }
 
 func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {

@@ -18,6 +18,7 @@ package queryrangebase
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -178,6 +179,11 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
 		response.Body.Close()
 	}()
-
-	return q.codec.DecodeResponse(ctx, response, r)
+	res, err := q.codec.DecodeResponse(ctx, response, r)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("res roundtrip is %v\n", res.String())
+	return res, nil
+	//return q.codec.DecodeResponse(ctx, response, r)
 }

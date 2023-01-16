@@ -805,7 +805,6 @@ func (h *histogram) observe(v float64, bucket int) {
 	n := atomic.AddUint64(&h.countAndHotIdx, 1)
 	hotCounts := h.counts[n>>63]
 	hotCounts.observe(v, bucket, doSparse)
-	fmt.Printf("doSparse %v\n", doSparse)
 	if doSparse {
 		h.limitBuckets(hotCounts, v, bucket)
 	}

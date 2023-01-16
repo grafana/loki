@@ -539,6 +539,7 @@ func bucketsOverTime(nativeHistogramBucketFactor float64) HistogramVectorAggrega
 			nSpan[i].Length = *span.Length
 			nSpan[i].Offset = *span.Offset
 		}
+
 		h := &prom_hist.Histogram{
 			Schema:          floatHist.Histogram.GetSchema(),
 			ZeroThreshold:   floatHist.Histogram.GetZeroThreshold(),

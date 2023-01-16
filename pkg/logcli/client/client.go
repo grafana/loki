@@ -262,6 +262,11 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 			log.Println("error closing body", err)
 		}
 	}()
+	// err = json.NewDecoder(resp.Body).Decode(out)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Printf("out in logcli client %v\n", out , resp.Body.Read(p []byte))
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 

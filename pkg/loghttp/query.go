@@ -179,7 +179,7 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	q.ResultType = ResultType(resultType)
-
+	fmt.Printf("unmarshal data %v\n", string(data))
 	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "result":
@@ -192,6 +192,7 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 				q.Result = ss
 			case ResultTypeMatrix:
 				var m Matrix
+				fmt.Printf("unmarshal matrix %v\n", string(value))
 				if err = json.Unmarshal(value, &m); err != nil {
 					return err
 				}
