@@ -513,21 +513,21 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 
 func Test_InvalidRegex(t *testing.T) {
 	t.Run("regexReplaceAll", func(t *testing.T) {
-		cntFunc := functionMap["regexReplaceAll"]
+		cntFunc := FunctionMap["regexReplaceAll"]
 		f := cntFunc.(func(string, string, string) (string, error))
 		ret, err := f("a|b|\\q", "input", "replacement")
 		require.Error(t, err)
 		require.Empty(t, ret)
 	})
 	t.Run("regexReplaceAllLiteral", func(t *testing.T) {
-		cntFunc := functionMap["regexReplaceAllLiteral"]
+		cntFunc := FunctionMap["regexReplaceAllLiteral"]
 		f := cntFunc.(func(string, string, string) (string, error))
 		ret, err := f("\\h", "input", "replacement")
 		require.Error(t, err)
 		require.Empty(t, ret)
 	})
 	t.Run("count", func(t *testing.T) {
-		cntFunc := functionMap["count"]
+		cntFunc := FunctionMap["count"]
 		f := cntFunc.(func(string, string) (int, error))
 		ret, err := f("a|b|\\K", "input")
 		require.Error(t, err)
