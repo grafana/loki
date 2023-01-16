@@ -140,7 +140,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		p.client, err = client.NewMulti(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
+		p.client, err = client.NewMulti(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
