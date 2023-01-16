@@ -65,7 +65,7 @@ func (l *LineBufferedLogger) Flush() error {
 
 type LineBufferedLoggerOption func(*LineBufferedLogger)
 
-// WithFlushPeriod creates a new LineBufferedLoggerOption that sets the flush period for the *LineBufferedLogger.
+// WithFlushPeriod creates a new LineBufferedLoggerOption that sets the flush period for the LineBufferedLogger.
 func WithFlushPeriod(d time.Duration) LineBufferedLoggerOption {
 	return func(l *LineBufferedLogger) {
 		go func() {
@@ -94,7 +94,7 @@ func WithPrellocatedBuffer(size uint32) LineBufferedLoggerOption {
 	}
 }
 
-// NewLineBufferedLogger creates a new *LineBufferedLogger with a configured capacity.
+// NewLineBufferedLogger creates a new LineBufferedLogger with a configured capacity.
 // Lines are flushed when the context is done, the buffer is full, or the flush period is reached.
 func NewLineBufferedLogger(w io.Writer, cap uint32, opts ...LineBufferedLoggerOption) *LineBufferedLogger {
 	l := &LineBufferedLogger{
