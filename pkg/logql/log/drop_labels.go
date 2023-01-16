@@ -57,10 +57,6 @@ func dropLabelNames(name string, lbls *LabelsBuilder) {
 		resetError(lbls)
 		return
 	}
-	// if isErrorDetailsLabel(name) {
-	// 	resetError(lbls)
-	// 	return
-	// }
 	if _, ok := lbls.Get(name); ok {
 		lbls.Del(name)
 	}
