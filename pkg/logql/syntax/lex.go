@@ -335,17 +335,32 @@ func isBytesSizeRune(r rune) bool {
 // isFunction check if the next runes are either an open parenthesis
 // or by/without tokens. This allows to dissociate functions and identifier correctly.
 func isFunction(sc scanner.Scanner) bool {
-	var sb strings.Builder
 	sc = trimSpace(sc)
-	for r := sc.Next(); r != scanner.EOF; r = sc.Next() {
-		sb.WriteRune(r)
-		switch sb.String() {
-		case "(":
-			return true
-		case "by", "without":
-			sc = trimSpace(sc)
-			return sc.Next() == '('
+	r := sc.Peek()
+	switch r {
+	case '(':
+		return true
+	case 'b':
+		sc.Next()
+		if sc.Next() != 'y' {
+			return false
 		}
+		sc = trimSpace(sc)
+		return sc.Next() == '('
+	case 'w':
+		var sb strings.Builder
+		for i := 0; i < 7; i++ {
+			r := sc.Next()
+			if r == scanner.EOF {
+				return false
+			}
+			sb.WriteRune(r)
+		}
+		if sb.String() != "without" {
+			return false
+		}
+		sc = trimSpace(sc)
+		return sc.Next() == '('
 	}
 	return false
 }
