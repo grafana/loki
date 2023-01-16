@@ -984,6 +984,20 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+  # Single Binary service configuration
+  service:
+    # -- Type of the single binary service
+    type: ClusterIP
+    # -- ClusterIP of the single binary service
+    clusterIP: null
+    # -- (int) Node port if service type is NodePort
+    nodePort: null
+    # -- Load balancer IPO address if service type is LoadBalancer
+    loadBalancerIP: null
+    # -- Annotations for the gateway service
+    annotations: {}
+    # -- Labels for gateway service
+    labels: {}
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
