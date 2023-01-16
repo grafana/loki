@@ -1,7 +1,6 @@
 package sizing
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -34,24 +33,24 @@ func calculateClusterSize(nt NodeType, tbDayIngest int, qperf QueryPerf) Cluster
 	replicasOnLastNode := math.Mod(numWriteReplicasNeeded, writeReplicasPerNode)
 
 	coresOnLastNode := 0.0
-	if replicasOnLastNode >= 0.0 {
+	if replicasOnLastNode > 0.0 {
 		coresOnLastNode = math.Max(float64(nt.cores)-replicasOnLastNode*nt.writePod.cpuRequest, 0.0)
 	}
 
 	nodesNeededForWrites := math.Ceil(numWriteReplicasNeeded / writeReplicasPerNode)
-	fmt.Printf("%f %f %f\n", nodesNeededForWrites, numWriteReplicasNeeded, writeReplicasPerNode)
 
 	// Hack based on packing 1 read and 1 write per node
 	readReplicasPerNode := writeReplicasPerNode
 	readReplicasOnFullyPackedWriteNodes := readReplicasPerNode * fullyWritePackedNodes
 	readReplicasOnPartiallyPackedWriteNodes := math.Floor(coresOnLastNode / nt.readPod.cpuRequest)
 
-	basicQperfReadReplicas := readReplicasOnFullyPackedWriteNodes + readReplicasOnPartiallyPackedWriteNodes
+	// Required read replicase without considering required query performance.
+	baselineReadReplicas := readReplicasOnFullyPackedWriteNodes + readReplicasOnPartiallyPackedWriteNodes
 
 	scaleUp := 0.25
 	additionalReadReplicas := 0.0
 	if qperf != Basic {
-		additionalReadReplicas = basicQperfReadReplicas * scaleUp
+		additionalReadReplicas = baselineReadReplicas * scaleUp
 	}
 
 	readReplicasPerEmptyNode := math.Floor(float64(nt.cores) / nt.readPod.cpuRequest)
@@ -60,16 +59,11 @@ func calculateClusterSize(nt NodeType, tbDayIngest int, qperf QueryPerf) Cluster
 	actualNodesAddedForReads := calculateActualReadNodes(additionalNodesNeededForReads)
 	actualReadReplicasAdded := actualNodesAddedForReads * readReplicasPerEmptyNode
 
-	totalReadReplicas := actualReadReplicasAdded + basicQperfReadReplicas
-	fmt.Printf("%f+%f\n", actualReadReplicasAdded, basicQperfReadReplicas)
+	totalReadReplicas := actualReadReplicasAdded + baselineReadReplicas
 	totalReadThroughputBytesSec := totalReadReplicas * nt.readPod.rateBytesSecond
 
 	totalNodesNeeded := nodesNeededForWrites + actualNodesAddedForReads
-	fmt.Printf("%f %f %f\n", totalNodesNeeded, nodesNeededForWrites, actualNodesAddedForReads)
-
 	totalCoresLimit := numWriteReplicasNeeded*nt.writePod.cpuRequest + totalReadReplicas*nt.readPod.cpuRequest
-	fmt.Printf("%f*%f + %f*%f\n", numWriteReplicasNeeded, nt.writePod.cpuRequest, totalReadReplicas, nt.readPod.cpuRequest)
-
 	return ClusterSize{
 		TotalNodes:         int(totalNodesNeeded),
 		TotalReadReplicas:  int(totalReadReplicas),

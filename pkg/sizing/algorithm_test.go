@@ -35,11 +35,13 @@ func Test_AlgorithTest_Algorithm(t *testing.T) {
 }
 
 func Test_CoresNodeInvariant(t *testing.T) {
-	for _, ingest := range []int{1, 2} {
-		for _, cloud := range NodeTypesByProvider {
-			for _, node := range cloud {
-				size := calculateClusterSize(node, ingest, Basic)
-				require.LessOrEqualf(t, size.TotalCoresLimit, float64(size.TotalNodes*node.cores), "given ingest=%d node=%s total cores must be less than available cores", ingest, node.name)
+	for _, queryPerformance := range []QueryPerf{Basic, Super} {
+		for _, ingest := range []int{1, 2} {
+			for _, cloud := range NodeTypesByProvider {
+				for _, node := range cloud {
+					size := calculateClusterSize(node, ingest, queryPerformance)
+					require.LessOrEqualf(t, size.TotalCoresLimit, float64(size.TotalNodes*node.cores), "given ingest=%d node=%s total cores must be less than available cores", ingest, node.name)
+				}
 			}
 		}
 	}
