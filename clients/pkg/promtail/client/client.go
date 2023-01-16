@@ -302,7 +302,7 @@ func (c *client) run() {
 
 			e, tenantID := c.processEntry(e)
 
-			// drop the entry it's length is greater than maxLineSize. maxLineSize == 0 means disabled.
+			// drop the entry because its length is greater than maxLineSize. maxLineSize == 0 means disabled.
 			if c.maxLineSize != 0 && len(e.Line) > c.maxLineSize {
 				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasongMaxLineSizeLimited).Inc()
 				break
