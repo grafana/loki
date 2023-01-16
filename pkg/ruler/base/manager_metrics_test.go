@@ -2,15 +2,18 @@ package base
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
 
 func TestManagerMetricsWithRuleGroupLabel(t *testing.T) {
@@ -409,13 +412,30 @@ func TestMetricLabelTransformer(t *testing.T) {
 
 	managerMetrics := NewManagerMetrics(false, func(k, v string) string {
 		if k == RuleGroupLabel {
-			return strings.ToUpper(v)
+			return RemoveRuleTokenFromGroupName(v)
 		}
 
 		return v
 	})
 	mainReg.MustRegister(managerMetrics)
-	managerMetrics.AddUserRegistry("user1", populateManager(1))
+
+	reg := prometheus.NewRegistry()
+	metrics := newGroupMetrics(reg)
+
+	r := rulespb.RuleDesc{
+		Alert:  "MyAlert",
+		Expr:   "count({foo=\"bar\"}) > 0",
+		Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")),
+	}
+	const ruleGroupName = "my_rule_group"
+	gr := rulespb.RuleGroupDesc{
+		Name:      ruleGroupName,
+		Namespace: "namespace",
+		Rules:     []*rulespb.RuleDesc{&r},
+	}
+
+	metrics.iterationsScheduled.WithLabelValues(AddRuleTokenToGroupName(&gr, &r)).Add(1)
+	managerMetrics.AddUserRegistry("user1", reg)
 
 	ch := make(chan prometheus.Metric)
 
@@ -440,7 +460,7 @@ func TestMetricLabelTransformer(t *testing.T) {
 		for _, l := range dtoM.Label {
 			if l.GetName() == RuleGroupLabel {
 				// if the value has been capitalised, we know it was processed by the label transformer
-				assert.Equal(t, l.GetValue(), strings.ToUpper(l.GetValue()))
+				assert.Equal(t, l.GetValue(), ruleGroupName)
 			}
 		}
 	}
