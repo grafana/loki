@@ -286,7 +286,7 @@ func maxRangeVectorAndOffsetDuration(q string) (time.Duration, time.Duration, er
 	if _, ok := expr.(syntax.SampleExpr); !ok {
 		return 0, 0, nil
 	}
-	
+
 	var maxRVDuration, maxOffset time.Duration
 	expr.Walk(func(e interface{}) {
 		if r, ok := e.(*syntax.LogRange); ok {

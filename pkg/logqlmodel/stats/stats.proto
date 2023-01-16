@@ -126,4 +126,5 @@ message Cache {
   int64 bytesReceived = 4 [(gogoproto.jsontag) = "bytesReceived"];
   int64 bytesSent = 5 [(gogoproto.jsontag) = "bytesSent"];
   int32 requests = 6 [(gogoproto.jsontag) = "requests"];
+  int64 downloadTime = 7 [(gogoproto.jsontag) = "downloadTime"];
 }

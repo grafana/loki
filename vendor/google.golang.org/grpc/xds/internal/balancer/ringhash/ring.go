@@ -19,7 +19,6 @@
 package ringhash
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -43,8 +42,8 @@ type ringEntry struct {
 	sc   *subConn
 }
 
-// newRing creates a ring from the subConns. The ring size is limited by the
-// passed in max/min.
+// newRing creates a ring from the subConns stored in the AddressMap. The ring
+// size is limited by the passed in max/min.
 //
 // ring entries will be created for each subConn, and subConn with high weight
 // (specified by the address) may have multiple entries.
@@ -64,12 +63,12 @@ type ringEntry struct {
 //
 // To pick from a ring, a binary search will be done for the given target hash,
 // and first item with hash >= given hash will be returned.
-func newRing(subConns map[resolver.Address]*subConn, minRingSize, maxRingSize uint64) (*ring, error) {
+//
+// Must be called with a non-empty subConns map.
+func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64) *ring {
 	// https://github.com/envoyproxy/envoy/blob/765c970f06a4c962961a0e03a467e165b276d50f/source/common/upstream/ring_hash_lb.cc#L114
-	normalizedWeights, minWeight, err := normalizeWeights(subConns)
-	if err != nil {
-		return nil, err
-	}
+	normalizedWeights, minWeight := normalizeWeights(subConns)
+
 	// Normalized weights for {3,3,4} is {0.3,0.3,0.4}.
 
 	// Scale up the size of the ring such that the least-weighted host gets a
@@ -95,7 +94,7 @@ func newRing(subConns map[resolver.Address]*subConn, minRingSize, maxRingSize ui
 	for _, scw := range normalizedWeights {
 		targetIdx += scale * scw.weight
 		for float64(idx) < targetIdx {
-			h := xxhash.Sum64String(scw.sc.addr + strconv.Itoa(len(items)))
+			h := xxhash.Sum64String(scw.sc.addr + strconv.Itoa(idx))
 			items = append(items, &ringEntry{idx: idx, hash: h, sc: scw.sc})
 			idx++
 		}
@@ -106,31 +105,30 @@ func newRing(subConns map[resolver.Address]*subConn, minRingSize, maxRingSize ui
 	for i, ii := range items {
 		ii.idx = i
 	}
-	return &ring{items: items}, nil
+	return &ring{items: items}
 }
 
 // normalizeWeights divides all the weights by the sum, so that the total weight
 // is 1.
-func normalizeWeights(subConns map[resolver.Address]*subConn) (_ []subConnWithWeight, min float64, _ error) {
-	if len(subConns) == 0 {
-		return nil, 0, fmt.Errorf("number of subconns is 0")
-	}
+//
+// Must be called with a non-empty subConns map.
+func normalizeWeights(subConns *resolver.AddressMap) ([]subConnWithWeight, float64) {
 	var weightSum uint32
-	for a := range subConns {
-		// The address weight was moved from attributes to the Metadata field.
-		// This is necessary (all the attributes need to be stripped) for the
-		// balancer to detect identical {address+weight} combination.
-		weightSum += a.Metadata.(uint32)
+	keys := subConns.Keys()
+	for _, a := range keys {
+		weightSum += getWeightAttribute(a)
 	}
-	if weightSum == 0 {
-		return nil, 0, fmt.Errorf("total weight of all subconns is 0")
-	}
-	weightSumF := float64(weightSum)
-	ret := make([]subConnWithWeight, 0, len(subConns))
-	min = math.MaxFloat64
-	for a, sc := range subConns {
-		nw := float64(a.Metadata.(uint32)) / weightSumF
-		ret = append(ret, subConnWithWeight{sc: sc, weight: nw})
+	ret := make([]subConnWithWeight, 0, len(keys))
+	min := float64(1.0)
+	for _, a := range keys {
+		v, _ := subConns.Get(a)
+		scInfo := v.(*subConn)
+		// getWeightAttribute() returns 1 if the weight attribute is not found
+		// on the address. And since this function is guaranteed to be called
+		// with a non-empty subConns map, weightSum is guaranteed to be
+		// non-zero. So, we need not worry about divide a by zero error here.
+		nw := float64(getWeightAttribute(a)) / float64(weightSum)
+		ret = append(ret, subConnWithWeight{sc: scInfo, weight: nw})
 		if nw < min {
 			min = nw
 		}
@@ -142,7 +140,7 @@ func normalizeWeights(subConns map[resolver.Address]*subConn) (_ []subConnWithWe
 	// where an address is added and then removed, the RPCs will still pick the
 	// same old SubConn.
 	sort.Slice(ret, func(i, j int) bool { return ret[i].sc.addr < ret[j].sc.addr })
-	return ret, min, nil
+	return ret, min
 }
 
 // pick does a binary search. It returns the item with smallest index i that

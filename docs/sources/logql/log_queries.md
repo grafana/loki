@@ -65,7 +65,17 @@ Regex log stream examples:
 - `{name !~ "mysql.+"}`
 - `` {name !~ `mysql-\d+`} ``
 
-**Note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+**Note:** Unlike the [line filter regex expressions](#line-filter-expression), the `=~` and `!~` regex operators are fully anchored.
+This means that the regex expression must match against the *entire* string, **including newlines**. 
+The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+Alternatively, you can use the `\s` (match whitespaces, including newline) in combination with `\S` (match not whitespace characters) to match all characters, including newlines.
+Refer to [Google's RE2 syntax](https://github.com/google/re2/wiki/Syntax) for more information.
+
+Regex log stream newlines:
+
+- `{name =~ ".*mysql.*"}`: does not match log label values with newline character
+- `{name =~ "(?s).*mysql.*}`: match log label values with newline character
+- `{name =~ "[\S\s]*mysql[\S\s]*}`: match log label values with newline character
 
 ## Log pipeline
 
@@ -95,7 +105,7 @@ and
 The line filter expression does a distributed `grep`
 over the aggregated logs from the matching log streams.
 It searches the contents of the log line,
-discarding those lines that do not match the case sensitive expression.
+discarding those lines that do not match the case-sensitive expression.
 
 Each line filter expression has a **filter operator**
 followed by text or a regular expression.
@@ -105,6 +115,9 @@ These filter operators are supported:
 - `!=`: Log line does not contain string
 - `|~`: Log line contains a match to the regular expression
 - `!~`: Log line does not contain a match to the regular expression
+
+**Note:** Unlike the [label matcher regex operators](#log-stream-selector), the `|~` and `!~` regex operators are not fully anchored.
+This means that the `.` regex character matches all characters, **including newlines**.
 
 Line filter expression examples:
 
@@ -543,3 +556,55 @@ In both cases, if the destination label doesn't exist, then a new one is created
 The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
+
+### Drop Labels expression
+
+**Syntax**:  `|drop name, other_name, some_name="some_value"`
+
+The `=` operator after the label name is a **label matching operator**.
+The following label matching operators are supported:
+
+- `=`: exactly equal
+- `!=`: not equal
+- `=~`: regex matches
+- `!~`: regex does not match
+
+The `| drop` expression will drop the given labels in the pipeline. For example, for the query `{job="varlogs"}|json|drop level, method="GET"`, with below log line
+
+```
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{host="grafana.net", path="status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
+
+```
+INFO GET / loki.net 200
+```
+
+the result will be
+
+```
+{} INFO GET / loki.net 200
+```
+
+Example with regex and multiple names
+
+For the query `{job="varlogs"}|json|drop level, path, app=~"some-api.*"`, with below log lines
+
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+{"app: "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+```
+
+the result will be
+
+```
+{host="grafana.net", job="varlogs", method="GET", status="200"} {""app": "some-api-service",", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service",, "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```

@@ -40,7 +40,6 @@ func (v SampleValue) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (v *SampleValue) UnmarshalJSON(b []byte) error {
-	fmt.Printf("In sample value b=%v\n", string(b))
 	if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
 		return fmt.Errorf("sample value must be a quoted string")
 	}
@@ -87,7 +86,6 @@ func (s SamplePair) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SamplePair) UnmarshalJSON(b []byte) error {
-	fmt.Printf("In sample pair value=%v, b=%v\n", &s.Value, string(b))
 	v := [...]json.Unmarshaler{&s.Timestamp, &s.Value}
 	return json.Unmarshal(b, &v)
 }

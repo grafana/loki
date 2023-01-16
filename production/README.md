@@ -35,7 +35,7 @@ To test locally, we recommend using the `docker-compose.yaml` file in this direc
    docker-compose up
    ```
 
-1. Grafana should now be available at http://localhost:3000/. Log in with `admin` / `admin` and follow the [steps for configuring the datasource in Grafana](../docs/sources/getting-started/grafana.md), using `http://loki:3100` for the URL field.
+1. Grafana should now be available at http://localhost:3000/.
 
 **Note:** When running locally, Promtail starts before Loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
 Until this is fixed we recommend [building and running from source](#build-and-run-from-source).

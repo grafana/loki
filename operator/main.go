@@ -160,6 +160,13 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "rulerconfig")
 		os.Exit(1)
 	}
+	if ctrlCfg.Gates.RulerConfigWebhook {
+		v := &validation.RulerConfigValidator{}
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "rulerconfig")
+			os.Exit(1)
+		}
+	}
 	if ctrlCfg.Gates.BuiltInCertManagement.Enabled {
 		if err = (&lokictrl.CertRotationReconciler{
 			Client:       mgr.GetClient(),

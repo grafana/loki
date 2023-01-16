@@ -1,0 +1,18 @@
+---
+enterprise:
+  enabled: true
+  adminTokenSecret: "gel-admin-token"
+  useExternalLicense: true
+  externalLicenseName: gel-license
+  provisioner:
+    provisionedSecretPrefix: "provisioned-secret"
+    tenants:
+      - loki
+monitoring:
+  selfMonitoring+:
+    tenant: "loki"
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+minio:
+  enabled: true

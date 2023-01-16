@@ -70,7 +70,6 @@ func (s HistogramBucket) MarshalJSON() ([]byte, error) {
 }
 
 func (s *HistogramBucket) UnmarshalJSON(buf []byte) error {
-	fmt.Printf("In histogram bucket unmarshal b=%v\n", string(buf))
 	tmp := []interface{}{&s.Boundaries, &s.Lower, &s.Upper, &s.Count}
 	wantLen := len(tmp)
 	if err := json.Unmarshal(buf, &tmp); err != nil {
@@ -152,7 +151,6 @@ func (s SampleHistogramPair) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SampleHistogramPair) UnmarshalJSON(buf []byte) error {
-	fmt.Printf("In sample histogram pair b=%v\n", string(buf))
 	tmp := []interface{}{&s.Timestamp, &s.Histogram}
 	wantLen := len(tmp)
 	if err := json.Unmarshal(buf, &tmp); err != nil {

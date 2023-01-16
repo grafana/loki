@@ -232,7 +232,7 @@ func (pb *Pubsub) NewClusters(updates map[string]xdsresource.ClusterUpdateErrTup
 			// from cache, and also send an resource not found error to indicate
 			// resource removed.
 			delete(pb.cdsCache, name)
-			pb.ldsMD[name] = xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusNotExist}
+			pb.cdsMD[name] = xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusNotExist}
 			for wi := range pb.cdsWatchers[name] {
 				wi.resourceNotFound()
 			}

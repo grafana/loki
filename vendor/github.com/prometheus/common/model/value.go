@@ -253,9 +253,8 @@ func (ss *SampleStream) UnmarshalJSON(b []byte) error {
 		Values:     ss.Values,
 		Histograms: ss.Histograms,
 	}
-	fmt.Printf("in common model b=%v, hist=%v, values=%v, metrics=%v\n", string(b), ss.Histograms, ss.Values, ss.Metric)
+
 	if err := json.Unmarshal(b, &v); err != nil {
-		fmt.Printf("in common model err=%v\n", err)
 		return err
 	}
 

@@ -14,7 +14,7 @@ keywords: []
 
 This Helm Chart installation runs the Grafana Loki cluster within a Kubernetes cluster.
 
-If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable](../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
+If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode](../../../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
 
 It is not possible to run the scalable mode with the `filesystem` storage.
 
@@ -50,7 +50,6 @@ It is not possible to run the scalable mode with the `filesystem` storage.
           admin: admin
         type: s3
         s3:
-          s3: <WHAT SHOULD GO HERE?>
           endpoint: <endpoint>
           region: <AWS region>
           secretAccessKey: <AWS secret access key>

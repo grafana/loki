@@ -10,9 +10,11 @@ import (
 )
 
 func commandsServer(m *Miniredis) {
+	m.srv.Register("COMMAND", m.cmdCommand)
 	m.srv.Register("DBSIZE", m.cmdDbsize)
 	m.srv.Register("FLUSHALL", m.cmdFlushall)
 	m.srv.Register("FLUSHDB", m.cmdFlushdb)
+	m.srv.Register("INFO", m.cmdInfo)
 	m.srv.Register("TIME", m.cmdTime)
 }
 
@@ -100,8 +102,8 @@ func (m *Miniredis) cmdTime(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		now := m.effectiveNow()
 		nanos := now.UnixNano()
-		seconds := nanos / 1000000000
-		microseconds := (nanos / 1000) % 1000000
+		seconds := nanos / 1_000_000_000
+		microseconds := (nanos / 1_000) % 1_000_000
 
 		c.WriteLen(2)
 		c.WriteBulk(strconv.FormatInt(seconds, 10))

@@ -61,6 +61,9 @@ import (
   UnwrapExpr              *UnwrapExpr
   DecolorizeExpr          *DecolorizeExpr
   OffsetExpr              *OffsetExpr
+  DropLabel               log.DropLabel
+  DropLabels              []log.DropLabel
+  DropLabelsExpr          *DropLabelsExpr 
 }
 
 %start root
@@ -102,6 +105,9 @@ import (
 %type <LineFilter>            lineFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
+%type <DropLabelsExpr>        dropLabelsExpr
+%type <DropLabels>            dropLabels
+%type <DropLabel>             dropLabel
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
@@ -117,11 +123,11 @@ import (
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
-                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE BUCKETS_OVER_TIME
+                  DECOLORIZE DROP BUCKETS_OVER_TIME
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -267,6 +273,7 @@ pipelineStage:
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE decolorizeExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
+  | PIPE dropLabelsExpr          { $$ = $2 }
   ;
 
 filterOp:
@@ -309,11 +316,12 @@ labelsFormat:
   | labelsFormat COMMA error
   ;
 
-labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
+labelFormatExpr:
+      LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }
-    | ipLabelFilter                                       { $$ = $1 }
+    | ipLabelFilter                                  { $$ = $1 }
     | unitFilter                                     { $$ = $1 }
     | numberFilter                                   { $$ = $1 }
     | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }
@@ -370,6 +378,17 @@ numberFilter:
     | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
+
+dropLabel: 
+      IDENTIFIER { $$ = log.NewDropLabel(nil, $1) }
+    | matcher { $$ = log.NewDropLabel($1, "") }
+
+dropLabels:
+      dropLabel                  { $$ = []log.DropLabel{$1}}
+    | dropLabels COMMA dropLabel { $$ = append($1, $3) }
+    ;
+
+dropLabelsExpr: DROP dropLabels { $$ = newDropLabelsExpr($2) }
 
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:
@@ -483,6 +502,8 @@ vectorOp:
       | STDVAR  { $$ = OpTypeStdvar }
       | BOTTOMK { $$ = OpTypeBottomK }
       | TOPK    { $$ = OpTypeTopK }
+      | SORT    { $$ = OpTypeSort }
+      | SORT_DESC    { $$ = OpTypeSortDesc }
       ;
 
 rangeOp:

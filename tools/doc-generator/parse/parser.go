@@ -256,20 +256,34 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 			_, isCustomType := getFieldCustomType(field.Type)
 			isSliceOfStructs := field.Type.Kind() == reflect.Slice && (field.Type.Elem().Kind() == reflect.Struct || field.Type.Elem().Kind() == reflect.Ptr)
 			if !isCustomType && isSliceOfStructs {
+				// Check if slice element type is a root block
+				// and add it to the blocks structure
+				rootName, rootDesc, isRoot := isRootBlock(field.Type.Elem(), rootBlocks)
+				if isRoot {
+					sliceElementBlock, err := config(nil, reflect.New(field.Type.Elem()).Interface(), flags, rootBlocks)
+					if err != nil {
+						return nil, errors.Wrapf(err, "couldn't inspect slice, element_type=%s", field.Type.Elem())
+					}
+					if len(sliceElementBlock) == 1 {
+						element = &ConfigBlock{
+							Name:    rootName,
+							Desc:    rootDesc,
+							Entries: sliceElementBlock[0].Entries,
+						}
+						blocks = append(blocks, element)
+					}
+				}
+
+				// Add slice element to current block
 				element = &ConfigBlock{
 					Name: fieldName,
 					Desc: getFieldDescription(cfg, field, ""),
 				}
 				kind = KindSlice
-
-				_, err = config(element, reflect.New(field.Type.Elem()).Interface(), flags, rootBlocks)
-				if err != nil {
-					return nil, errors.Wrapf(err, "couldn't inspect slice, element_type=%s", field.Type.Elem())
-				}
 			}
 		}
 
-		fieldType, err := getFieldType(field.Type)
+		fieldType, err := getFieldType(field.Type, rootBlocks)
 		if err != nil {
 			return nil, errors.Wrapf(err, "config=%s.%s", t.PkgPath(), t.Name())
 		}
@@ -338,6 +352,8 @@ func getFieldCustomType(t reflect.Type) (string, bool) {
 		return "url", true
 	case reflect.TypeOf(time.Duration(0)).String():
 		return "duration", true
+	case reflect.TypeOf(storage_config.DayTime{}).String():
+		return "daytime", true
 	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
 		return fieldString, true
 	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
@@ -359,9 +375,13 @@ func getFieldCustomType(t reflect.Type) (string, bool) {
 	}
 }
 
-func getFieldType(t reflect.Type) (string, error) {
+func getFieldType(t reflect.Type, rootBlocks []RootBlock) (string, error) {
 	if typ, isCustom := getFieldCustomType(t); isCustom {
 		return typ, nil
+	}
+
+	if rootName, _, isRoot := isRootBlock(t, rootBlocks); isRoot {
+		return rootName, nil
 	}
 
 	// Fallback to auto-detection of built-in data types
@@ -396,17 +416,21 @@ func getFieldType(t reflect.Type) (string, error) {
 		return fieldString, nil
 	case reflect.Slice:
 		// Get the type of elements
-		elemType, err := getFieldType(t.Elem())
+		elemType, err := getFieldType(t.Elem(), rootBlocks)
 		if err != nil {
 			return "", err
 		}
 		return "list of " + elemType + "s", nil
 	case reflect.Map:
-		return fmt.Sprintf("map of %s to %s", t.Key(), t.Elem().String()), nil
+		elemType, err := getFieldType(t.Elem(), rootBlocks)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("map of %s to %s", t.Key(), elemType), nil
 	case reflect.Struct:
 		return t.Name(), nil
 	case reflect.Ptr:
-		return getFieldType(t.Elem())
+		return getFieldType(t.Elem(), rootBlocks)
 	case reflect.Interface:
 		return t.Name(), nil
 	default:
@@ -421,6 +445,8 @@ func getCustomFieldType(t reflect.Type) (string, bool) {
 		return "url", true
 	case reflect.TypeOf(time.Duration(0)).String():
 		return "duration", true
+	case reflect.TypeOf(storage_config.DayTime{}).String():
+		return "daytime", true
 	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
 		return fieldString, true
 	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():

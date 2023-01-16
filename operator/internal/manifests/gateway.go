@@ -213,7 +213,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(1),
+			Replicas: pointer.Int32Ptr(opts.Stack.Template.Gateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
