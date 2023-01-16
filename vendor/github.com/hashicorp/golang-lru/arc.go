@@ -173,7 +173,6 @@ func (c *ARCCache) Add(key, value interface{}) {
 
 	// Add to the recently seen list
 	c.t1.Add(key, value)
-	return
 }
 
 // replace is used to adaptively evict from either T1 or T2

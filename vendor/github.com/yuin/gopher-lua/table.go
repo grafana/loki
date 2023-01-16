@@ -46,7 +46,7 @@ func newLTable(acap int, hcap int) *LTable {
 	return tb
 }
 
-// Len returns length of this LTable.
+// Len returns length of this LTable without using __len.
 func (tb *LTable) Len() int {
 	if tb.array == nil {
 		return 0

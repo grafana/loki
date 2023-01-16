@@ -72,7 +72,7 @@ type Controller struct {
 	watchMap map[xdsresource.ResourceType]map[string]bool
 	// versionMap contains the version that was acked (the version in the ack
 	// request that was sent on wire). The key is rType, the value is the
-	// version string, becaues the versions for different resource types should
+	// version string, because the versions for different resource types should
 	// be independent.
 	versionMap map[xdsresource.ResourceType]string
 	// nonceMap contains the nonce from the most recent received response.
@@ -100,7 +100,7 @@ func SetGRPCDial(dialer func(target string, opts ...grpc.DialOption) (*grpc.Clie
 }
 
 // New creates a new controller.
-func New(config *bootstrap.ServerConfig, updateHandler pubsub.UpdateHandler, validator xdsresource.UpdateValidatorFunc, logger *grpclog.PrefixLogger) (_ *Controller, retErr error) {
+func New(config *bootstrap.ServerConfig, updateHandler pubsub.UpdateHandler, validator xdsresource.UpdateValidatorFunc, logger *grpclog.PrefixLogger, boff func(int) time.Duration) (_ *Controller, retErr error) {
 	switch {
 	case config == nil:
 		return nil, errors.New("xds: no xds_server provided")
@@ -120,12 +120,15 @@ func New(config *bootstrap.ServerConfig, updateHandler pubsub.UpdateHandler, val
 		}),
 	}
 
+	if boff == nil {
+		boff = backoff.DefaultExponential.Backoff
+	}
 	ret := &Controller{
 		config:          config,
 		updateValidator: validator,
 		updateHandler:   updateHandler,
 
-		backoff:    backoff.DefaultExponential.Backoff, // TODO: should this be configurable?
+		backoff:    boff,
 		streamCh:   make(chan grpc.ClientStream, 1),
 		sendCh:     buffer.NewUnbounded(),
 		watchMap:   make(map[xdsresource.ResourceType]map[string]bool),

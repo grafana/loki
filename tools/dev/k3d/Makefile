@@ -1,4 +1,4 @@
-.PHONY: loki-distributed down add-repos update-repos prepare build-latest-image
+.PHONY: loki-distributed down add-repos update-repos prepare prepare-gel build-latest-image
 
 IMAGE_TAG := $(shell ../../../tools/image-tag)
 EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
@@ -10,7 +10,7 @@ loki-distributed: prepare build-latest-image
 	sleep 5
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/loki-distributed
 
-enterprise-logs: prepare
+enterprise-logs: prepare-gel
 	$(CURDIR)/scripts/create_cluster.sh enterprise-logs $(REGISTRY_PORT)
 	# wait 5s for the cluster to be ready
 	sleep 5
@@ -23,7 +23,7 @@ helm-cluster: prepare
 	# wait 5s for the cluster to be ready
 	sleep 5
 	$(MAKE) -C $(CURDIR) apply-helm-cluster
-	
+
 apply-enterprise-logs:
 	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/enterprise-logs
 
@@ -66,13 +66,14 @@ secrets: secrets/grafana.jwt secrets/gel.jwt
 
 secrets/grafana.jwt:
 	mkdir -p secrets/
-	op document get "loki/grafana.jwt" > $(CURDIR)/secrets/grafana.jwt
+	op document get "loki/grafana.jwt" --output=$(CURDIR)/secrets/grafana.jwt
 
 secrets/gel.jwt:
 	mkdir -p secrets/
-	op document get "loki/gel.jwt" > $(CURDIR)/secrets/gel.jwt
+	op document get "loki/gel.jwt" --output=$(CURDIR)/secrets/gel.jwt
 
-prepare: create-registry update-repos secrets
+prepare: create-registry update-repos
+prepare-gel: prepare secrets
 
 build-latest-image:
 	make -C $(CURDIR)/../../.. loki-image
@@ -81,4 +82,10 @@ build-latest-image:
 
 HELM_DIR := $(shell cd $(CURDIR)/../../../production/helm/loki && pwd)
 helm-install-enterprise-logs:
-	helm install loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+
+helm-upgrade-enterprise-logs:
+	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+
+helm-uninstall-enterprise-logs:
+	helm uninstall enterprise-logs-test-fixture -n loki

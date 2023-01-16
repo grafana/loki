@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_AlgorithTest_Algorithm(t *testing.T) {
-	f := func(ingest int) bool {
+func Test_Algorithm(t *testing.T) {
+	f := func(ingest float64) bool {
 		if ingest < 0 {
 			ingest = -ingest
 		}
@@ -32,11 +32,15 @@ func Test_AlgorithTest_Algorithm(t *testing.T) {
 	if err := quick.Check(f, nil); err != nil {
 		t.Error(err)
 	}
+
+	// Sanity checks
+	size := calculateClusterSize(NodeTypesByProvider["AWS"]["t2.xlarge"], 1000000, Basic)
+	require.Equalf(t, size.TotalNodes, 0, "given ingest=1PB/Day totla nodes must be big")
 }
 
 func Test_CoresNodeInvariant(t *testing.T) {
 	for _, queryPerformance := range []QueryPerf{Basic, Super} {
-		for _, ingest := range []int{1, 2} {
+		for _, ingest := range []float64{30, 300, 1000, 2000} {
 			for _, cloud := range NodeTypesByProvider {
 				for _, node := range cloud {
 					size := calculateClusterSize(node, ingest, queryPerformance)

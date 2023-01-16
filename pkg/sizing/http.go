@@ -33,12 +33,12 @@ func decodeMesage(req *http.Request, msg *Message) error {
 
 	msg.Ingest, err = strconv.Atoi(req.FormValue("ingest"))
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read ingest: %w", err)
 	}
 
 	msg.Retention, err = strconv.Atoi(req.FormValue("retention"))
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read retention: %w", err)
 	}
 
 	msg.QueryPerformance = QueryPerf(strings.ToLower(req.FormValue("queryperf")))
@@ -67,7 +67,7 @@ func (h *Handler) GenerateHelmValues(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
 
-	cluster := calculateClusterSize(msg.NodeType, msg.Ingest, msg.QueryPerformance)
+	cluster := calculateClusterSize(msg.NodeType, float64(msg.Ingest), msg.QueryPerformance)
 	helm := constructHelmValues(cluster, msg.NodeType)
 
 	enc := yaml.NewEncoder(w)
@@ -110,7 +110,7 @@ func (h *Handler) Cluster(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cluster := calculateClusterSize(msg.NodeType, msg.Ingest, msg.QueryPerformance)
+	cluster := calculateClusterSize(msg.NodeType, float64(msg.Ingest), msg.QueryPerformance)
 
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(cluster)

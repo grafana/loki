@@ -15,7 +15,8 @@ keywords: []
 <!-- vale Grafana.Quotes = YES -->
 
 This tool helps to generate a Helm Charts `values.yaml` file based on specified
- expected ingestion, retention rate and node type.
+ expected ingestion, retention rate and node type. It will always configure a
+ [scalable](../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode) deployment. The storage needs to be configured after generation.
 
 <div id="app">
 
@@ -24,13 +25,13 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   <option v-for="node of nodes">{{ node }}</option>
   </select>
 
-  <label class="icon question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null">Ingest</label>
-  <input v-model="ingest" name="ingest" placeholder="Desired ingest in TB/day" type="number" max="1000" min="0"/>
+  <label class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null">Ingest</label>
+  <input v-model="ingest" name="ingest" placeholder="Desired ingest in GiB/day" type="number" max="1048576" min="0"/>
 
-  <label class="icon question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null">Log retention period</label>
+  <label class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null">Log retention period</label>
   <input v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
 
-  <label class="icon question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null">Query performance</label>
+  <label class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null">Query performance</label>
   <div id="queryperf" style="display: inline-flex;">
   <label for="basic">
   <input type="radio" id="basic" value="Basic" v-model="queryperf"/>Basic
@@ -111,7 +112,8 @@ createApp({
 
   computed: {
     helmURL() {
-      return `${API_URL}/helm?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.ingest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+      const bytesDayIngest = this.ingest * 1024 * 1024 * 1024
+      return `${API_URL}/helm?node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
     }
   },
 

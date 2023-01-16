@@ -14,15 +14,14 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Shopify/sarama v1.30.0
 	github.com/Workiva/go-datastructures v1.0.53
-	github.com/alicebob/miniredis/v2 v2.22.0
-	github.com/aws/aws-sdk-go v1.44.128
+	github.com/alicebob/miniredis/v2 v2.30.0
+	github.com/aws/aws-sdk-go v1.44.156
 	github.com/baidubce/bce-sdk-go v0.9.111
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/buger/jsonparser v1.1.1
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cespare/xxhash v1.1.0
-	github.com/cespare/xxhash/v2 v2.1.2
-	github.com/cloudflare/cloudflare-go v0.27.0
+	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cristalhq/hedgedhttp v0.7.0
 	github.com/davecgh/go-spew v1.1.1
@@ -48,6 +47,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
+	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 	github.com/grafana/dskit v0.0.0-20221212120341-3e308a49441b
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20221213170046-b5da8a745d41
@@ -56,7 +56,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.15.3
-	github.com/hashicorp/golang-lru v0.5.4
+	github.com/hashicorp/golang-lru v0.6.0
 	github.com/imdario/mergo v0.3.12
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 	github.com/influxdata/telegraf v1.16.3
@@ -80,9 +80,9 @@ require (
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.17
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.13.1
+	github.com/prometheus/client_golang v1.14.0
 	github.com/prometheus/client_model v0.3.0
-	github.com/prometheus/common v0.37.0
+	github.com/prometheus/common v0.39.0
 	github.com/prometheus/prometheus v0.40.5
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
@@ -99,14 +99,13 @@ require (
 	go.uber.org/atomic v1.10.0
 	go.uber.org/goleak v1.2.0
 	golang.org/x/crypto v0.4.0
-	golang.org/x/net v0.3.0
+	golang.org/x/net v0.5.0
 	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.3.0
+	golang.org/x/sys v0.4.0
 	golang.org/x/time v0.1.0
 	google.golang.org/api v0.102.0
 	google.golang.org/grpc v1.50.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
-	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
@@ -114,13 +113,16 @@ require (
 )
 
 require (
+	github.com/Azure/go-autorest/autorest v0.11.28
+	github.com/fsnotify/fsnotify v1.6.0
 	github.com/heroku/x v0.0.50
-	github.com/prometheus/alertmanager v0.24.0
+	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20220715165016-ce338803bc1e
 	github.com/willf/bloom v2.0.3+incompatible
-	golang.org/x/oauth2 v0.1.0
-	golang.org/x/text v0.5.0
+	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
+	golang.org/x/oauth2 v0.4.0
+	golang.org/x/text v0.6.0
 )
 
 require (
@@ -132,7 +134,6 @@ require (
 	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
-	github.com/Azure/go-autorest/autorest v0.11.28 // indirect
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.5 // indirect
 	github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect
 	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
@@ -182,19 +183,18 @@ require (
 	github.com/envoyproxy/go-control-plane v0.10.3 // indirect
 	github.com/envoyproxy/protoc-gen-validate v0.6.13 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
-	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/analysis v0.21.2 // indirect
-	github.com/go-openapi/errors v0.20.2 // indirect
+	github.com/go-openapi/analysis v0.21.4 // indirect
+	github.com/go-openapi/errors v0.20.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
-	github.com/go-openapi/loads v0.21.1 // indirect
-	github.com/go-openapi/spec v0.20.5 // indirect
+	github.com/go-openapi/loads v0.21.2 // indirect
+	github.com/go-openapi/spec v0.20.7 // indirect
 	github.com/go-openapi/strfmt v0.21.3 // indirect
-	github.com/go-openapi/swag v0.21.1 // indirect
-	github.com/go-openapi/validate v0.21.0 // indirect
+	github.com/go-openapi/swag v0.22.3 // indirect
+	github.com/go-openapi/validate v0.22.0 // indirect
 	github.com/go-zookeeper/zk v1.0.3 // indirect
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
@@ -211,14 +211,15 @@ require (
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-hclog v0.16.2 // indirect
+	github.com/hashicorp/go-hclog v1.2.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.2 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
-	github.com/hashicorp/memberlist v0.3.1 // indirect
+	github.com/hashicorp/memberlist v0.5.0 // indirect
 	github.com/hashicorp/serf v0.9.7 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
@@ -234,7 +235,7 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
-	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
+	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
@@ -268,11 +269,11 @@ require (
 	github.com/willf/bitset v1.1.11 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.3 // indirect
-	github.com/yuin/gopher-lua v0.0.0-20210529063254-f4c35e4016d9 // indirect
+	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.4 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.4 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.4 // indirect
-	go.mongodb.org/mongo-driver v1.10.2 // indirect
+	go.mongodb.org/mongo-driver v1.11.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.36.4 // indirect
 	go.opentelemetry.io/otel v1.11.1 // indirect
@@ -282,10 +283,9 @@ require (
 	go.uber.org/zap v1.21.0 // indirect
 	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
-	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326 // indirect
-	golang.org/x/mod v0.6.0 // indirect
-	golang.org/x/term v0.3.0 // indirect
-	golang.org/x/tools v0.2.0 // indirect
+	golang.org/x/mod v0.7.0 // indirect
+	golang.org/x/term v0.4.0 // indirect
+	golang.org/x/tools v0.4.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20221027153422-115e99e71e1c // indirect
@@ -318,12 +318,7 @@ replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 
-replace github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
-
 exclude k8s.io/client-go v8.0.0+incompatible
-
-// grpc v1.46.0 removed "WithBalancerName()" API, still in use by weaveworks/commons.
-replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
 
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.

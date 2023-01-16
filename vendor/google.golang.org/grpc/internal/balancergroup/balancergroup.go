@@ -25,6 +25,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/resolver"
@@ -67,7 +68,7 @@ type subBalancerWrapper struct {
 	ccState *balancer.ClientConnState
 	// The dynamic part of sub-balancer. Only used when balancer group is
 	// started. Gets cleared when sub-balancer is closed.
-	balancer balancer.Balancer
+	balancer *gracefulswitch.Balancer
 }
 
 // UpdateState overrides balancer.ClientConn, to keep state and picker.
@@ -93,11 +94,13 @@ func (sbc *subBalancerWrapper) updateBalancerStateWithCachedPicker() {
 }
 
 func (sbc *subBalancerWrapper) startBalancer() {
-	b := sbc.builder.Build(sbc, sbc.buildOpts)
-	sbc.group.logger.Infof("Created child policy %p of type %v", b, sbc.builder.Name())
-	sbc.balancer = b
+	if sbc.balancer == nil {
+		sbc.balancer = gracefulswitch.NewBalancer(sbc, sbc.buildOpts)
+	}
+	sbc.group.logger.Infof("Creating child policy of type %v", sbc.builder.Name())
+	sbc.balancer.SwitchTo(sbc.builder)
 	if sbc.ccState != nil {
-		b.UpdateClientConnState(*sbc.ccState)
+		sbc.balancer.UpdateClientConnState(*sbc.ccState)
 	}
 }
 
@@ -108,11 +111,8 @@ func (sbc *subBalancerWrapper) exitIdle() (complete bool) {
 	if b == nil {
 		return true
 	}
-	if ei, ok := b.(balancer.ExitIdler); ok {
-		ei.ExitIdle()
-		return true
-	}
-	return false
+	b.ExitIdle()
+	return true
 }
 
 func (sbc *subBalancerWrapper) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
@@ -158,6 +158,20 @@ func (sbc *subBalancerWrapper) resolverError(err error) {
 		return
 	}
 	b.ResolverError(err)
+}
+
+func (sbc *subBalancerWrapper) gracefulSwitch(builder balancer.Builder) {
+	sbc.builder = builder
+	b := sbc.balancer
+	// Even if you get an add and it persists builder but doesn't start
+	// balancer, this would leave graceful switch being nil, in which we are
+	// correctly overwriting with the recent builder here as well to use later.
+	// The graceful switch balancer's presence is an invariant of whether the
+	// balancer group is closed or not (if closed, nil, if started, present).
+	if sbc.balancer != nil {
+		sbc.group.logger.Infof("Switching child policy %v to type %v", sbc.id, sbc.builder.Name())
+		b.SwitchTo(sbc.builder)
+	}
 }
 
 func (sbc *subBalancerWrapper) stopBalancer() {
@@ -332,6 +346,23 @@ func (bg *BalancerGroup) Add(id string, builder balancer.Builder) {
 	bg.outgoingMu.Unlock()
 }
 
+// UpdateBuilder updates the builder for a current child, starting the Graceful
+// Switch process for that child.
+func (bg *BalancerGroup) UpdateBuilder(id string, builder balancer.Builder) {
+	bg.outgoingMu.Lock()
+	// This does not deal with the balancer cache because this call should come
+	// after an Add call for a given child balancer. If the child is removed,
+	// the caller will call Add if the child balancer comes back which would
+	// then deal with the balancer cache.
+	sbc := bg.idToBalancerConfig[id]
+	if sbc == nil {
+		// simply ignore it if not present, don't error
+		return
+	}
+	sbc.gracefulSwitch(builder)
+	bg.outgoingMu.Unlock()
+}
+
 // Remove removes the balancer with id from the group.
 //
 // But doesn't close the balancer. The balancer is kept in a cache, and will be
@@ -374,7 +405,6 @@ func (bg *BalancerGroup) cleanupSubConns(config *subBalancerWrapper) {
 	// sub-balancers.
 	for sc, b := range bg.scToSubBalancer {
 		if b == config {
-			bg.cc.RemoveSubConn(sc)
 			delete(bg.scToSubBalancer, sc)
 		}
 	}
