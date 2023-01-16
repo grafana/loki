@@ -153,10 +153,6 @@ func TestDropLabelsPipeline(t *testing.T) {
 						nil,
 						"__error__",
 					},
-					{
-						nil,
-						"__error_details__",
-					},
 				}),
 			},
 			[][]byte{
@@ -222,7 +218,6 @@ func TestDropLabelsPipeline(t *testing.T) {
 					{Name: "namespace", Value: "prod"},
 					{Name: "pod_uuid", Value: "foo"},
 					{Name: "pod_deployment_ref", Value: "foobar"},
-					{Name: logqlmodel.ErrorDetailsLabel, Value: "logfmt syntax error at pos 2 : unexpected '\"'"},
 				},
 			},
 		},
