@@ -665,6 +665,17 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   },
   promtail_win(),
   logql_analyzer(),
+  pipeline('release-test') {
+    trigger+: {
+      event: ['pull_request', 'tag'],
+    },
+    depends_on : ['check'],
+    steps: [
+      run('test-command',
+          commands=['printf "Should not show when check fails"'],
+         ),
+    ],
+  },
   pipeline('release') {
     trigger+: {
       event: ['pull_request', 'tag'],
