@@ -278,12 +278,15 @@ func (r *LokiStackReconciler) enqueueForUserWorkloadAMService() handler.EventHan
 		if obj.GetName() == openshift.MonitoringSVCOperated && obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS {
 
 			for _, stack := range lokiStacks.Items {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: stack.Namespace,
-						Name:      stack.Name,
-					},
-				})
+				if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging ||
+					stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Namespace: stack.Namespace,
+							Name:      stack.Name,
+						},
+					})
+				}
 			}
 
 			r.Log.Info("Enqueued requests for all LokiStacks because of UserWorkload Alertmanager Service resource change", "count", len(requests), "kind", obj.GetObjectKind())
