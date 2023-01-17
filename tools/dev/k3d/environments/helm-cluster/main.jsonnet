@@ -74,16 +74,11 @@ local spec = (import './spec.json').spec;
            + grafana.withEnterpriseLicenseText(importstr '../../secrets/grafana.jwt')
            + grafana.addDatasource('prometheus', $.prometheus_datasource)
            + grafana.addDatasource('loki', $.loki_datasource)
+           + grafana.addPlugin('https://dl.grafana.com/gel/releases/grafana-enterprise-logs-app-v2.6.0.zip;grafana-enterprise-logs-app')
            + {
              local container = k.core.v1.container,
              grafana_deployment+:
-               k.apps.v1.deployment.hostVolumeMount(
-                 name='enterprise-logs-app',
-                 hostPath='/var/lib/grafana/plugins/grafana-enterprise-logs-app/dist',
-                 path='/grafana-enterprise-logs-app',
-                 volumeMixin=k.core.v1.volume.hostPath.withType('Directory')
-               )
-               + k.apps.v1.deployment.emptyVolumeMount('grafana-var', '/var/lib/grafana')
+               k.apps.v1.deployment.emptyVolumeMount('grafana-var', '/var/lib/grafana')
                + k.apps.v1.deployment.emptyVolumeMount('grafana-plugins', '/etc/grafana/provisioning/plugins')
                + k.apps.v1.deployment.spec.template.spec.withInitContainersMixin([
                  container.new('startup', 'alpine:latest') +
@@ -91,10 +86,6 @@ local spec = (import './spec.json').spec;
                    '/bin/sh',
                    '-euc',
                    |||
-                     mkdir -p /var/lib/grafana/plugins
-                     cp -r /grafana-enterprise-logs-app /var/lib/grafana/plugins/grafana-enterprise-logs-app
-                     chown -R 472:472 /var/lib/grafana/plugins
-
                      cat > /etc/grafana/provisioning/plugins/enterprise-logs.yaml <<EOF
                      apiVersion: 1
                      apps:
@@ -108,7 +99,6 @@ local spec = (import './spec.json').spec;
                    ||| % lokiGatewayUrl,
                  ]) +
                  container.withVolumeMounts([
-                   k.core.v1.volumeMount.new('enterprise-logs-app', '/grafana-enterprise-logs-app', false),
                    k.core.v1.volumeMount.new('grafana-var', '/var/lib/grafana', false),
                    k.core.v1.volumeMount.new('grafana-plugins', '/etc/grafana/provisioning/plugins', false),
                  ]) +
@@ -121,8 +111,7 @@ local spec = (import './spec.json').spec;
                ]) + k.apps.v1.deployment.mapContainers(
                  function(c) c {
                    env+: [
-                     envVar.new('GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS', 'grafana-enterprise-logs-app'),
-                     envVar.fromSecretRef('PROVISIONED_TENANT_TOKEN', '%s-%s' % [provisionedSecretPrefix, tenant], 'token-read'),
+                     envVar.fromSecretRef('PROVISIONED_TENANT_TOKEN', '%s-%s' % [provisionedSecretPrefix, tenant], 'password'),
                    ],
                  }
                ),

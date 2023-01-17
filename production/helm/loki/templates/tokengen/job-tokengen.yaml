@@ -79,6 +79,11 @@ spec:
             - -euc
             - |
               kubectl create secret generic "{{ include "enterprise-logs.adminTokenSecret" . }}" --from-file=token=/shared/admin-token
+              {{- with .Values.enterprise.adminToken.additionalNamespaces }}
+              {{- range . }}
+              kubectl --namespace "{{ . }}" create secret generic "{{ include "enterprise-logs.adminTokenSecret" $ }}" --from-file=token=/shared/admin-token
+              {{- end }}
+              {{- end }}
           volumeMounts:
             {{- if .Values.enterprise.tokengen.extraVolumeMounts }}
               {{ toYaml .Values.enterprise.tokengen.extraVolumeMounts | nindent 12 }}
