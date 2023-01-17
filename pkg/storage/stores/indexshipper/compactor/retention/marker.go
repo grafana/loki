@@ -252,7 +252,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 		queue = make(chan *keyPair)
 	)
 	// we use a copy to view the file so that we can read and update at the same time.
-	viewFile, err := os.CreateTemp("/tmp/", "marker-view-")
+	viewFile, err := os.CreateTemp("", "marker-view-")
 	if err != nil {
 		return err
 	}
