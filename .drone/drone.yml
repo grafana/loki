@@ -1338,24 +1338,6 @@ trigger:
 ---
 depends_on:
 - check
-kind: pipeline
-name: release-test
-steps:
-- commands:
-  - printf "Should not show when check fails"
-  environment: {}
-  image: grafana/loki-build-image:0.27.0
-  name: test-command
-trigger:
-  event:
-  - pull_request
-  - tag
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
----
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
@@ -1685,6 +1667,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: cfd5cde6082c3710aa55d4d40dc234c0a881e320898d7fa9ef0787ce264c8eef
+hmac: 58239f4ad12c6f5089ab3582f4086a6be2c3131778b71ddba9721b21fa03ce00
 
 ...
