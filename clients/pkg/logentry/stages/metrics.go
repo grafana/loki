@@ -129,17 +129,25 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 		}
 	}
 	return toStage(&metricStage{
-		logger:  logger,
-		cfg:     *cfgs,
-		metrics: metrics,
+		logger:   logger,
+		cfg:      *cfgs,
+		metrics:  metrics,
+		registry: registry,
 	}), nil
 }
 
 // metricStage creates and updates prometheus metrics based on extracted pipeline data
 type metricStage struct {
-	logger  log.Logger
-	cfg     MetricsConfig
-	metrics map[string]prometheus.Collector
+	logger   log.Logger
+	cfg      MetricsConfig
+	metrics  map[string]prometheus.Collector
+	registry prometheus.Registerer
+}
+
+func (m *metricStage) Close() {
+	for _, collector := range m.metrics {
+		m.registry.Unregister(collector)
+	}
 }
 
 // Process implements Stage

@@ -3,6 +3,7 @@ package lokipush
 import (
 	"bufio"
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"io"
 	"net/http"
 	"sort"
@@ -34,6 +35,7 @@ type PushTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
 	config        *scrapeconfig.PushTargetConfig
+	pipeline      *stages.Pipeline
 	relabelConfig []*relabel.Config
 	jobName       string
 	server        *server.Server
@@ -41,6 +43,7 @@ type PushTarget struct {
 
 func NewPushTarget(logger log.Logger,
 	handler api.EntryHandler,
+	pipeline *stages.Pipeline,
 	relabel []*relabel.Config,
 	jobName string,
 	config *scrapeconfig.PushTargetConfig,
@@ -50,6 +53,7 @@ func NewPushTarget(logger log.Logger,
 		logger:        logger,
 		handler:       handler,
 		relabelConfig: relabel,
+		pipeline:      pipeline,
 		jobName:       jobName,
 		config:        config,
 	}
@@ -232,5 +236,8 @@ func (t *PushTarget) Stop() error {
 	level.Info(t.logger).Log("msg", "stopping push server", "job", t.jobName)
 	t.server.Shutdown()
 	t.handler.Stop()
+	if t.pipeline != nil {
+		t.pipeline.Close()
+	}
 	return nil
 }

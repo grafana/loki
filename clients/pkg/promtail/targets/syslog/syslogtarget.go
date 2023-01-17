@@ -3,6 +3,7 @@ package syslog
 import (
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"net"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ type SyslogTarget struct {
 	handler       api.EntryHandler
 	config        *scrapeconfig.SyslogTargetConfig
 	relabelConfig []*relabel.Config
+	pipeline      *stages.Pipeline
 
 	transport Transport
 
@@ -54,6 +56,7 @@ func NewSyslogTarget(
 	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
+	pipeline *stages.Pipeline,
 	relabel []*relabel.Config,
 	config *scrapeconfig.SyslogTargetConfig,
 ) (*SyslogTarget, error) {
@@ -64,6 +67,7 @@ func NewSyslogTarget(
 		handler:       handler,
 		config:        config,
 		relabelConfig: relabel,
+		pipeline:      pipeline,
 		messagesDone:  make(chan struct{}),
 	}
 
@@ -222,6 +226,9 @@ func (t *SyslogTarget) Stop() error {
 	// wait for all pending messages to be processed and sent to handler
 	<-t.messagesDone
 	t.handler.Stop()
+	if t.pipeline != nil {
+		t.pipeline.Close()
+	}
 	return err
 }
 

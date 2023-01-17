@@ -59,7 +59,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 	}
 	client := fake.New(func() {})
 	defer client.Stop()
-	ta, err := New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err := New(util_log.Logger, client, nil, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		BookmarkPath: "c:foo.xml",
 		PollInterval: time.Microsecond,
 		Query: `<QueryList>
@@ -93,7 +93,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 
 	client = fake.New(func() {})
 	defer client.Stop()
-	ta, err = New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err = New(util_log.Logger, client, nil, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		BookmarkPath: "c:foo.xml",
 		PollInterval: time.Microsecond,
 		Query: `<QueryList>
@@ -122,7 +122,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 func Test_renderEntries(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
-	ta, err := New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err := New(util_log.Logger, client, nil, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		Labels:               model.LabelSet{"job": "windows-events"},
 		EventlogName:         "Application",
 		Query:                "*",
@@ -165,7 +165,7 @@ func Test_renderEntries(t *testing.T) {
 func Test_renderEntries_ExcludeEventMessage(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
-	ta, err := New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err := New(util_log.Logger, client, nil, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		Labels:               model.LabelSet{"job": "windows-events"},
 		EventlogName:         "Application",
 		Query:                "*",

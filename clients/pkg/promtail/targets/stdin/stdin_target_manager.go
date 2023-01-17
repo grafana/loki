@@ -90,15 +90,21 @@ func getStdinConfig(log log.Logger, configs []scrapeconfig.Config) scrapeconfig.
 func (t *StdinTargetManager) Ready() bool {
 	return t.ctx.Err() == nil
 }
-func (t *StdinTargetManager) Stop()                                     { t.cancel() }
+func (t *StdinTargetManager) Stop() {
+	if t.pipeline != nil {
+		t.pipeline.Close()
+	}
+	t.cancel()
+}
 func (t *StdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
 func (t *StdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
 
 type readerTarget struct {
-	in     *bufio.Reader
-	out    api.EntryHandler
-	lbs    model.LabelSet
-	logger log.Logger
+	in       *bufio.Reader
+	out      api.EntryHandler
+	lbs      model.LabelSet
+	logger   log.Logger
+	pipeline *stages.Pipeline
 
 	cancel context.CancelFunc
 	ctx    context.Context
@@ -117,12 +123,13 @@ func newReaderTarget(reg prometheus.Registerer, logger log.Logger, in io.Reader,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &readerTarget{
-		in:     bufio.NewReaderSize(in, bufferSize),
-		out:    pipeline.Wrap(client),
-		cancel: cancel,
-		ctx:    ctx,
-		lbs:    lbs,
-		logger: log.With(logger, "component", "reader"),
+		in:       bufio.NewReaderSize(in, bufferSize),
+		out:      pipeline.Wrap(client),
+		cancel:   cancel,
+		pipeline: pipeline,
+		ctx:      ctx,
+		lbs:      lbs,
+		logger:   log.With(logger, "component", "reader"),
 	}
 	go t.read()
 

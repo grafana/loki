@@ -2,6 +2,7 @@ package heroku
 
 import (
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"net/http"
 	"strings"
 	"time"
@@ -33,10 +34,11 @@ type Target struct {
 	server         *server.Server
 	metrics        *Metrics
 	relabelConfigs []*relabel.Config
+	pipeline       *stages.Pipeline
 }
 
 // NewTarget creates a brand new Heroku Drain target, capable of receiving logs from a Heroku application through an HTTP drain.
-func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuDrainTargetConfig, relabel []*relabel.Config) (*Target, error) {
+func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuDrainTargetConfig, pipeline *stages.Pipeline, relabel []*relabel.Config) (*Target, error) {
 	wrappedLogger := log.With(logger, "component", "heroku_drain")
 
 	ht := &Target{
@@ -45,6 +47,7 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 		handler:        handler,
 		jobName:        jobName,
 		config:         config,
+		pipeline:       pipeline,
 		relabelConfigs: relabel,
 	}
 
@@ -188,5 +191,8 @@ func (h *Target) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping heroku drain target", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()
+	if h.pipeline != nil {
+		h.pipeline.Close()
+	}
 	return nil
 }

@@ -259,6 +259,9 @@ func (ts *TargetSyncer) fetchTopics() ([]string, bool, error) {
 func (ts *TargetSyncer) Stop() error {
 	ts.cancel()
 	ts.wg.Wait()
+	if ts.pipeline != nil {
+		ts.pipeline.Close()
+	}
 	return ts.close()
 }
 

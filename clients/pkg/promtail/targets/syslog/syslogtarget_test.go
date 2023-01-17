@@ -310,7 +310,7 @@ func Benchmark_SyslogTarget(b *testing.B) {
 			client := fake.New(func() {})
 
 			metrics := NewMetrics(nil)
-			tgt, _ := NewSyslogTarget(metrics, log.NewNopLogger(), client, []*relabel.Config{}, &scrapeconfig.SyslogTargetConfig{
+			tgt, _ := NewSyslogTarget(metrics, log.NewNopLogger(), client, nil, []*relabel.Config{}, &scrapeconfig.SyslogTargetConfig{
 				ListenAddress:       "127.0.0.1:0",
 				ListenProtocol:      tt.protocol,
 				LabelStructuredData: true,
@@ -373,7 +373,7 @@ func TestSyslogTarget(t *testing.T) {
 			client := fake.New(func() {})
 
 			metrics := NewMetrics(nil)
-			tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+			tgt, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 				MaxMessageLength:    1 << 12, // explicitly not use default value
 				ListenAddress:       "127.0.0.1:0",
 				ListenProtocol:      tt.protocol,
@@ -488,7 +488,7 @@ func TestSyslogTarget_RFC5424Messages(t *testing.T) {
 			client := fake.New(func() {})
 
 			metrics := NewMetrics(nil)
-			tgt, err := NewSyslogTarget(metrics, logger, client, []*relabel.Config{}, &scrapeconfig.SyslogTargetConfig{
+			tgt, err := NewSyslogTarget(metrics, logger, client, nil, []*relabel.Config{}, &scrapeconfig.SyslogTargetConfig{
 				ListenAddress:       "127.0.0.1:0",
 				ListenProtocol:      tt.protocol,
 				LabelStructuredData: true,
@@ -538,7 +538,7 @@ func TestSyslogTarget_TLSConfigWithoutServerCertificate(t *testing.T) {
 	client := fake.New(func() {})
 
 	metrics := NewMetrics(nil)
-	_, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	_, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 		TLSConfig: promconfig.TLSConfig{
 			KeyFile: "foo",
@@ -553,7 +553,7 @@ func TestSyslogTarget_TLSConfigWithoutServerKey(t *testing.T) {
 	client := fake.New(func() {})
 
 	metrics := NewMetrics(nil)
-	_, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	_, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 		TLSConfig: promconfig.TLSConfig{
 			CertFile: "foo",
@@ -592,7 +592,7 @@ func testSyslogTargetWithTLS(t *testing.T, fmtFunc formatFunc) {
 	client := fake.New(func() {})
 
 	metrics := NewMetrics(nil)
-	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress:       "127.0.0.1:0",
 		LabelStructuredData: true,
 		Labels: model.LabelSet{
@@ -724,7 +724,7 @@ func testSyslogTargetWithTLSVerifyClientCertificate(t *testing.T, fmtFunc format
 	client := fake.New(func() {})
 
 	metrics := NewMetrics(nil)
-	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress:       "127.0.0.1:0",
 		LabelStructuredData: true,
 		Labels: model.LabelSet{
@@ -802,7 +802,7 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 	client := fake.New(func() {})
 	metrics := NewMetrics(nil)
 
-	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
@@ -833,7 +833,7 @@ func TestSyslogTarget_NonUTF8Message(t *testing.T) {
 	client := fake.New(func() {})
 	metrics := NewMetrics(nil)
 
-	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
@@ -871,7 +871,7 @@ func TestSyslogTarget_IdleTimeout(t *testing.T) {
 	client := fake.New(func() {})
 	metrics := NewMetrics(nil)
 
-	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, nil, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 		IdleTimeout:   time.Millisecond,
 	})

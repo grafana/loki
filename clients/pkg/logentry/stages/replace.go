@@ -56,6 +56,9 @@ type replaceStage struct {
 	logger     log.Logger
 }
 
+func (r *replaceStage) Close() {
+}
+
 // newReplaceStage creates a newReplaceStage
 func newReplaceStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseReplaceConfig(config)

@@ -73,6 +73,9 @@ type multilineStage struct {
 	cfg    *MultilineConfig
 }
 
+func (m *multilineStage) Close() {
+}
+
 // multilineState captures the internal state of a running multiline stage.
 type multilineState struct {
 	buffer         *bytes.Buffer // The lines of the current multiline block.

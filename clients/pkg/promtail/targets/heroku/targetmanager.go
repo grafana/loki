@@ -34,7 +34,7 @@ func NewHerokuDrainTargetManager(
 			return nil, err
 		}
 
-		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuDrainConfig, cfg.RelabelConfigs)
+		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuDrainConfig, pipeline, cfg.RelabelConfigs)
 		if err != nil {
 			return nil, err
 		}

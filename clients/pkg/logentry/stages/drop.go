@@ -101,6 +101,9 @@ type dropStage struct {
 	dropCount *prometheus.CounterVec
 }
 
+func (m *dropStage) Close() {
+}
+
 func (m *dropStage) Run(in chan Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {

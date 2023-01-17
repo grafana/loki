@@ -5,6 +5,7 @@ package journal
 
 import (
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"io"
 	"strings"
 	"syscall"
@@ -97,6 +98,7 @@ type JournalTarget struct {
 	relabelConfig []*relabel.Config
 	config        *scrapeconfig.JournalTargetConfig
 	labels        model.LabelSet
+	pipeline      *stages.Pipeline
 
 	r     journalReader
 	until chan time.Time
@@ -109,6 +111,7 @@ func NewJournalTarget(
 	handler api.EntryHandler,
 	positions positions.Positions,
 	jobName string,
+	pipeline *stages.Pipeline,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrapeconfig.JournalTargetConfig,
 ) (*JournalTarget, error) {
@@ -119,6 +122,7 @@ func NewJournalTarget(
 		handler,
 		positions,
 		jobName,
+		pipeline,
 		relabelConfig,
 		targetConfig,
 		defaultJournalReaderFunc,
@@ -132,6 +136,7 @@ func journalTargetWithReader(
 	handler api.EntryHandler,
 	pos positions.Positions,
 	jobName string,
+	pipeline *stages.Pipeline,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrapeconfig.JournalTargetConfig,
 	readerFunc journalReaderFunc,
@@ -156,6 +161,7 @@ func journalTargetWithReader(
 		positions:     pos,
 		positionPath:  positionPath,
 		relabelConfig: relabelConfig,
+		pipeline:      pipeline,
 		labels:        targetConfig.Labels,
 		config:        targetConfig,
 
@@ -370,6 +376,9 @@ func (t *JournalTarget) Stop() error {
 	t.until <- time.Now()
 	err := t.r.Close()
 	t.handler.Stop()
+	if t.pipeline != nil {
+		t.pipeline.Close()
+	}
 	return err
 }
 

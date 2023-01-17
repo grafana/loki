@@ -141,6 +141,9 @@ type timestampStage struct {
 	lastKnownTimestamps *lru.Cache
 }
 
+func (ts *timestampStage) Close() {
+}
+
 // Name implements Stage
 func (ts *timestampStage) Name() string {
 	return StageTypeTimestamp

@@ -48,6 +48,9 @@ type cri struct {
 	base            *Pipeline
 }
 
+func (c *cri) Close() {
+}
+
 // implement Stage interface
 func (c *cri) Name() string {
 	return "cri"

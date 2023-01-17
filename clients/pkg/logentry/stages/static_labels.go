@@ -55,6 +55,9 @@ type StaticLabelStage struct {
 	logger log.Logger
 }
 
+func (l *StaticLabelStage) Close() {
+}
+
 // Process implements Stage
 func (l *StaticLabelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 

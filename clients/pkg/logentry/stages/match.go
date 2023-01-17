@@ -141,6 +141,9 @@ type matcherStage struct {
 	action     string
 }
 
+func (m *matcherStage) Close() {
+}
+
 func (m *matcherStage) Run(in chan Entry) chan Entry {
 	switch m.action {
 	case MatchActionDrop:

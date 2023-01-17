@@ -23,6 +23,9 @@ type tenantStage struct {
 	logger log.Logger
 }
 
+func (s *tenantStage) Close() {
+}
+
 type TenantConfig struct {
 	Label  string `mapstructure:"label"`
 	Source string `mapstructure:"source"`

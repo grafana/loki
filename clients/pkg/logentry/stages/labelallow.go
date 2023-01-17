@@ -50,6 +50,9 @@ type labelAllowStage struct {
 	labels map[string]struct{}
 }
 
+func (l *labelAllowStage) Close() {
+}
+
 // Process implements Stage
 func (l *labelAllowStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for label := range labels {

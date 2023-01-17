@@ -158,6 +158,12 @@ func (p *Pipeline) Size() int {
 	return len(p.stages)
 }
 
+func (p *Pipeline) Close() {
+	for _, m := range p.stages {
+		m.Close()
+	}
+}
+
 func SetReadLineRateLimiter(rateVal float64, burstVal int, drop bool) {
 	rateLimiter = rate.NewLimiter(rate.Limit(rateVal), burstVal)
 	rateLimiterDrop = drop

@@ -56,6 +56,9 @@ type regexStage struct {
 	logger     log.Logger
 }
 
+func (r *regexStage) Close() {
+}
+
 // newRegexStage creates a newRegexStage
 func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseRegexConfig(config)

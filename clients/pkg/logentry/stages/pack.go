@@ -148,6 +148,9 @@ type packStage struct {
 	dropCount *prometheus.CounterVec
 }
 
+func (m *packStage) Close() {
+}
+
 func (m *packStage) Run(in chan Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {
