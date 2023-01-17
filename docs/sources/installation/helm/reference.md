@@ -246,7 +246,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminTokenSecret</td>
+			<td>enterprise.adminToken.additionalNamespaces</td>
+			<td>list</td>
+			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
 			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
 			<td><pre lang="json">
@@ -336,6 +345,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td><pre lang="json">
+"main-96f32b9f"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
 			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
@@ -347,20 +365,12 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.nginxConfig.file</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
 			<td>Configuration for `provisioner` target</td>
 			<td><pre lang="json">
 {
+  "additionalTenants": [],
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -373,15 +383,23 @@ null
   },
   "labels": {},
   "priorityClassName": null,
-  "provisionedSecretPrefix": "{{ include \"loki.name\" . }}-provisioned",
+  "provisionedSecretPrefix": null,
   "securityContext": {
     "fsGroup": 10001,
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  },
-  "tenants": []
+  }
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.additionalTenants</td>
+			<td>list</td>
+			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -494,7 +512,7 @@ null
 			<td>string</td>
 			<td>Name of the secret to store provisioned tokens in</td>
 			<td><pre lang="json">
-"{{ include \"loki.name\" . }}-provisioned"
+null
 </pre>
 </td>
 		</tr>
@@ -509,15 +527,6 @@ null
   "runAsNonRoot": true,
   "runAsUser": 10001
 }
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.provisioner.tenants</td>
-			<td>list</td>
-			<td>Tenants to be created. Each tenant will get a read and write policy and associated token.</td>
-			<td><pre lang="json">
-[]
 </pre>
 </td>
 		</tr>
@@ -1615,9 +1624,9 @@ See values.yaml
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
+			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
-null
+"main-5e53303"
 </pre>
 </td>
 		</tr>
@@ -2141,15 +2150,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.rules.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace to create recording rules PrometheusRule resource in</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -2195,15 +2195,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.grafanaAgent.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for Grafana Agent resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.logsInstance.annotations</td>
 			<td>object</td>
 			<td>LogsInstance annotations</td>
@@ -2231,15 +2222,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.logsInstance.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for LogsInstance resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.podLogs.annotations</td>
 			<td>object</td>
 			<td>PodLogs annotations</td>
@@ -2258,15 +2240,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.podLogs.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for PodLogs resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.podLogs.relabelings</td>
 			<td>list</td>
 			<td>PodLogs relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig</td>
@@ -2277,10 +2250,31 @@ null
 		</tr>
 		<tr>
 			<td>monitoring.selfMonitoring.tenant</td>
-			<td>string</td>
+			<td>object</td>
 			<td>Tenant to use for self monitoring</td>
 			<td><pre lang="json">
+{
+  "name": "self-monitoring",
+  "secretNamespace": "{{ .Release.Namespace }}"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.name</td>
+			<td>string</td>
+			<td>Name of the tenant</td>
+			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
+			<td>string</td>
+			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
+			<td><pre lang="json">
+"{{ .Release.Namespace }}"
 </pre>
 </td>
 		</tr>
@@ -2365,15 +2359,6 @@ true
 			<td>monitoring.serviceMonitor.metricsInstance.remoteWrite</td>
 			<td>string</td>
 			<td>If defined a MetricsInstance will be created to remote write metrics.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.serviceMonitor.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for ServiceMonitor resources</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -2706,9 +2691,9 @@ null
 		<tr>
 			<td>read.legacyReadTarget</td>
 			<td>bool</td>
-			<td>Set to false to enable the new 3-target mode (read, write, backend) that will be the default in future version of Loki</td>
+			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>

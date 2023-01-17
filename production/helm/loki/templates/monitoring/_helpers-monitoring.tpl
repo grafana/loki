@@ -15,13 +15,13 @@ Client definition for LogsInstance
   {{- if .Values.enterprise.enabled }}
   basicAuth:
     username:
-      name: {{ include "enterprise-logs.canarySecret" . }}
+      name: {{ include "enterprise-logs.selfMonitoringTenantSecret" . }}
       key: username
     password:
-      name: {{ include "enterprise-logs.canarySecret" . }}
+      name: {{ include "enterprise-logs.selfMonitoringTenantSecret" . }}
       key: password
   {{- else if .Values.loki.auth_enabled }}
-  tenantId: {{ .Values.monitoring.selfMonitoring.tenant }}
+  tenantId: {{ .Values.monitoring.selfMonitoring.tenant.name }}
   {{- end }}
 {{- end -}}
 
