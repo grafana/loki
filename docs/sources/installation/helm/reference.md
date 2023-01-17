@@ -1792,6 +1792,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>loki.runtimeConfig</td>
+			<td>object</td>
+			<td>Provides a reloadable runtime configuration file for some specific configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.schemaConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas</td>

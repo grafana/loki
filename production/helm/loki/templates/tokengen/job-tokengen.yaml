@@ -60,6 +60,8 @@ spec:
               mountPath: /shared
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
             - name: license
               mountPath: /etc/loki/license
           env:
@@ -110,6 +112,9 @@ spec:
           configMap:
             name: {{ include "loki.name" . }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         - name: license
           secret:
           {{- if .Values.enterprise.useExternalLicense }}

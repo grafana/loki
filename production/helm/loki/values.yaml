@@ -113,6 +113,9 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    runtime_config:
+      file: /etc/loki/runtime-config/runtime-config.yaml
+
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled (or .host .addresses) }}
     chunk_store_config:
@@ -212,6 +215,9 @@ loki:
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
+
+  # -- Provides a reloadable runtime configuration file for some specific configuration
+  runtimeConfig: {}
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
