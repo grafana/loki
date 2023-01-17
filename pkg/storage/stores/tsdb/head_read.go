@@ -17,6 +17,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
@@ -121,7 +122,7 @@ func (h *headIndexReader) Postings(name string, shard *index.ShardAnnotation, va
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -130,9 +131,19 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, lbls *labels.Labels, chk
 	}
 	*lbls = append((*lbls)[:0], s.ls...)
 
+	queryBounds := newBounds(model.Time(from), model.Time(through))
+
 	s.Lock()
-	*chks = append((*chks)[:0], s.chks...)
+	filteredChks := make([]index.ChunkMeta, 0, len(s.chks))
+	for _, chk := range s.chks {
+		if !Overlap(chk, queryBounds) {
+			continue
+		}
+		filteredChks = append(filteredChks, chk)
+	}
 	s.Unlock()
+
+	*chks = append((*chks)[:0], filteredChks...)
 
 	return s.fp, nil
 }
