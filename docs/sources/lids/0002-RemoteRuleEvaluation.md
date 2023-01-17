@@ -1,5 +1,5 @@
 ---
-title: "XXXX: Remote Rule Evaluation"
+title: "0002: Remote Rule Evaluation"
 ---
 
 # Remote Rule Evaluation
@@ -12,7 +12,7 @@ title: "XXXX: Remote Rule Evaluation"
 
 **Type:** Feature
 
-**Status:** Draft
+**Status:** In Discussion
 
 **Related issues/PRs:** https://github.com/grafana/mimir/pull/1536
 
