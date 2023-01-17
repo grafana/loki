@@ -278,8 +278,8 @@ func (r *LokiStackReconciler) enqueueForUserWorkloadAMService() handler.EventHan
 		if obj.GetName() == openshift.MonitoringSVCOperated && obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS {
 
 			for _, stack := range lokiStacks.Items {
-				if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging ||
-					stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
+				if stack.Spec.Tenants != nil && (stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging ||
+					stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork) {
 					requests = append(requests, reconcile.Request{
 						NamespacedName: types.NamespacedName{
 							Namespace: stack.Namespace,
