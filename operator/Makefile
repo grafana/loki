@@ -52,12 +52,12 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
-REGISTRY_ORG ?= openshift-logging
-COMMUNITY_ORG ?= grafana
+REGISTRY_ORG_OPENSHIFT ?= openshift-logging
+REGISTRY_ORG_COMMUNITY ?= grafana
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
+BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG_OPENSHIFT)/loki-operator-bundle:$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
@@ -70,12 +70,12 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
     BUNDLE_GEN_FLAGS += --use-image-digests
 endif
 
-CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG)/storage-size-calculator:latest
+CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG_OPENSHIFT)/storage-size-calculator:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
 
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator:$(VERSION)
+IMG ?= quay.io/$(REGISTRY_ORG_OPENSHIFT)/loki-operator:$(VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -90,8 +90,8 @@ ifeq ($(USE_COMMUNITY_BUILD), true)
 	BUNDLE_DEFAULT_CHANNEL = --default-channel=alpha
     BUNDLE_METADATA_OPTS = $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
     LOKI_OPERATOR_NS = kubernetes-operators
-	IMG = docker.io/$(COMMUNITY_ORG)/loki-operator:$(COMMUNITY_VERSION)
-    BUNDLE_IMG = docker.io/$(COMMUNITY_ORG)/loki-operator-bundle:$(COMMUNITY_VERSION)
+	IMG = docker.io/$(REGISTRY_ORG_COMMUNITY)/loki-operator:$(COMMUNITY_VERSION)
+    BUNDLE_IMG = docker.io/$(REGISTRY_ORG_COMMUNITY)/loki-operator-bundle:$(COMMUNITY_VERSION)
 endif
 
 .PHONY: all
@@ -271,7 +271,7 @@ olm-deploy-operator: oci-build oci-push
 .PHONY: olm-deploy
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
-	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_ORG_OPENSHIFT to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
@@ -280,7 +280,7 @@ endif
 .PHONY: olm-upgrade
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 olm-upgrade:  ## Upgrade the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
-	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_ORG_OPENSHIFT to use a custom container registry org account for local development)
 else
 olm-upgrade: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(BUNDLE_IMG)
@@ -293,7 +293,7 @@ olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and 
 .PHONY: deploy-size-calculator
 ifeq ($(findstring openshift-logging,$(CALCULATOR_IMG)),openshift-logging)
 deploy-size-calculator: ## Deploy storage size calculator (OpenShift only!)
-	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_ORG_OPENSHIFT to use a custom container registry org account for local development)
 else
 deploy-size-calculator:  $(KUSTOMIZE) ## Deploy storage size calculator (OpenShift only!)
 	kubectl apply -f config/overlays/openshift/size-calculator/cluster_monitoring_config.yaml
@@ -345,7 +345,6 @@ web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
 .PHONY: web-serve
 web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
 	@cd $(WEBSITE_DIR) && $(HUGO) serve
-
 
 .PHONY: operatorhub
 operatorhub: check-operatorhub-pr-template

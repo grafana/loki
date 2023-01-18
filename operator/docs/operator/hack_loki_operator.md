@@ -30,7 +30,7 @@ Loki Operator is the Kubernetes Operator for [Loki](https://grafana.com/docs/lok
 * Build and push the container image and then deploy the operator with:
 
   ```console
-  make oci-build oci-push deploy REGISTRY_ORG=$YOUR_QUAY_ORG VERSION=latest
+  make oci-build oci-push deploy REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG VERSION=latest
   ```
 
   where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images.
@@ -108,7 +108,7 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 * Build and push the container image [2] and then deploy the operator with:
 
   ```console
-  make olm-deploy REGISTRY_ORG=$YOUR_QUAY_ORG VERSION=$VERSION
+  make olm-deploy REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG VERSION=$VERSION
   ```
 
   where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images and `$VERSION` can be any random version number such as `v0.0.1`.
