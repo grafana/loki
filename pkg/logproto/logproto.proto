@@ -181,7 +181,7 @@ message HistogramBucket {
 message LegacySample {
   double value = 1;
   int64 timestamp_ms = 2;
-  SampleHistogram histogram  = 3 [(gogoproto.jsontag) = "histogram"];
+  SampleHistogram histogram = 3 [(gogoproto.jsontag) = "histogram"];
 }
 
 message Series {

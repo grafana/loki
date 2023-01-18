@@ -19,7 +19,6 @@ import (
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
-  HistogramOp             string 
   RangeOp                 string
   ConvOp                  string
   Selector                []*labels.Matcher
@@ -77,7 +76,6 @@ import (
 %type <Matcher>               matcher
 %type <Matchers>              matchers
 %type <RangeAggregationExpr>  rangeAggregationExpr
-%type <HistogramOp>           histogramOp
 %type <RangeOp>               rangeOp
 %type <ConvOp>                convOp
 %type <Selector>              selector
@@ -152,7 +150,6 @@ metricExpr:
     | labelReplaceExpr                              { $$ = $1 }
     | vectorExpr                                    { $$ = $1 }
     | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
-    | histogramExpr                                 { $$ = $1 }
     ;
 
 logExpr:
