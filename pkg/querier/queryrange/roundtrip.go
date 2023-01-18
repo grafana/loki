@@ -45,6 +45,7 @@ func NewTripperware(
 	limits Limits,
 	schema config.SchemaConfig,
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, Stopper, error) {
 	metrics := NewMetrics(registerer)
@@ -65,7 +66,7 @@ func NewTripperware(
 	}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, PrometheusExtractor{}, metrics, registerer)
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -395,6 +396,7 @@ func NewMetricTripperware(
 	codec queryrangebase.Codec,
 	c cache.Cache,
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
 	registerer prometheus.Registerer,
@@ -427,6 +429,7 @@ func NewMetricTripperware(
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
+			retentionEnabled,
 			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {

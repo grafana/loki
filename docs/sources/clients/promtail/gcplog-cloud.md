@@ -13,7 +13,7 @@ There's two flavours of how to configure this:
 
 Overall, the setup between GCP, Promtail and Loki will look like the following:
 
-<img src="./gcp-logs-diagram.png" width="1200px"/>
+<img src="../gcp-logs-diagram.png" width="1200px"/>
 
 ## Roles and Permission
 

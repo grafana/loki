@@ -220,7 +220,7 @@ gave this response:
 }
 ```
 
-If your cluster has 
+If your cluster has
 [Grafana Loki Multi-Tenancy](../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
@@ -637,7 +637,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 * `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 * `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false.
 * `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 
@@ -1385,4 +1385,3 @@ This is helpful for scaling down WAL-enabled ingesters where we want to ensure o
 but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
-

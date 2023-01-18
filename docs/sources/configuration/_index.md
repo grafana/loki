@@ -2911,6 +2911,10 @@ This way, one doesn't have to replicate configuration in multiple places.
 # CLI flag: -common.compactor-address
 [compactor_address: <string> | default = ""]
 
+# Address and port number where the compactor grpc requests are being served.
+# CLI flag: -common.compactor-grpc-address
+[compactor_grpc_address: <string> | default = ""]
+
 ## analytics
 
 The `analytics` block configures the reporting of Loki analytics to grafana.com.

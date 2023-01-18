@@ -43,6 +43,23 @@ Check the history of the branch FIXME.
 
 * Go Version: 1.19
 
+## 2.7.1
+
+#### Loki
+
+##### Enhancements
+
+* [7804](https://github.com/grafana/loki/pull/7804) **sandeepsukhani**: Use grpc for communicating with compactor for query time filtering of data requested for deletion.
+
+##### Fixes
+
+* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
+* [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
+
+##### Changes
+
+* [7877](https://github.com/grafana/loki/pull/7877)A **trevorwhitney**: Due to a known bug with experimental new delete mode feature, the default delete mode has been changed to `filter-only`.
+
 ## 2.7.0
 
 #### Loki
