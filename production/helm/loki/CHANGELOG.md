@@ -11,6 +11,17 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 4.0
+
+- [FEATURE] Added `enterprise.adminToken.additionalNamespaces` which are a list of additional namespaces to create secrets containing the GEL admin token in. This is especially useful if your Grafana instance is in another namespace.
+- [CHANGE] **BREAKING** Remove `enterprise.nginxConfig.file`. Both enterprise and gateway configurations now share the same nginx config, use `gateway.nginxConfig.file` for both. Admin routes will 404 on OSS deployments.
+- [CHANGE] **BREAKING** Default simple deployment mode to new, 3 target configuration (read, write, and backend). This new configuration allows the `read` target to be run as a deployment and auto-scaled. To go back to the legacy, 2 target configuration, set `read.legacyReadTraget` to `true`.
+- [CHANGE] **BREAKING** Change how tenants are defined
+- [CHANGE] **BREKAING** Remove `enterprise.adminTokenSecret`. This is now defined under `enterprise.adminToken.secret`.
+- [CHANGE] **BREKAING** Rename and change format of `enterprise.provisioner.tenants`. Property has been renamed to `enterprise.provisioner.additionalTenants`, and is now an array of objects rather than string. Each object must contain a `name` and a `secretNamespace` field, where `name` is the name of the tenant and `secretNamespace` is the namespace to create the secret with the tenant's read and write token.
+- [CHANGE] **BREAKING** Change the structure of `monitoring.selfMonitoring.tenant` from a string to an object. The new object must have a `name` and a `secretNamespace` field, where `name` is the name of the self-monitoring tenant and `secretNamespace` is the namespace to create an additional secret with the tenant's token. A secret will still also be created in the release namespace as it's needed by the Loki canary.
+- [CHANGE] **BREAKING** Remove ability to create self-monitoring resources in different namespaces (with the exception of dashboard configmaps).
+
 ## 3.10.0
 
 - [CHANGE] Deprecate `enterprise.nginxConfig.file`. Both enterprise and gateway configurations now share the same nginx config. Admin routes will 404 on OSS deployments. Will be removed in version 4 of the chart, please use `gateway.nginxConfig.file` for both OSS and Enterprise gateways.

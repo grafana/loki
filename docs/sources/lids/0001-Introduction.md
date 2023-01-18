@@ -12,7 +12,7 @@ title: "0001: Introducing LIDs"
 
 **Type:** Process
 
-**Status:** In Discussion
+**Status:** Accepted
 
 **Related issues/PRs:** N/A
 
