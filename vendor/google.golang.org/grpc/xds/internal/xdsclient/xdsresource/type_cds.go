@@ -76,7 +76,7 @@ type OutlierDetection struct {
 	// ejected due to outlier detection. Defaults to 10% but will eject at least
 	// one host regardless of the value.
 	MaxEjectionPercent uint32
-	// SuccessRateStddevFactor is used to determine the ejection threshold for
+	// SuccessRateStdevFactor is used to determine the ejection threshold for
 	// success rate outlier ejection. The ejection threshold is the difference
 	// between the mean success rate, and the product of this factor and the
 	// standard deviation of the mean success rate: mean - (stdev *

@@ -77,27 +77,35 @@ func (m *Miniredis) cmdHsetnx(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key, field, value := args[0], args[1], args[2]
+	opts := struct {
+		key   string
+		field string
+		value string
+	}{
+		key:   args[0],
+		field: args[1],
+		value: args[2],
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "hash" {
+		if t, ok := db.keys[opts.key]; ok && t != "hash" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		if _, ok := db.hashKeys[key]; !ok {
-			db.hashKeys[key] = map[string]string{}
-			db.keys[key] = "hash"
+		if _, ok := db.hashKeys[opts.key]; !ok {
+			db.hashKeys[opts.key] = map[string]string{}
+			db.keys[opts.key] = "hash"
 		}
-		_, ok := db.hashKeys[key][field]
+		_, ok := db.hashKeys[opts.key][opts.field]
 		if ok {
 			c.WriteInt(0)
 			return
 		}
-		db.hashKeys[key][field] = value
-		db.keyVersion[key]++
+		db.hashKeys[opts.key][opts.field] = opts.value
+		db.keyVersion[opts.key]++
 		c.WriteInt(1)
 	})
 }
@@ -191,12 +199,18 @@ func (m *Miniredis) cmdHdel(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key, fields := args[0], args[1:]
+	opts := struct {
+		key    string
+		fields []string
+	}{
+		key:    args[0],
+		fields: args[1:],
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		t, ok := db.keys[key]
+		t, ok := db.keys[opts.key]
 		if !ok {
 			// No key is zero deleted
 			c.WriteInt(0)
@@ -208,19 +222,19 @@ func (m *Miniredis) cmdHdel(c *server.Peer, cmd string, args []string) {
 		}
 
 		deleted := 0
-		for _, f := range fields {
-			_, ok := db.hashKeys[key][f]
+		for _, f := range opts.fields {
+			_, ok := db.hashKeys[opts.key][f]
 			if !ok {
 				continue
 			}
-			delete(db.hashKeys[key], f)
+			delete(db.hashKeys[opts.key], f)
 			deleted++
 		}
 		c.WriteInt(deleted)
 
 		// Nothing left. Remove the whole key.
-		if len(db.hashKeys[key]) == 0 {
-			db.del(key, true)
+		if len(db.hashKeys[opts.key]) == 0 {
+			db.del(opts.key, true)
 		}
 	})
 }
@@ -239,12 +253,18 @@ func (m *Miniredis) cmdHexists(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key, field := args[0], args[1]
+	opts := struct {
+		key   string
+		field string
+	}{
+		key:   args[0],
+		field: args[1],
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		t, ok := db.keys[key]
+		t, ok := db.keys[opts.key]
 		if !ok {
 			c.WriteInt(0)
 			return
@@ -254,7 +274,7 @@ func (m *Miniredis) cmdHexists(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if _, ok := db.hashKeys[key][field]; !ok {
+		if _, ok := db.hashKeys[opts.key][opts.field]; !ok {
 			c.WriteInt(0)
 			return
 		}
@@ -494,24 +514,27 @@ func (m *Miniredis) cmdHincrby(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key, field, deltas := args[0], args[1], args[2]
-
-	delta, err := strconv.Atoi(deltas)
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	opts := struct {
+		key   string
+		field string
+		delta int
+	}{
+		key:   args[0],
+		field: args[1],
+	}
+	if ok := optInt(c, args[2], &opts.delta); !ok {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "hash" {
+		if t, ok := db.keys[opts.key]; ok && t != "hash" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		v, err := db.hashIncr(key, field, delta)
+		v, err := db.hashIncr(opts.key, opts.field, opts.delta)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
@@ -534,24 +557,31 @@ func (m *Miniredis) cmdHincrbyfloat(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key, field, deltas := args[0], args[1], args[2]
-
-	delta, _, err := big.ParseFloat(deltas, 10, 128, 0)
+	opts := struct {
+		key   string
+		field string
+		delta *big.Float
+	}{
+		key:   args[0],
+		field: args[1],
+	}
+	delta, _, err := big.ParseFloat(args[2], 10, 128, 0)
 	if err != nil {
 		setDirty(c)
 		c.WriteError(msgInvalidFloat)
 		return
 	}
+	opts.delta = delta
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "hash" {
+		if t, ok := db.keys[opts.key]; ok && t != "hash" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		v, err := db.hashIncrfloat(key, field, delta)
+		v, err := db.hashIncrfloat(opts.key, opts.field, opts.delta)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
@@ -574,18 +604,20 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	cursor, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidCursor)
+	opts := struct {
+		key       string
+		cursor    int
+		withMatch bool
+		match     string
+	}{
+		key: args[0],
+	}
+	if ok := optIntErr(c, args[1], &opts.cursor, msgInvalidCursor); !ok {
 		return
 	}
 	args = args[2:]
 
 	// MATCH and COUNT options
-	var withMatch bool
-	var match string
 	for len(args) > 0 {
 		if strings.ToLower(args[0]) == "count" {
 			// we do nothing with count
@@ -609,8 +641,8 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			withMatch = true
-			match, args = args[1], args[2:]
+			opts.withMatch = true
+			opts.match, args = args[1], args[2:]
 			continue
 		}
 		setDirty(c)
@@ -622,21 +654,21 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 		db := m.db(ctx.selectedDB)
 		// return _all_ (matched) keys every time
 
-		if cursor != 0 {
+		if opts.cursor != 0 {
 			// Invalid cursor.
 			c.WriteLen(2)
 			c.WriteBulk("0") // no next cursor
 			c.WriteLen(0)    // no elements
 			return
 		}
-		if db.exists(key) && db.t(key) != "hash" {
+		if db.exists(opts.key) && db.t(opts.key) != "hash" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.hashFields(key)
-		if withMatch {
-			members, _ = matchKeys(members, match)
+		members := db.hashFields(opts.key)
+		if opts.withMatch {
+			members, _ = matchKeys(members, opts.match)
 		}
 
 		c.WriteLen(2)
@@ -645,7 +677,7 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 		c.WriteLen(len(members) * 2)
 		for _, k := range members {
 			c.WriteBulk(k)
-			c.WriteBulk(db.hashGet(key, k))
+			c.WriteBulk(db.hashGet(opts.key, k))
 		}
 	})
 }

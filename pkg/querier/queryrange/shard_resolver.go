@@ -101,17 +101,16 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 		results = append(results, casted.Response)
 		level.Debug(sp).Log(
-			"msg", "queried index",
-			"type", "single",
-			"matchers", matchers,
-			"bytes", strings.Replace(humanize.Bytes(casted.Response.Bytes), " ", "", 1),
-			"chunks", casted.Response.Chunks,
-			"streams", casted.Response.Streams,
-			"entries", casted.Response.Entries,
-			"duration", time.Since(start),
-			"from", adjustedFrom.Time(),
-			"through", adjustedThrough.Time(),
-			"length", adjustedThrough.Sub(adjustedFrom),
+			append(
+				casted.Response.LoggingKeyValues(),
+				"msg", "queried index",
+				"type", "single",
+				"matchers", matchers,
+				"duration", time.Since(start),
+				"from", adjustedFrom.Time(),
+				"through", adjustedThrough.Time(),
+				"length", adjustedThrough.Sub(adjustedFrom),
+			)...,
 		)
 		return nil
 	}); err != nil {
@@ -125,17 +124,16 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
 	level.Debug(sp).Log(
-		"msg", "queried index",
-		"type", "combined",
-		"len", len(results),
-		"bytes", strings.Replace(humanize.Bytes(combined.Bytes), " ", "", 1),
-		"chunks", combined.Chunks,
-		"streams", combined.Streams,
-		"entries", combined.Entries,
-		"max_parallelism", r.maxParallelism,
-		"duration", time.Since(start),
-		"factor", factor,
-		"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
+		append(
+			combined.LoggingKeyValues(),
+			"msg", "queried index",
+			"type", "combined",
+			"len", len(results),
+			"max_parallelism", r.maxParallelism,
+			"duration", time.Since(start),
+			"factor", factor,
+			"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
+		)...,
 	)
 	return factor, nil
 }

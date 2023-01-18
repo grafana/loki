@@ -68,6 +68,11 @@ type Aggregator struct {
 	//
 	// If an ID is not in map, it's either removed or never added.
 	idToPickerState map[string]*weightedPickerState
+	// Set when UpdateState call propagation is paused.
+	pauseUpdateState bool
+	// Set when UpdateState call propagation is paused and an UpdateState call
+	// is suppressed.
+	needUpdateStateOnResume bool
 }
 
 // New creates a new weighted balancer state aggregator.
@@ -141,6 +146,27 @@ func (wbsa *Aggregator) UpdateWeight(id string, newWeight uint32) {
 	pState.weight = newWeight
 }
 
+// PauseStateUpdates causes UpdateState calls to not propagate to the parent
+// ClientConn.  The last state will be remembered and propagated when
+// ResumeStateUpdates is called.
+func (wbsa *Aggregator) PauseStateUpdates() {
+	wbsa.mu.Lock()
+	defer wbsa.mu.Unlock()
+	wbsa.pauseUpdateState = true
+	wbsa.needUpdateStateOnResume = false
+}
+
+// ResumeStateUpdates will resume propagating UpdateState calls to the parent,
+// and call UpdateState on the parent if any UpdateState call was suppressed.
+func (wbsa *Aggregator) ResumeStateUpdates() {
+	wbsa.mu.Lock()
+	defer wbsa.mu.Unlock()
+	wbsa.pauseUpdateState = false
+	if wbsa.needUpdateStateOnResume {
+		wbsa.cc.UpdateState(wbsa.build())
+	}
+}
+
 // UpdateState is called to report a balancer state change from sub-balancer.
 // It's usually called by the balancer group.
 //
@@ -166,6 +192,14 @@ func (wbsa *Aggregator) UpdateState(id string, newState balancer.State) {
 	if !wbsa.started {
 		return
 	}
+
+	if wbsa.pauseUpdateState {
+		// If updates are paused, do not call UpdateState, but remember that we
+		// need to call it when they are resumed.
+		wbsa.needUpdateStateOnResume = true
+		return
+	}
+
 	wbsa.cc.UpdateState(wbsa.build())
 }
 
@@ -191,6 +225,13 @@ func (wbsa *Aggregator) BuildAndUpdate() {
 	if !wbsa.started {
 		return
 	}
+	if wbsa.pauseUpdateState {
+		// If updates are paused, do not call UpdateState, but remember that we
+		// need to call it when they are resumed.
+		wbsa.needUpdateStateOnResume = true
+		return
+	}
+
 	wbsa.cc.UpdateState(wbsa.build())
 }
 

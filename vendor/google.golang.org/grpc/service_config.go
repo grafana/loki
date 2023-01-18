@@ -57,10 +57,9 @@ type lbConfig struct {
 type ServiceConfig struct {
 	serviceconfig.Config
 
-	// LB is the load balancer the service providers recommends. The balancer
-	// specified via grpc.WithBalancerName will override this.  This is deprecated;
-	// lbConfigs is preferred.  If lbConfig and LB are both present, lbConfig
-	// will be used.
+	// LB is the load balancer the service providers recommends.  This is
+	// deprecated; lbConfigs is preferred.  If lbConfig and LB are both present,
+	// lbConfig will be used.
 	LB *string
 
 	// lbConfig is the service config's load balancing configuration.  If
@@ -381,6 +380,9 @@ func init() {
 //
 // If any of them is NOT *ServiceConfig, return false.
 func equalServiceConfig(a, b serviceconfig.Config) bool {
+	if a == nil && b == nil {
+		return true
+	}
 	aa, ok := a.(*ServiceConfig)
 	if !ok {
 		return false

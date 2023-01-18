@@ -54,10 +54,16 @@ variable "keep_stream" {
   default     = "false"
 }
 
+variable "print_log_line" {
+  type        = string
+  description = "Determines whether we want the lambda to output the parsed log line before sending it on to promtail. Value needed to disable is the string 'false'"
+  default     = "true"
+}
+
 variable "extra_labels" {
-  type = string
+  type        = string
   description = "Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail."
-  default = ""
+  default     = ""
 }
 
 variable "batch_size" {

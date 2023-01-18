@@ -41,9 +41,10 @@ const (
 	TenantLabel     = "tenant"
 	DropReasonLabel = "reason"
 
-	DropReasonGeneric       = "ingester_error"
-	DropReasonRateLimited   = "rate_limited"
-	DropReasonStreamLimited = "stream_limited"
+	DropReasonGeneric             = "ingester_error"
+	DropReasonRateLimited         = "rate_limited"
+	DropReasonStreamLimited       = "stream_limited"
+	DropReasongMaxLineSizeLimited = "max_line_size_limited"
 )
 
 var DropReasons = []string{DropReasonGeneric, DropReasonRateLimited, DropReasonStreamLimited}
@@ -171,23 +172,24 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx        context.Context
-	cancel     context.CancelFunc
-	maxStreams int
+	ctx         context.Context
+	cancel      context.CancelFunc
+	maxStreams  int
+	maxLineSize int
 }
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
-func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (Client, error) {
+func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger) (Client, error) {
 	if cfg.StreamLagLabels.String() != "" {
 		return nil, fmt.Errorf("client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored: %+v", cfg.StreamLagLabels.String())
 	}
-	return newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
+	return newClient(metrics, cfg, streamLagLabels, maxStreams, maxLineSize, logger)
 }
 
-func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (*client, error) {
+func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger) (*client, error) {
 
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
@@ -207,6 +209,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 		ctx:            ctx,
 		cancel:         cancel,
 		maxStreams:     maxStreams,
+		maxLineSize:    maxLineSize,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -236,8 +239,8 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 }
 
 // NewWithTripperware creates a new Loki client with a custom tripperware.
-func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger, tp Tripperware) (Client, error) {
-	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
+func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, maxLineSize, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +299,15 @@ func (c *client) run() {
 			if !ok {
 				return
 			}
+
 			e, tenantID := c.processEntry(e)
+
+			// drop the entry because its length is greater than maxLineSize. maxLineSize == 0 means disabled.
+			if c.maxLineSize != 0 && len(e.Line) > c.maxLineSize {
+				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasongMaxLineSizeLimited).Inc()
+				break
+			}
+
 			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry

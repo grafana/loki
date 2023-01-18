@@ -81,6 +81,16 @@ RUN apt-get update && \
     libsystemd-dev jq && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Install dependencies to cross build Promtail to ARM and ARM64.
+RUN dpkg --add-architecture armhf && \
+    dpkg --add-architecture arm64 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    pkg-config \
+    gcc-aarch64-linux-gnu libc6-dev-arm64-cross libsystemd-dev:arm64 \
+    gcc-arm-linux-gnueabihf libc6-dev-armhf-cross libsystemd-dev:armhf && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs

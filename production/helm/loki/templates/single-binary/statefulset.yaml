@@ -89,12 +89,14 @@ spec:
               mountPath: /tmp
             - name: config
               mountPath: /etc/loki/config
+            {{- if .Values.singleBinary.persistence.enabled }}
             - name: storage
               mountPath: /var/loki
+            {{- end }}
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
-            {{- end}}
+            {{- end }}
             {{- with .Values.singleBinary.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -135,6 +137,7 @@ spec:
         {{- with .Values.singleBinary.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if .Values.singleBinary.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: storage
@@ -151,4 +154,5 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+  {{- end }}
 {{- end }}
