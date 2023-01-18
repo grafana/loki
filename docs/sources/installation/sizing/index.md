@@ -103,8 +103,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 </style>
 
 <script>
-//const API_URL = `https://logql-analyzer.grafana.net/next/api/sizing`
-const API_URL = `http://localhost:3001/api/sizing`
+const API_URL = `https://logql-analyzer.grafana.net/next/api/sizing`
 const { createApp } = Vue
 
 createApp({
