@@ -8,7 +8,7 @@
           "subdir": "consul"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "Po3c1Ic96ngrJCtOazic/7OsLkoILOKZWXWyZWl+od8="
     },
     {
@@ -18,7 +18,7 @@
           "subdir": "enterprise-metrics"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "hi2ZpHKl7qWXmSZ46sAycjWEQK6oGsoECuDKQT1dA+k="
     },
     {
@@ -28,7 +28,7 @@
           "subdir": "etcd-operator"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "duHm6wmUju5KHQurOe6dnXoKgl5gTUsfGplgbmAOsHw="
     },
     {
@@ -38,7 +38,7 @@
           "subdir": "grafana"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "Y5nheroSOIwmE+djEVPq4OvvTxKenzdHhpEwaR3Ebjs="
     },
     {
@@ -48,7 +48,7 @@
           "subdir": "jaeger-agent-mixin"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "nsukyr2SS8h97I2mxvBazXZp2fxu1i6eg+rKq3/NRwY="
     },
     {
@@ -58,7 +58,7 @@
           "subdir": "ksonnet-util"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "/pkNOLhRqvQoPA0yYdUuJvpPHqhkCLauAUMD2ZHMIkE="
     },
     {
@@ -78,7 +78,7 @@
           "subdir": "memcached"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "SWywAq4U0MRPMbASU0Ez8O9ArRNeoZzb75sEuReueow="
     },
     {
@@ -88,7 +88,7 @@
           "subdir": "tanka-util"
         }
       },
-      "version": "02bd2cbc7c71bbffeb807b58d1b45b58230b3224",
+      "version": "a924ab1b5fd4e6eacd7235a20978d050a27bdb65",
       "sum": "ShSIissXdvCy1izTCDZX6tY7qxCoepE5L+WJ52Hw7ZQ="
     },
     {
@@ -118,8 +118,8 @@
           "subdir": "1.20"
         }
       },
-      "version": "4613c97af18622848e4ffac3c4a78a9349f1d716",
-      "sum": "KZac8iaWuW0tiN54OE9uE+Squ6SVnOHz6Wk2QgmPe3o="
+      "version": "2ff9e542231fce1ba6d880d1157c81724f176bc6",
+      "sum": "K8hAiyQ4ELAsln24tcwTf/++hKM/3YvLXsOYN0zD8eM="
     }
   ],
   "legacyImports": false
