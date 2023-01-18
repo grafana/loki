@@ -13,23 +13,23 @@ import (
 
 func DeleteChunksBasedOnBlockSize(ctx context.Context, directory string, diskUsage util_storage.DiskStatus, cleanupThreshold int) error {
 	if diskUsage.UsedPercent >= float64(cleanupThreshold) {
-		if error := purgeOldFiles(diskUsage, directory, cleanupThreshold); error != nil {
+		if err := purgeOldFiles(diskUsage, directory, cleanupThreshold); err != nil {
 			// TODO: handle the error in a better way!
-			return error
+			return err
 		}
 	}
 	return nil
 }
 
 func purgeOldFiles(diskUsage util_storage.DiskStatus, directory string, cleanupThreshold int) error {
-	files, error := os.ReadDir(directory)
+	files, err := os.ReadDir(directory)
 	bytesToDelete := bytesToDelete(diskUsage, cleanupThreshold)
 	bytesDeleted := 0.0
 	level.Info(util_log.Logger).Log("msg", "bytesToDelete", bytesToDelete)
 
-	if error != nil {
+	if err != nil {
 		// TODO: handle the error in a better way!
-		return error
+		return err
 	}
 
 	// Sorting by the last modified time
@@ -52,9 +52,9 @@ func purgeOldFiles(diskUsage util_storage.DiskStatus, directory string, cleanupT
 		bytesDeleted = bytesDeleted + float64(info.Size())
 		level.Info(util_log.Logger).Log("msg", "block size retention exceded, removing file", "filepath", file.Name())
 
-		if error := os.Remove(directory + "/" + file.Name()); error != nil {
+		if err := os.Remove(directory + "/" + file.Name()); err != nil {
 			// TODO: handle the error in a better way!
-			return error
+			return err
 		}
 	}
 	return nil

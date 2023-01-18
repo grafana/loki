@@ -111,10 +111,10 @@ func (c *SizeBasedRetentionCleaner) RunIteration(ctx context.Context) error {
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
-	error := DeleteChunksBasedOnBlockSize(ctx, c.workingDirectory, diskUsage, c.cleanupThreshold)
+	err = DeleteChunksBasedOnBlockSize(ctx, c.workingDirectory, diskUsage, c.cleanupThreshold)
 
-	if error != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", error)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
 
 	// don't return error, otherwise timer service would stop.
