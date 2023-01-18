@@ -49,6 +49,10 @@ func Test_DropLabels(t *testing.T) {
 					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
 					"",
 				},
+				{
+					nil,
+					"__error_details__",
+				},
 			},
 			errJSON,
 			"json error",
@@ -93,27 +97,6 @@ func Test_DropLabels(t *testing.T) {
 					labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, "expecting json.*"),
 					"",
 				},
-			},
-			errJSON,
-			"expecting json object but it is not",
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-		},
-		{
-			"using both __error_details__ and __error__ should have expected labels ",
-			[]DropLabel{
-				{
-					labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, "expecting json.*"),
-					"",
-				},
 				{
 					nil,
 					"__error__",
@@ -138,6 +121,10 @@ func Test_DropLabels(t *testing.T) {
 				{
 					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
 					"",
+				},
+				{
+					nil,
+					"__error_details__",
 				},
 				{
 					nil,
