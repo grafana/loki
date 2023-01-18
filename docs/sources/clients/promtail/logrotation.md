@@ -9,7 +9,7 @@ At any point in time, there may be three processes working on a log file as show
 2. Tailer - A reader that reads log lines as they are appended, for example, agents like Promtail.
 3. Log Rotator - A process that rotates the log file either based on time (for example, scheduled every day) or size (for example, a log file reached its maximum size).
 
-> **NOTE:** Here `fd` defines a file descriptor. Once a file is open for read or write, OS gives back a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
+> **NOTE:** Here `fd` defines a file descriptor. Once a file is open for read or write, The Operating System returns a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
 
 One of the critical components here is the log rotator. Let's understand how it impacts other components like the appender and tailer.
 
@@ -136,3 +136,4 @@ If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrot
 Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this topic, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
 Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{<relref "./configuration.md">}}/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
+r
