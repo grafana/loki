@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/status"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
@@ -91,6 +92,15 @@ var (
 		GenericFunc: func(_ event.GenericEvent) bool {
 			return false
 		},
+	})
+	createUpdateOrDeletePred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
+				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
 )
 
@@ -194,7 +204,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
-		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred)
+		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
+		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForUserWorkloadAMService(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -252,4 +263,35 @@ func statusDifferent(e event.UpdateEvent) bool {
 	default:
 		return false
 	}
+}
+
+func (r *LokiStackReconciler) enqueueForUserWorkloadAMService() handler.EventHandler {
+	ctx := context.TODO()
+	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.Client.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error getting LokiStack resources in event handler")
+			return nil
+		}
+		var requests []reconcile.Request
+
+		if obj.GetName() == openshift.MonitoringSVCOperated && obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS {
+
+			for _, stack := range lokiStacks.Items {
+				if stack.Spec.Tenants != nil && (stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging ||
+					stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork) {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Namespace: stack.Namespace,
+							Name:      stack.Name,
+						},
+					})
+				}
+			}
+
+			r.Log.Info("Enqueued requests for all LokiStacks because of UserWorkload Alertmanager Service resource change", "count", len(requests), "kind", obj.GetObjectKind())
+		}
+
+		return requests
+	})
 }
