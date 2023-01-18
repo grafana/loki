@@ -84,8 +84,6 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 		return m.mapLabelReplaceExpr(e, r)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r)
-	case *syntax.HistogramExpr:
-		return m.mapHistogramExpr(e, r), nil
 	case *syntax.BinOpExpr:
 		lhsMapped, err := m.Map(e.SampleExpr, r)
 		if err != nil {
@@ -109,10 +107,6 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	default:
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 	}
-}
-
-func (m ShardMapper) mapHistogramExpr(expr *syntax.HistogramExpr, r *downstreamRecorder) syntax.SampleExpr {
-	return expr
 }
 
 func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstreamRecorder) (syntax.LogSelectorExpr, error) {

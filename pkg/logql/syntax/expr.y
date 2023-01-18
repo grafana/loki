@@ -19,7 +19,6 @@ import (
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
-  HistogramExpr           SampleExpr
   HistogramOp             string 
   RangeOp                 string
   ConvOp                  string
@@ -77,7 +76,6 @@ import (
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
-%type <HistogramExpr>         histogramExpr
 %type <RangeAggregationExpr>  rangeAggregationExpr
 %type <HistogramOp>           histogramOp
 %type <RangeOp>               rangeOp
@@ -155,15 +153,6 @@ metricExpr:
     | vectorExpr                                    { $$ = $1 }
     | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
     | histogramExpr                                 { $$ = $1 }
-    ;
-
-histogramExpr:
-      histogramOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
-    | histogramOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
-    ;
-
-histogramOp:
-      BUCKETS_OVER_TIME  { $$ = OpRangeTypeHistogram }
     ;
 
 logExpr:
@@ -523,6 +512,7 @@ rangeOp:
     | FIRST_OVER_TIME    { $$ = OpRangeTypeFirst }
     | LAST_OVER_TIME     { $$ = OpRangeTypeLast }
     | ABSENT_OVER_TIME   { $$ = OpRangeTypeAbsent }
+    | BUCKETS_OVER_TIME  { $$ = OpRangeTypeHistogram }
     ;
 
 offsetExpr:

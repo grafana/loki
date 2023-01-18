@@ -10,7 +10,6 @@ import (
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -238,8 +237,6 @@ type Vector []model.Sample
 
 // Matrix is a slice of SampleStreams
 type Matrix []model.SampleStream
-
-type Histogram promql.Matrix
 
 // InstantQuery defines a log instant query.
 type InstantQuery struct {

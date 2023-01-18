@@ -775,20 +775,19 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 		if len(stream.Histograms) > 0 {
 			sampleHistograms := make([]logproto.LegacySample, 0, len(stream.Histograms))
 			for _, sh := range stream.Histograms {
-				var lh logproto.SampleHistogram
-				lh.Count = float64(sh.Histogram.Count)
-				lh.Sum = float64(sh.Histogram.Sum)
-				lhb := make([]logproto.HistogramBucket, len(sh.Histogram.Buckets))
-				fmt.Printf("lhb sum=%v, count=%v\n", lh.Sum, lh.Count)
-				fmt.Printf("lhb is %v\n", lhb)
+				sampleHistogram := logproto.SampleHistogram{
+					Count: float64(sh.Histogram.Count),
+					Sum:   float64(sh.Histogram.Sum),
+				}
+				histogramBuckets := make([]logproto.HistogramBucket, len(sh.Histogram.Buckets))
 				for i, b := range sh.Histogram.Buckets {
 					if b != nil && b.Count != 0 {
-						lhb[i] = logproto.HistogramBucket{Lower: float64(b.Lower), Upper: float64(b.Upper), Count: float64(b.Count)}
+						histogramBuckets[i] = logproto.HistogramBucket{Lower: float64(b.Lower), Upper: float64(b.Upper), Count: float64(b.Count)}
 					}
 				}
-				lh.Buckets = lhb
+				sampleHistogram.Buckets = histogramBuckets
 				sampleHistograms = append(sampleHistograms, logproto.LegacySample{
-					Histogram:   &lh,
+					Histogram:   &sampleHistogram,
 					TimestampMs: int64(sh.Timestamp),
 				})
 			}
@@ -798,8 +797,8 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 			})
 			continue
 		}
-		//stream.Histograms[0].Histogram.
-		if len(stream.Histograms) == 0 {
+
+		if len(stream.Values) > 0 {
 			samples := make([]logproto.LegacySample, 0, len(stream.Values))
 			for _, s := range stream.Values {
 				samples = append(samples, logproto.LegacySample{

@@ -214,33 +214,6 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 	return s
 }
 
-func (e *HistogramExpr) Pretty(level int) string {
-	s := indent(level)
-	if !needSplit(e) {
-		return s + e.String()
-	}
-
-	s += e.Operation // e.g: quantile_over_time
-
-	s += "(\n"
-
-	// print args to the function.
-	// if e.Params != nil {
-	// 	s = fmt.Sprintf("%s%s%s,", s, indent(level+1), fmt.Sprint(*e.Params))
-	// 	s += "\n"
-	// }
-
-	s += e.Left.Pretty(level + 1)
-
-	s += "\n" + indent(level) + ")"
-
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
-	}
-
-	return s
-}
-
 // e.g:
 // sum(count_over_time({foo="bar"}[5m])) by (container)
 // topk(10, count_over_time({foo="bar"}[5m])) by (container)

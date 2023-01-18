@@ -117,7 +117,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			if statistics {
 				q.printStats(resp.Data.Statistics)
 			}
-			fmt.Printf("res in logcli %v\n", resp.Data.Result)
+
 			resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
 			// Was not a log stream query, or no results, no more batching
 			if resultLength <= 0 {
@@ -421,18 +421,6 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
-	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
-	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
-	// we might add output options such as render to an image file on disk
-	bytes, err := json.MarshalIndent(matrix, "", "  ")
-	if err != nil {
-		log.Fatalf("Error marshalling matrix: %v", err)
-	}
-
-	fmt.Print(string(bytes))
-}
-
-func (q *Query) printHistogram(matrix loghttp.Histogram) {
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk

@@ -60,6 +60,7 @@ func newRangeVectorIterator(
 		overlap = true
 	}
 	if !overlap {
+		// TODO: handle histogramvectoraggregator
 		_, err := streamingAggregator(expr)
 		if err != nil {
 			return nil, err

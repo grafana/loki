@@ -345,13 +345,7 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 		return nil, err
 	}
 	defer func() { _ = response.Body.Close() }()
-	res, err := rt.codec.DecodeResponse(ctx, response, r)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("res is %v\n", res.String())
-	return res, nil
-	//return rt.codec.DecodeResponse(ctx, response, r)
+	return rt.codec.DecodeResponse(ctx, response, r)
 }
 
 // WeightedParallelism will calculate the request parallelism to use

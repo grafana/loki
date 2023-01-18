@@ -212,7 +212,6 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream) error {
 
 	s.WriteObjectField("resultType")
 	s.WriteString(string(v.Data.Type()))
-	fmt.Printf("data type=%s\n", v.Data.Type())
 	s.WriteMore()
 	s.WriteObjectField("result")
 	err := encodeResult(v.Data, s)

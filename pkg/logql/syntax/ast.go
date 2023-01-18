@@ -814,68 +814,6 @@ type HistogramExpr struct {
 	implicit
 }
 
-func newHistogramExpr(left *LogRange, nativeHistogramBucketFactor string, gr *Grouping) SampleExpr {
-	f, err := strconv.ParseFloat(nativeHistogramBucketFactor, 64)
-	if err != nil {
-		fmt.Printf("histogram float parse error %s\n", err.Error())
-	}
-	e := &HistogramExpr{
-		Left:                        left,
-		Grouping:                    gr,
-		NativeHistogramBucketFactor: f,
-	}
-	return e
-}
-
-func (e *HistogramExpr) Selector() LogSelectorExpr {
-	return e.Left.Left
-}
-
-// impls Stringer
-func (e *HistogramExpr) String() string {
-	var sb strings.Builder
-	sb.WriteString(OpRangeTypeHistogram)
-	sb.WriteString("(")
-	//sb.WriteString(e.Buckets.String())
-
-	sb.WriteString(strconv.FormatFloat(e.NativeHistogramBucketFactor, 'f', -1, 64))
-	sb.WriteString(",")
-	sb.WriteString(e.Left.String())
-
-	sb.WriteString(")")
-	if e.Grouping != nil {
-		sb.WriteString(e.Grouping.String())
-	}
-
-	return sb.String()
-}
-
-func (e *HistogramExpr) Shardable() bool {
-	return false
-}
-
-func (e *HistogramExpr) Walk(f WalkFn) {
-	f(e)
-	if e.Left == nil {
-		return
-	}
-	e.Left.Walk(f)
-}
-
-func (e *HistogramExpr) MatcherGroups() []MatcherRange {
-	xs := e.Left.Left.Matchers()
-	if len(xs) > 0 {
-		return []MatcherRange{
-			{
-				Matchers: xs,
-				Interval: e.Left.Interval,
-				Offset:   e.Left.Offset,
-			},
-		}
-	}
-	return nil
-}
-
 type RangeAggregationExpr struct {
 	Left      *LogRange
 	Operation string
