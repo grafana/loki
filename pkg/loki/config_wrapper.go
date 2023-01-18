@@ -38,12 +38,11 @@ type ConfigWrapper struct {
 }
 
 func PrintVersion(args []string) bool {
-	for _, a := range args {
-		if a == "-"+versionFlag {
-			return true
-		}
-	}
-	return false
+	var printVersion bool
+	f := flag.NewFlagSet("version parsing", flag.ContinueOnError)
+	f.BoolVar(&printVersion, versionFlag, false, "Print this builds version information")
+	_ = f.Parse(args)
+	return printVersion
 }
 
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
