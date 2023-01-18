@@ -1011,8 +1011,6 @@ ingress:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
 
-
-
 # Configuration for the gateway
 gateway:
   # -- Specifies whether the gateway should be enabled
