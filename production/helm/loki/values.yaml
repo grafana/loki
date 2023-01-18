@@ -974,11 +974,11 @@ gateway:
     type: RollingUpdate
   image:
     # -- The Docker registry for the gateway image
-    registry: docker.io
+    registry: ghcr.io
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.19-alpine
+    tag: 1.23-alpine
     # -- The gateway image pull policy
     pullPolicy: IfNotPresent
   # -- The name of the PriorityClass for gateway pods
