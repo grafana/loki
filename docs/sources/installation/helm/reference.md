@@ -3080,6 +3080,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enabled</td>
 			<td>bool</td>
 			<td>Enable persistent disk</td>
@@ -3597,6 +3606,15 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
