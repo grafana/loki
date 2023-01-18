@@ -74,7 +74,7 @@ local docker(arch, app) = {
 
 local clients_docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
@@ -86,7 +86,7 @@ local clients_docker(arch, app) = {
 
 local docker_operator(arch, operator) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % operator,
     context: 'operator',
