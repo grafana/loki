@@ -1940,6 +1940,9 @@ The optional `limits_config` block configures global limits for this instance of
 # to avoid OOM scenarios.
 # 0 means it is disabled.
 [max_streams: <int> | default = 0]
+
+Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+[max_line_size: <int> | default = 0]
 ```
 
 ## target_config
