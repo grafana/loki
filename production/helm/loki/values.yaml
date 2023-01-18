@@ -96,6 +96,11 @@ loki:
         {{- end }}
         {{- end }}
 
+    {{- with .Values.loki.ingester }}
+    ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -287,6 +292,9 @@ loki:
 
   # --  Optional querier configuration
   querier: {}
+
+  # --  Optional ingester configuration
+  ingester: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
