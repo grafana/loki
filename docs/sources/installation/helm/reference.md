@@ -3148,6 +3148,186 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>tableManager.affinity</td>
+			<td>string</td>
+			<td>Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td><pre lang="">
+Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether the table-manager should be enabled</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the table-manager</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the table-manager image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the table-manager image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the table-manager image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.podLabels</td>
+			<td>object</td>
+			<td>Labels for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for table-manager pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the table-manager</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for table-manager service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the table-manager to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>test</td>
 			<td>object</td>
 			<td>Section for configuring optional Helm test</td>
