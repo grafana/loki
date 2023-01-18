@@ -590,8 +590,6 @@ JSON post body can be sent in the following format:
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
-Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
-
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
 ### Examples
@@ -1384,8 +1382,6 @@ JSON post body can be sent in the following format:
   ]
 }
 ```
-
-Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
 
 In microservices mode, `/api/prom/push` is exposed by the distributor.
 
