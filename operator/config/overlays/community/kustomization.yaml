@@ -22,8 +22,8 @@ labels:
     app.kubernetes.io/managed-by: operator-lifecycle-manager
   includeSelectors: true
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.0.1
-    app.kubernetes.io/version: "0.0.1"
+    app.kubernetes.io/instance: loki-operator-v0.1.0
+    app.kubernetes.io/version: "0.1.0"
 
 generatorOptions:
   disableNameSuffixHash: true

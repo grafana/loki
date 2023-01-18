@@ -1419,11 +1419,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.0.1
+          app.kubernetes.io/instance: loki-operator-v0.1.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.0.1
+          app.kubernetes.io/version: 0.1.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
