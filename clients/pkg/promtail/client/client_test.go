@@ -341,8 +341,8 @@ func TestClient_Handle(t *testing.T) {
 				TenantID:               testData.clientTenantID,
 			}
 
-			m := NewMetrics(reg, nil)
-			c, err := New(m, cfg, nil, 0, testData.clientMaxLineSize, log.NewNopLogger())
+			m := NewMetrics(reg)
+			c, err := New(m, cfg, 0, testData.clientMaxLineSize, log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Send all the input log entries
@@ -479,8 +479,9 @@ func TestClient_StopNow(t *testing.T) {
 				Timeout:        1 * time.Second,
 				TenantID:       c.clientTenantID,
 			}
-			m := NewMetrics(reg, nil)
-			cl, err := New(m, cfg, nil, 0, 0, log.NewNopLogger())
+
+			m := NewMetrics(reg)
+			cl, err := New(m, cfg, 0, 0, log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Send all the input log entries
@@ -556,7 +557,7 @@ func Test_Tripperware(t *testing.T) {
 	var called bool
 	c, err := NewWithTripperware(metrics, Config{
 		URL: flagext.URLValue{URL: url},
-	}, nil, 0, 0, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
+	}, 0, 0, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
 		return RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			require.Equal(t, r.URL.String(), "http://foo.com")
 			called = true

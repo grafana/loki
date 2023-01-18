@@ -151,7 +151,11 @@ func main() {
 		}()
 	}
 
-	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
+	if config.Options.StreamLagLabels.String() != "" {
+		level.Error(util_log.Logger).Log("msg", "client config stream_lag_labels is deprecated and the associated metric has been removed", "stream_lag_labels", config.Options.StreamLagLabels.String())
+		os.Exit(1)
+	}
 	newConfigFunc := func() (*promtail_config.Config, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
