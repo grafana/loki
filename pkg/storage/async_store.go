@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -50,6 +51,12 @@ func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConf
 	}
 }
 
+// queryIngesters uses the queryIngestersWithin flag but will always query them when it's 0.
+func (a *AsyncStore) shouldQueryIngesters(through, now model.Time) bool {
+	// don't query ingesters if the query does not overlap with queryIngestersWithin.
+	return a.queryIngestersWithin == 0 || through.After(now.Add(-a.queryIngestersWithin))
+}
+
 func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	spanLogger := spanlogger.FromContext(ctx)
 
@@ -66,13 +73,10 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var ingesterChunks []string
 
 	go func() {
-		if a.queryIngestersWithin != 0 {
-			// don't query ingesters if the query does not overlap with queryIngestersWithin.
-			if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
-				level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
-				errs <- nil
-				return
-			}
+		if !a.shouldQueryIngesters(through, model.Now()) {
+			level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
+			errs <- nil
+			return
 		}
 
 		var err error
@@ -100,28 +104,44 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 }
 
 func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	if a.queryIngestersWithin != 0 {
-		// don't query ingesters if the query does not overlap with queryIngestersWithin.
-		if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
-			return a.Store.Stats(ctx, userID, from, through, matchers...)
-		}
-	}
 
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	matchersStr := syntax.MatchersString(matchers)
 	type f func() (*stats.Stats, error)
-	jobs := []f{
-		f(func() (*stats.Stats, error) {
-			return a.ingesterQuerier.Stats(ctx, userID, from, through, matchers...)
-		}),
-		f(func() (*stats.Stats, error) {
-			return a.Store.Stats(ctx, userID, from, through, matchers...)
-		}),
-	}
-	resps := make([]*stats.Stats, len(jobs))
+	var jobs []f
 
+	if a.shouldQueryIngesters(through, model.Now()) {
+		jobs = append(jobs, f(func() (*stats.Stats, error) {
+			stats, err := a.ingesterQuerier.Stats(ctx, userID, from, through, matchers...)
+			level.Debug(logger).Log(
+				append(
+					stats.LoggingKeyValues(),
+					"msg", "queried statistics",
+					"matchers", matchersStr,
+					"source", "ingesters",
+				)...,
+			)
+			return stats, err
+		}))
+	}
+	jobs = append(jobs, f(func() (*stats.Stats, error) {
+		stats, err := a.Store.Stats(ctx, userID, from, through, matchers...)
+		level.Debug(logger).Log(
+			append(
+				stats.LoggingKeyValues(),
+				"msg", "queried statistics",
+				"matchers", matchersStr,
+				"source", "store",
+			)...,
+		)
+		return stats, err
+	}))
+
+	resps := make([]*stats.Stats, len(jobs))
 	if err := concurrency.ForEachJob(
 		ctx,
 		len(jobs),
-		2,
+		len(jobs),
 		func(ctx context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp

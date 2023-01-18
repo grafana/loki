@@ -271,10 +271,9 @@ $ make loki-canary-image
 
 ## Configuration
 
-The address of Loki must be passed in with the `-addr` flag or by setting the
-environment variable `LOKI_ADDRESS`, and if your Loki server uses TLS, `-tls=true`
-must also be provided. Note that using TLS will cause the WebSocket connection
-to use `wss://` instead of `ws://`.
+The address of Loki must be passed in with the `-addr` flag, and if your Loki
+server uses TLS, `-tls=true` must also be provided. Note that using TLS will
+cause the WebSocket connection to use `wss://` instead of `ws://`.
 
 The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
@@ -302,7 +301,7 @@ All options:
 
 ```
   -addr string
-    	The Loki server URL:Port, e.g. loki:3100. Loki address can also be set using the environment variable LOKI_ADDRESS.
+    	The Loki server URL:Port, e.g. loki:3100
   -buckets int
     	Number of buckets in the response_latency histogram (default 10)
   -ca-file string
@@ -332,7 +331,7 @@ All options:
   -out-of-order-percentage int
     	Percentage (0-100) of log entries that should be sent out of order.
   -pass string
-    	Loki password. This credential should have both read and write permissions to Loki endpoints. Password can also be set using the environment variable LOKI_PASSWORD.
+    	Loki password. This credential should have both read and write permissions to Loki endpoints
   -port int
     	Port which loki-canary should expose metrics (default 3500)
   -pruneinterval duration
@@ -360,7 +359,7 @@ All options:
   -tls
     	Does the loki connection use TLS?
   -user string
-    	Loki username. Username can also be set using the environment variable LOKI_USERNAME.
+    	Loki username.
   -version
     	Print this builds version information
   -wait duration

@@ -1,14 +1,24 @@
 ---
 enterprise:
   enabled: true
-  adminTokenSecret: "gel-admin-token"
+  adminToken:
+    secret: "gel-admin-token"
+    additionalNamespaces:
+      - k3d-helm-cluster
+  useExternalLicense: true
+  externalLicenseName: gel-license
   provisioner:
     provisionedSecretPrefix: "provisioned-secret"
-    tenants:
-      - loki
+    additionalTenants:
+      - name: team-a
+        namespace: k3d-helm-cluster
 monitoring:
-  selfMonitoring+:
-    tenant: "loki"
+  selfMonitoring:
+    tenant:
+      name: loki
+      secretNamespace: k3d-helm-cluster
   serviceMonitor:
     labels:
       release: "prometheus"
+minio:
+  enabled: true

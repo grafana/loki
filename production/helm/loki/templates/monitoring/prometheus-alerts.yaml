@@ -14,7 +14,6 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   name: {{ include "loki.fullname" $ }}-alerts
-  namespace: {{ .namespace | default $.Release.Namespace }}
 spec:
   groups:
   {{- include "loki.ruleGroupToYaml" ($.Files.Get "src/alerts.yaml" | fromYaml).groups | indent 4 }}

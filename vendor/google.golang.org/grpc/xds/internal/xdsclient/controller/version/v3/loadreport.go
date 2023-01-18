@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -59,7 +60,11 @@ func (v3c *client) SendFirstLoadStatsRequest(s grpc.ClientStream) error {
 
 	req := &lrspb.LoadStatsRequest{Node: node}
 	v3c.logger.Infof("lrs: sending init LoadStatsRequest: %v", pretty.ToJSON(req))
-	return stream.Send(req)
+	err := stream.Send(req)
+	if err == io.EOF {
+		return getStreamError(stream)
+	}
+	return err
 }
 
 func (v3c *client) HandleLoadStatsResponse(s grpc.ClientStream) ([]string, time.Duration, error) {
@@ -148,5 +153,17 @@ func (v3c *client) SendLoadStatsRequest(s grpc.ClientStream, loads []*load.Data)
 
 	req := &lrspb.LoadStatsRequest{ClusterStats: clusterStats}
 	v3c.logger.Infof("lrs: sending LRS loads: %+v", pretty.ToJSON(req))
-	return stream.Send(req)
+	err := stream.Send(req)
+	if err == io.EOF {
+		return getStreamError(stream)
+	}
+	return err
+}
+
+func getStreamError(stream lrsStream) error {
+	for {
+		if _, err := stream.Recv(); err != nil {
+			return err
+		}
+	}
 }

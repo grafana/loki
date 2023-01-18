@@ -35,25 +35,34 @@ const (
 	// pipeline stages
 	ReservedLabelTenantID = "__tenant_id__"
 
-	LatencyLabel = "filename"
-	HostLabel    = "host"
-	ClientLabel  = "client"
-	TenantLabel  = "tenant"
+	LatencyLabel    = "filename"
+	HostLabel       = "host"
+	ClientLabel     = "client"
+	TenantLabel     = "tenant"
+	DropReasonLabel = "reason"
+
+	DropReasonGeneric             = "ingester_error"
+	DropReasonRateLimited         = "rate_limited"
+	DropReasonStreamLimited       = "stream_limited"
+	DropReasongMaxLineSizeLimited = "max_line_size_limited"
 )
+
+var DropReasons = []string{DropReasonGeneric, DropReasonRateLimited, DropReasonStreamLimited}
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
 type Metrics struct {
-	encodedBytes       *prometheus.CounterVec
-	sentBytes          *prometheus.CounterVec
-	droppedBytes       *prometheus.CounterVec
-	sentEntries        *prometheus.CounterVec
-	droppedEntries     *prometheus.CounterVec
-	requestDuration    *prometheus.HistogramVec
-	batchRetries       *prometheus.CounterVec
-	countersWithHost   []*prometheus.CounterVec
-	countersWithTenant []*prometheus.CounterVec
-	streamLag          *prometheus.GaugeVec
+	encodedBytes                 *prometheus.CounterVec
+	sentBytes                    *prometheus.CounterVec
+	droppedBytes                 *prometheus.CounterVec
+	sentEntries                  *prometheus.CounterVec
+	droppedEntries               *prometheus.CounterVec
+	requestDuration              *prometheus.HistogramVec
+	batchRetries                 *prometheus.CounterVec
+	countersWithHost             []*prometheus.CounterVec
+	countersWithHostTenant       []*prometheus.CounterVec
+	countersWithHostTenantReason []*prometheus.CounterVec
+	streamLag                    *prometheus.GaugeVec
 }
 
 func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
@@ -73,7 +82,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "dropped_bytes_total",
 		Help:      "Number of bytes dropped because failed to be sent to the ingester after all retries.",
-	}, []string{HostLabel, TenantLabel})
+	}, []string{HostLabel, TenantLabel, DropReasonLabel})
 	m.sentEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_entries_total",
@@ -83,7 +92,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
-	}, []string{HostLabel, TenantLabel})
+	}, []string{HostLabel, TenantLabel, DropReasonLabel})
 	m.requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
@@ -99,8 +108,12 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		m.encodedBytes, m.sentBytes, m.sentEntries,
 	}
 
-	m.countersWithTenant = []*prometheus.CounterVec{
-		m.droppedBytes, m.droppedEntries, m.batchRetries,
+	m.countersWithHostTenant = []*prometheus.CounterVec{
+		m.batchRetries,
+	}
+
+	m.countersWithHostTenantReason = []*prometheus.CounterVec{
+		m.droppedBytes, m.droppedEntries,
 	}
 
 	streamLagLabelsMerged := []string{HostLabel, ClientLabel}
@@ -159,23 +172,24 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx        context.Context
-	cancel     context.CancelFunc
-	maxStreams int
+	ctx         context.Context
+	cancel      context.CancelFunc
+	maxStreams  int
+	maxLineSize int
 }
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
-func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (Client, error) {
+func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger) (Client, error) {
 	if cfg.StreamLagLabels.String() != "" {
 		return nil, fmt.Errorf("client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored: %+v", cfg.StreamLagLabels.String())
 	}
-	return newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
+	return newClient(metrics, cfg, streamLagLabels, maxStreams, maxLineSize, logger)
 }
 
-func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger) (*client, error) {
+func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger) (*client, error) {
 
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
@@ -195,6 +209,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 		ctx:            ctx,
 		cancel:         cancel,
 		maxStreams:     maxStreams,
+		maxLineSize:    maxLineSize,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -224,8 +239,8 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 }
 
 // NewWithTripperware creates a new Loki client with a custom tripperware.
-func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams int, logger log.Logger, tp Tripperware) (Client, error) {
-	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, logger)
+func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, maxLineSize, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +250,20 @@ func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, 
 	}
 
 	return c, nil
+}
+
+func (c *client) initBatchMetrics(tenantID string) {
+	// Initialize counters to 0 so the metrics are exported before the first
+	// occurrence of incrementing to avoid missing metrics.
+	for _, counter := range c.metrics.countersWithHostTenantReason {
+		for _, reason := range DropReasons {
+			counter.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Add(0)
+		}
+	}
+
+	for _, counter := range c.metrics.countersWithHostTenant {
+		counter.WithLabelValues(c.cfg.URL.Host, tenantID).Add(0)
+	}
 }
 
 func (c *client) run() {
@@ -270,17 +299,21 @@ func (c *client) run() {
 			if !ok {
 				return
 			}
+
 			e, tenantID := c.processEntry(e)
+
+			// drop the entry because its length is greater than maxLineSize. maxLineSize == 0 means disabled.
+			if c.maxLineSize != 0 && len(e.Line) > c.maxLineSize {
+				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasongMaxLineSizeLimited).Inc()
+				break
+			}
+
 			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
 				batches[tenantID] = newBatch(c.maxStreams, e)
-				// Initialize counters to 0 so the metrics are exported before the first
-				// occurrence of incrementing to avoid missing metrics.
-				for _, counter := range c.metrics.countersWithTenant {
-					counter.WithLabelValues(c.cfg.URL.Host, tenantID).Add(0)
-				}
+				c.initBatchMetrics(tenantID)
 				break
 			}
 
@@ -297,8 +330,12 @@ func (c *client) run() {
 			err := batch.add(e)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
-				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(len(e.Line)))
-				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID).Inc()
+				reason := DropReasonGeneric
+				if err.Error() == errMaxStreamsLimitExceeded {
+					reason = DropReasonStreamLimited
+				}
+				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Add(float64(len(e.Line)))
+				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Inc()
 				return
 			}
 		case <-maxWaitCheck.C:
@@ -327,6 +364,10 @@ func asSha256(o interface{}) string {
 	return temp[:6]
 }
 
+func batchIsRateLimited(status int) bool {
+	return status == 429
+}
+
 func (c *client) sendBatch(tenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
@@ -344,6 +385,14 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		status, err = c.send(context.Background(), tenantID, buf)
 
 		c.metrics.requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
+
+		// Immediately drop rate limited batches to avoid HOL blocking for other tenants not experiencing throttling
+		if c.cfg.DropRateLimitedBatches && batchIsRateLimited(status) {
+			level.Warn(c.logger).Log("msg", "dropping batch due to rate limiting applied at ingester")
+			c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasonRateLimited).Add(bufBytes)
+			c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasonRateLimited).Add(float64(entriesCount))
+			return
+		}
 
 		if err == nil {
 			c.metrics.sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
@@ -384,7 +433,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		}
 
 		// Only retry 429s, 500s and connection-level errors.
-		if status > 0 && status != 429 && status/100 != 5 {
+		if status > 0 && !batchIsRateLimited(status) && status/100 != 5 {
 			break
 		}
 
@@ -400,8 +449,14 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 
 	if err != nil {
 		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "tenant", tenantID, "error", err)
-		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID).Add(bufBytes)
-		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID).Add(float64(entriesCount))
+		// If the reason for the last retry error was rate limiting, count the drops as such, even if the previous errors
+		// were for a different reason
+		dropReason := DropReasonGeneric
+		if batchIsRateLimited(status) {
+			dropReason = DropReasonRateLimited
+		}
+		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, dropReason).Add(bufBytes)
+		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, dropReason).Add(float64(entriesCount))
 	}
 }
 

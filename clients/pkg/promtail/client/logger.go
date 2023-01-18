@@ -37,7 +37,7 @@ type logger struct {
 // NewLogger creates a new client logger that logs entries instead of sending them.
 func NewLogger(metrics *Metrics, streamLogLabels []string, log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(metrics, streamLogLabels, log, 0, cfgs...)
+	c, err := NewMulti(metrics, streamLogLabels, log, 0, 0, cfgs...)
 	if err != nil {
 		return nil, err
 	}

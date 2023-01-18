@@ -53,6 +53,7 @@ const (
 
 	gRPCUserAgentName               = "gRPC Go"
 	clientFeatureNoOverprovisioning = "envoy.lb.does_not_support_overprovisioning"
+	clientFeatureResourceWrapper    = "xds.config.resource-in-sotw"
 )
 
 func init() {
@@ -499,7 +500,7 @@ func (c *Config) updateNodeProto(node *v3corepb.Node) error {
 	}
 	v3.UserAgentName = gRPCUserAgentName
 	v3.UserAgentVersionType = &v3corepb.Node_UserAgentVersion{UserAgentVersion: grpc.Version}
-	v3.ClientFeatures = append(v3.ClientFeatures, clientFeatureNoOverprovisioning)
+	v3.ClientFeatures = append(v3.ClientFeatures, clientFeatureNoOverprovisioning, clientFeatureResourceWrapper)
 
 	v3bytes, err := proto.Marshal(v3)
 	if err != nil {

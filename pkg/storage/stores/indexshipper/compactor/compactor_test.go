@@ -104,9 +104,12 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 	c, err := NewCompactor(cfg, objectClient, config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:        config.DayTime{Time: model.Time(0)},
-				IndexType:   indexType,
-				IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+				From:      config.DayTime{Time: model.Time(0)},
+				IndexType: indexType,
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				},
 			},
 		},
 	}, nil, nil)
@@ -152,6 +155,53 @@ func Test_schemaPeriodForTable(t *testing.T) {
 	indexFromTime := func(t time.Time) string {
 		return fmt.Sprintf("%d", t.Unix()/int64(24*time.Hour/time.Second))
 	}
+	tsdbIndexTablePrefix := fmt.Sprintf("%stsdb_", indexTablePrefix)
+	schemaCfg := config.SchemaConfig{Configs: []config.PeriodConfig{
+		{
+			From:       dayFromTime(start),
+			IndexType:  "boltdb",
+			ObjectType: "filesystem",
+			Schema:     "v9",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: time.Hour * 24,
+			},
+			RowShards: 16,
+		},
+		{
+			From:       dayFromTime(start.Add(25 * time.Hour)),
+			IndexType:  "boltdb",
+			ObjectType: "filesystem",
+			Schema:     "v12",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: time.Hour * 24,
+			},
+			RowShards: 16,
+		},
+		{
+			From:       dayFromTime(start.Add(73 * time.Hour)),
+			IndexType:  "tsdb",
+			ObjectType: "filesystem",
+			Schema:     "v12",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: tsdbIndexTablePrefix,
+				Period: time.Hour * 24,
+			},
+			RowShards: 16,
+		},
+		{
+			From:       dayFromTime(start.Add(100 * time.Hour)),
+			IndexType:  "tsdb",
+			ObjectType: "filesystem",
+			Schema:     "v12",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: time.Hour * 24,
+			},
+			RowShards: 16,
+		},
+	}}
 	tests := []struct {
 		name          string
 		config        config.SchemaConfig
@@ -163,14 +213,16 @@ func Test_schemaPeriodForTable(t *testing.T) {
 		{"first table", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start).Time.Time()), schemaCfg.Configs[0], true},
 		{"4 hour after first table", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start).Time.Time().Add(4*time.Hour)), schemaCfg.Configs[0], true},
 		{"second schema", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start.Add(28*time.Hour)).Time.Time()), schemaCfg.Configs[1], true},
-		{"third schema", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start.Add(75*time.Hour)).Time.Time()), schemaCfg.Configs[2], true},
+		{"third schema", schemaCfg, tsdbIndexTablePrefix + indexFromTime(dayFromTime(start.Add(75*time.Hour)).Time.Time()), schemaCfg.Configs[2], true},
+		{"unexpected table prefix", schemaCfg, indexTablePrefix + indexFromTime(dayFromTime(start.Add(75*time.Hour)).Time.Time()), config.PeriodConfig{}, false},
+		{"unexpected table number", schemaCfg, tsdbIndexTablePrefix + indexFromTime(time.Now()), config.PeriodConfig{}, false},
 		{"now", schemaCfg, indexTablePrefix + indexFromTime(time.Now()), schemaCfg.Configs[3], true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			actual, actualFound := schemaPeriodForTable(tt.config, tt.tableName)
-			require.Equal(t, tt.expected, actual)
 			require.Equal(t, tt.expectedFound, actualFound)
+			require.Equal(t, tt.expected, actual)
 		})
 	}
 }

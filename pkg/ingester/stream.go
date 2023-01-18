@@ -235,7 +235,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
 	}
 
-	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
+	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d", s.tenant, len(failedEntriesWithError), totalEntries)
 
 	return httpgrpc.Errorf(statusCode, buf.String())
 }
