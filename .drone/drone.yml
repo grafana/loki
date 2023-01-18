@@ -1336,6 +1336,8 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+depends_on:
+- check
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
@@ -1665,6 +1667,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 768eb915af5b1cf14a24de3d4a2bbf9ed583404d7a391468d4d8e26b2b65b06c
+hmac: 58239f4ad12c6f5089ab3582f4086a6be2c3131778b71ddba9721b21fa03ce00
 
 ...
