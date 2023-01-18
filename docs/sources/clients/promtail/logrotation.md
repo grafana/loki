@@ -87,7 +87,7 @@ You can [configure](https://kubernetes.io/docs/concepts/cluster-administration/l
 
 Both should be part of the `kubelet` config. If you run a managed version of Kubernetes in Cloud, refer to your cloud provider documentation for configuring `kubelet`. Examples [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/node-system-config#create), [AKS](https://learn.microsoft.com/en-us/azure/aks/custom-node-configuration#use-custom-node-configuration) and [EKS](https://eksctl.io/usage/customizing-the-kubelet/#customizing-kubelet-configuration).
 
-> **NOTE:** Log rotation managed by `kubelet` supports only rename + create (for a good reason) and doesn't support copy + truncate.
+> **NOTE:** Log rotation managed by `kubelet` supports only rename + create and doesn't support copy + truncate.
 
 If `kubelet` is not configured to manage the log rotation, then it's up to the Container Runtime Interface (CRI) the cluster uses. Alternatively, log rotation can be managed by the `logrotate` utility in the Kubernetes node itself.
 
