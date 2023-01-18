@@ -158,7 +158,8 @@ metricExpr:
     ;
 
 histogramExpr:
-      histogramOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping { $$ = newHistogramExpr($5, $3, $7) }
+      histogramOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
+    | histogramOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
     ;
 
 histogramOp:

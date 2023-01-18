@@ -64,11 +64,10 @@ type ResultType string
 
 // ResultType values
 const (
-	ResultTypeStream    = "streams"
-	ResultTypeScalar    = "scalar"
-	ResultTypeVector    = "vector"
-	ResultTypeMatrix    = "matrix"
-	ResultTypeHistogram = "histogram"
+	ResultTypeStream = "streams"
+	ResultTypeScalar = "scalar"
+	ResultTypeVector = "vector"
+	ResultTypeMatrix = "matrix"
 )
 
 // ResultValue interface mimics the promql.Value interface
@@ -94,8 +93,6 @@ func (Vector) Type() ResultType { return ResultTypeVector }
 
 // Type implements the promql.Value interface
 func (Matrix) Type() ResultType { return ResultTypeMatrix }
-
-func (Histogram) Type() ResultType { return ResultTypeHistogram }
 
 // Streams is a slice of Stream
 type Streams []Stream
@@ -179,7 +176,6 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	q.ResultType = ResultType(resultType)
-	fmt.Printf("unmarshal data %v\n", string(data))
 	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "result":

@@ -227,19 +227,6 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *syntax.LabelReplaceExpr:
 		return labelReplaceEvaluator(ctx, nextEv, e, q)
-	case *syntax.HistogramExpr:
-		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				End:      q.End().Add(-e.Left.Offset),
-				Selector: expr.String(),
-				Shards:   q.Shards(),
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		return histogramAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.VectorExpr:
 		val, err := e.Value()
 		if err != nil {
@@ -475,12 +462,8 @@ func rangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
-	agg, err := aggregator(expr)
-	if err != nil {
-		return nil, err
-	}
 	iter, err := newRangeVectorIterator(
-		it, expr, nil,
+		it, expr,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
@@ -491,7 +474,6 @@ func rangeAggEvaluator(
 	if expr.Operation == syntax.OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
 			iter: iter,
-			agg:  agg,
 			lbs:  absentLabels(expr),
 		}, nil
 	}
@@ -512,7 +494,7 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	if !next {
 		return false, 0, promql.Vector{}
 	}
-	ts, vec := r.iter.At(r.agg)
+	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
 		if s.Metric.Has(logqlmodel.ErrorLabel) {
@@ -532,61 +514,7 @@ func (r rangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
-type histogramEvaluator struct {
-	StepEvaluator
-	agg  HistogramVectorAggregator
-	iter RangeVectorIterator
-
-	err error
-}
-
-func histogramAggEvaluator(
-	it iter.PeekingSampleIterator,
-	expr *syntax.HistogramExpr,
-	q Params,
-	o time.Duration,
-) (StepEvaluator, error) {
-	agg := bucketsOverTime(expr.NativeHistogramBucketFactor)
-	iter, _ := newRangeVectorIterator(
-		it, nil, expr,
-		expr.Left.Interval.Nanoseconds(),
-		q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
-	)
-
-	return &histogramEvaluator{
-		iter: iter,
-		agg:  agg,
-	}, nil
-}
-
-func (r *histogramEvaluator) Next() (bool, int64, promql.Vector) {
-	next := r.iter.Next()
-	if !next {
-		return false, 0, promql.Vector{}
-	}
-	ts, vec := r.iter.At(r.agg)
-	for _, s := range vec {
-		// Errors are not allowed in metrics.
-		if s.Metric.Has(logqlmodel.ErrorLabel) {
-			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, promql.Vector{}
-		}
-	}
-	return true, ts, vec
-}
-
-func (r histogramEvaluator) Close() error { return r.iter.Close() }
-
-func (r histogramEvaluator) Error() error {
-	if r.err != nil {
-		return r.err
-	}
-	return r.iter.Error()
-}
-
 type absentRangeVectorEvaluator struct {
-	agg  BatchRangeVectorAggregator
 	iter RangeVectorIterator
 	lbs  labels.Labels
 
@@ -598,7 +526,7 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	if !next {
 		return false, 0, promql.Vector{}
 	}
-	ts, vec := r.iter.At(r.agg)
+	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
 		if s.Metric.Has(logqlmodel.ErrorLabel) {

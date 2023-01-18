@@ -9,7 +9,7 @@ import (
 
 	client_golang "github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	prom_hist "github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -22,7 +22,7 @@ import (
 // BatchRangeVectorAggregator aggregates samples for a given range of samples.
 // It receives the current milliseconds timestamp and the list of point within
 // the range.
-type HistogramVectorAggregator func([]promql.Point) *prom_hist.FloatHistogram
+type HistogramVectorAggregator func([]promql.Point) *histogram.FloatHistogram
 type BatchRangeVectorAggregator func([]promql.Point) float64
 
 // RangeStreamingAgg streaming aggregates sample for each sample
@@ -38,14 +38,14 @@ type RangeStreamingAgg interface {
 // To fetch the current vector use `At` with a `BatchRangeVectorAggregator` or `RangeStreamingAgg`.
 type RangeVectorIterator interface {
 	Next() bool
-	At(aggregator interface{}) (int64, promql.Vector)
+	At() (int64, promql.Vector)
 	Close() error
 	Error() error
 }
 
 func newRangeVectorIterator(
 	it iter.PeekingSampleIterator,
-	expr *syntax.RangeAggregationExpr, histExpr *syntax.HistogramExpr,
+	expr *syntax.RangeAggregationExpr,
 	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
 	// forces at least one step.
 	if step == 0 {
@@ -75,25 +75,19 @@ func newRangeVectorIterator(
 			offset:   offset,
 		}, nil
 	}
-	if histExpr != nil {
-		histAggregator := bucketsOverTime(histExpr.NativeHistogramBucketFactor)
-		return &batchRangeVectorIterator{
-			iter:     it,
-			step:     step,
-			end:      end,
-			selRange: selRange,
-			metrics:  map[string]labels.Labels{},
-			window:   map[string]*promql.Series{},
-			current:  start - step, // first loop iteration will set it to start
-			offset:   offset,
-			aggHist:  histAggregator,
-		}, nil
-	}
-	vectorAggregator, err := aggregator(expr)
-	if err != nil {
-		return nil, err
-	}
 
+	var histogramAggregator HistogramVectorAggregator
+	var vectorAggregator BatchRangeVectorAggregator
+	var err error
+	if expr.Operation == syntax.OpRangeTypeHistogram {
+		histogramAggregator = bucketsOverTime(*expr.Params)
+	}
+	if expr.Operation != syntax.OpRangeTypeHistogram {
+		vectorAggregator, err = aggregator(expr)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -102,6 +96,7 @@ func newRangeVectorIterator(
 		metrics:  map[string]labels.Labels{},
 		window:   map[string]*promql.Series{},
 		agg:      vectorAggregator,
+		aggHist:  histogramAggregator,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
 	}, nil
@@ -207,7 +202,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		_ = r.iter.Next()
 	}
 }
-func (r *batchRangeVectorIterator) At(aggregator interface{}) (int64, promql.Vector) {
+func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
 	}
@@ -215,8 +210,8 @@ func (r *batchRangeVectorIterator) At(aggregator interface{}) (int64, promql.Vec
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current/1e+6 + r.offset/1e+6
-	switch agg := aggregator.(type) {
-	case BatchRangeVectorAggregator:
+
+	if r.agg != nil {
 		for _, series := range r.window {
 			r.at = append(r.at, promql.Sample{
 				Point: promql.Point{
@@ -226,25 +221,12 @@ func (r *batchRangeVectorIterator) At(aggregator interface{}) (int64, promql.Vec
 				Metric: series.Metric,
 			})
 		}
-	case HistogramVectorAggregator:
-		// for _, series := range r.window {
-		// 	histogramValues := agg(series.Points)
-		// 	for upperBound, count := range histogramValues {
-		// 		metric := series.Metric.Copy()
-		// 		metric = append(metric, labels.Label{Name: "le", Value: strconv.FormatFloat(upperBound, 'f', -1, 64)})
-		// 		r.at = append(r.at, promql.Sample{
-		// 			Point: promql.Point{
-		// 				V: count,
-		// 				T: ts,
-		// 			},
-		// 			Metric: metric,
-		// 		})
-		// 	}
-		// }
+	}
+	if r.aggHist != nil {
 		for _, series := range r.window {
 			r.at = append(r.at, promql.Sample{
 				Point: promql.Point{
-					H: agg(series.Points),
+					H: r.aggHist(series.Points),
 					T: ts,
 				},
 				Metric: series.Metric,
@@ -506,50 +488,45 @@ func quantileOverTime(q float64) func(samples []promql.Point) float64 {
 }
 
 func bucketsOverTime(nativeHistogramBucketFactor float64) HistogramVectorAggregator {
-	return func(samples []promql.Point) *prom_hist.FloatHistogram {
-		// bucketMap := make(map[float64]float64)
-		// for _, sample := range samples {
-		// 	i := sort.SearchFloat64s(buckets, sample.V)
-		// 	if i <= len(buckets)-1 {
-		// 		bucketMap[buckets[i]]++
-		// 	}
-		// }
-		// return bucketMap
-		hist := client_golang.NewHistogram(client_golang.HistogramOpts{
-			NativeHistogramBucketFactor: 1.1,
-			Namespace:                   "logql",
-			Name:                        "logql_buckets",
+	return func(samples []promql.Point) *histogram.FloatHistogram {
+		sampleHistogram := client_golang.NewHistogram(client_golang.HistogramOpts{
+			NativeHistogramBucketFactor: nativeHistogramBucketFactor,
+			Name:                        "logql_buckets", // not sure if this should be hard coded
 		})
 		for _, sample := range samples {
-			hist.Observe(sample.V)
+			sampleHistogram.Observe(sample.V)
 		}
-		floatHist := &dto.Metric{}
-		if err := hist.Write(floatHist); err != nil {
+		floatHistogram := &dto.Metric{}
+		// this might be a costly operation for large values, at the moment,
+		// this is the only way I could find to convert to floatHistogram
+		if err := sampleHistogram.Write(floatHistogram); err != nil {
+			// should add handled with proper logging
 			fmt.Printf("err in hist=%s", err.Error())
+			return nil
 		}
-		pSpan := make([]prom_hist.Span, len(floatHist.Histogram.GetPositiveSpan()))
+		positiveSpans := make([]histogram.Span, len(floatHistogram.Histogram.GetPositiveSpan()))
 
-		for i, span := range floatHist.Histogram.GetPositiveSpan() {
-			pSpan[i].Length = *span.Length
-			pSpan[i].Offset = *span.Offset
+		for i, span := range floatHistogram.Histogram.GetPositiveSpan() {
+			positiveSpans[i].Length = *span.Length
+			positiveSpans[i].Offset = *span.Offset
 		}
-		nSpan := make([]prom_hist.Span, len(floatHist.Histogram.GetNegativeSpan()))
+		negativeSpans := make([]histogram.Span, len(floatHistogram.Histogram.GetNegativeSpan()))
 
-		for i, span := range floatHist.Histogram.GetNegativeSpan() {
-			nSpan[i].Length = *span.Length
-			nSpan[i].Offset = *span.Offset
+		for i, span := range floatHistogram.Histogram.GetNegativeSpan() {
+			negativeSpans[i].Length = *span.Length
+			negativeSpans[i].Offset = *span.Offset
 		}
 
-		h := &prom_hist.Histogram{
-			Schema:          floatHist.Histogram.GetSchema(),
-			ZeroThreshold:   floatHist.Histogram.GetZeroThreshold(),
-			ZeroCount:       floatHist.Histogram.GetZeroCount(),
-			Count:           floatHist.Histogram.GetSampleCount(),
-			Sum:             floatHist.Histogram.GetSampleSum(),
-			PositiveSpans:   pSpan,
-			NegativeSpans:   nSpan,
-			PositiveBuckets: floatHist.Histogram.GetPositiveDelta(),
-			NegativeBuckets: floatHist.Histogram.GetNegativeDelta(),
+		h := &histogram.Histogram{
+			Schema:          floatHistogram.Histogram.GetSchema(),
+			ZeroThreshold:   floatHistogram.Histogram.GetZeroThreshold(),
+			ZeroCount:       floatHistogram.Histogram.GetZeroCount(),
+			Count:           floatHistogram.Histogram.GetSampleCount(),
+			Sum:             floatHistogram.Histogram.GetSampleSum(),
+			PositiveSpans:   positiveSpans,
+			NegativeSpans:   negativeSpans,
+			PositiveBuckets: floatHistogram.Histogram.GetPositiveDelta(),
+			NegativeBuckets: floatHistogram.Histogram.GetNegativeDelta(),
 		}
 		return h.ToFloat()
 	}
@@ -679,7 +656,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 	}
 }
 
-func (r *streamRangeVectorIterator) At(aggregator interface{}) (int64, promql.Vector) {
+func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.windowRangeAgg))
 	}

@@ -61,14 +61,6 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 		}
 
 		value = NewMatrix(m)
-	case loghttp.ResultTypeHistogram:
-		m, ok := v.(promql.Matrix)
-
-		if !ok {
-			return nil, fmt.Errorf("unexpected type %T for matrix", m)
-		}
-
-		value = NewMatrix(m)
 	default:
 		return nil, fmt.Errorf("v1 endpoints do not support type %s", v.Type())
 	}
@@ -161,11 +153,6 @@ func NewMatrix(m promql.Matrix) loghttp.Matrix {
 	return ret
 }
 
-// NewHistogramMatrix constructs a Matrix from a promql.Matrix
-func NewHistogramMatrix(m promql.Matrix) loghttp.Histogram {
-	return loghttp.Histogram(m)
-}
-
 // NewSampleStream constructs a model.SampleStream from a promql.Series
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
@@ -178,12 +165,12 @@ func NewSampleStream(s promql.Series) model.SampleStream {
 		if p.H != nil {
 			ret.Histograms[i].Timestamp = model.Time(p.T)
 			itr := p.H.AllBucketIterator()
-			hist_bucket := make(model.HistogramBuckets, len(p.H.PositiveBuckets)+len(p.H.NegativeBuckets))
+			histogramBuckets := make(model.HistogramBuckets, len(p.H.PositiveBuckets)+len(p.H.NegativeBuckets))
 			for itr.Next() {
 				b := itr.At()
-				hist_bucket = append(hist_bucket, &model.HistogramBucket{Lower: model.FloatString(b.Upper), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)})
+				histogramBuckets = append(histogramBuckets, &model.HistogramBucket{Lower: model.FloatString(b.Upper), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)})
 			}
-			ret.Histograms[i].Histogram = model.SampleHistogram{Count: model.FloatString(p.H.Count), Sum: model.FloatString(p.H.Sum), Buckets: hist_bucket}
+			ret.Histograms[i].Histogram = model.SampleHistogram{Count: model.FloatString(p.H.Count), Sum: model.FloatString(p.H.Sum), Buckets: histogramBuckets}
 			continue
 		}
 		ret.Values[i].Timestamp = model.Time(p.T)
@@ -392,18 +379,16 @@ func encodeValue(T int64, V float64, H *histogram.FloatHistogram, s *jsoniter.St
 	s.WriteMore()
 	if H != nil {
 		itr := H.AllBucketIterator()
-		hist_bucket := make(model.HistogramBuckets, 0, len(H.PositiveBuckets)+len(H.NegativeBuckets))
+		histogramBuckets := make(model.HistogramBuckets, 0, len(H.PositiveBuckets)+len(H.NegativeBuckets))
 		for itr.Next() {
 			b := itr.At()
 			if b.Count == 0 {
 				continue
 			}
-			fmt.Printf("bucket lower_inclusive=%v, upper_inclusive=%v\n", b.LowerInclusive, b.UpperInclusive)
-			hist_bucket = append(hist_bucket, &model.HistogramBucket{Lower: model.FloatString(b.Lower), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)})
+			histogramBuckets = append(histogramBuckets, &model.HistogramBucket{Lower: model.FloatString(b.Lower), Upper: model.FloatString(b.Upper), Count: model.FloatString(b.Count)})
 		}
-		str := model.SampleHistogram{Count: model.FloatString(H.Count), Sum: model.FloatString(H.Sum), Buckets: hist_bucket}
-		fmt.Printf("encoded str=%s\n", str)
-		s.WriteVal(str)
+		sampleHistogram := model.SampleHistogram{Count: model.FloatString(H.Count), Sum: model.FloatString(H.Sum), Buckets: histogramBuckets}
+		s.WriteVal(sampleHistogram)
 		s.WriteArrayEnd()
 		return
 	}

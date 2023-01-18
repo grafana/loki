@@ -310,7 +310,7 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 		Values     []logproto.LegacySample `json:"values"`
 		Histograms []logproto.LegacySample `json:"histograms"`
 	}
-	fmt.Printf("In queryrangebase queryrange unmarhsaljson")
+
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
@@ -329,13 +329,7 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 			Metric:     logproto.FromLabelAdaptersToMetric(s.Labels),
 			Histograms: s.Histograms,
 		}
-		fmt.Printf("In queryrangebase queryrange marshaljson histogram %v\n\n", stream)
-		sb, err := json.Marshal(stream)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Printf("In queryrangebase queryrange marshaljson bytes histogram %v\n", string(sb))
-		return sb, nil
+		return json.Marshal(stream)
 	}
 	stream := struct {
 		Metric model.Metric            `json:"metric"`
@@ -344,14 +338,7 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 		Metric: logproto.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
-	fmt.Printf("In queryrangebase queryrange marshaljson %v\n\n", stream)
-	sb, err := json.Marshal(stream)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("In queryrangebase queryrange marshaljson bytes %v\n", string(sb))
-	return sb, nil
-	//return json.Marshal(stream)
+	return json.Marshal(stream)
 }
 
 func matrixMerge(resps []*PrometheusResponse) []SampleStream {
@@ -365,63 +352,35 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 					Labels: stream.Labels,
 				}
 			}
-
-			// // We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
-			// // The prometheus API is inclusive of start and end timestamps.
-			// if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-			// 	existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-			// 	if existingEndTs == stream.Samples[0].TimestampMs {
-			// 		// Typically this the cases where only 1 sample point overlap,
-			// 		// so optimize with simple code.
-			// 		stream.Samples = stream.Samples[1:]
-			// 	} else if existingEndTs > stream.Samples[0].TimestampMs {
-			// 		// Overlap might be big, use heavier algorithm to remove overlap.
-			// 		stream.Samples = sliceSamples(stream.Samples, existingEndTs)
-			// 	} // else there is no overlap, yay!
-			// }
 			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
 			// The prometheus API is inclusive of start and end timestamps.
-			// if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-			// 	existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-			// 	if existingEndTs == stream.Samples[0].TimestampMs {
-			// 		// Typically this the cases where only 1 sample point overlap,
-			// 		// so optimize with simple code.
-			// 		stream.Samples = stream.Samples[1:]
-			// 	} else if existingEndTs > stream.Samples[0].TimestampMs {
-			// 		// Overlap might be big, use heavier algorithm to remove overlap.
-			// 		stream.Samples = sliceSamples(stream.Samples, existingEndTs)
-			// 	} // else there is no overlap, yay!
-			// }
-			if len(stream.Histograms) > 0 {
-				if len(existing.Histograms) > 0 && len(stream.Histograms) > 0 {
-					existingEndTs := existing.Histograms[len(existing.Histograms)-1].TimestampMs
-					if existingEndTs == stream.Histograms[0].TimestampMs {
-						// Typically this the cases where only 1 sample point overlap,
-						// so optimize with simple code.
-						stream.Histograms = stream.Histograms[1:]
-					} else if existingEndTs > stream.Histograms[0].TimestampMs {
-						// Overlap might be big, use heavier algorithm to remove overlap.
-						stream.Histograms = sliceSamples(stream.Histograms, existingEndTs)
-					} // else there is no overlap, yay!
-				}
-				existing.Histograms = append(existing.Histograms, stream.Histograms...)
-			} else {
-				if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-					existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-					if existingEndTs == stream.Samples[0].TimestampMs {
-						// Typically this the cases where only 1 sample point overlap,
-						// so optimize with simple code.
-						stream.Samples = stream.Samples[1:]
-					} else if existingEndTs > stream.Histograms[0].TimestampMs {
-						// Overlap might be big, use heavier algorithm to remove overlap.
-						stream.Samples = sliceSamples(stream.Samples, existingEndTs)
-					} // else there is no overlap, yay!
-				}
-				existing.Samples = append(existing.Samples, stream.Samples...)
+			if len(existing.Histograms) > 0 && len(stream.Histograms) > 0 {
+				existingEndTs := existing.Histograms[len(existing.Histograms)-1].TimestampMs
+				if existingEndTs == stream.Histograms[0].TimestampMs {
+					// Typically this the cases where only 1 sample point overlap,
+					// so optimize with simple code.
+					stream.Histograms = stream.Histograms[1:]
+				} else if existingEndTs > stream.Histograms[0].TimestampMs {
+					// Overlap might be big, use heavier algorithm to remove overlap.
+					stream.Histograms = sliceSamples(stream.Histograms, existingEndTs)
+				} // else there is no overlap, yay!
 			}
+			existing.Histograms = append(existing.Histograms, stream.Histograms...)
+
+			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
+				existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+				if existingEndTs == stream.Samples[0].TimestampMs {
+					// Typically this the cases where only 1 sample point overlap,
+					// so optimize with simple code.
+					stream.Samples = stream.Samples[1:]
+				} else if existingEndTs > stream.Histograms[0].TimestampMs {
+					// Overlap might be big, use heavier algorithm to remove overlap.
+					stream.Samples = sliceSamples(stream.Samples, existingEndTs)
+				} // else there is no overlap, yay!
+			}
+			existing.Samples = append(existing.Samples, stream.Samples...)
 
 			output[metric] = existing
-
 		}
 	}
 
@@ -458,26 +417,6 @@ func sliceSamples(samples []logproto.LegacySample, minTs int64) []logproto.Legac
 
 	return samples[searchResult:]
 }
-
-// sliceSamples assumes given samples are sorted by timestamp in ascending order and
-// return a sub slice whose first element's is the smallest timestamp that is strictly
-// bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
-// timestamps in samples.
-// func sliceHistogramSamples(samples []logproto.LegacyHistogramSample, minTs int64) []logproto.LegacyHistogramSample {
-// 	if len(samples) <= 0 || minTs < samples[0].TimestampMs {
-// 		return samples
-// 	}
-
-// 	if len(samples) > 0 && minTs > samples[len(samples)-1].TimestampMs {
-// 		return samples[len(samples):]
-// 	}
-
-// 	searchResult := sort.Search(len(samples), func(i int) bool {
-// 		return samples[i].TimestampMs > minTs
-// 	})
-
-// 	return samples[searchResult:]
-// }
 
 func parseDurationMs(s string) (int64, error) {
 	if d, err := strconv.ParseFloat(s, 64); err == nil {

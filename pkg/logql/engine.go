@@ -393,7 +393,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	result := promql.Matrix(series)
 	sort.Sort(result)
-	fmt.Printf("Result=%v\n", result)
 	return result, stepEvaluator.Error()
 }
 
