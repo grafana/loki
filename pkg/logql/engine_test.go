@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -2178,29 +2177,30 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
-		{
-			`buckets_over_time((50, 100, 200), {app="foo"} |~".+bar" | unwrap foo [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
-			[][]logproto.Series{
-				{newSeries(testSize, factor(10, identityHistogram), `{app="foo"}`)},
-			},
-			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `buckets_over_time((50, 100, 200), {app="foo"}|~".+bar"|unwrap foo [1m])`}},
-			},
-			promql.Matrix{
-				promql.Series{
-					Metric: labels.Labels{{Name: "app", Value: "foo"}, {Name: "le", Value: "50"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 5}, {T: 90 * 1000, V: 2}},
-				},
-				promql.Series{
-					Metric: labels.Labels{{Name: "app", Value: "foo"}, {Name: "le", Value: "100"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 1}, {T: 90 * 1000, V: 4}, {T: 120 * 1000, V: 4}},
-				},
-				promql.Series{
-					Metric: labels.Labels{{Name: "app", Value: "foo"}, {Name: "le", Value: "200"}},
-					Points: []promql.Point{{T: 120 * 1000, V: 2}},
-				},
-			},
-		},
+		//TODO: needs re-work
+		// {
+		// 	`buckets_over_time((50, 100, 200), {app="foo"} |~".+bar" | unwrap foo [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+		// 	[][]logproto.Series{
+		// 		{newSeries(testSize, factor(10, identityHistogram), `{app="foo"}`)},
+		// 	},
+		// 	[]SelectSampleParams{
+		// 		{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `buckets_over_time((50, 100, 200), {app="foo"}|~".+bar"|unwrap foo [1m])`}},
+		// 	},
+		// 	promql.Matrix{
+		// 		promql.Series{
+		// 			Metric: labels.Labels{{Name: "app", Value: "foo"}, {Name: "le", Value: "50"}},
+		// 			Points: []promql.Point{{T: 60 * 1000, V: 5}, {T: 90 * 1000, V: 2}},
+		// 		},
+		// 		promql.Series{
+		// 			Metric: labels.Labels{{Name: "app", Value: "foo"}, {Name: "le", Value: "100"}},
+		// 			Points: []promql.Point{{T: 60 * 1000, V: 1}, {T: 90 * 1000, V: 4}, {T: 120 * 1000, V: 4}},
+		// 		},
+		// 		promql.Series{
+		// 			Metric: labels.Labels{{Name: "app", Value: "foo"}, {Name: "le", Value: "200"}},
+		// 			Points: []promql.Point{{T: 120 * 1000, V: 2}},
+		// 		},
+		// 	},
+		// },
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -2221,15 +2221,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			switch test.expected.Type() {
-			case promql_parser.ValueTypeMatrix:
-				expected := test.expected.(promql.Matrix)
-				sort.Sort(expected)
-				assert.Equal(t, test.expected, res.Data)
-			default:
-				assert.Equal(t, test.expected, res.Data)
-			}
-			//assert.ElementsMatch(t, test.expected, res.Data)
+			assert.Equal(t, test.expected, res.Data)
 		})
 	}
 }
@@ -2700,20 +2692,6 @@ func identity(i int64) logData {
 		Sample: logproto.Sample{
 			Timestamp: time.Unix(i, 0).UnixNano(),
 			Value:     1.,
-			Hash:      uint64(i),
-		},
-	}
-}
-
-func identityHistogram(i int64) logData {
-	return logData{
-		Entry: logproto.Entry{
-			Timestamp: time.Unix(i, 0),
-			Line:      fmt.Sprintf("%d", i),
-		},
-		Sample: logproto.Sample{
-			Timestamp: time.Unix(i, 0).UnixNano(),
-			Value:     float64(i),
 			Hash:      uint64(i),
 		},
 	}

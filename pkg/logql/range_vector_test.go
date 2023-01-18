@@ -41,12 +41,8 @@ var samples = []logproto.Sample{
 }
 
 var (
-	labelFoo, _      = syntax.ParseLabels("{app=\"foo\"}")
-	labelBar, _      = syntax.ParseLabels("{app=\"bar\"}")
-	labelFooLe005, _ = syntax.ParseLabels("{app=\"foo\", le=\"0.005\"}")
-	labelFooLe025, _ = syntax.ParseLabels("{app=\"foo\", le=\"0.025\"}")
-	labelBarLe005, _ = syntax.ParseLabels("{app=\"bar\", le=\"0.005\"}")
-	labelBarLe025, _ = syntax.ParseLabels("{app=\"bar\", le=\"0.025\"}")
+	labelFoo, _ = syntax.ParseLabels("{app=\"foo\"}")
+	labelBar, _ = syntax.ParseLabels("{app=\"bar\"}")
 )
 
 func newSampleIterator(samples []logproto.Sample) iter.SampleIterator {
@@ -73,7 +69,6 @@ func newPoint(t time.Time, v float64) promql.Point {
 }
 
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
-	buildSteamingExpr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
 	// no overlap test case.
 	buildStreamingIt := func() (RangeVectorIterator, error) {
 		tt := struct {
@@ -116,7 +111,7 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 		}
 		return it, nil
 	}
-	buildBatchExpr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+
 	buildBatchIt := func() (RangeVectorIterator, error) {
 		tt := struct {
 			selRange   int64
@@ -171,9 +166,8 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			agg, _ := aggregator(buildSteamingExpr)
 			for it.Next() {
-				_, _ = it.At(agg)
+				_, _ = it.At()
 			}
 		}
 	})
@@ -185,9 +179,8 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			agg, _ := aggregator(buildBatchExpr)
 			for it.Next() {
-				_, _ = it.At(agg)
+				_, _ = it.At()
 			}
 		}
 	})
@@ -211,15 +204,14 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		i := 0
-		expr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
 		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
-			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, nil, tt.selRange,
+			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 		if err != nil {
 			panic(err)
 		}
 		for it.Next() {
-			_, _ = it.At(expr)
+			_, _ = it.At()
 			i++
 		}
 	}
@@ -349,16 +341,14 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 			func(t *testing.T) {
-				expr := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
 				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
-					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, nil, tt.selRange,
+					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 				require.NoError(t, err)
 
 				i := 0
-				agg, _ := aggregator(expr)
 				for it.Next() {
-					ts, v := it.At(agg)
+					ts, v := it.At()
 					require.ElementsMatch(t, tt.expectedVectors[i], v)
 					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
 					i++
@@ -369,6 +359,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 	}
 }
 
+// TODO: needs re-work
 // func Test_HistogramRangeVectorIterator(t *testing.T) {
 // 	tests := []struct {
 // 		selRange        int64
@@ -384,10 +375,8 @@ func Test_RangeVectorIterator(t *testing.T) {
 // 			0,
 // 			[]promql.Vector{
 // 				[]promql.Sample{
-// 					{Point: newPoint(time.Unix(210, 0), 1), Metric: labelBarLe005},
-// 					{Point: newPoint(time.Unix(210, 0), 1), Metric: labelFooLe005},
-// 					{Point: newPoint(time.Unix(210, 0), 2), Metric: labelBarLe025},
-// 					{Point: newPoint(time.Unix(210, 0), 2), Metric: labelFooLe025},
+// 					{Point: newPoint(time.Unix(210, 0), 1), Metric: labelBar},
+// 					{Point: newPoint(time.Unix(210, 0), 1), Metric: labelFoo},
 // 				},
 // 				[]promql.Sample{
 // 					{Point: newPoint(time.Unix(240, 0), 2), Metric: labelBarLe005},
@@ -411,7 +400,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 // 			[]promql.Vector{
 // 				[]promql.Sample{
 // 					{Point: newPoint(time.Unix(210, 0), 3), Metric: labelBarLe005},
-// 					{Point: newPoint(time.Unix(210, 0), 3), Metric: labelFooLe005},
+// 					{Point: newPoint(time.Unix(210, 0), 3), Metric: labelFoo},
 // 					{Point: newPoint(time.Unix(210, 0), 2), Metric: labelBarLe025},
 // 					{Point: newPoint(time.Unix(210, 0), 2), Metric: labelFooLe025},
 // 				},
@@ -514,13 +503,12 @@ func Test_RangeVectorIterator(t *testing.T) {
 // 		t.Run(
 // 			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 // 			func(t *testing.T) {
-// 				it, _ := newRangeVectorIterator(newfakePeekingSampleIterator(), tt.selRange,
+// 				histogramBucketFactor := float64(1.1)
+// 				it, _ := newRangeVectorIterator(newfakePeekingSampleIterator(samples), &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeHistogram, Params: &histogramBucketFactor}, tt.selRange,
 // 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 
 // 				i := 0
-// 				agg, _ := aggregator(expr)
 // 				for it.Next() {
-// 					ts, v := it.At(bucketsOverTime([]float64{0.005, 0.025}))
 // 					ts, v := it.At()
 // 					require.ElementsMatch(t, tt.expectedVectors[i], v)
 // 					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
@@ -539,7 +527,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Samples: samples,
 		}))
 	it, err := newRangeVectorIterator(badIterator,
-		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, nil, (30 * time.Second).Nanoseconds(),
+		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
 		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
 	require.NoError(t, err)
 
@@ -583,19 +571,14 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	var start, end int64 = 4, 4 // Instant query
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
-			expr := &syntax.RangeAggregationExpr{Left: &syntax.LogRange{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op}
 			it, err := newRangeVectorIterator(sampleIter(tt.negative),
-				expr, nil,
+				&syntax.RangeAggregationExpr{Left: &syntax.LogRange{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 
 			for it.Next() {
 			}
-			agg, err := aggregator(expr)
-			if err != nil {
-				fmt.Println(err)
-			}
-			_, value := it.At(agg)
+			_, value := it.At()
 			require.Equal(t, tt.expectedValue, value[0].V)
 		})
 	}
