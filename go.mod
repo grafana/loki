@@ -88,7 +88,7 @@ require (
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 	github.com/sony/gobreaker v0.5.0
-	github.com/spf13/afero v1.9.2
+	github.com/spf13/afero v1.9.3
 	github.com/stretchr/testify v1.8.1
 	github.com/thanos-io/thanos v0.28.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
