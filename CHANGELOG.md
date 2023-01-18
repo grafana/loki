@@ -48,6 +48,8 @@
 * [7619](https://github.com/grafana/loki/pull/7619) **cadrake**: Add ability to pass query params to heroku drain targets for relabelling.
 * [7973](https://github.com/grafana/loki/pull/7973) **chodges15**: Add configuration to drop rate limited batches in Loki client and new metric label for drop reason.
 * [8153](https://github.com/grafana/loki/pull/8061) **kavirajk**: promtail: Add `max-line-size` limit to drop on client side
+* [8096](https://github.com/grafana/loki/pull/8096) **kavirajk**: doc(promtail): Doc about how log rotate works with promtail
+
 
 ##### Enhancements
 
