@@ -510,8 +510,9 @@ monitoring:
     namespace: null
     # -- Additional annotations for the dashboards ConfigMap
     annotations: {}
-    # -- Additional labels for the dashboards ConfigMap
-    labels: {}
+    # -- Labels for the dashboards ConfigMap
+    labels:
+      grafana_dashboard: "1"
 
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
