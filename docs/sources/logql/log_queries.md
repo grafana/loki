@@ -593,6 +593,8 @@ the result will be
 {} INFO GET / loki.net 200
 ```
 
+**Note:** `|drop __error__` or `|drop __error__="some error"` will also drop `__error__details__` label. Similarly, `|drop __error_details__` or `|drop __error_details__="some error details"` will also drop `__error__` label.
+
 Example with regex and multiple names
 
 For the query `{job="varlogs"}|json|drop level, path, app=~"some-api.*"`, with below log lines
