@@ -15,10 +15,12 @@ storage:
   type: local
 read:
   replicas: 1
+write:
+  replicas: 1
   persistence:
     enabled: true
     size: 100Mi
-write:
+backend:
   replicas: 1
   persistence:
     enabled: true

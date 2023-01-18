@@ -18,7 +18,7 @@ var luaRedisConstants = map[string]lua.LValue{
 	"LOG_WARNING": lua.LNumber(3),
 }
 
-func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[string]lua.LValue) {
+func mkLua(srv *server.Server, c *server.Peer, sha string) (map[string]lua.LGFunction, map[string]lua.LValue) {
 	mkCall := func(failFast bool) func(l *lua.LState) int {
 		// one server.Ctx for a single Lua run
 		pCtx := &connCtx{}
@@ -26,12 +26,13 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 			pCtx.authenticated = true
 		}
 		pCtx.nested = true
+		pCtx.nestedSHA = sha
 		pCtx.selectedDB = getCtx(c).selectedDB
 
 		return func(l *lua.LState) int {
 			top := l.GetTop()
 			if top == 0 {
-				l.Error(lua.LString("Please specify at least one argument for redis.call()"), 1)
+				l.Error(lua.LString(fmt.Sprintf("Please specify at least one argument for this redis lib call script: %s, &c.", sha)), 1)
 				return 0
 			}
 			var args []string
@@ -42,12 +43,12 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 				case lua.LString:
 					args = append(args, string(a))
 				default:
-					l.Error(lua.LString("Lua redis() command arguments must be strings or integers"), 1)
+					l.Error(lua.LString(fmt.Sprintf("Lua redis lib command arguments must be strings or integers script: %s, &c.", sha)), 1)
 					return 0
 				}
 			}
 			if len(args) == 0 {
-				l.Error(lua.LString(msgNotFromScripts), 1)
+				l.Error(lua.LString(msgNotFromScripts(sha)), 1)
 				return 0
 			}
 
@@ -63,7 +64,7 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 				if failFast {
 					// call() mode
 					if strings.Contains(err.Error(), "ERR unknown command") {
-						l.Error(lua.LString("Unknown Redis command called from Lua script"), 1)
+						l.Error(lua.LString(fmt.Sprintf("Unknown Redis command called from script script: %s, &c.", sha)), 1)
 					} else {
 						l.Error(lua.LString(err.Error()), 1)
 					}
@@ -112,7 +113,7 @@ func mkLua(srv *server.Server, c *server.Peer) (map[string]lua.LGFunction, map[s
 				return 0
 			}
 			res := &lua.LTable{}
-			res.RawSetString("err", lua.LString(msg))
+			res.RawSetString("err", lua.LString("ERR "+msg))
 			l.Push(res)
 			return 1
 		},
@@ -217,6 +218,8 @@ func redisToLua(l *lua.LState, res []interface{}) *lua.LTable {
 			v = lua.LFalse
 		} else {
 			switch et := e.(type) {
+			case int:
+				v = lua.LNumber(et)
 			case int64:
 				v = lua.LNumber(et)
 			case []uint8:

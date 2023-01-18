@@ -111,6 +111,7 @@ func NewListenerWrapper(params ListenerWrapperParams) (net.Listener, <-chan stru
 		drainCallback:     params.DrainCallback,
 		isUnspecifiedAddr: params.Listener.Addr().(*net.TCPAddr).IP.IsUnspecified(),
 
+		mode:        connectivity.ServingModeStarting,
 		closed:      grpcsync.NewEvent(),
 		goodUpdate:  grpcsync.NewEvent(),
 		ldsUpdateCh: make(chan ldsUpdateWithError, 1),
@@ -429,14 +430,24 @@ func (l *listenerWrapper) handleLDSUpdate(update ldsUpdateWithError) {
 	}
 }
 
+// switchMode updates the value of serving mode and filter chains stored in the
+// listenerWrapper. And if the serving mode has changed, it invokes the
+// registered mode change callback.
 func (l *listenerWrapper) switchMode(fcs *xdsresource.FilterChainManager, newMode connectivity.ServingMode, err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	l.filterChains = fcs
+	if l.mode == newMode && l.mode == connectivity.ServingModeServing {
+		// Redundant updates are suppressed only when we are SERVING and the new
+		// mode is also SERVING. In the other case (where we are NOT_SERVING and the
+		// new mode is also NOT_SERVING), the update is not suppressed as:
+		//   1. the error may have change
+		//   2. it provides a timestamp of the last backoff attempt
+		return
+	}
 	l.mode = newMode
 	if l.modeCallback != nil {
 		l.modeCallback(l.Listener.Addr(), newMode, err)
 	}
-	l.logger.Warningf("Listener %q entering mode: %q due to error: %v", l.Addr(), newMode, err)
 }

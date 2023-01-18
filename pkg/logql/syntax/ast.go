@@ -446,6 +446,44 @@ func (e *DecolorizeExpr) String() string {
 }
 func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
 
+type DropLabelsExpr struct {
+	dropLabels []log.DropLabel
+	implicit
+}
+
+func newDropLabelsExpr(dropLabels []log.DropLabel) *DropLabelsExpr {
+	return &DropLabelsExpr{dropLabels: dropLabels}
+}
+
+func (e *DropLabelsExpr) Shardable() bool { return true }
+
+func (e *DropLabelsExpr) Stage() (log.Stage, error) {
+	return log.NewDropLabels(e.dropLabels), nil
+}
+func (e *DropLabelsExpr) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpDrop))
+
+	for i, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			sb.WriteString(dropLabel.Matcher.String())
+			if i+1 != len(e.dropLabels) {
+				sb.WriteString(",")
+			}
+		}
+		if dropLabel.Name != "" {
+			sb.WriteString(dropLabel.Name)
+			if i+1 != len(e.dropLabels) {
+				sb.WriteString(",")
+			}
+		}
+	}
+	str := sb.String()
+	return str
+}
+func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -460,7 +498,6 @@ func (e *LineFmtExpr) String() string {
 
 type LabelFmtExpr struct {
 	Formats []log.LabelFmt
-
 	implicit
 }
 
@@ -480,7 +517,9 @@ func (e *LabelFmtExpr) Stage() (log.Stage, error) {
 
 func (e *LabelFmtExpr) String() string {
 	var sb strings.Builder
+
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
+
 	for i, f := range e.Formats {
 		sb.WriteString(f.Name)
 		sb.WriteString("=")
@@ -725,6 +764,9 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
+
+	// drop labels
+	OpDrop = "drop"
 )
 
 func IsComparisonOperator(op string) bool {
