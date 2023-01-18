@@ -14,6 +14,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -155,6 +157,8 @@ type Cluster struct {
 	sharedPath string
 	components []*Component
 	waitGroup  sync.WaitGroup
+
+	logger log.Logger
 }
 
 func New() *Cluster {
@@ -166,6 +170,7 @@ func New() *Cluster {
 
 	return &Cluster{
 		sharedPath: sharedPath,
+		logger:     log.NewLogfmtLogger(os.Stderr),
 	}
 }
 
@@ -239,6 +244,7 @@ func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 		cluster: c,
 		flags:   flags,
 		running: false,
+		logger:  log.With(c.logger, "component", name),
 	}
 
 	c.components = append(c.components, component)
@@ -259,6 +265,8 @@ type Component struct {
 
 	running bool
 	wg      sync.WaitGroup
+
+	logger log.Logger
 
 	RemoteWriteUrls []string
 }
@@ -372,18 +380,32 @@ func (c *Component) run() error {
 	)
 
 	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+
+		timer := time.NewTimer(30 * time.Second)
+		defer timer.Stop()
+
 		for {
-			time.Sleep(time.Millisecond * 200)
-			if c.loki == nil || c.loki.Server == nil || c.loki.Server.HTTP == nil {
-				continue
-			}
+			select {
+			case <-ticker.C:
+				if c.loki.Server == nil || c.loki.Server.HTTP == nil {
+					level.Debug(c.logger).Log("msg", "waiting for HTTP Server")
+					continue
+				}
+				target := fmt.Sprintf("http://%s/ready", c.loki.Server.HTTPListenAddr())
+				req := httptest.NewRequest("GET", target, nil)
+				w := httptest.NewRecorder()
+				c.loki.Server.HTTP.ServeHTTP(w, req)
 
-			req := httptest.NewRequest("GET", "http://localhost/ready", nil)
-			w := httptest.NewRecorder()
-			c.loki.Server.HTTP.ServeHTTP(w, req)
-
-			if w.Code == 200 {
-				close(readyCh)
+				level.Debug(c.logger).Log("msg", "readiness probe", "code", w.Code)
+				if w.Code == 200 {
+					close(readyCh)
+					return
+				}
+			case <-timer.C:
+				level.Warn(c.logger).Log("msg", "timed out starting component")
+				errCh <- fmt.Errorf("timed out waiting for component: %v", c.name)
 				return
 			}
 		}
@@ -404,12 +426,10 @@ func (c *Component) run() error {
 
 	select {
 	case <-readyCh:
-		break
+		return nil
 	case err := <-errCh:
 		return err
 	}
-
-	return nil
 }
 
 // cleanup calls the stop handler and returns files and directories to be cleaned up
