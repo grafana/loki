@@ -62,7 +62,7 @@ local make(target, container=true, args=[]) = run(target, [
 
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,

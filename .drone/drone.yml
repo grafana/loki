@@ -516,7 +516,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -531,7 +531,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
@@ -546,7 +546,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -561,7 +561,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -577,7 +577,7 @@ steps:
     - tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
@@ -593,7 +593,7 @@ steps:
     - tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
